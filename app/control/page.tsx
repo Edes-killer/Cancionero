@@ -1,8 +1,13 @@
+
+
 "use client"
 
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { io } from "socket.io-client"
+
+
+import { CSSProperties } from "react"
 
 export default function ControlPage() {
   const [socket, setSocket] = useState<any>(null)
@@ -58,26 +63,52 @@ useEffect(() => {
   cargarCanciones()
 }, [])
 
+
+const [isMobile, setIsMobile] = useState(true)
+
+useEffect(() => {
+  setIsMobile(window.innerWidth < 768)
+}, [])
+
 const cargarLista = async () => {
-  const { data } = await supabase
+  if (!listaIdActual) return
+
+  const { data, error } = await supabase
     .from("items_lista")
     .select("*, canciones(*)")
+    .eq("lista_id", listaIdActual)
     .order("orden")
+
+  if (error) {
+    console.error("Error cargando lista:", error)
+    return
+  }
+
+  if (data) {
+    // 🔥 formatear bien los datos
+    const listaFormateada = data.map(item => item.canciones)
+    setLista(listaFormateada)
+  }
 }
 
 useEffect(() => {
-  cargarLista()
-}, [])
+  if (listaIdActual) {
+    cargarLista()
+  }
+}, [listaIdActual])
 
 useEffect(() => {
+  if (!listaIdActual) return
+
   const intervalo = setInterval(() => {
     cargarLista()
   }, 2000)
 
   return () => clearInterval(intervalo)
-}, [])
+}, [listaIdActual])
 
 const proyectar = async (id: string) => {
+  setActivaIndex(null)
   if (!socket) return
 
   const { data } = await supabase
@@ -231,194 +262,264 @@ const cargarListaDesdeBD = async (id: string) => {
   }
 
   // 3. ordenar correctamente
-  const listaOrdenada = items.map(item =>
-    canciones.find(c => c.id === item.cancion_id)
-  )
+  const listaOrdenada = items.map(item => {
+  const cancion = canciones.find(c => c.id === item.cancion_id)
 
-  setLista(listaOrdenada)
+  return {
+    id: cancion?.id || item.cancion_id,
+    titulo: cancion?.titulo || "⚠️ Sin título"
+  }
+})
+console.log("ITEMS:", items)
+console.log("CANCIONES:", canciones)
+  setLista([...listaOrdenada])
 }
 const proyectarDesdeLista = async (i: number) => {
+  setActivaIndex(i) // 🔥 ESTO ES CLAVE
   setIndex(0)
 
   const item = lista[i]
 
-  console.log("ITEM LISTA:", item)
-
   const id =
     item?.id ||
     item?.cancion_id ||
-    item?.canciones?.id ||
-    item?.canciones?.[0]?.id
+    item?.canciones?.id
 
-  if (!id) {
-    console.error("No hay ID válido")
-    return
-  }
+  if (!id) return
 
-  console.log("PROYECTANDO ID:", id)
+  const { data } = await supabase
+    .from("partes_cancion")
+    .select("*")
+    .eq("cancion_id", id)
+    .order("orden")
 
-  // 🔥 TRAER PARTES DESDE BD
-const { data, error } = await supabase
-  .from("partes_cancion") // ✅ corregido
-  .select("*")
-  .eq("cancion_id", id)
-  .order("orden")
-
-  if (error) {
-    console.error("Error cargando partes:", error)
-    return
-  }
-
-  console.log("PARTES ENVIADAS:", data)
-
-  // 🔥 ENVIAR PARTES CORRECTAS
   socket.emit("cargar-cancion", {
     partes: data,
     index: 0
   })
 }
 
+const nombreTono = (tono?: string) => {
+  const mapa: Record<string, string> = {
+    C: "Do",
+    Cm: "Do menor",
+    D: "Re",
+    Dm: "Re menor",
+    E: "Mi",
+    F: "Fa",
+    G: "Sol",
+    A: "La",
+    B: "Si"
+  }
 
-  return (
-    <div style={container} >
-
-  {/* 🎮 CONTROLES */}
-  <section style={{ marginBottom: 30 }}>
-    <h3>🎮 Control</h3>
-
-    <div style={{ display: "flex", gap: 10 }}>
-      <button onClick={anterior} style={btnGrande}>⬅️Anterior</button>
-      <button onClick={siguiente} style={btnGrande}>Siguiente➡️</button>
-    </div>
-  </section>
-
-  {/* 🎵 LISTA */}
-  <section style={{ marginBottom: 30 }}>
-    <h3>🎵 Lista de Culto</h3>
-
-   {lista.map((c, i) => (
-  <div key={`${c?.id}-${i}`} style={{
-            ...card,
-            border: activaIndex === i ? "2px solid #22c55e" : "none"
-          }}
->    
-    <span>
-      {i + 1}. {c?.titulo || "Sin título"}
-    </span>
-
-    <div style={{ display: "flex", gap: 8 }}>
-      <button onClick={() => proyectarDesdeLista(i)}>▶️</button>
-      <button onClick={() => eliminarDeLista(i)}>❌</button>
-    </div>
-
-  </div>
-))}
-
-  </section>
-
-  {/* 💾 GUARDAR */}
-  <section style={{ marginBottom: 30 }}>
-    <button onClick={guardarCulto} style={btnPrincipal}>
-      💾 Guardar Culto
-    </button>
-  </section>
-   {/* 💾 BUSCADOR */} 
-<input
-  type="text"
-  placeholder="Buscar canción..."
-  value={busqueda}
-  onChange={(e) => setBusqueda(e.target.value)}
-  style={{
-    width: "100%",
-    padding: "10px",
-    marginBottom: "10px",
-    borderRadius: "8px",
-    background: "#111",
-  }}
-/>
-  {/* 🎶 CANCIONES */}
-
-  <select 
-  value={filtroTono}
-  onChange={(e) => setFiltroTono(e.target.value)}
-  style={{ marginBottom: 10 ,background: "#111",}}
->
-  <option value="">Todos</option>
-  <option value="C">Do</option>
-  <option value="D">Re</option>
-  <option value="E">Mi</option>
-  <option value="F">Fa</option>
-  <option value="G">Sol</option>
-  <option value="A">La</option>
-  <option value="B">Si</option>
-</select>
-
-  <section style={{ marginBottom: 30 }}>
-    <h3>🎶 Canciones</h3>
-
-    {
-    canciones
-  .filter(c =>
-    c.titulo.toLowerCase().includes(busqueda.toLowerCase())
-  )
-  .filter(c => !filtroTono || c.tono === filtroTono)
-  .map(c => (
-  <div key={c.id} style={card}>
-   <span>{c.titulo} </span><span> ({c.tono}) </span>
-
-    <div style={{ display: "flex", gap: 8 }}>
-      <button onClick={() => proyectar(c.id)}>▶️</button> {/* 🔥 ESTE FALTABA */}
-      <button onClick={() => agregarALista(c)}>➕</button>
-    </div>
-  </div>
-))}
-  </section>
-
-  {/* 📂 CULTOS */}
-  <section>
-    <h3>📂 Cultos guardados</h3>
-
-    {cultos.map((c) => (
-      <div key={c.id} style={card}>
-        <span>{c.nombre}</span>
-        <button onClick={() => cargarListaDesdeBD(c.id)}>📥</button>
-      </div>
-    ))}
-  </section>
-
-</div>
-  )
+  if (!tono) return ""
+  return mapa[tono] || tono
 }
 
-const container = {
-  background: "#000",
-  minHeight: "100vh",
-  color: "white",
-  padding: 20
-}
 
-const card = {
-  background: "#111",
-  padding: 10,
-  borderRadius: 10,
-  marginBottom: 8,
+
+const container: CSSProperties = {
   display: "flex",
-  justifyContent: "space-between"
+  flexDirection: "column",
+  gap: "15px",
+  padding: "10px",
+  background: "#0f172a",
+  color: "white",
+  minHeight: "100vh"
 }
 
-const btnPrincipal = {
+const controles: CSSProperties = {
+  gridColumn: "span 2",
+  display: "flex",
+  justifyContent: "center",
+  gap: "20px"
+}
+
+const seccion: CSSProperties = {
+  background: "#1e293b",
+  padding: "15px",
+  borderRadius: "12px",
+  boxShadow: "0 0 10px rgba(0,0,0,0.3)",
+  maxHeight: "80vh",
+  overflowY: "auto"
+}
+
+const titulo: CSSProperties = {
+  fontSize: "20px",
+  marginBottom: "10px"
+}
+
+const card: CSSProperties = {
+  background: "#334155",
+  padding: "10px",
+  borderRadius: "8px",
+  marginBottom: "10px",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center"
+}
+
+const acciones: CSSProperties = {
+  display: "flex",
+  gap: "8px"
+}
+
+const btn: CSSProperties = {
+  padding: "8px 12px",
+  borderRadius: "6px",
+  border: "none",
   background: "#2563eb",
   color: "white",
-  padding: "10px",
-  borderRadius: 8
+  cursor: "pointer"
 }
 
-const btnGrande = {
-  padding: "20px",
-  borderRadius: "8px",
-  marginTop: "10px",
-  background: "#333",
-  color: "white",
+const btnGrande: CSSProperties = {
+  padding: "20px 30px",
+  fontSize: "24px",
+  borderRadius: "12px",
   border: "none",
-  fontSize: "40px"
+  background: "#2563eb",
+  color: "white",
+  cursor: "pointer"
 }
+
+const input: CSSProperties = {
+  width: "100%",
+  padding: "10px",
+  marginBottom: "10px",
+  borderRadius: "8px",
+  border: "none"
+}
+
+const gridDesktop: CSSProperties = {
+  
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: "15px"
+  
+}
+
+return (
+  <div style={container}>
+    
+    {/* CONTROLES */}
+    <div style={controles}>
+      <button style={btnGrande} onClick={anterior}>⬅️</button>
+      <button style={btnGrande} onClick={siguiente}>➡️</button>
+    </div>
+
+    {/* CANCIONES */}
+    <div style={seccion}>
+      <h2 style={titulo}>🎵 Canciones</h2>
+
+      <input
+        placeholder="Buscar canción..."
+        value={busqueda}
+        onChange={(e) => setBusqueda(e.target.value)}
+        style={input}
+      />
+
+      <select
+        value={filtroTono}
+        onChange={(e) => setFiltroTono(e.target.value)}
+        style={input}
+      >
+        <option value="">Todos los tonos</option>
+        <option value="C">Do</option>
+        <option value="Cm">Do menor</option>
+        <option value="D">Re</option>
+        <option value="Dm">Re menor</option>
+        <option value="E">Mi</option>
+        <option value="F">Fa</option>
+        <option value="G">Sol</option>
+        <option value="A">La</option>
+        <option value="B">Si</option>
+      </select>
+
+      {canciones
+        .filter(c =>
+          c.titulo.toLowerCase().includes(busqueda.toLowerCase())
+        )
+        .filter(c => !filtroTono || c.tono === filtroTono)
+        .map((c) => (
+          <div key={c.id} style={card}>
+            <div>
+              <strong>{c.titulo}</strong>
+              <div style={{ fontSize: "12px", opacity: 0.7 }}>
+                {c.autor || ""} {c.tono ? `• ${nombreTono(c.tono)}` : ""}
+              </div>
+            </div>
+
+            <div style={acciones}>
+              <button style={btn} onClick={() => proyectar(c.id)}>▶️</button>
+              <button style={btn} onClick={() => agregarALista(c)}>➕</button>
+            </div>
+          </div>
+        ))}
+    </div>
+{/* GUARDAR CULTO */}
+
+<div style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
+  <button style={btn} onClick={guardarCulto}>
+    💾 Guardar Culto
+  </button>
+
+  <button
+    style={{ ...btn, background: "#16a34a" }}
+    onClick={() => {
+      setLista([])
+      setListaIdActual(null)
+      setActivaIndex(null)
+    }}
+  >
+    🆕 Nuevo
+  </button>
+</div>
+
+
+    {/* LISTA DE CULTO */}
+    <div style={seccion}>
+
+      
+  <h2 style={titulo}>💾 Cultos Guardados</h2>
+
+  {cultos.map((c) => (
+    <div key={c.id} style={card}>
+      <span>{c.nombre}</span>
+
+      <div style={acciones}>
+        <button style={btn} onClick={() => cargarListaDesdeBD(c.id)}>
+          📂
+        </button>
+
+        <button
+          style={{ ...btn, background: "#dc2626" }}
+          onClick={async () => {
+            await supabase.from("listas_culto").delete().eq("id", c.id)
+            cargarCultos()
+          }}
+        >
+          🗑️
+        </button>
+      </div>
+    </div>
+  ))}
+
+
+  {lista.map((c, i) => {
+  //console.log("ITEM RENDER:", c)
+
+  return (
+    <div key={i} style={card}>
+      <span>
+        {i + 1}. {c?.titulo || "Sin título"}
+      </span>
+    </div>
+  )
+})}
+</div>
+
+  </div>
+)
+}
+
