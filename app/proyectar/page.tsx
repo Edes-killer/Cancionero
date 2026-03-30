@@ -10,13 +10,17 @@ export default function ProyectarPage() {
   const [fade, setFade] = useState(true)
   console.log("RENDER PROYECTOR")
 
-  useEffect(() => {
+useEffect(() => {
   setFade(false)
 
-  setTimeout(() => {
+  const t = setTimeout(() => {
     setFade(true)
-  }, 100)
+  }, 50)
+
+  return () => clearTimeout(t)
 }, [index])
+
+
 
 useEffect(() => {
   const entrarFullscreen = () => {
@@ -36,9 +40,10 @@ useEffect(() => {
 useEffect(() => {
   const s = io("http://" + window.location.hostname + ":4000")
 
-  s.on("cargar-cancion", (data) => {
+  s.on("cargar-cancion", (data: { partes: any[]; index: number }) => {
   setPartes(data.partes || [])
   setIndex(data.index || 0)
+
 })  
 
   s.on("cambiar-parte", (i) => {
@@ -56,45 +61,43 @@ const parteActual = partes[index]
 
     
 
-    <div key={index}
+   <div
+  key={index}
   style={{
     width: "100vw",
     height: "100vh",
-    background: "radial-gradient(circle, #111 0%, #000 100%)",
+    background: "black",
     color: "white",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
     textAlign: "center",
-    padding: 40,
-    transform: fade ? "translateY(0px)" : "translateY(20px)",
-    opacity: fade ? 1 : 0,
-    transition: "all 0.5s ease"
-    
+    padding: "40px",
+    overflow: "hidden"
   }}
 >
   {parteActual ? (
-    <div style={{ maxWidth: "1000px" }}>
+    <div style={{ maxWidth: "1200px", width: "100%" }}>
       
-      <h2
+      <div style={{
+        fontSize: "30px",
+        opacity: 0.5,
+        marginBottom: "20px"
+      }}>
+        {parteActual.tipo}
+      </div>
+
+      <div
         style={{
-          fontSize:
-    partes[index]?.texto?.length > 150
-      ? "clamp(25px, 4vw, 60px)"
-      : "clamp(40px, 6vw, 100px)",
-  textAlign: "center",
-  padding: "20px",
-  wordBreak: "break-word",
-  lineHeight: "1.2",
-  maxWidth: "90%",
-  margin: "auto"
+          fontSize: "clamp(40px, 6vw, 90px)",
+          lineHeight: "1.2",
+          whiteSpace: "pre-line",
+          wordBreak: "break-word"
         }}
       >
-        {parteActual.tipo}
-      </h2>
-        <p >
-          {partes[index]?.texto}
-        </p>
+        {parteActual.texto}
+      </div>
+
     </div>
   ) : (
     <h1 style={{ color: "#555" }}>Esperando canción...</h1>

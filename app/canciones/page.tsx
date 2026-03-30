@@ -8,6 +8,7 @@ export default function CancionesPage() {
   const [socket, setSocket] = useState<any>(null)
   const [titulo, setTitulo] = useState("")
   const [tono, setTono] = useState("")
+  const [activaIndex, setActivaIndex] = useState<number | null>(null)
   const [partes, setPartes] = useState<any[]>([
     { tipo: "Verso", texto: "" }
   ])
@@ -76,7 +77,10 @@ export default function CancionesPage() {
 
   console.log("CANCION:", cancion)
   console.log("ERROR:", error)
-  
+  setTitulo("")
+  setTono("")
+  setPartes([{ tipo: "Verso", texto: "" }])
+  cargarCanciones()
 
   if (error) {
     alert("Error al guardar canción")
@@ -104,15 +108,20 @@ export default function CancionesPage() {
 }
 
   // PROYECTAR
-  const proyectar = async (cancionId: string) => {
-    const { data: partes } = await supabase
-      .from("partes_cancion")
-      .select("*")
-      .eq("cancion_id", cancionId)
-      .order("orden")
+  const proyectar = async (cancionId: string, index: number) => {
+  if (!socket) return
 
-    socket.emit("cargar-cancion", { partes })
-  }
+  setActivaIndex(index) // 🔥 MARCA LA ACTIVA
+
+  const { data: partes } = await supabase
+    .from("partes_cancion")
+    .select("*")
+    .eq("cancion_id", cancionId)
+    .order("orden")
+
+  setActivaIndex(index)
+
+}
   
 
   const btn = {
@@ -226,15 +235,24 @@ const card = {
     {/* LISTA */}
     <h2>Canciones</h2>
 
-    {canciones.map((c) => (
-      <div key={c.id} style={card}>
-        <div>{c.titulo}</div>
+    {canciones.map((c, i) => (
+  <div
+    key={c.id}
+    style={{
+      ...card,
+      background: i === activaIndex ? "#16a34a" : "#222"
+    }}
+  >
+    <div>{c.titulo}</div>
 
-        <button onClick={() => proyectar(c.id)} style={btnPrimary}>
-          ▶ Proyectar
-        </button>
-      </div>
-    ))}
+    <button
+      onClick={() => proyectar(c.id, i)}
+      style={btnPrimary}
+    >
+      ▶ Proyectar
+    </button>
+  </div>
+))}
   </div>
 )
 }

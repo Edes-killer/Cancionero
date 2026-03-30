@@ -20,6 +20,7 @@ export default function ControlPage() {
   const [activaIndex, setActivaIndex] = useState<number | null>(null)
   const [filtroTono, setFiltroTono] = useState("")
   const [busqueda, setBusqueda] = useState("")
+  const [nombreCulto, setNombreCulto] = useState("")
 
 useEffect(() => {
   const s = io("http://" + window.location.hostname + ":4000")
@@ -41,6 +42,7 @@ useEffect(() => {
     s.disconnect()   // ✅ correcto
   }
 }, [])
+
 
 useEffect(() => {
   window.scrollTo({ top: 0, behavior: "smooth" })
@@ -235,7 +237,8 @@ useEffect(() => {
 
 const cargarListaDesdeBD = async (id: string) => {
   setListaIdActual(id)
-
+const culto = cultos.find(c => c.id === id)
+setNombreCulto(culto?.nombre || "")
   // 1. traer items
   const { data: items, error } = await supabase
     .from("items_lista")
@@ -275,8 +278,7 @@ console.log("CANCIONES:", canciones)
   setLista([...listaOrdenada])
 }
 const proyectarDesdeLista = async (i: number) => {
-  setActivaIndex(i) // 🔥 ESTO ES CLAVE
-  setIndex(0)
+  setActivaIndex(i) // ✅ solo esto agregamos
 
   const item = lista[i]
 
@@ -287,12 +289,18 @@ const proyectarDesdeLista = async (i: number) => {
 
   if (!id) return
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("partes_cancion")
     .select("*")
     .eq("cancion_id", id)
     .order("orden")
 
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  // 🔥 ESTO ES CLAVE → NO CAMBIAR
   socket.emit("cargar-cancion", {
     partes: data,
     index: 0
@@ -475,14 +483,11 @@ return (
     🆕 Nuevo
   </button>
 </div>
-
-
-    {/* LISTA DE CULTO */}
-    <div style={seccion}>
-
-      
+<div style={seccion}>
   <h2 style={titulo}>💾 Cultos Guardados</h2>
-
+<h2 style={titulo}>
+  📋 Lista de Culto {nombreCulto && `- ${nombreCulto}`}
+</h2>
   {cultos.map((c) => (
     <div key={c.id} style={card}>
       <span>{c.nombre}</span>
@@ -495,28 +500,59 @@ return (
         <button
           style={{ ...btn, background: "#dc2626" }}
           onClick={async () => {
-            await supabase.from("listas_culto").delete().eq("id", c.id)
-            cargarCultos()
-          }}
+          const ok = confirm("¿Eliminar este culto completo?")
+          if (!ok) return
+
+          await supabase.from("listas_culto").delete().eq("id", c.id)
+          cargarCultos()
+        }}
         >
           🗑️
         </button>
       </div>
     </div>
   ))}
+</div>
 
 
-  {lista.map((c, i) => {
-  //console.log("ITEM RENDER:", c)
 
-  return (
-    <div key={i} style={card}>
+    {/* LISTA DE CULTO */}
+<div style={seccion}>
+  <h2 style={titulo}>📋 Lista de Culto</h2>
+
+  {lista.length === 0 && (
+    <p style={{ opacity: 0.6 }}>No hay canciones aún</p>
+  )}
+
+  {lista.map((c, i) => (
+    <div
+      key={i}
+      style={{
+        ...card,
+        background: i === activaIndex ? "#16a34a" : "#334155"
+      }}
+    >
       <span>
         {i + 1}. {c?.titulo || "Sin título"}
       </span>
+
+      <div style={acciones}>
+        <button style={btn} onClick={() => proyectarDesdeLista(i)}>
+          ▶️
+        </button>
+
+        <button
+          style={{ ...btn, background: "#dc2626" }}
+          onClick={() => {
+            const ok = confirm("¿Eliminar esta alabanza de la lista?")
+            if (ok) eliminarDeLista(i)
+          }}
+        >
+          ❌
+        </button>
+      </div>
     </div>
-  )
-})}
+  ))}
 </div>
 
   </div>

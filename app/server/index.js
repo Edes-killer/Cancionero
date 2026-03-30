@@ -14,17 +14,18 @@ const io = new Server(server, {
 
 io.on("connection", (socket) => {
   console.log("📱 Cliente conectado:", socket.id)
+
   socket.on("cargar-cancion", (data) => {
-    console.log("🎵 canción recibida",data)
+    console.log("🎵 canción recibida", data)
     io.emit("cargar-cancion", data)
   })
 
   socket.on("cambiar-parte", (index) => {
     io.emit("cambiar-parte", index)
   })
-})
 
+  })
 
-server.listen(4000, "0.0.0.0", () => {
+  server.listen(4000, "0.0.0.0", () => {
   console.log("🔥 Servidor en 4000")
 })
