@@ -24,8 +24,13 @@ io.on("connection", (socket) => {
     io.emit("cambiar-parte", index)
   })
 
+  // 🔥 ESTE VA AQUÍ ADENTRO
+  socket.on("cancion-activa", (data) => {
+    console.log("🟢 canción activa:", data)
+    io.emit("cancion-activa", data)
   })
+})
 
-  server.listen(4000, "0.0.0.0", () => {
+server.listen(4000, "0.0.0.0", () => {
   console.log("🔥 Servidor en 4000")
 })

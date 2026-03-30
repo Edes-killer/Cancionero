@@ -14,13 +14,13 @@ export default function ControlPage() {
   const [canciones, setCanciones] = useState<any[]>([])
   const [index, setIndex] = useState(0)
   const [lista, setLista] = useState<any[]>([])
-  const [partes, setPartes] = useState<any[]>([])
+  const [activaId, setActivaId] = useState<string | null>(null)
   const [cultos, setCultos] = useState<any[]>([])
   const [listaIdActual, setListaIdActual] = useState<string | null>(null)
-  const [activaIndex, setActivaIndex] = useState<number | null>(null)
   const [filtroTono, setFiltroTono] = useState("")
   const [busqueda, setBusqueda] = useState("")
   const [nombreCulto, setNombreCulto] = useState("")
+  const [partes, setPartes] = useState<any[]>([])
 
 useEffect(() => {
   const s = io("http://" + window.location.hostname + ":4000")
@@ -43,6 +43,22 @@ useEffect(() => {
   }
 }, [])
 
+useEffect(() => {
+  if (!socket) {
+  console.log("❌ SOCKET NO LISTO")
+  return
+}
+
+  const handleActiva = (data: any) => {
+    setActivaId(data.id)
+  }
+
+  socket.on("cancion-activa", handleActiva)
+
+  return () => {
+    socket.off("cancion-activa", handleActiva)
+  }
+}, [socket])
 
 useEffect(() => {
   window.scrollTo({ top: 0, behavior: "smooth" })
@@ -110,42 +126,67 @@ useEffect(() => {
 }, [listaIdActual])
 
 const proyectar = async (id: string) => {
-  setActivaIndex(null)
-  if (!socket) return
+  if (!socket) {
+  console.log("❌ SOCKET NO LISTO")
+  return
+  }  
 
+  setActivaId(id) // ✅ usamos ID
+  
   const { data } = await supabase
     .from("partes_cancion")
     .select("*")
     .eq("cancion_id", id)
     .order("orden")
 
-  const partesData = data || []
+  const cancion = canciones.find(c => c.id === id)
 
-  setPartes(partesData)   // 🔥 guardamos partes
-  setIndex(0)             // 🔥 reiniciamos índice
-console.log("PROYECTANDO ID:", id)
   socket.emit("cargar-cancion", {
-    partes: partesData,
-    index: 0
+    partes: data,
+    index: 0,
+    titulo: cancion?.titulo,
+    tono: cancion?.tono
   })
+  socket.emit("cancion-activa", { id })
+
+  console.log("🟢 EMITIENDO ACTIVA:", id)
+
+  socket.emit("cancion-activa", { id })
+  setPartes(data || [])
+  setIndex(0)
 }
+
+
 const siguiente = () => {
-  const nuevo = index + 1
+  if (index < partes.length - 1) {
+    const nuevo = index + 1
+    setIndex(nuevo)
+    socket.emit("cambiar-parte", nuevo)
+  } else {
+    // 🔥 pasar a siguiente canción de la lista
+    const actualIndex = lista.findIndex(c => c.id === activaId)
+    const siguienteCancion = lista[actualIndex + 1]
 
-  setIndex(nuevo)
-
-  socket.emit("cambiar-parte", nuevo)
+    if (siguienteCancion) {
+      proyectar(siguienteCancion.id)
+    }
+  }
 }
 
-  const anterior = () => {
-  if (!socket) return
+const anterior = () => {
+  if (index > 0) {
+    const nuevo = index - 1
+    setIndex(nuevo)
+    socket.emit("cambiar-parte", nuevo)
+  } else {
+    // 🔥 ir a canción anterior
+    const actualIndex = lista.findIndex(c => c.id === activaId)
+    const anteriorCancion = lista[actualIndex - 1]
 
-  if (index <= 0) return
-
-  const nuevo = index - 1
-  setIndex(nuevo)
-
-  socket.emit("cambiar-parte", nuevo)
+    if (anteriorCancion) {
+      proyectar(anteriorCancion.id)
+    }
+  }
 }
 
 const agregarALista = (cancion: any) => {
@@ -278,33 +319,31 @@ console.log("CANCIONES:", canciones)
   setLista([...listaOrdenada])
 }
 const proyectarDesdeLista = async (i: number) => {
-  setActivaIndex(i) // ✅ solo esto agregamos
+  if (!socket) {
+  console.log("❌ SOCKET NO LISTO")
+  return
+}
 
   const item = lista[i]
-
-  const id =
-    item?.id ||
-    item?.cancion_id ||
-    item?.canciones?.id
+  const id = item?.id
 
   if (!id) return
 
-  const { data, error } = await supabase
+  setActivaId(id) // ✅ MISMO SISTEMA
+
+  const { data } = await supabase
     .from("partes_cancion")
     .select("*")
     .eq("cancion_id", id)
     .order("orden")
 
-  if (error) {
-    console.error(error)
-    return
-  }
-
-  // 🔥 ESTO ES CLAVE → NO CAMBIAR
   socket.emit("cargar-cancion", {
-    partes: data,
-    index: 0
-  })
+  partes: data,
+  index: 0,
+  titulo: item?.titulo || "Sin título",
+  tono: item?.tono || ""
+})
+  socket.emit("cancion-activa", { id })
 }
 
 const nombreTono = (tono?: string) => {
@@ -412,8 +451,8 @@ return (
     
     {/* CONTROLES */}
     <div style={controles}>
-      <button style={btnGrande} onClick={anterior}>⬅️</button>
-      <button style={btnGrande} onClick={siguiente}>➡️</button>
+      <button disabled={!socket} style={btnGrande} onClick={anterior}>⬅️</button>
+      <button disabled={!socket} style={btnGrande} onClick={siguiente}>➡️</button>
     </div>
 
     {/* CANCIONES */}
@@ -445,39 +484,49 @@ return (
       </select>
 
       {canciones
-        .filter(c =>
-          c.titulo.toLowerCase().includes(busqueda.toLowerCase())
-        )
-        .filter(c => !filtroTono || c.tono === filtroTono)
-        .map((c) => (
-          <div key={c.id} style={card}>
-            <div>
-              <strong>{c.titulo}</strong>
-              <div style={{ fontSize: "12px", opacity: 0.7 }}>
-                {c.autor || ""} {c.tono ? `• ${nombreTono(c.tono)}` : ""}
-              </div>
-            </div>
+  .filter(c =>
+    c.titulo.toLowerCase().includes(busqueda.toLowerCase())
+  )
+  .filter(c => !filtroTono || c.tono === filtroTono)
+  .map((c, i) => (
+    <div
+      key={c.id}
+      style={{
+        ...card,
+        background: c.id === activaId ? "#16a34a" : "#334155"
+      }}
+    >
+      <div>
+        <strong>{c.titulo}</strong>
+        <div style={{ fontSize: "12px", opacity: 0.7 }}>
+          {c.autor || ""} {c.tono ? `• ${nombreTono(c.tono)}` : ""}
+        </div>
+      </div>
 
-            <div style={acciones}>
-              <button style={btn} onClick={() => proyectar(c.id)}>▶️</button>
-              <button style={btn} onClick={() => agregarALista(c)}>➕</button>
-            </div>
-          </div>
-        ))}
+      <div style={acciones}>
+        <button disabled={!socket} style={btn} onClick={() => proyectar(c.id)}>
+          ▶️
+        </button>
+        <button disabled={!socket} style={btn} onClick={() => agregarALista(c)}>
+          ➕
+        </button>
+      </div>
+    </div>
+  ))}
     </div>
 {/* GUARDAR CULTO */}
 
 <div style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
-  <button style={btn} onClick={guardarCulto}>
+  <button disabled={!socket} style={btn} onClick={guardarCulto}>
     💾 Guardar Culto
   </button>
 
-  <button
+  <button disabled={!socket}
     style={{ ...btn, background: "#16a34a" }}
     onClick={() => {
       setLista([])
       setListaIdActual(null)
-      setActivaIndex(null)
+      setActivaId(null)
     }}
   >
     🆕 Nuevo
@@ -486,18 +535,17 @@ return (
 <div style={seccion}>
   <h2 style={titulo}>💾 Cultos Guardados</h2>
 <h2 style={titulo}>
-  📋 Lista de Culto {nombreCulto && `- ${nombreCulto}`}
 </h2>
   {cultos.map((c) => (
     <div key={c.id} style={card}>
       <span>{c.nombre}</span>
 
       <div style={acciones}>
-        <button style={btn} onClick={() => cargarListaDesdeBD(c.id)}>
+        <button disabled={!socket} style={btn} onClick={() => cargarListaDesdeBD(c.id)}>
           📂
         </button>
 
-        <button
+        <button disabled={!socket}
           style={{ ...btn, background: "#dc2626" }}
           onClick={async () => {
           const ok = confirm("¿Eliminar este culto completo?")
@@ -518,7 +566,7 @@ return (
 
     {/* LISTA DE CULTO */}
 <div style={seccion}>
-  <h2 style={titulo}>📋 Lista de Culto</h2>
+  📋 Lista de Culto {nombreCulto && `- ${nombreCulto}`}
 
   {lista.length === 0 && (
     <p style={{ opacity: 0.6 }}>No hay canciones aún</p>
@@ -529,7 +577,7 @@ return (
       key={i}
       style={{
         ...card,
-        background: i === activaIndex ? "#16a34a" : "#334155"
+        background: c.id === activaId ? "#16a34a" : "#334155"
       }}
     >
       <span>
@@ -537,11 +585,11 @@ return (
       </span>
 
       <div style={acciones}>
-        <button style={btn} onClick={() => proyectarDesdeLista(i)}>
+        <button style={btn} disabled={!socket} onClick={() => proyectarDesdeLista(i)}>
           ▶️
         </button>
 
-        <button
+        <button disabled={!socket}
           style={{ ...btn, background: "#dc2626" }}
           onClick={() => {
             const ok = confirm("¿Eliminar esta alabanza de la lista?")

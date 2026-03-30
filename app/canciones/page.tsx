@@ -8,7 +8,7 @@ export default function CancionesPage() {
   const [socket, setSocket] = useState<any>(null)
   const [titulo, setTitulo] = useState("")
   const [tono, setTono] = useState("")
-  const [activaIndex, setActivaIndex] = useState<number | null>(null)
+  const [activaId, setActivaId] = useState<string | null>(null)
   const [partes, setPartes] = useState<any[]>([
     { tipo: "Verso", texto: "" }
   ])
@@ -44,7 +44,22 @@ export default function CancionesPage() {
   }
   
 
+useEffect(() => {
+  if (!socket) {
+  console.log("❌ SOCKET NO LISTO")
+  return
+}
 
+  const handleActiva = (data: any) => {
+    setActivaId(data.id)
+  }
+
+  socket.on("cancion-activa", handleActiva)
+
+  return () => {
+    socket.off("cancion-activa", handleActiva)
+  }
+}, [socket])
 
   useEffect(() => {
      console.log("🔥 CARGANDO CANCIONES...")
@@ -107,20 +122,30 @@ export default function CancionesPage() {
   alert("Guardado OK 🔥")
 }
 
-  // PROYECTAR
-  const proyectar = async (cancionId: string, index: number) => {
+  const proyectar = async (cancionId: string) => {
   if (!socket) return
 
-  setActivaIndex(index) // 🔥 MARCA LA ACTIVA
+  setActivaId(cancionId)
 
-  const { data: partes } = await supabase
+  const { data } = await supabase
     .from("partes_cancion")
     .select("*")
     .eq("cancion_id", cancionId)
     .order("orden")
 
-  setActivaIndex(index)
+  // 🔥 PROYECTA
+  socket.emit("cargar-cancion", {
+    partes: data,
+    index: 0
+  })
 
+  // 🔥 SINCRONIZA VERDE
+  socket.emit("cancion-activa", {
+    id: cancionId
+  })
+  console.log("🟢 EMITIENDO ACTIVA (canciones):", cancionId)
+
+  socket.emit("cancion-activa", { id: cancionId })
 }
   
 
@@ -240,13 +265,13 @@ const card = {
     key={c.id}
     style={{
       ...card,
-      background: i === activaIndex ? "#16a34a" : "#222"
+      background: c.id === activaId ? "#16a34a" : "#334155"
     }}
   >
     <div>{c.titulo}</div>
 
     <button
-      onClick={() => proyectar(c.id, i)}
+      onClick={() => proyectar(c.id)}
       style={btnPrimary}
     >
       ▶ Proyectar

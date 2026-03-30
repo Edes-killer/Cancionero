@@ -8,6 +8,8 @@ export default function ProyectarPage() {
   const [partes, setPartes] = useState<any[]>([])
   const [index, setIndex] = useState(0)
   const [fade, setFade] = useState(true)
+  const [titulo, setTitulo] = useState("")
+const [tono, setTono] = useState("")
   console.log("RENDER PROYECTOR")
 
 useEffect(() => {
@@ -40,11 +42,12 @@ useEffect(() => {
 useEffect(() => {
   const s = io("http://" + window.location.hostname + ":4000")
 
-  s.on("cargar-cancion", (data: { partes: any[]; index: number }) => {
+  s.on("cargar-cancion", (data) => {
   setPartes(data.partes || [])
   setIndex(data.index || 0)
-
-})  
+  setTitulo(data.titulo || "")
+  setTono(data.tono || "")
+})
 
   s.on("cambiar-parte", (i) => {
     setIndex(i)
@@ -62,46 +65,45 @@ const parteActual = partes[index]
     
 
    <div
-  key={index}
   style={{
     width: "100vw",
     height: "100vh",
-    background: "black",
+    background: "radial-gradient(circle, #111 0%, #000 100%)",
     color: "white",
     display: "flex",
-    justifyContent: "center",
+    flexDirection: "column",
+    justifyContent: "space-between",
     alignItems: "center",
-    textAlign: "center",
-    padding: "40px",
-    overflow: "hidden"
+    padding: "40px 20px",
+    textAlign: "center"
   }}
 >
-  {parteActual ? (
-    <div style={{ maxWidth: "1200px", width: "100%" }}>
-      
-      <div style={{
-        fontSize: "30px",
-        opacity: 0.5,
-        marginBottom: "20px"
-      }}>
-        {parteActual.tipo}
-      </div>
+  {/* 🔝 TÍTULO */}
+  <div style={{ fontSize: "clamp(20px, 2vw, 30px)", opacity: 0.8 }}>
+    {titulo}
+  </div>
 
-      <div
-        style={{
-          fontSize: "clamp(40px, 6vw, 90px)",
-          lineHeight: "1.2",
-          whiteSpace: "pre-line",
-          wordBreak: "break-word"
-        }}
-      >
-        {parteActual.texto}
-      </div>
+  {/* 🎵 LETRA */}
+  <div
+    style={{
+      fontSize: partes[index]?.texto?.length > 300
+        ? "clamp(20px, 3vw, 50px)"
+        : partes[index]?.texto?.length > 150
+        ? "clamp(30px, 4vw, 70px)"
+        : "clamp(40px, 6vw, 100px)",
+      lineHeight: "1.3",
+      whiteSpace: "pre-line",
+      wordBreak: "break-word",
+      maxWidth: "90%"
+    }}
+  >
+    {partes[index]?.texto}
+  </div>
 
-    </div>
-  ) : (
-    <h1 style={{ color: "#555" }}>Esperando canción...</h1>
-  )}
+  {/* 🔻 TONO */}
+  <div style={{ fontSize: "clamp(18px, 2vw, 25px)", opacity: 0.7 }}>
+    {tono && `Tono: ${tono}`}
+  </div>
 </div>
   
     
