@@ -122,10 +122,8 @@ useEffect(() => {
   alert("Guardado OK 🔥")
 }
 
-  const proyectar = async (cancionId: string) => {
+const proyectar = async (cancionId: string) => {
   if (!socket) return
-
-  setActivaId(cancionId)
 
   const { data } = await supabase
     .from("partes_cancion")
@@ -133,17 +131,15 @@ useEffect(() => {
     .eq("cancion_id", cancionId)
     .order("orden")
 
-  // 🔥 PROYECTA
+  const cancion = canciones.find(c => c.id === cancionId)
+
+  // 🔥 EMITIR TODO CORRECTAMENTE
   socket.emit("cargar-cancion", {
     partes: data,
-    index: 0
+    index: 0,
+    titulo: cancion?.titulo,
+    tono: cancion?.tono
   })
-
-  // 🔥 SINCRONIZA VERDE
-  socket.emit("cancion-activa", {
-    id: cancionId
-  })
-  console.log("🟢 EMITIENDO ACTIVA (canciones):", cancionId)
 
   socket.emit("cancion-activa", { id: cancionId })
 }
@@ -233,20 +229,16 @@ const card = {
           </select>
 
           <textarea
-            placeholder="Texto"
-            value={p.texto}
-            onChange={(e) =>
-              actualizarParte(i, "texto", e.target.value)
-            }
-            style={{
-              padding: 10,
-              width: "100%",
-              height: 80,
-              marginTop: 5
-            }}
-          />
+  placeholder="Ej: [G]Mi alma te alaba [D]Señor"
+  value={p.texto}
+  onChange={(e) =>
+    actualizarParte(i, "texto", e.target.value)
+  }
+/>
         </div>
       ))}
+
+      
 
       <button onClick={agregarParte} style={btn}>
         + Parte

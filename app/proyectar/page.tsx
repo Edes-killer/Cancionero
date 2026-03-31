@@ -60,6 +60,9 @@ useEffect(() => {
   
 }, [])
 const parteActual = partes[index]
+const limpiarAcordes = (texto: string) => {
+  return texto.replace(/\[(.*?)\]/g, "")
+}
   return (
 
     
@@ -97,7 +100,7 @@ const parteActual = partes[index]
       maxWidth: "90%"
     }}
   >
-    {partes[index]?.texto}
+    {limpiarAcordes(parteActual?.texto || "")}
   </div>
 
   {/* 🔻 TONO */}

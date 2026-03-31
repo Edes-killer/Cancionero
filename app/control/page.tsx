@@ -44,6 +44,14 @@ useEffect(() => {
 }, [])
 
 useEffect(() => {
+  const intervalo = setInterval(() => {
+    cargarCanciones()
+  }, 3000)
+
+  return () => clearInterval(intervalo)
+}, [])
+
+useEffect(() => {
   if (!socket) {
   console.log("❌ SOCKET NO LISTO")
   return
@@ -141,12 +149,12 @@ const proyectar = async (id: string) => {
 
   const cancion = canciones.find(c => c.id === id)
 
-  socket.emit("cargar-cancion", {
-    partes: data,
-    index: 0,
-    titulo: cancion?.titulo,
-    tono: cancion?.tono
-  })
+socket.emit("cargar-cancion", {
+  partes: data,
+  index: 0,
+  titulo: cancion.titulo,
+  tono: cancion.tono
+})
   socket.emit("cancion-activa", { id })
 
   console.log("🟢 EMITIENDO ACTIVA:", id)
@@ -189,13 +197,35 @@ const anterior = () => {
   }
 }
 
-const agregarALista = (cancion: any) => {
-  const nueva = {
-    id: cancion.id,
-    titulo: cancion.titulo
-  }
+const agregarALista = async (cancion: any) => {
+  // 🔥 SI HAY LISTA GUARDADA → guardar en BD
+  if (listaIdActual) {
+    const orden = lista.length || 0
 
-  setLista(prev => [...prev, nueva])
+    const { error } = await supabase
+      .from("items_lista")
+      .insert({
+        lista_id: listaIdActual,
+        cancion_id: cancion.id,
+        orden
+      })
+
+    if (error) {
+      console.error("Error agregando:", error)
+      return
+    }
+
+    // 🔥 recargar lista real desde BD
+    cargarLista()
+  } else {
+    // 🟡 lista temporal (no guardada)
+    const nueva = {
+      id: cancion.id,
+      titulo: cancion.titulo
+    }
+
+    setLista(prev => [...prev, nueva])
+  }
 }
 
 const eliminarDeLista = async (index: number) => {
@@ -340,8 +370,8 @@ const proyectarDesdeLista = async (i: number) => {
   socket.emit("cargar-cancion", {
   partes: data,
   index: 0,
-  titulo: item?.titulo || "Sin título",
-  tono: item?.tono || ""
+  titulo: item?.titulo,
+  tono: nombreTono(item?.tono) || ""
 })
   socket.emit("cancion-activa", { id })
 }
@@ -435,7 +465,8 @@ const input: CSSProperties = {
   padding: "10px",
   marginBottom: "10px",
   borderRadius: "8px",
-  border: "none"
+  border: "none",
+  background: "#1e293b",
 }
 
 const gridDesktop: CSSProperties = {
@@ -548,12 +579,23 @@ return (
         <button disabled={!socket}
           style={{ ...btn, background: "#dc2626" }}
           onClick={async () => {
-          const ok = confirm("¿Eliminar este culto completo?")
-          if (!ok) return
+            const ok = confirm("¿Eliminar este culto completo?")
+            if (!ok) return
 
-          await supabase.from("listas_culto").delete().eq("id", c.id)
-          cargarCultos()
-        }}
+            // 🔥 1. BORRAR ITEMS PRIMERO
+            await supabase
+              .from("items_lista")
+              .delete()
+              .eq("lista_id", c.id)
+
+            // 🔥 2. BORRAR LISTA
+            await supabase
+              .from("listas_culto")
+              .delete()
+              .eq("id", c.id)
+
+            cargarCultos()
+          }}
         >
           🗑️
         </button>
