@@ -9,12 +9,90 @@ export default function CancionesPage() {
   const [titulo, setTitulo] = useState("")
   const [tono, setTono] = useState("")
   const [activaId, setActivaId] = useState<string | null>(null)
-  const [partes, setPartes] = useState<any[]>([
-    { tipo: "Verso", texto: "" }
-  ])
-
+  const [partes, setPartes] = useState<any[]>([{ tipo: "Verso", texto: "" }])
   const [canciones, setCanciones] = useState<any[]>([])
+  // 🧠 NORMALIZAR ACORDES (soporta do, DO, mi, etc)
+const normalizarAcorde = (acorde: string) => {
+  const mapa: any = {
+    do: "Do", re: "Re", mi: "Mi", fa: "Fa",
+    sol: "Sol", la: "La", si: "Si",
+    c: "C", d: "D", e: "E", f: "F",
+    g: "G", a: "A", b: "B"
+  }
 
+  const limpio = acorde.toLowerCase()
+
+  const match = limpio.match(/^(do|re|mi|fa|sol|la|si|c|d|e|f|g|a|b)(#|b)?(m)?$/)
+
+  if (!match) return acorde
+
+  const base = mapa[match[1]]
+  const alteracion = match[2] || ""
+  const menor = match[3] || ""
+
+  return base + alteracion + menor
+}
+
+// 🔍 detectar si una línea son acordes
+const esLineaAcordes = (linea: string) => {
+  const tokens = linea.trim().split(/\s+/)
+
+  return tokens.every(t =>
+    t.match(/^(do|re|mi|fa|sol|la|si|c|d|e|f|g|a|b)(#|b)?m?$/i)
+  )
+}
+
+// ⚡ convertir formato iglesia → corchetes
+const convertirAcordesAutomatico = (texto: string) => {
+  const lineas = texto.split("\n")
+  const resultado: string[] = []
+
+  for (let i = 0; i < lineas.length; i++) {
+    const acordesLinea = lineas[i]
+    const letraLinea = lineas[i + 1]
+
+    if (esLineaAcordes(acordesLinea) && letraLinea) {
+      let nuevaLinea = ""
+      let j = 0
+
+      while (j < letraLinea.length) {
+        const char = letraLinea[j]
+
+        // 🟢 Si hay acorde en esa posición
+        const posibleAcorde = acordesLinea[j]
+
+        if (posibleAcorde && posibleAcorde !== " ") {
+          // leer acorde completo (SOL, RE, DO, etc)
+          let acorde = ""
+          let k = j
+
+          while (acordesLinea[k] && acordesLinea[k] !== " ") {
+            acorde += acordesLinea[k]
+            k++
+          }
+
+          nuevaLinea += `[${normalizarAcorde(acorde)}]`
+          j = k
+          continue
+        }
+
+        nuevaLinea += char
+        j++
+      }
+
+      resultado.push(nuevaLinea)
+      i++ // saltar línea de letra
+    } else {
+      resultado.push(acordesLinea)
+    }
+  }
+
+  return resultado.join("\n")
+}
+
+// 🎯 detectar tono automático
+
+  
   // SOCKET
   useEffect(() => {
   const s = io("http://" + window.location.hostname + ":4000")
@@ -80,28 +158,40 @@ useEffect(() => {
     nuevas[index][campo] = valor
     setPartes(nuevas)
   }
+  useEffect(() => {
+  const textoCompleto = partes.map(p => p.texto).join(" ")
+  const auto = detectarTono(textoCompleto)
+
+  if (auto && !tono) {
+    setTono(auto)
+  }
+}, [partes])
 
   // GUARDAR
   const guardarCancion = async () => {
-  const { data: cancion, error } = await supabase.from("canciones").insert({
-  titulo,
-  tono
-})
+  // 🔥 generar texto completo
+  const textoCompleto = partes.map(p => p.texto).join(" ")
+
+  // 🔥 detectar tono automático
+  const tonoDetectado = tono || detectarTono(textoCompleto) || ""
+
+  // 🔥 guardar canción
+  const { data: cancion, error } = await supabase
+    .from("canciones")
+    .insert({
+      titulo,
+      tono: tonoDetectado
+    })
     .select()
     .single()
 
-  console.log("CANCION:", cancion)
-  console.log("ERROR:", error)
-  setTitulo("")
-  setTono("")
-  setPartes([{ tipo: "Verso", texto: "" }])
-  cargarCanciones()
-
-  if (error) {
+  if (error || !cancion) {
+    console.log(error)
     alert("Error al guardar canción")
     return
   }
 
+  // 🔥 guardar partes
   const partesInsert = partes.map((p, i) => ({
     cancion_id: cancion.id,
     tipo: p.tipo,
@@ -119,8 +209,15 @@ useEffect(() => {
     return
   }
 
+  // 🔥 limpiar
+  setTitulo("")
+  setTono("")
+  setPartes([{ tipo: "Verso", texto: "" }])
+  cargarCanciones()
+
   alert("Guardado OK 🔥")
 }
+
 
 const proyectar = async (cancionId: string) => {
   if (!socket) return
@@ -144,6 +241,42 @@ const proyectar = async (cancionId: string) => {
   socket.emit("cancion-activa", { id: cancionId })
 }
   
+// 🎯 NORMALIZAR TEXTO (para mayúsculas/minúsculas)
+const normalizar = (txt: string) => txt.toLowerCase()
+
+// 🎯 MAPAS DE TONOS
+const mapaLatino: any = {
+  do: "Do", re: "Re", mi: "Mi", fa: "Fa",
+  sol: "Sol", la: "La", si: "Si"
+}
+
+const mapaAmericano: any = {
+  c: "C", d: "D", e: "E", f: "F",
+  g: "G", a: "A", b: "B"
+}
+
+// 🎯 DETECTAR TONO AUTOMÁTICO
+const detectarTono = (texto: string) => {
+  const palabras = texto.split(/\s+/)
+
+  for (let palabra of palabras) {
+    let limpia = palabra.replace(/[^a-zA-Z#]/g, "")
+    let lower = normalizar(limpia)
+
+    // 🎵 LATINO
+    if (mapaLatino[lower]) {
+      return mapaLatino[lower]
+    }
+
+    // 🎵 AMERICANO
+    if (mapaAmericano[lower]) {
+      return mapaAmericano[lower]
+    }
+  }
+
+  return ""
+}
+
 
   const btn = {
   padding: 12,
@@ -247,6 +380,44 @@ const card = {
       <button onClick={guardarCancion} style={btnPrimary}>
         💾 Guardar
       </button>
+      <button
+  onClick={() => {
+    const nuevoTexto = convertirAcordesAutomatico(partes[0].texto)
+
+    setPartes(prev => {
+      const nuevas = [...prev]
+      nuevas[0].texto = nuevoTexto
+      return nuevas
+    })
+  }}
+  style={btn}
+>
+  ⚡ Auto Formato
+</button>
+
+<button
+  onClick={() => {
+    const tonoDetectado = detectarTono(partes[0].texto)
+    if (tonoDetectado) setTono(tonoDetectado)
+  }}
+  style={btn}
+>
+  🎯 Detectar tono
+</button>
+      <button
+  onClick={() => {
+    const nuevoTexto = convertirAcordesAutomatico(partes[0].texto)
+    
+    setPartes(prev => {
+      const nuevas = [...prev]
+      nuevas[0].texto = nuevoTexto
+      return nuevas
+    })
+  }}
+  style={btn}
+>
+  ⚡ Auto Formato Acordes
+</button>
     </div>
 
     {/* LISTA */}

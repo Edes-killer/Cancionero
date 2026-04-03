@@ -21,7 +21,12 @@ export default function ControlPage() {
   const [busqueda, setBusqueda] = useState("")
   const [nombreCulto, setNombreCulto] = useState("")
   const [partes, setPartes] = useState<any[]>([])
-
+  const [indiceLista, setIndiceLista] = useState<number | null>(null)
+  const [autoPlay, setAutoPlay] = useState(false)
+  const esCoro = partes[index]?.tipo === "Coro"
+  const [loopCoro, setLoopCoro] = useState(false)
+  
+  
 useEffect(() => {
   const s = io("http://" + window.location.hostname + ":4000")
 
@@ -32,12 +37,8 @@ useEffect(() => {
   s.on("connect_error", (err) => {
     console.log("❌ ERROR SOCKET:", err)
   })
-
-  setSocket(s)
-
   
-
-
+  setSocket(s)
   return () => {
     s.disconnect()   // ✅ correcto
   }
@@ -134,98 +135,99 @@ useEffect(() => {
 }, [listaIdActual])
 
 const proyectar = async (id: string) => {
-  if (!socket) {
-  console.log("❌ SOCKET NO LISTO")
-  return
-  }  
+  if (!socket) return
 
-  setActivaId(id) // ✅ usamos ID
-  
+  setActivaId(id)
+  setIndiceLista(null) // viene de canciones sueltas
+
   const { data } = await supabase
     .from("partes_cancion")
     .select("*")
     .eq("cancion_id", id)
     .order("orden")
 
-  const cancion = canciones.find(c => c.id === id)
-
-socket.emit("cargar-cancion", {
-  partes: data,
-  index: 0,
-  titulo: cancion.titulo,
-  tono: cancion.tono
-})
-  socket.emit("cancion-activa", { id })
-
-  console.log("🟢 EMITIENDO ACTIVA:", id)
-
-  socket.emit("cancion-activa", { id })
   setPartes(data || [])
   setIndex(0)
+
+  socket.emit("cargar-cancion", {
+    partes: data,
+    index: 0
+  })
+
+  socket.emit("cancion-activa", { id })
 }
 
 
-const siguiente = () => {
-  if (index < partes.length - 1) {
+const siguiente = async () => {
+  if (loopCoro && esCoro) return
+  if (!socket) return
+
+  const ultimo = index >= partes.length - 1
+
+  if (!ultimo) {
     const nuevo = index + 1
     setIndex(nuevo)
     socket.emit("cambiar-parte", nuevo)
-  } else {
-    // 🔥 pasar a siguiente canción de la lista
-    const actualIndex = lista.findIndex(c => c.id === activaId)
-    const siguienteCancion = lista[actualIndex + 1]
+    return
+  }
 
-    if (siguienteCancion) {
-      proyectar(siguienteCancion.id)
-    }
+  // 🔥 SI TERMINÓ LA CANCIÓN
+  if (indiceLista !== null && lista[indiceLista + 1]) {
+    const siguienteIndex = indiceLista + 1
+    const siguienteCancion = lista[siguienteIndex]
+
+    setIndiceLista(siguienteIndex)
+
+    const { data } = await supabase
+      .from("partes_cancion")
+      .select("*")
+      .eq("cancion_id", siguienteCancion.id)
+      .order("orden")
+
+    setPartes(data || [])
+    setIndex(0)
+    setActivaId(siguienteCancion.id)
+    
+    socket.emit("cargar-cancion", {
+      partes: data,
+      index: 0
+    })
+
+    socket.emit("cancion-activa", {
+      id: siguienteCancion.id
+    })
   }
 }
 
 const anterior = () => {
+  if (!socket) return
+
   if (index > 0) {
     const nuevo = index - 1
     setIndex(nuevo)
     socket.emit("cambiar-parte", nuevo)
-  } else {
-    // 🔥 ir a canción anterior
-    const actualIndex = lista.findIndex(c => c.id === activaId)
-    const anteriorCancion = lista[actualIndex - 1]
-
-    if (anteriorCancion) {
-      proyectar(anteriorCancion.id)
-    }
   }
 }
 
-const agregarALista = async (cancion: any) => {
-  // 🔥 SI HAY LISTA GUARDADA → guardar en BD
+
+
+const agregarALista = (cancion: any) => {
   if (listaIdActual) {
-    const orden = lista.length || 0
-
-    const { error } = await supabase
-      .from("items_lista")
-      .insert({
-        lista_id: listaIdActual,
-        cancion_id: cancion.id,
-        orden
-      })
-
-    if (error) {
-      console.error("Error agregando:", error)
-      return
-    }
-
-    // 🔥 recargar lista real desde BD
-    cargarLista()
-  } else {
-    // 🟡 lista temporal (no guardada)
-    const nueva = {
-      id: cancion.id,
-      titulo: cancion.titulo
-    }
-
-    setLista(prev => [...prev, nueva])
+    alert("⚠️ Estás editando un culto guardado. Presiona 'Nuevo' para crear otro.")
+    return
   }
+
+  const existe = lista.some(c => c.id === cancion.id)
+
+  if (existe) {
+    alert("⚠️ Esta canción ya está en la lista")
+    return
+  }
+
+  setLista(prev => [...prev, {
+    id: cancion.id,
+    titulo: cancion.titulo
+  }])
 }
 
 const eliminarDeLista = async (index: number) => {
@@ -349,17 +351,14 @@ console.log("CANCIONES:", canciones)
   setLista([...listaOrdenada])
 }
 const proyectarDesdeLista = async (i: number) => {
-  if (!socket) {
-  console.log("❌ SOCKET NO LISTO")
-  return
-}
+  if (!socket) return
 
   const item = lista[i]
   const id = item?.id
-
   if (!id) return
 
-  setActivaId(id) // ✅ MISMO SISTEMA
+  setIndiceLista(i) // 🔥 IMPORTANTE
+  setActivaId(id)
 
   const { data } = await supabase
     .from("partes_cancion")
@@ -367,12 +366,14 @@ const proyectarDesdeLista = async (i: number) => {
     .eq("cancion_id", id)
     .order("orden")
 
+  setPartes(data || [])
+  setIndex(0)
+
   socket.emit("cargar-cancion", {
-  partes: data,
-  index: 0,
-  titulo: item?.titulo,
-  tono: nombreTono(item?.tono) || ""
-})
+    partes: data,
+    index: 0
+  })
+
   socket.emit("cancion-activa", { id })
 }
 
@@ -392,6 +393,16 @@ const nombreTono = (tono?: string) => {
   if (!tono) return ""
   return mapa[tono] || tono
 }
+
+useEffect(() => {
+  if (!autoPlay) return
+
+  const intervalo = setInterval(() => {
+    siguiente()
+  }, 5000) // cada 5 segundos
+
+  return () => clearInterval(intervalo)
+}, [autoPlay, index, partes])
 
 
 
@@ -484,6 +495,8 @@ return (
     <div style={controles}>
       <button disabled={!socket} style={btnGrande} onClick={anterior}>⬅️</button>
       <button disabled={!socket} style={btnGrande} onClick={siguiente}>➡️</button>
+      <button disabled={!socket}  style={btnGrande} onClick={() => setAutoPlay(a => !a)}>{autoPlay ? "⏹️ Detener" : "▶️ Auto"}</button>
+      <button disabled={!socket} style={btnGrande} onClick={() => setLoopCoro(l => !l)}>  🔁 Coro</button>
     </div>
 
     {/* CANCIONES */}
@@ -555,8 +568,12 @@ return (
   <button disabled={!socket}
     style={{ ...btn, background: "#16a34a" }}
     onClick={() => {
+      const ok = confirm("¿Crear nuevo culto? Se perderá la lista actual")
+      if (!ok) return
+
       setLista([])
       setListaIdActual(null)
+      setNombreCulto("")
       setActivaId(null)
     }}
   >
