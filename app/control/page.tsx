@@ -420,7 +420,7 @@ const controles: CSSProperties = {
   gridColumn: "span 2",
   display: "flex",
   justifyContent: "center",
-  gap: "20px"
+  gap: "14px"
 }
 
 const seccion: CSSProperties = {
@@ -462,9 +462,9 @@ const btn: CSSProperties = {
 }
 
 const btnGrande: CSSProperties = {
-  padding: "20px 30px",
-  fontSize: "24px",
-  borderRadius: "12px",
+  padding: "14px 14px",
+  fontSize: "20px",
+  borderRadius: "8px",
   border: "none",
   background: "#2563eb",
   color: "white",

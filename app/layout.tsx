@@ -1,34 +1,31 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
+"use client"
 
+import Link from "next/link"
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-export const metadata = {
-  manifest: "/manifest.json"
-}
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: any) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
+    <html>
+      <body style={{ margin: 0, background: "#111", color: "white" }}>
+        
+        {/* NAVBAR */}
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            padding: 10,
+            background: "#000",
+            borderBottom: "1px solid #333"
+          }}
+        >
+          <Link href="/canciones">🎶 Canciones</Link>
+          <Link href="/control">🎛️ Control</Link>
+          <Link href="/musicos">🎸 Músicos</Link>
+          <Link href="/proyector">📺 Proyector</Link>
+        </div>
+
+        {/* CONTENIDO */}
+        <div>{children}</div>
       </body>
     </html>
-  );
+  )
 }

@@ -20,17 +20,16 @@ const normalizarAcorde = (acorde: string) => {
     g: "G", a: "A", b: "B"
   }
 
-  const limpio = acorde.toLowerCase()
-
-  const match = limpio.match(/^(do|re|mi|fa|sol|la|si|c|d|e|f|g|a|b)(#|b)?(m)?$/)
+  const match = acorde.match(/^([a-zA-Z#b]+)(.*)$/)
 
   if (!match) return acorde
 
-  const base = mapa[match[1]]
-  const alteracion = match[2] || ""
-  const menor = match[3] || ""
+  let base = match[1].toLowerCase()
+  const resto = match[2] || ""
 
-  return base + alteracion + menor
+  base = mapa[base] || base
+
+  return base + resto
 }
 
 // 🔍 detectar si una línea son acordes
@@ -38,7 +37,9 @@ const esLineaAcordes = (linea: string) => {
   const tokens = linea.trim().split(/\s+/)
 
   return tokens.every(t =>
-    t.match(/^(do|re|mi|fa|sol|la|si|c|d|e|f|g|a|b)(#|b)?m?$/i)
+    t.match(
+      /^([A-G]|Do|Re|Mi|Fa|Sol|La|Si)(#|b)?(m|maj|min|sus|dim|aug)?\d*(\/[A-G])?(\(.*?\))?$/i
+    )
   )
 }
 
@@ -168,6 +169,7 @@ useEffect(() => {
 }, [partes])
 
   // GUARDAR
+  
   const guardarCancion = async () => {
   // 🔥 generar texto completo
   const textoCompleto = partes.map(p => p.texto).join(" ")
@@ -361,7 +363,9 @@ const card = {
             <option>Puente</option>
           </select>
 
-          <textarea
+          <textarea style={{ width: "100%",height:"150px" ,background: "#333",padding: "10px",
+    borderRadius: "8px",
+    marginTop: "10px",}}
   placeholder="Ej: [G]Mi alma te alaba [D]Señor"
   value={p.texto}
   onChange={(e) =>
@@ -382,14 +386,13 @@ const card = {
       </button>
       <button
   onClick={() => {
-    const nuevoTexto = convertirAcordesAutomatico(partes[0].texto)
-
-    setPartes(prev => {
-      const nuevas = [...prev]
-      nuevas[0].texto = nuevoTexto
-      return nuevas
-    })
-  }}
+  setPartes(prev =>
+    prev.map(p => ({
+      ...p,
+      texto: convertirAcordesAutomatico(p.texto)
+    }))
+  )
+}}
   style={btn}
 >
   ⚡ Auto Formato
