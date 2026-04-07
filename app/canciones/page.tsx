@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useEffect, useState } from "react"
@@ -19,7 +20,17 @@ const normalizarAcorde = (acorde: string) => {
     c: "C", d: "D", e: "E", f: "F",
     g: "G", a: "A", b: "B"
   }
+useEffect(() => {
+  const check = async () => {
+    const { data } = await supabase.auth.getUser()
 
+    if (!data.user) {
+      window.location.href = "/login"
+    }
+  }
+
+  check()
+}, [])
   const match = acorde.match(/^([a-zA-Z#b]+)(.*)$/)
 
   if (!match) return acorde
@@ -115,8 +126,14 @@ const convertirAcordesAutomatico = (texto: string) => {
 
   // CARGAR CANCIONES
   const cargarCanciones = async () => {
-    const { data,error } = await supabase.from("canciones").select("*")
-      console.log("DATOS:", data)
+
+const user = await supabase.auth.getUser()
+
+const { data,error } = await supabase
+  .from("canciones")
+  .select("*")
+  .eq("iglesia_id", user.data.user?.id)
+  console.log("DATOS:", data)
   console.log("ERROR:", error)
   
     setCanciones(data || [])
@@ -178,11 +195,12 @@ useEffect(() => {
   const tonoDetectado = tono || detectarTono(textoCompleto) || ""
 
   // 🔥 guardar canción
-  const { data: cancion, error } = await supabase
-    .from("canciones")
-    .insert({
-      titulo,
-      tono: tonoDetectado
+
+  const user = await supabase.auth.getUser()
+  const { data: cancion, error } = await supabase.from("canciones").insert({
+  titulo,
+  tono: tonoDetectado,
+  iglesia_id: user.data.user?.id
     })
     .select()
     .single()
@@ -224,6 +242,8 @@ useEffect(() => {
 const proyectar = async (cancionId: string) => {
   if (!socket) return
 
+
+  
   const { data } = await supabase
     .from("partes_cancion")
     .select("*")

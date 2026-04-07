@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { io } from "socket.io-client"
+import { supabase } from "../../lib/supabase"
 
 export default function MusicosPage() {
   const [partes, setPartes] = useState<any[]>([])
@@ -14,6 +15,15 @@ export default function MusicosPage() {
 
   const notas = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
 
+
+  useEffect(() => {
+  const check = async () => {
+    const { data } = await supabase.auth.getUser()
+
+    if (!data.user) {
+      window.location.href = "/login"
+    }
+  }
   // 🔌 SOCKET
   useEffect(() => {
     const s = io("http://" + window.location.hostname + ":4000")
@@ -33,6 +43,11 @@ export default function MusicosPage() {
       s.disconnect()
     }
   }, [])
+
+  
+
+  check()
+}, [])
 
   // 🎹 TRANSPOSICIÓN
   const transponerAcorde = (acorde: string, pasos: number) => {

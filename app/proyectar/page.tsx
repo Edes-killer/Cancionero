@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { io } from "socket.io-client"
+import { supabase } from "@/lib/supabase"
 
 export default function ProyectarPage() {
   const [socket, setSocket] = useState<any>(null)
@@ -12,6 +13,18 @@ export default function ProyectarPage() {
 const [tono, setTono] = useState("")
   console.log("RENDER PROYECTOR")
 
+useEffect(() => {
+  const check = async () => {
+    const { data } = await supabase.auth.getUser()
+
+    if (!data.user) {
+      window.location.href = "/login"
+    }
+  }
+
+  check()
+}, [])
+  
 useEffect(() => {
   setFade(false)
 
@@ -64,9 +77,6 @@ const limpiarAcordes = (texto: string) => {
   return texto.replace(/\[(.*?)\]/g, "")
 }
   return (
-
-    
-
    <div
   style={{
     width: "100vw",

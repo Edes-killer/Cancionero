@@ -26,6 +26,18 @@ export default function ControlPage() {
   const esCoro = partes[index]?.tipo === "Coro"
   const [loopCoro, setLoopCoro] = useState(false)
   
+
+ useEffect(() => {
+  const check = async () => {
+    const { data } = await supabase.auth.getUser()
+
+    if (!data.user) {
+      window.location.href = "/login"
+    }
+  }
+
+  check()
+}, []) 
   
 useEffect(() => {
   const s = io("http://" + window.location.hostname + ":4000")
