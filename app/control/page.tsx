@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { io } from "socket.io-client"
-
+import { getIglesiaId } from "../../lib/getIglesia"
 
 import { CSSProperties } from "react"
 
@@ -281,9 +281,10 @@ const nombre = prompt("Nombre del culto")
     alert("✅ Culto actualizado")
   } else {
     // 🔥 NUEVO
+    const iglesiaId = await getIglesiaId()
     const { data, error } = await supabase
   .from("listas_culto")
-  .insert({ nombre })
+  .insert({ nombre,iglesia_id: iglesiaId })
   .select()
 
 if (error || !data || data.length === 0) {

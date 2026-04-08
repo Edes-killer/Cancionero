@@ -2,17 +2,29 @@
 
 import { useState } from "react"
 import { supabase } from "../../lib/supabase"
-import { useRouter } from "next/navigation"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const router = useRouter()
+  const [enviado, setEnviado] = useState(false)
 
+  const loginGoogle = async () => {
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: window.location.origin
+    }
+  })
+
+  if (error) {
+    alert(error.message)
+  }
+}
   const login = async () => {
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithOtp({
       email,
-      password
+      options: {
+        emailRedirectTo: window.location.origin
+      }
     })
 
     if (error) {
@@ -20,27 +32,74 @@ export default function LoginPage() {
       return
     }
 
-    router.push("/canciones")
+    setEnviado(true)
   }
 
   return (
-    <div style={{ padding: 40 }}>
-      <h1>Login</h1>
+  <div
+    style={{
+      height: "100vh",
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      background: "#111",
+      color: "white"
+    }}
+  >
+    <div style={{ width: 320 }}>
+      <h2>Iniciar sesión</h2>
 
+      <p style={{ fontSize: 12, opacity: 0.7 }}>
+        Al continuar, aceptas nuestras condiciones.
+      </p>
+
+      {/* 🔵 GOOGLE */}
+      <button
+        onClick={loginGoogle}
+        style={{
+          width: "100%",
+          padding: 10,
+          marginTop: 10,
+          background: "#fff",
+          color: "#000",
+          borderRadius: 5,
+          border: "none"
+        }}
+      >
+        Continuar con Google
+      </button>
+
+      {/* DIVISOR */}
+      <div style={{ textAlign: "center", margin: "15px 0" }}>O</div>
+
+      {/* ✉️ EMAIL */}
       <input
         placeholder="Correo"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
+        style={{
+          width: "100%",
+          padding: 10,
+          marginBottom: 10,
+          background: "#222",
+          color: "white",
+          border: "none"
+        }}
       />
 
-      <input
-        type="password"
-        placeholder="Contraseña"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
-
-      <button onClick={login}>Ingresar</button>
+      <button
+        onClick={login}
+        style={{
+          width: "100%",
+          padding: 10,
+          background: "#16a34a",
+          border: "none",
+          color: "white"
+        }}
+      >
+        Enviar link por correo
+      </button>
     </div>
-  )
+  </div>
+)
 }
