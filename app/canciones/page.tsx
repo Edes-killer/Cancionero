@@ -1,11 +1,8 @@
-
 "use client"
 
 import { useEffect, useState } from "react"
 import { io } from "socket.io-client"
 import { supabase } from "../../lib/supabase"
-import { getIglesiaId } from "../../lib/getIglesia"
-
 
 export default function CancionesPage() {
   const [socket, setSocket] = useState<any>(null)
@@ -14,38 +11,6 @@ export default function CancionesPage() {
   const [activaId, setActivaId] = useState<string | null>(null)
   const [partes, setPartes] = useState<any[]>([{ tipo: "Verso", texto: "" }])
   const [canciones, setCanciones] = useState<any[]>([])
-
- // SOCKET
-  useEffect(() => {
-  const s = io("http://" + window.location.hostname + ":4000")
-
-  s.on("connect", () => {
-    console.log("🔥 SOCKET CONECTADO")
-  })
-
-  s.on("connect_error", (err) => {
-    console.log("❌ ERROR SOCKET:", err)
-  })
-
-  setSocket(s)
-
-  return () => {
-    s.disconnect()  // ✅ ESTO ES CLAVE
-  }
-}, [])
-
-useEffect(() => {
-  const check = async () => {
-    const { data } = await supabase.auth.getUser()
-
-    if (!data.user) {
-      window.location.href = "/login"
-    }
-  }
-
-  check()
-}, [])
-
   // 🧠 NORMALIZAR ACORDES (soporta do, DO, mi, etc)
 const normalizarAcorde = (acorde: string) => {
   const mapa: any = {
@@ -56,9 +21,6 @@ const normalizarAcorde = (acorde: string) => {
   }
 
   const match = acorde.match(/^([a-zA-Z#b]+)(.*)$/)
-
- 
-
 
   if (!match) return acorde
 
@@ -131,18 +93,30 @@ const convertirAcordesAutomatico = (texto: string) => {
 
 // 🎯 detectar tono automático
 
+  
+  // SOCKET
+  useEffect(() => {
+  const s = io("http://" + window.location.hostname + ":4000")
+
+  s.on("connect", () => {
+    console.log("🔥 SOCKET CONECTADO")
+  })
+
+  s.on("connect_error", (err) => {
+    console.log("❌ ERROR SOCKET:", err)
+  })
+
+  setSocket(s)
+
+  return () => {
+    s.disconnect()  // ✅ ESTO ES CLAVE
+  }
+}, [])
+
   // CARGAR CANCIONES
   const cargarCanciones = async () => {
-
-const user = await supabase.auth.getUser()
-
-const iglesiaId = await getIglesiaId()
-
-const { data,error } = await supabase
-  .from("canciones")
-  .select("*")
-  .eq("iglesia_id", iglesiaId)
-  console.log("DATOS:", data)
+    const { data,error } = await supabase.from("canciones").select("*")
+      console.log("DATOS:", data)
   console.log("ERROR:", error)
   
     setCanciones(data || [])
@@ -203,15 +177,14 @@ useEffect(() => {
   // 🔥 detectar tono automático
   const tonoDetectado = tono || detectarTono(textoCompleto) || ""
 
+  
   // 🔥 guardar canción
-
-  const user = await supabase.auth.getUser()
-  const iglesiaId = await getIglesiaId()
-
-  const { data: cancion, error } = await supabase.from("canciones").insert({
-  titulo,
-  tono: tonoDetectado,
-  iglesia_id: iglesiaId
+  const { data: cancion, error } = 
+  await supabase
+    .from("canciones")
+    .insert({
+      titulo,
+      tono: tonoDetectado
     })
     .select()
     .single()
@@ -253,8 +226,6 @@ useEffect(() => {
 const proyectar = async (cancionId: string) => {
   if (!socket) return
 
-
-  
   const { data } = await supabase
     .from("partes_cancion")
     .select("*")

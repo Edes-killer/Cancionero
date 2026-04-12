@@ -24,11 +24,21 @@ io.on("connection", (socket) => {
     io.emit("cambiar-parte", index)
   })
 
-  // 🔥 ESTE VA AQUÍ ADENTRO
   socket.on("cancion-activa", (data) => {
     console.log("🟢 canción activa:", data)
     io.emit("cancion-activa", data)
   })
+
+  // 🖼️ 👉 AGREGA ESTO AQUÍ
+  socket.on("mostrar-imagen", (data) => {
+    console.log("🖼️ imagen recibida:", data)
+    io.emit("mostrar-imagen", data)
+  })
+
+  socket.on("mostrar-biblia", (data) => {
+  console.log("📖 Biblia recibida:", data)
+  io.emit("mostrar-biblia", data)
+})
 })
 
 server.listen(4000, "0.0.0.0", () => {
