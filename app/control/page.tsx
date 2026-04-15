@@ -2,12 +2,11 @@
 
 "use client"
 
-import { useEffect, useState } from "react"
+import { CSSProperties, useEffect, useMemo, useRef, useState } from "react"
+
 import { supabase } from "@/lib/supabase"
 import { io } from "socket.io-client"
 import { getIglesiaId } from "../../lib/getIglesia"
-
-import { CSSProperties } from "react"
 
 export default function ControlPage() {
   const [socket, setSocket] = useState<any>(null)
@@ -27,6 +26,20 @@ export default function ControlPage() {
   const [loopCoro, setLoopCoro] = useState(false)
   const [inputBiblia, setInputBiblia] = useState("")
   const [indiceActivoLista, setIndiceActivoLista] = useState<number | null>(null)
+  const [paginasBiblia, setPaginasBiblia] = useState<string[]>([])
+  const [paginaBibliaActual, setPaginaBibliaActual] = useState(0)
+  const [nombreIglesia, setNombreIglesia] = useState("")
+  const listaRef = useRef(lista)
+  const indiceListaRef = useRef(indiceLista)
+  const indexRef = useRef(index)
+  const partesRef = useRef(partes)
+  const paginasBibliaRef = useRef(paginasBiblia)
+  const paginaBibliaActualRef = useRef(paginaBibliaActual)
+  const loopCoroRef = useRef(loopCoro)
+  const siguienteRef = useRef<() => Promise<void>>(async () => {})
+  const anteriorRef = useRef<() => Promise<void>>(async () => {})
+
+  
 
  useEffect(() => {
   const check = async () => {
@@ -50,10 +63,28 @@ useEffect(() => {
   s.on("connect_error", (err) => {
     console.log("❌ ERROR SOCKET:", err)
   })
-  
+
+  s.on("cancion-activa", (data: any) => {
+    setActivaId(data.id)
+  })
+
+  const onSiguiente = async () => {
+    await siguienteRef.current()
+  }
+
+  const onAnterior = async () => {
+    await anteriorRef.current()
+  }
+
+  s.on("control-siguiente", onSiguiente)
+  s.on("control-anterior", onAnterior)
+
   setSocket(s)
+
   return () => {
-    s.disconnect()   // ✅ correcto
+    s.off("control-siguiente", onSiguiente)
+    s.off("control-anterior", onAnterior)
+    s.disconnect()
   }
 }, [])
 
@@ -100,9 +131,24 @@ useEffect(() => {
 }
 
 useEffect(() => {
+  listaRef.current = lista
+  indiceListaRef.current = indiceLista
+  indexRef.current = index
+  partesRef.current = partes
+  paginasBibliaRef.current = paginasBiblia
+  paginaBibliaActualRef.current = paginaBibliaActual
+  loopCoroRef.current = loopCoro
+}, [lista, indiceLista, index, partes, paginasBiblia, paginaBibliaActual, loopCoro])
+
+useEffect(() => {
   cargarCanciones()
 }, [])
 
+useEffect(() => {
+  cargarCanciones()
+  cargarCultos()
+  cargarNombreIglesia()
+}, [])
 
 const [isMobile, setIsMobile] = useState(true)
 
@@ -112,23 +158,7 @@ useEffect(() => {
 
 const cargarLista = async () => {
   if (!listaIdActual) return
-
-  const { data, error } = await supabase
-    .from("items_lista")
-    .select("*, canciones(*)")
-    .eq("lista_id", listaIdActual)
-    .order("orden")
-
-  if (error) {
-    console.error("Error cargando lista:", error)
-    return
-  }
-
-  if (data) {
-    // 🔥 formatear bien los datos
-    const listaFormateada = data.map(item => item.canciones)
-    setLista(listaFormateada)
-  }
+  await cargarListaDesdeBD(listaIdActual)
 }
 
 useEffect(() => {
@@ -137,45 +167,113 @@ useEffect(() => {
   }
 }, [listaIdActual])
 
-useEffect(() => {
-  if (!listaIdActual) return
 
-  const intervalo = setInterval(() => {
-    cargarLista()
-  }, 2000)
 
-  return () => clearInterval(intervalo)
-}, [listaIdActual])
+const cargarNombreIglesia = async () => {
+  const iglesiaId = await getIglesiaId()
+  if (!iglesiaId) return
+
+  const { data, error } = await supabase
+    .from("iglesias")
+    .select("nombre")
+    .eq("id", iglesiaId)
+    .single()
+
+  if (error) {
+    console.error("Error cargando iglesia:", error)
+    return
+  }
+
+  setNombreIglesia(data?.nombre || "")
+}
 
 const proyectar = async (id: string) => {
   if (!socket) return
 
-  setActivaId(id)
-  setIndiceLista(null)
-  setIndiceActivoLista(null)
+  const idxEnLista = lista.findIndex(
+    item => item.tipo === "cancion" && item.id === id
+  )
 
-  const { data } = await supabase
+  if (idxEnLista !== -1) {
+    await irAItemLista(idxEnLista, false)
+    return
+  }
+
+  const cancion = canciones.find(c => c.id === id)
+
+  const { data, error } = await supabase
     .from("partes_cancion")
     .select("*")
     .eq("cancion_id", id)
     .order("orden")
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  setActivaId(id)
+  setIndiceLista(null)
+  setIndiceActivoLista(null)
+  limpiarModoBiblia()
 
   setPartes(data || [])
   setIndex(0)
 
   socket.emit("cargar-cancion", {
     partes: data,
-    index: 0
+    index: 0,
+    titulo: cancion?.titulo || "",
+    tono: cancion?.tono || "",
+    iglesia: ""
   })
 
   socket.emit("cancion-activa", { id })
 }
 
+const partirEnPaginasCliente = (texto: string, maxChars = 650) => {
+  const limpio = texto
+    .replace(/\/n/g, " ")
+    .replace(/\\n/g, " ")
+    .replace(/\r?\n|\r/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+
+  const palabras = limpio.split(" ")
+  const paginas: string[] = []
+  let actual = ""
+
+  for (const palabra of palabras) {
+    const candidato = actual ? `${actual} ${palabra}` : palabra
+
+    if (candidato.length > maxChars) {
+      if (actual) paginas.push(actual)
+      actual = palabra
+    } else {
+      actual = candidato
+    }
+  }
+
+  if (actual) paginas.push(actual)
+
+  return paginas
+}
 
 const siguiente = async () => {
   if (!socket) return
+
+  // Biblia proyectada directa, fuera de lista
+  if (indiceLista === null && paginasBiblia.length > 0) {
+    if (paginaBibliaActual < paginasBiblia.length - 1) {
+      const nuevaPagina = paginaBibliaActual + 1
+      setPaginaBibliaActual(nuevaPagina)
+      socket.emit("cambiar-pagina-biblia", nuevaPagina)
+    }
+    return
+  }
+
+  // Canción proyectada directa, fuera de lista
   if (indiceLista === null) {
-    // si estoy en canción suelta fuera de lista, avanza por partes
     const ultimo = index >= partes.length - 1
     if (!ultimo) {
       if (loopCoro && esCoro) return
@@ -188,10 +286,19 @@ const siguiente = async () => {
 
   const itemActual = lista[indiceLista]
 
-  // si el item actual es canción y aún quedan partes, avanzar parte
-  if (itemActual?.tipo === "cancion" || itemActual?.id) {
-    const ultimo = index >= partes.length - 1
+  // Biblia dentro de la lista
+  if (itemActual?.tipo === "biblia") {
+    if (paginaBibliaActual < paginasBiblia.length - 1) {
+      const nuevaPagina = paginaBibliaActual + 1
+      setPaginaBibliaActual(nuevaPagina)
+      socket.emit("cambiar-pagina-biblia", nuevaPagina)
+      return
+    }
+  }
 
+  // Canción dentro de la lista
+  if (itemActual?.tipo === "cancion") {
+    const ultimo = index >= partes.length - 1
     if (!ultimo) {
       if (loopCoro && esCoro) return
       const nuevo = index + 1
@@ -201,14 +308,26 @@ const siguiente = async () => {
     }
   }
 
-  // pasar al siguiente item de la lista
+  // Imagen, Biblia terminada, o canción terminada
   if (lista[indiceLista + 1]) {
-    await proyectarDesdeLista(indiceLista + 1)
-  }
+  await irAItemLista(indiceLista + 1, false)
+}
 }
 
 const anterior = async () => {
   if (!socket) return
+
+  // Biblia proyectada directa, fuera de lista
+  if (indiceLista === null && paginasBiblia.length > 0) {
+    if (paginaBibliaActual > 0) {
+      const nuevaPagina = paginaBibliaActual - 1
+      setPaginaBibliaActual(nuevaPagina)
+      socket.emit("cambiar-pagina-biblia", nuevaPagina)
+    }
+    return
+  }
+
+  // Canción proyectada directa, fuera de lista
   if (indiceLista === null) {
     if (index > 0) {
       const nuevo = index - 1
@@ -220,21 +339,34 @@ const anterior = async () => {
 
   const itemActual = lista[indiceLista]
 
-  // si el item actual es canción y no está en la primera parte, retrocede parte
-  if ((itemActual?.tipo === "cancion" || itemActual?.id) && index > 0) {
+  // Biblia dentro de la lista
+  if (itemActual?.tipo === "biblia") {
+    if (paginaBibliaActual > 0) {
+      const nuevaPagina = paginaBibliaActual - 1
+      setPaginaBibliaActual(nuevaPagina)
+      socket.emit("cambiar-pagina-biblia", nuevaPagina)
+      return
+    }
+  }
+
+  // Canción dentro de la lista
+  if (itemActual?.tipo === "cancion" && index > 0) {
     const nuevo = index - 1
     setIndex(nuevo)
     socket.emit("cambiar-parte", nuevo)
     return
   }
 
-  // si está en imagen, biblia, o en la parte 0 de una canción, ir al item anterior
+  // Imagen, Biblia en página 0, o canción en parte 0
   if (indiceLista > 0) {
-    await proyectarDesdeLista(indiceLista - 1)
+  await irAItemLista(indiceLista - 1, true)
   }
 }
 
-
+useEffect(() => {
+  siguienteRef.current = siguiente
+  anteriorRef.current = anterior
+}, [siguiente, anterior])
 
 const agregarALista = (cancion: any) => {
   if (listaIdActual) {
@@ -264,13 +396,21 @@ const eliminarDeLista = async (index: number) => {
 
   setLista(prev => prev.filter((_, i) => i !== index))
 
-  if (listaIdActual) {
-    await supabase
-      .from("items_lista")
-      .delete()
-      .eq("lista_id", listaIdActual)
-      .eq("cancion_id", item.id)
-  }
+  if (!listaIdActual) return
+
+  const { data: items } = await supabase
+    .from("items_lista")
+    .select("*")
+    .eq("lista_id", listaIdActual)
+    .order("orden")
+
+  const itemBD = items?.[index]
+  if (!itemBD) return
+
+  await supabase
+    .from("items_lista")
+    .delete()
+    .eq("id", itemBD.id)
 }
 
 const guardarCulto = async () => {
@@ -280,70 +420,96 @@ const guardarCulto = async () => {
   let listaIdFinal = listaIdActual
 
   if (listaIdActual) {
-    await supabase
+    // ACTUALIZAR CULTO EXISTENTE
+    const { error: deleteError } = await supabase
       .from("items_lista")
       .delete()
       .eq("lista_id", listaIdActual)
 
-    await Promise.all(
-      lista.map((item, i) =>
-        supabase.from("items_lista").insert({
-          lista_id: listaIdActual,
-          orden: i,
-          cancion_id: item.tipo === "cancion" ? item.id : null,
-          tipo: item.tipo,
-          imagen_url: item.tipo === "imagen" ? item.url : null,
-          referencia_biblica: item.tipo === "biblia" ? item.referencia : null,
-          texto_biblico: item.tipo === "biblia" ? item.texto : null
-        })
-      )
+    if (deleteError) {
+      console.error("Error borrando items antiguos:", deleteError)
+      alert("No se pudieron actualizar los items del culto")
+      return
+    }
+
+    const inserts = lista.map((item, i) =>
+      supabase.from("items_lista").insert({
+        lista_id: listaIdActual,
+        orden: i,
+        cancion_id: item.tipo === "cancion" ? item.id : null,
+        tipo: item.tipo,
+        imagen_url: item.tipo === "imagen" ? item.url : null,
+        referencia_biblica: item.tipo === "biblia" ? item.referencia : null,
+        texto_biblico: item.tipo === "biblia" ? item.texto : null
+      })
     )
+
+    const resultados = await Promise.all(inserts)
+    const errorInsert = resultados.find(r => r.error)
+
+    if (errorInsert?.error) {
+      console.error("Error insertando items:", errorInsert.error)
+      alert("No se pudieron guardar todos los elementos del culto")
+      return
+    }
 
     setNombreCulto(nombre)
     alert("✅ Culto actualizado")
   } else {
+    // CREAR CULTO NUEVO
     const iglesiaId = await getIglesiaId()
 
     const { data, error } = await supabase
       .from("listas_culto")
-      .insert({ nombre, iglesia_id: iglesiaId })
+      .insert({
+        nombre,
+        iglesia_id: iglesiaId
+      })
       .select()
+      .single()
 
-    if (error || !data || data.length === 0) {
-      console.error("ERROR AL CREAR LISTA", error)
-      alert("No se pudo guardar el culto")
+    if (error || !data) {
+      console.error("Error creando culto:", error)
+      alert("No se pudo crear el culto")
       return
     }
 
-    const nuevaId = data[0].id
+    const nuevaId = data.id
     listaIdFinal = nuevaId
+
+    const inserts = lista.map((item, i) =>
+      supabase.from("items_lista").insert({
+        lista_id: nuevaId,
+        orden: i,
+        cancion_id: item.tipo === "cancion" ? item.id : null,
+        tipo: item.tipo,
+        imagen_url: item.tipo === "imagen" ? item.url : null,
+        referencia_biblica: item.tipo === "biblia" ? item.referencia : null,
+        texto_biblico: item.tipo === "biblia" ? item.texto : null
+      })
+    )
+
+    const resultados = await Promise.all(inserts)
+    const errorInsert = resultados.find(r => r.error)
+
+    if (errorInsert?.error) {
+      console.error("Error insertando items:", errorInsert.error)
+      alert("El culto se creó, pero falló el guardado de elementos")
+      return
+    }
 
     setListaIdActual(nuevaId)
     setNombreCulto(nombre)
-
-    await Promise.all(
-      lista.map((item, i) =>
-        supabase.from("items_lista").insert({
-          lista_id: nuevaId,
-          orden: i,
-          cancion_id: item.tipo === "cancion" ? item.id : null,
-          tipo: item.tipo,
-          imagen_url: item.tipo === "imagen" ? item.url : null,
-          referencia_biblica: item.tipo === "biblia" ? item.referencia : null,
-          texto_biblico: item.tipo === "biblia" ? item.texto : null
-        })
-      )
-    )
-
     alert("✅ Culto guardado")
   }
-
+  setNombreCulto(nombre)
   await cargarCultos()
 
   if (listaIdFinal) {
     await cargarListaDesdeBD(listaIdFinal)
   }
 }
+
 
 const cargarCultos = async () => {
   const { data, error } = await supabase
@@ -404,13 +570,16 @@ const cargarListaDesdeBD = async (id: string) => {
     }
 
     if (item.tipo === "biblia") {
-      return {
-        tipo: "biblia",
-        referencia: item.referencia_biblica,
-        texto: item.texto_biblico,
-        titulo: `📖 ${item.referencia_biblica || "Palabra"}`
-      }
-    }
+  const texto = item.texto_biblico || ""
+  return {
+    tipo: "biblia",
+    referencia: item.referencia_biblica,
+    texto,
+    paginas: partirEnPaginasCliente(texto),
+    titulo: `📖 ${item.referencia_biblica || "Palabra"}`
+  }
+  
+}
 
     const cancion = cancionesBD.find(c => c.id === item.cancion_id)
 
@@ -422,9 +591,16 @@ const cargarListaDesdeBD = async (id: string) => {
   })
 
   setLista(listaOrdenada)
+  setIndiceLista(null)
+  setIndiceActivoLista(null)
+  setActivaId(null)
+  setPartes([])
+  setIndex(0)
+  limpiarModoBiblia()
 }
 
-const proyectarDesdeLista = async (i: number) => {
+
+const irAItemLista = async (i: number, alFinal = false) => {
   if (!socket) return
 
   const item = lista[i]
@@ -433,55 +609,83 @@ const proyectarDesdeLista = async (i: number) => {
   setIndiceLista(i)
   setIndiceActivoLista(i)
 
-  // IMAGEN
   if (item.tipo === "imagen") {
     setActivaId(null)
     setPartes([])
     setIndex(0)
+    limpiarModoBiblia()
 
     socket.emit("mostrar-imagen", {
-      url: item.url
+      url: item.url,
+      iglesia: ""
     })
-
     return
   }
 
-  // BIBLIA
   if (item.tipo === "biblia") {
     setActivaId(null)
     setPartes([])
     setIndex(0)
 
+    const paginas = item.paginas || [item.texto]
+    const pagina = alFinal ? Math.max(0, paginas.length - 1) : 0
+
+    setPaginasBiblia(paginas)
+    setPaginaBibliaActual(pagina)
+
     socket.emit("mostrar-biblia", {
       referencia: item.referencia,
-      texto: item.texto
+      texto: item.texto,
+      paginas,
+      pagina,
+      iglesia: ""
     })
-
     return
   }
 
-  // CANCIÓN
-  const id = item?.id
-  if (!id) return
-
-  setActivaId(id)
-
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("partes_cancion")
     .select("*")
-    .eq("cancion_id", id)
+    .eq("cancion_id", item.id)
     .order("orden")
 
-  setPartes(data || [])
-  setIndex(0)
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  const partesCancion = data || []
+  const parteInicial = alFinal ? Math.max(0, partesCancion.length - 1) : 0
+
+  setActivaId(item.id)
+  limpiarModoBiblia()
+  setPartes(partesCancion)
+  setIndex(parteInicial)
+
+  const cancion = canciones.find(c => c.id === item.id)
 
   socket.emit("cargar-cancion", {
-    partes: data,
-    index: 0,
-    titulo: item.titulo || ""
+    partes: partesCancion,
+    index: parteInicial,
+    titulo: cancion?.titulo || item.titulo || "",
+    tono: cancion?.tono || "",
+    iglesia: ""
   })
 
-  socket.emit("cancion-activa", { id })
+  socket.emit("cancion-activa", { id: item.id })
+}
+
+const proyectarDesdeLista = async (i: number) => {
+  await irAItemLista(i, false)
+}
+
+const proyectarDesdeListaAlFinal = async (i: number) => {
+  await irAItemLista(i, true)
+}
+
+const limpiarModoBiblia = () => {
+  setPaginasBiblia([])
+  setPaginaBibliaActual(0)
 }
 
 const nombreTono = (tono?: string) => {
@@ -563,10 +767,22 @@ const proyectarBiblia = async (ref: string) => {
   try {
     const data = await buscarVersiculo(ref)
 
+    setActivaId(null)
+    setIndiceLista(null)
+    setIndiceActivoLista(null)
+    setPartes([])
+    setIndex(0)
+
+    setPaginasBiblia(data.paginas || [data.texto])
+    setPaginaBibliaActual(0)
+
     socket.emit("mostrar-biblia", {
-      referencia: data.referencia,
-      texto: data.texto
-    })
+    referencia: data.referencia,
+    texto: data.texto,
+    paginas: data.paginas || [data.texto],
+    pagina: 0,
+    iglesia: nombreIglesia || ""
+  })
   } catch (error: any) {
     alert(error.message || "No se pudo cargar el versículo")
   }
@@ -584,6 +800,7 @@ const agregarBibliaALista = async (ref: string) => {
         tipo: "biblia",
         referencia: data.referencia,
         texto: data.texto,
+        paginas: data.paginas || [data.texto],
         titulo: `📖 ${data.referencia}`
       }
     ])
@@ -625,10 +842,10 @@ const container: CSSProperties = {
   minHeight: "100vh",
   background: "linear-gradient(180deg, #081120 0%, #0f172a 100%)",
   color: "white",
-  padding: "18px",
+  padding: isMobile ? "12px" : "18px",
   display: "flex",
   flexDirection: "column",
-  gap: "16px"
+  gap: "14px"
 }
 
 const topbar: CSSProperties = {
@@ -714,15 +931,15 @@ const btnRojo: CSSProperties = {
 }
 
 const btnGrande: CSSProperties = {
-  padding: "12px 16px",
-  fontSize: "18px",
+  padding: isMobile ? "10px 12px" : "12px 16px",
+  fontSize: isMobile ? "16px" : "18px",
   borderRadius: "12px",
   border: "none",
   background: "#2563eb",
   color: "white",
   cursor: "pointer",
   fontWeight: 700,
-  minWidth: "64px"
+  minWidth: isMobile ? "52px" : "64px"
 }
 
 const input: CSSProperties = {
@@ -746,7 +963,7 @@ const fila: CSSProperties = {
 
 const gridDesktop: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "1.2fr 1fr",
+  gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1fr",
   gap: "16px",
   alignItems: "start"
 }
@@ -760,12 +977,14 @@ const columna: CSSProperties = {
 return (
   <div style={container}>
     <div style={topbar}>
-      <h1 style={{ margin: 0, fontSize: "28px" }}>Control de Culto</h1>
-      {nombreCulto && (
-        <div style={{ opacity: 0.8, fontSize: "14px" }}>
-          Culto actual: <strong>{nombreCulto}</strong>
-        </div>
-      )}
+      <div>
+        <h1 style={{ margin: 0, fontSize: "28px" }}>Control de Culto</h1>
+        {nombreCulto && (
+          <div style={{ marginTop: "6px", opacity: 0.85, fontSize: "15px" }}>
+            Culto actual: <strong>{nombreCulto}</strong>
+          </div>
+        )}
+      </div>
     </div>
 
     <div style={controles}>
@@ -870,6 +1089,11 @@ return (
                 setListaIdActual(null)
                 setNombreCulto("")
                 setActivaId(null)
+                setIndiceLista(null)
+                setIndiceActivoLista(null)
+                setPartes([])
+                setIndex(0)
+                limpiarModoBiblia()
               }}
             >
               🆕 Nuevo

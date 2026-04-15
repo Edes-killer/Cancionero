@@ -13,23 +13,31 @@ export default function CancionesPage() {
   const [canciones, setCanciones] = useState<any[]>([])
   // 🧠 NORMALIZAR ACORDES (soporta do, DO, mi, etc)
 const normalizarAcorde = (acorde: string) => {
-  const mapa: any = {
-    do: "Do", re: "Re", mi: "Mi", fa: "Fa",
-    sol: "Sol", la: "La", si: "Si",
-    c: "C", d: "D", e: "E", f: "F",
-    g: "G", a: "A", b: "B"
+  const mapaBase: Record<string, string> = {
+    do: "Do",
+    re: "Re",
+    mi: "Mi",
+    fa: "Fa",
+    sol: "Sol",
+    la: "La",
+    si: "Si",
+    c: "Do",
+    d: "Re",
+    e: "Mi",
+    f: "Fa",
+    g: "Sol",
+    a: "La",
+    b: "Si"
   }
 
-  const match = acorde.match(/^([a-zA-Z#b]+)(.*)$/)
+  const match = acorde.trim().match(/^(do|re|mi|fa|sol|la|si|c|d|e|f|g|a|b)(#|b)?(.*)$/i)
+  if (!match) return acorde.trim()
 
-  if (!match) return acorde
+  const base = mapaBase[match[1].toLowerCase()] || match[1]
+  const alteracion = match[2] || ""
+  const resto = match[3] || ""
 
-  let base = match[1].toLowerCase()
-  const resto = match[2] || ""
-
-  base = mapa[base] || base
-
-  return base + resto
+  return `${base}${alteracion}${resto}`
 }
 
 // 🔍 detectar si una línea son acordes
@@ -175,7 +183,7 @@ useEffect(() => {
   const textoCompleto = partes.map(p => p.texto).join(" ")
 
   // 🔥 detectar tono automático
-  const tonoDetectado = tono || detectarTono(textoCompleto) || ""
+  const tonoDetectado = normalizarAcorde(tono || detectarTono(textoCompleto) || "")
 
   
   // 🔥 guardar canción
@@ -263,18 +271,13 @@ const mapaAmericano: any = {
 const detectarTono = (texto: string) => {
   const palabras = texto.split(/\s+/)
 
-  for (let palabra of palabras) {
-    let limpia = palabra.replace(/[^a-zA-Z#]/g, "")
-    let lower = normalizar(limpia)
+  for (const palabra of palabras) {
+    const limpia = palabra.replace(/[^a-zA-Z#b]/g, "")
+    const normalizada = normalizarAcorde(limpia)
 
-    // 🎵 LATINO
-    if (mapaLatino[lower]) {
-      return mapaLatino[lower]
-    }
-
-    // 🎵 AMERICANO
-    if (mapaAmericano[lower]) {
-      return mapaAmericano[lower]
+    const match = normalizada.match(/^(Do|Re|Mi|Fa|Sol|La|Si)(#|b)?m?$/i)
+    if (match) {
+      return normalizada
     }
   }
 
@@ -338,15 +341,25 @@ const card = {
   }}
 >
   <option value="">Tono</option>
-  <option value="C">Do</option>
-  <option value="Cm">Do menor</option>
-  <option value="D">Re</option>
-  <option value="Dm">Re menor</option>
-  <option value="E">Mi</option>
-  <option value="F">Fa</option>
-  <option value="G">Sol</option>
-  <option value="A">La</option>
-  <option value="B">Si</option>
+<option value="Do">Do</option>
+<option value="Dom">Do menor</option>
+<option value="Do#">Do#</option>
+<option value="Re">Re</option>
+<option value="Rem">Re menor</option>
+<option value="Re#">Re#</option>
+<option value="Mi">Mi</option>
+<option value="Mim">Mi menor</option>
+<option value="Fa">Fa</option>
+<option value="Fam">Fa menor</option>
+<option value="Fa#">Fa#</option>
+<option value="Sol">Sol</option>
+<option value="Solm">Sol menor</option>
+<option value="Sol#">Sol#</option>
+<option value="La">La</option>
+<option value="Lam">La menor</option>
+<option value="La#">La#</option>
+<option value="Si">Si</option>
+<option value="Sim">Si menor</option>
 </select>
 
       {partes.map((p, i) => (
@@ -368,7 +381,16 @@ const card = {
           <textarea style={{ width: "100%",height:"150px" ,background: "#333",padding: "10px",
     borderRadius: "8px",
     marginTop: "10px",}}
-  placeholder="Ej: [G]Mi alma te alaba [D]Señor"
+  placeholder={`Opciones:
+1) Solo letra:
+Mi alma te alaba Señor
+
+2) Línea de acordes:
+Sol      Re
+Mi alma te alaba Señor
+
+3) Corchetes:
+[Sol]Mi alma te alaba [Re]Señor`}
   value={p.texto}
   onChange={(e) =>
     actualizarParte(i, "texto", e.target.value)
@@ -402,11 +424,13 @@ const card = {
 
 <button
   onClick={() => {
-    const tonoDetectado = detectarTono(partes[0].texto)
-    if (tonoDetectado) setTono(tonoDetectado)
-  }}
+  const textoCompleto = partes.map(p => p.texto).join(" ")
+  const tonoDetectado = detectarTono(textoCompleto)
+  if (tonoDetectado) setTono(tonoDetectado)
+}}
   style={btn}
 >
+  
   🎯 Detectar tono
 </button>
       <button
@@ -422,6 +446,23 @@ const card = {
   style={btn}
 >
   ⚡ Auto Formato Acordes
+</button>
+<button
+  onClick={() => {
+    const texto = partes[0].texto
+    const ejemplo = `Sol       Re
+Mi alma te alaba Señor`
+    if (!texto.trim()) {
+      setPartes(prev => {
+        const nuevas = [...prev]
+        nuevas[0].texto = ejemplo
+        return nuevas
+      })
+    }
+  }}
+  style={btn}
+>
+  ✍️ Ejemplo acordes
 </button>
     </div>
 

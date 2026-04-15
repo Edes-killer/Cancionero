@@ -13,9 +13,10 @@ export default function MusicosPage() {
   const [mostrarAcordes, setMostrarAcordes] = useState(true)
   const [usarAmericano, setUsarAmericano] = useState(false)
 
-  const notas = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
-
-
+  const notasLatinas = [
+  "Do", "Do#", "Re", "Re#", "Mi", "Fa",
+  "Fa#", "Sol", "Sol#", "La", "La#", "Si"
+]
    
   // 🔌 SOCKET
   useEffect(() => {
@@ -52,28 +53,28 @@ useEffect(() => {
 
 
   // 🎹 TRANSPOSICIÓN
-  const transponerAcorde = (acorde: string, pasos: number) => {
-    const match = acorde.match(/^([A-G]#?)(m?)/)
-    if (!match) return acorde
+ const transponerAcorde = (acorde: string, pasos: number) => {
+  const acordeLatino = convertirEscala(acorde, false)
 
-    const base = match[1]
-    const tipo = match[2] || ""
+  const match = acordeLatino.match(/^(Do#|Re#|Fa#|Sol#|La#|Do|Re|Mi|Fa|Sol|La|Si)(.*)$/)
+  if (!match) return acorde
 
-    const index = notas.indexOf(base)
-    if (index === -1) return acorde
+  const base = match[1]
+  const resto = match[2] || ""
 
-    const nuevo = (index + pasos + 12) % 12
+  const idx = notasLatinas.indexOf(base)
+  if (idx === -1) return acorde
 
-    return notas[nuevo] + tipo
-  }
+  const nuevo = (idx + pasos + 12) % 12
+  const resultado = notasLatinas[nuevo] + resto
 
- const transponerLinea = (linea: string, pasos: number) => {
+  return usarAmericano ? convertirEscala(resultado, true) : resultado
+}
+
+const transponerLinea = (linea: string, pasos: number) => {
   return linea
-    .split(" ")
-    .map(acorde => {
-      const transpuesto = transponerAcorde(acorde, pasos)
-      return convertirEscala(transpuesto, usarAmericano)
-    })
+    .split(/\s+/)
+    .map(acorde => transponerAcorde(acorde, pasos))
     .join(" ")
 }
   // 🎸 PARSER INTELIGENTE (corchetes + formato iglesia)
@@ -110,11 +111,13 @@ useEffect(() => {
       }
 
       // 🔵 FORMATO IGLESIA (línea arriba)
-      if (
-        actual.match(/(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B)/) &&
-        siguiente &&
-        !siguiente.match(/(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B)/)
-      ) {
+        if (
+          actual.trim() &&
+          actual.split(/\s+/).every((t: string) =>
+            t.match(/^(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B)(#|b)?(m|maj|min|sus|dim|aug)?\d*(\/(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B))?(\(.*?\))?$/i)
+          ) &&
+          siguiente
+        ) {
         resultado.push({
           tipo: "linea",
           acordes: actual,
@@ -132,31 +135,47 @@ useEffect(() => {
     return resultado
   }
 
-  const convertirEscala = (acorde: string, aAmericano: boolean) => {
-  const mapaLatinoAme: any = {
-    Do: "C", Re: "D", Mi: "E", Fa: "F",
-    Sol: "G", La: "A", Si: "B"
+const convertirEscala = (acorde: string, aAmericano: boolean) => {
+  const mapaLatinoAme: Record<string, string> = {
+    Do: "C",
+    "Do#": "C#",
+    Re: "D",
+    "Re#": "D#",
+    Mi: "E",
+    Fa: "F",
+    "Fa#": "F#",
+    Sol: "G",
+    "Sol#": "G#",
+    La: "A",
+    "La#": "A#",
+    Si: "B"
   }
 
-  const mapaAmeLatino: any = {
-    C: "Do", D: "Re", E: "Mi", F: "Fa",
-    G: "Sol", A: "La", B: "Si"
+  const mapaAmeLatino: Record<string, string> = {
+    C: "Do",
+    "C#": "Do#",
+    D: "Re",
+    "D#": "Re#",
+    E: "Mi",
+    F: "Fa",
+    "F#": "Fa#",
+    G: "Sol",
+    "G#": "Sol#",
+    A: "La",
+    "A#": "La#",
+    B: "Si"
   }
 
-  const match = acorde.match(/^(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B)(.*)$/)
-
+  const match = acorde.match(/^(Do#|Re#|Fa#|Sol#|La#|Do|Re|Mi|Fa|Sol|La|Si|C#|D#|F#|G#|A#|C|D|E|F|G|A|B)(.*)$/)
   if (!match) return acorde
 
-  let base = match[1]
-  const resto = match[2]
+  const base = match[1]
+  const resto = match[2] || ""
 
-  if (aAmericano) {
-    base = mapaLatinoAme[base] || base
-  } else {
-    base = mapaAmeLatino[base] || base
-  }
-
-  return base + resto
+  return (aAmericano
+    ? (mapaLatinoAme[base] || base)
+    : (mapaAmeLatino[base] || base)
+  ) + resto
 }
 
   const parte = partes[index]
@@ -183,7 +202,7 @@ useEffect(() => {
         </h1>
 
         <div style={{ fontSize: "20px", opacity: 0.7 }}>
-          {tono && `Tono: ${tono}`}
+          {tono && `Tono: ${usarAmericano ? convertirEscala(tono, true) : convertirEscala(tono, false)}`}
         </div>
       </div>
 
