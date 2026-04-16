@@ -1,72 +1,61 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { usePathname, useRouter } from "next/navigation"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 
 export default function Navbar() {
   const pathname = usePathname()
-  const router = useRouter()
-  const [email, setEmail] = useState("")
 
-  const ocultar = pathname === "/login" || pathname === "/auth/callback"
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setEmail(data.session?.user.email || "")
-    })
-  }, [])
-
-  const logout = async () => {
-    await supabase.auth.signOut()
-    router.replace("/login")
+  if (pathname === "/proyectar") {
+    return null
   }
 
-  if (ocultar) return null
+  const cerrarSesion = async () => {
+    await supabase.auth.signOut()
+    window.location.href = "/login"
+  }
 
   return (
-    <div
+    <nav
       style={{
         background: "#000",
         color: "white",
-        padding: "10px 20px",
+        padding: "8px 10px",
         display: "flex",
-        justifyContent: "space-between",
+        gap: "10px",
         alignItems: "center",
+        flexWrap: "wrap",
+        fontSize: "14px",
+        overflowX: "auto"
       }}
     >
-      <div style={{ display: "flex", gap: 16 }}>
-        <span style={{ cursor: "pointer" }} onClick={() => router.push("/")}>
-          Inicio
-        </span>
-        <span style={{ cursor: "pointer" }} onClick={() => router.push("/canciones")}>
-          Canciones
-        </span>
-        <span style={{ cursor: "pointer" }} onClick={() => router.push("/control")}>
-          Control
-        </span>
-        <span style={{ cursor: "pointer" }} onClick={() => router.push("/musicos")}>
-          Músicos
-        </span>
-      </div>
+      <Link href="/" style={linkStyle}>Inicio</Link>
+      <Link href="/canciones" style={linkStyle}>Canciones</Link>
+      <Link href="/control" style={linkStyle}>Control</Link>
+      <Link href="/proyectar" style={linkStyle}>Proyectar</Link>
+      <Link href="/musicos" style={linkStyle}>Músicos</Link>
 
-      <div>
-        👤 {email}{" "}
-        <button
-          onClick={logout}
-          style={{
-            marginLeft: 12,
-            background: "#dc2626",
-            color: "white",
-            border: "none",
-            padding: "6px 10px",
-            borderRadius: 6,
-            cursor: "pointer",
-          }}
-        >
-          Cerrar sesión
-        </button>
-      </div>
-    </div>
+      <button
+        onClick={cerrarSesion}
+        style={{
+          marginLeft: "auto",
+          background: "#dc2626",
+          color: "white",
+          border: "none",
+          borderRadius: "8px",
+          padding: "8px 10px",
+          fontSize: "13px"
+        }}
+      >
+        Cerrar sesión
+      </button>
+    </nav>
   )
+}
+
+const linkStyle = {
+  color: "white",
+  textDecoration: "none",
+  whiteSpace: "nowrap"
 }

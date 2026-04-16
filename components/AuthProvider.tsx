@@ -3,66 +3,65 @@
 import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
-import { getIglesiaId } from "@/lib/getIglesia"
 
 export default function AuthProvider({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const [loading, setLoading] = useState(true)
   const pathname = usePathname()
   const router = useRouter()
+  const [checking, setChecking] = useState(false)
+
+  const publicRoutes = ["/login", "/register", "/proyectar", "/musicos"]
+  const isPublicRoute =
+    publicRoutes.includes(pathname) || pathname.startsWith("/auth/callback")
 
   useEffect(() => {
-    const check = async () => {
-      const { data } = await supabase.auth.getSession()
-      const session = data.session
+    let activo = true
 
-      const publicRoutes = ["/login", "/auth/callback"]
-      const setupRoutes = ["/crear-iglesia"]
+    const checkSession = async () => {
+      // Las rutas públicas jamás deben quedar bloqueadas por "Cargando..."
+      if (isPublicRoute) {
+        return
+      }
 
-      // 🔐 sin sesión
-      if (!session) {
-        if (!publicRoutes.includes(pathname)) {
+      try {
+        setChecking(true)
+
+        const { data, error } = await supabase.auth.getSession()
+
+        if (error) {
+          console.error("Error obteniendo sesión:", error)
+        }
+
+        if (!activo) return
+
+        if (!data.session) {
           router.replace("/login")
           return
         }
+      } catch (error) {
+        console.error("Error en AuthProvider:", error)
 
-        setLoading(false)
-        return
-      }
-
-      // 🏛 revisar iglesia
-      const iglesiaId = await getIglesiaId()
-
-      // usuario sin iglesia
-      if (!iglesiaId) {
-        if (!setupRoutes.includes(pathname)) {
-          router.replace("/crear-iglesia")
-          return
+        if (pathname !== "/login") {
+          router.replace("/login")
+        }
+      } finally {
+        if (activo) {
+          setChecking(false)
         }
       }
-
-      // usuario con iglesia no debe volver a setup
-      if (iglesiaId && pathname === "/crear-iglesia") {
-        router.replace("/")
-        return
-      }
-
-      // usuario logueado en login
-      if (pathname === "/login") {
-        router.replace("/")
-        return
-      }
-
-      setLoading(false)
     }
 
-    check()
-  }, [pathname, router])
+    checkSession()
 
-  if (loading) {
+    return () => {
+      activo = false
+    }
+  }, [pathname, router, isPublicRoute])
+
+  if (checking && !isPublicRoute) {
     return <div style={{ padding: 20 }}>Cargando...</div>
   }
 

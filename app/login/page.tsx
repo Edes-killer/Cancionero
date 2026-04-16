@@ -7,34 +7,40 @@ export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [enviado, setEnviado] = useState(false)
 
-  const loginGoogle = async () => {
+const APP_URL = "http://192.168.20.200:3000"
+
+const getRedirectUrl = () => {
+  return `${APP_URL}/auth/callback`
+}
+
+
+const loginGoogle = async () => {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: window.location.origin
-    }
+      redirectTo: getRedirectUrl(),
+    },
   })
 
   if (error) {
     alert(error.message)
   }
 }
-  const login = async () => {
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: window.location.origin
-      }
-    })
+const login = async () => {
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: getRedirectUrl(),
+    },
+  })
 
-    if (error) {
-      alert("Error: " + error.message)
-      return
-    }
-
-    setEnviado(true)
+  if (error) {
+    alert("Error: " + error.message)
+    return
   }
 
+  setEnviado(true)
+}
   return (
   <div
     style={{

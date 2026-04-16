@@ -275,8 +275,7 @@ const detectarTono = (texto: string) => {
     const limpia = palabra.replace(/[^a-zA-Z#b]/g, "")
     const normalizada = normalizarAcorde(limpia)
 
-    const match = normalizada.match(/^(Do|Re|Mi|Fa|Sol|La|Si)(#|b)?m?$/i)
-    if (match) {
+    if (normalizada.match(/^(Do|Re|Mi|Fa|Sol|La|Si)(#|b)?m?$/i)) {
       return normalizada
     }
   }

@@ -842,10 +842,12 @@ const container: CSSProperties = {
   minHeight: "100vh",
   background: "linear-gradient(180deg, #081120 0%, #0f172a 100%)",
   color: "white",
-  padding: isMobile ? "12px" : "18px",
+  padding: isMobile ? "10px" : "18px",
   display: "flex",
   flexDirection: "column",
-  gap: "14px"
+  gap: "16px",
+  overflowX: "hidden",
+  boxSizing: "border-box"
 }
 
 const topbar: CSSProperties = {
@@ -939,7 +941,7 @@ const btnGrande: CSSProperties = {
   color: "white",
   cursor: "pointer",
   fontWeight: 700,
-  minWidth: isMobile ? "52px" : "64px"
+  minWidth: isMobile ? "54px" : "64px"
 }
 
 const input: CSSProperties = {
@@ -965,7 +967,9 @@ const gridDesktop: CSSProperties = {
   display: "grid",
   gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1fr",
   gap: "16px",
-  alignItems: "start"
+  alignItems: "start",
+  width: "100%",
+  boxSizing: "border-box"
 }
 
 const columna: CSSProperties = {
