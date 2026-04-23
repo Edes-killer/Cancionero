@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { io } from "socket.io-client"
 import { supabase } from "@/lib/supabase"
 
@@ -14,7 +14,13 @@ export default function ProyectarPage() {
   const [tono, setTono] = useState("")
   const [paginaBiblia, setPaginaBiblia] = useState(0)
   const [iglesia, setIglesia] = useState("")
+  const [estadoEspecial, setEstadoEspecial] = useState<any>(null)
   const parteActual = partes[index]
+  const [imagenesPrecargadas, setImagenesPrecargadas] = useState<string[]>([])
+const [overlayVisible, setOverlayVisible] = useState(false)
+const [overlayFadingOut, setOverlayFadingOut] = useState(false)
+const overlayTimeoutRef = useRef<any>(null)
+  
 
   useEffect(() => {
     const check = async () => {
@@ -57,39 +63,96 @@ export default function ProyectarPage() {
     }
   }, [])
 
+const ejecutarConTransicion = (accion: () => void) => {
+  if (overlayTimeoutRef.current) {
+    clearTimeout(overlayTimeoutRef.current)
+  }
+
+  // 1. negro instantáneo
+  setOverlayVisible(true)
+  setOverlayFadingOut(false)
+
+  // 2. esperar a que el negro realmente se pinte
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      // 3. cambiar contenido detrás del negro
+      accion()
+
+      // 4. empezar fade-out
+      overlayTimeoutRef.current = setTimeout(() => {
+        setOverlayFadingOut(true)
+
+        // 5. ocultar overlay al terminar transición
+        overlayTimeoutRef.current = setTimeout(() => {
+          setOverlayVisible(false)
+          setOverlayFadingOut(false)
+        }, 220)
+      }, 40)
+    })
+  })
+}
+
   useEffect(() => {
   const s = io("http://" + window.location.hostname + ":4000")
 
   s.on("cargar-cancion", (data: any) => {
-  setBiblia(null)
-  setImagen(null)
-  setPartes(data.partes || [])
-  setIndex(data.index || 0)
-  setTitulo(data.titulo || "")
-  setTono(data.tono || "")
-  setIglesia(data.iglesia || "")
-  setPaginaBiblia(0)
+  ejecutarConTransicion(() => {
+    setEstadoEspecial(null)
+    setBiblia(null)
+    setImagen(null)
+    setPartes(data.partes || [])
+    setIndex(data.index || 0)
+    setTitulo(data.titulo || "")
+    setTono(data.tono || "")
+    setIglesia(data.iglesia || "")
+    setPaginaBiblia(0)
+  })
 })
 
   s.on("cambiar-parte", (i: number) => {
+  ejecutarConTransicion(() => {
+    setEstadoEspecial(null)
     setIndex(i)
   })
+})
 
   s.on("mostrar-biblia", (data: any) => {
-  limpiarPantalla()
-  setBiblia(data)
-  setIglesia(data.iglesia || "")
-  setPaginaBiblia(data.pagina || 0)
+  ejecutarConTransicion(() => {
+    limpiarPantalla()
+    setBiblia(data)
+    setIglesia(data.iglesia || "")
+    setPaginaBiblia(data.pagina || 0)
+  })
 })
 
   s.on("cambiar-pagina-biblia", (pagina: number) => {
+  ejecutarConTransicion(() => {
+    setEstadoEspecial(null)
     setPaginaBiblia(pagina)
   })
+})
 
   s.on("mostrar-imagen", (data: any) => {
-  limpiarPantalla()
-  setImagen(data.url)
-  setIglesia(data.iglesia || "")
+  ejecutarConTransicion(() => {
+    limpiarPantalla()
+    if (data?.url) {
+      precargarImagen(data.url)
+    }
+    setImagen(data.url)
+    setIglesia(data.iglesia || "")
+  })
+})
+  s.on("precargar-imagenes", (urls: string[]) => {
+    ;(urls || []).forEach((url) => {
+      if (url) precargarImagen(url)
+    })
+  })
+
+s.on("mostrar-estado", (data: any) => {
+  ejecutarConTransicion(() => {
+    limpiarPantalla()
+    setEstadoEspecial(data)
+  })
 })
 
   setSocket(s)
@@ -131,7 +194,8 @@ useEffect(() => {
   }
 }, [socket])
 
-    const limpiarPantalla = () => {
+  const limpiarPantalla = () => {
+  setEstadoEspecial(null)
   setBiblia(null)
   setImagen(null)
   setPartes([])
@@ -141,6 +205,64 @@ useEffect(() => {
   setIndex(0)
   setPaginaBiblia(0)
 }
+
+const esAcordeProyeccion = (token: string) => {
+  return /^(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B)(#|b)?(m|maj|min|sus|dim|aug)?\d*(\/(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B)(#|b)?)?$/i.test(
+    token.trim()
+  )
+}
+
+const detectarFormatoProyeccion = (texto: string) => {
+  const lineas = (texto || "").split(/\r?\n/)
+  const resultado: { tipo: "solo" | "linea" | "corchete"; letra: string }[] = []
+
+  for (let i = 0; i < lineas.length; i++) {
+    const actual = lineas[i]
+    const siguiente = lineas[i + 1]
+
+    if (actual.includes("[")) {
+      resultado.push({
+        tipo: "corchete",
+        letra: actual.replace(/\[(.*?)\]/g, "").trim()
+      })
+      continue
+    }
+
+    if (
+      actual.trim() &&
+      actual.trim().split(/\s+/).every(esAcordeProyeccion) &&
+      siguiente
+    ) {
+      resultado.push({
+        tipo: "linea",
+        letra: siguiente.trim()
+      })
+      i++
+      continue
+    }
+
+    resultado.push({
+      tipo: "solo",
+      letra: actual.trim()
+    })
+  }
+
+  return resultado
+}
+
+const limpiarCancionParaProyector = (texto: string) => {
+  return detectarFormatoProyeccion(texto)
+    .map((b) =>
+      (b.letra || "")
+        .replace(/\/n/g, " ")
+        .replace(/\\n/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+    )
+    .filter(Boolean)
+    .join("\n")
+}
+  
 
   const limpiarTextoProyeccion = (texto: string) => {
     return (texto || "")
@@ -156,7 +278,46 @@ useEffect(() => {
     biblia?.paginas?.[paginaBiblia] || biblia?.texto || ""
   )
 
-  const textoCancionActual = limpiarTextoProyeccion(parteActual?.texto || "")
+  const textoCancionActual = limpiarCancionParaProyector(parteActual?.texto || "")
+
+  const etiquetaParteActual = (() => {
+    if (!parteActual?.tipo) return ""
+
+    if (parteActual.tipo === "Verso") {
+      let numero = 0
+
+      for (let i = 0; i <= index; i++) {
+        if (partes[i]?.tipo === "Verso") {
+          numero++
+        }
+      }
+
+      return `Verso ${numero}`
+    }
+
+    if (parteActual.tipo === "Coro") {
+      return "Coro"
+    }
+
+    if (parteActual.tipo === "Puente") {
+      return "Puente"
+    }
+
+    return parteActual.tipo
+  })()
+
+  const precargarImagen = (url: string) => {
+  if (!url || imagenesPrecargadas.includes(url)) return
+
+  const img = new Image()
+  img.src = url
+
+    img.onload = () => {
+      setImagenesPrecargadas(prev =>
+        prev.includes(url) ? prev : [...prev, url]
+      )
+    }
+  }
 
   return (
     <div
@@ -173,10 +334,60 @@ useEffect(() => {
         position: "fixed",
         inset: 0,
         padding: 0,
-        margin: 0
+        margin: 0,
+
       }}
     >
-      {imagen && (
+      {estadoEspecial?.tipo === "negro" && (
+  <div
+    style={{
+      width: "100vw",
+      height: "100vh",
+      background: "#000"
+    }}
+  />
+)}
+
+{estadoEspecial?.tipo === "espera" && (
+  <div
+    style={{
+      width: "100vw",
+      height: "100vh",
+      background: "#000",
+      color: "white",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      textAlign: "center",
+      padding: "4vh 5vw",
+      boxSizing: "border-box",
+      gap: "18px"
+    }}
+  >
+    <div
+      style={{
+        fontSize: "clamp(34px, 4vw, 64px)",
+        fontWeight: 700
+      }}
+    >
+      {estadoEspecial.titulo || "Espere un momento"}
+    </div>
+
+    {!!estadoEspecial.subtitulo && (
+      <div
+        style={{
+          fontSize: "clamp(18px, 2vw, 28px)",
+          opacity: 0.7
+        }}
+      >
+        {estadoEspecial.subtitulo}
+      </div>
+    )}
+  </div>
+)}
+
+      {!estadoEspecial && imagen && (
         <div
           style={{
             width: "100vw",
@@ -202,7 +413,7 @@ useEffect(() => {
         </div>
       )}
 
-      {!imagen && biblia && (
+      {!estadoEspecial && !imagen && biblia && (
         <div
           style={{
             width: "100vw",
@@ -264,7 +475,7 @@ useEffect(() => {
         </div>
       )}
 
-      {!imagen && !biblia && (
+      {!estadoEspecial && !imagen && !biblia && (
         <div
           style={{
             width: "100vw",
@@ -281,12 +492,33 @@ useEffect(() => {
         >
           <div
             style={{
-              fontSize: "clamp(18px, 2vw, 30px)",
-              opacity: 0.85,
-              minHeight: "40px"
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "8px",
+              minHeight: "64px"
             }}
           >
-            {titulo}
+            <div
+              style={{
+                fontSize: "clamp(18px, 2vw, 30px)",
+                opacity: 0.85
+              }}
+            >
+              {titulo}
+            </div>
+
+            {!!etiquetaParteActual && (
+              <div
+                style={{
+                  fontSize: "clamp(16px, 1.8vw, 24px)",
+                  opacity: 0.65,
+                  fontWeight: 700
+                }}
+              >
+                {etiquetaParteActual}
+              </div>
+            )}
           </div>
 
           <div
@@ -349,6 +581,109 @@ useEffect(() => {
           </div>
         </div>
       )}
+
+      {estadoEspecial?.tipo === "mensaje" && (
+      <div
+        style={{
+          width: "100vw",
+          height: "100vh",
+          background: "#000",
+          color: "white",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          padding: "4vh 5vw",
+          boxSizing: "border-box",
+          gap: "18px"
+        }}
+      >
+        <div
+          style={{
+            fontSize: "clamp(42px, 5vw, 90px)",
+            fontWeight: 700,
+            lineHeight: 1.2
+          }}
+        >
+          {estadoEspecial.titulo}
+        </div>
+
+        {!!estadoEspecial.subtitulo && (
+          <div
+            style={{
+              fontSize: "clamp(18px, 2vw, 28px)",
+              opacity: 0.7
+            }}
+          >
+            {estadoEspecial.subtitulo}
+          </div>
+        )}
+      </div>
+    )}
+    {estadoEspecial?.tipo === "logo" && (
+  <div
+    style={{
+      width: "100vw",
+      height: "100vh",
+      background: "#000",
+      color: "white",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      textAlign: "center",
+      padding: "4vh 5vw",
+      boxSizing: "border-box",
+      gap: "24px"
+    }}
+  >
+    <img
+      src={estadoEspecial.url}
+      alt="Logo espera"
+      style={{
+        maxWidth: "40vw",
+        maxHeight: "40vh",
+        objectFit: "contain"
+      }}
+    />
+
+    {!!estadoEspecial.titulo && (
+      <div
+        style={{
+          fontSize: "clamp(28px, 3vw, 48px)",
+          fontWeight: 700
+        }}
+      >
+        {estadoEspecial.titulo}
+      </div>
+    )}
+
+    {!!estadoEspecial.subtitulo && (
+      <div
+        style={{
+          fontSize: "clamp(18px, 2vw, 28px)",
+          opacity: 0.7
+        }}
+      >
+        {estadoEspecial.subtitulo}
+      </div>
+    )}
+  </div>
+)}
+    {overlayVisible && (
+  <div
+    style={{
+      position: "fixed",
+      inset: 0,
+      background: "#000",
+      pointerEvents: "none",
+      opacity: overlayFadingOut ? 0 : 1,
+      transition: overlayFadingOut ? "opacity 220ms ease-in-out" : "none",
+      zIndex: 9999
+    }}
+  />
+)}
     </div>
   )
 }

@@ -71,11 +71,14 @@ useEffect(() => {
   return usarAmericano ? convertirEscala(resultado, true) : resultado
 }
 
+const esAcorde = (token: string) => {
+  return /^(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B)(#|b)?(m|maj|min|sus|dim|aug)?\d*(\/(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B|C|D|E|F|G|A|B)(#|b)?)?$/i.test(token.trim())
+}
+
 const transponerLinea = (linea: string, pasos: number) => {
-  return linea
-    .split(/\s+/)
-    .map(acorde => transponerAcorde(acorde, pasos))
-    .join(" ")
+  return linea.replace(/\S+/g, (token) =>
+    esAcorde(token) ? transponerAcorde(token, pasos) : token
+  )
 }
   // 🎸 PARSER INTELIGENTE (corchetes + formato iglesia)
   const detectarFormato = (texto: string) => {
@@ -111,10 +114,10 @@ const transponerLinea = (linea: string, pasos: number) => {
       }
 
       // 🔵 FORMATO IGLESIA (línea arriba)
-        if (
+       if (
           actual.trim() &&
-          actual.split(/\s+/).every((t: string) =>
-            t.match(/^(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B)(#|b)?(m|maj|min|sus|dim|aug)?\d*(\/(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B))?(\(.*?\))?$/i)
+          actual.trim().split(/\s+/).every((t: string) =>
+            t.match(/^(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B)(#|b)?(m|maj|min|sus|dim|aug)?\d*(\/(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B)(#|b)?)?(\(.*?\))?$/i)
           ) &&
           siguiente
         ) {
@@ -181,128 +184,222 @@ const convertirEscala = (acorde: string, aAmericano: boolean) => {
   const parte = partes[index]
   const bloque = detectarFormato(parte?.texto || "")
 
+const tonoMostrado = () => {
+  if (!tono) return ""
+
+  const tonoLatino = convertirEscala(tono, false)
+  const tonoTranspuesto = transponerAcorde(tonoLatino, transposicion)
+
+  return usarAmericano
+    ? convertirEscala(tonoTranspuesto, true)
+    : tonoTranspuesto
+}
+
   return (
+  <div
+    style={{
+      width: "100vw",
+      height: "100vh",
+      background: "#000",
+      color: "white",
+      display: "flex",
+      flexDirection: "column",
+      overflow: "hidden",
+      padding: "24px 32px",
+      boxSizing: "border-box"
+    }}
+  >
     <div
       style={{
-        width: "100vw",
-        height: "100vh",
-        background: "#000",
-        color: "white",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: "40px"
+        textAlign: "center",
+        marginBottom: "18px",
+        flexShrink: 0
       }}
     >
-      {/* 🎵 HEADER */}
-      <div style={{ textAlign: "center" }}>
-        <h1 style={{ fontSize: "40px", marginBottom: "10px" }}>
-          {titulo || "Sin título"}
-        </h1>
+      <h1
+        style={{
+          fontSize: "clamp(26px, 3vw, 42px)",
+          margin: 0,
+          fontWeight: 700
+        }}
+      >
+        {titulo || "Sin título"}
+      </h1>
 
-        <div style={{ fontSize: "20px", opacity: 0.7 }}>
-          {tono && `Tono: ${usarAmericano ? convertirEscala(tono, true) : convertirEscala(tono, false)}`}
-        </div>
+      <div
+        style={{
+          fontSize: "clamp(14px, 1.4vw, 20px)",
+          opacity: 0.75,
+          marginTop: "8px"
+        }}
+      >
+        {tono && `Tono: ${tonoMostrado()}`}
       </div>
+    </div>
 
-      {/* 🎤 CONTENIDO */}
-      <div  style={{width: "100%",maxWidth: "1000px",padding: "0 10px"}}>
+    <div
+      style={{
+        flex: 1,
+        width: "100%",
+        display: "flex",
+        justifyContent: "center",
+        overflow: "auto",
+        padding: "10px 0 90px 0"
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "1100px"
+        }}
+      >
         {bloque.map((linea, i) => (
-          <div key={i} style={{ marginBottom: 30 }}>
-
-            {/* 🟢 FORMATO CORCHETES */}
+          <div
+            key={i}
+            style={{
+              marginBottom: "22px"
+            }}
+          >
             {linea.tipo === "corchete" && (
               <>
-                {/* ACORDES */}
                 {mostrarAcordes && (
-                  <div style={{ position: "relative", height: 30 }}>
+                  <div
+                    style={{
+                      position: "relative",
+                      minHeight: "28px",
+                      marginBottom: "4px",
+                      fontSize: "clamp(16px, 2vw, 24px)",
+                      color: "#22c55e",
+                      fontWeight: 700,
+                      fontFamily: "monospace"
+                    }}
+                  >
                     {linea.acordes.map((a: any, j: number) => (
                       <span
                         key={j}
                         style={{
                           position: "absolute",
-                          left: `${a.pos * 0.8}ch`,
-                          color: "#22c55e",
-                          fontWeight: "bold"
+                          left: `${a.pos}ch`,
+                          top: 0,
+                          whiteSpace: "nowrap"
                         }}
                       >
-                        {convertirEscala(transponerAcorde(a.acorde, transposicion),  usarAmericano)}
+                        {convertirEscala(
+                          transponerAcorde(a.acorde, transposicion),
+                          usarAmericano
+                        )}
                       </span>
                     ))}
                   </div>
                 )}
 
-                {/* LETRA */}
-                <div style={{ fontSize: "clamp(28px, 6vw, 70px)" }}>
+                <div
+                  style={{
+                    fontSize: "clamp(34px, 4.8vw, 64px)",
+                    lineHeight: 1.25,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word"
+                  }}
+                >
                   {linea.letra}
                 </div>
               </>
             )}
 
-            {/* 🔵 FORMATO IGLESIA */}
             {linea.tipo === "linea" && (
               <>
                 {mostrarAcordes && (
                   <div
                     style={{
                       color: "#22c55e",
-                      fontWeight: "bold",
-                      fontSize: "clamp(20px, 4vw, 28px)" // acordes
+                      fontWeight: 700,
+                      fontSize: "clamp(16px, 2vw, 24px)",
+                      marginBottom: "6px",
+                      whiteSpace: "pre",
+                      fontFamily: "monospace",
+                      lineHeight: 1.3
                     }}
                   >
-                    {transponerLinea(linea.acordes, transposicion)
-                      .split(" ")
-                      .map((a, i) => (
-                        <span key={i} style={{ marginRight: "12px" }}>
-                          {a}
-                        </span>
-                    ))}
+                    {transponerLinea(linea.acordes, transposicion)}
                   </div>
                 )}
 
-                <div style={{ fontSize: "clamp(35px, 5vw, 70px)" }}>
+                <div
+                  style={{
+                    fontSize: "clamp(34px, 4.8vw, 64px)",
+                    lineHeight: 1.25,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word"
+                  }}
+                >
                   {linea.letra}
                 </div>
               </>
             )}
 
-            {/* ⚪ SOLO TEXTO */}
             {linea.tipo === "solo" && (
-              <div style={{ fontSize: "clamp(35px, 5vw, 70px)" }}>
+              <div
+                style={{
+                  fontSize: "clamp(34px, 4.8vw, 64px)",
+                  lineHeight: 1.25,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word"
+                }}
+              >
                 {linea.letra}
               </div>
             )}
           </div>
         ))}
       </div>
-
-      {/* 🎛️ CONTROLES */}
-      <div style={{ position: "fixed", bottom: 20, right: 20 }}>
-        <button onClick={() => setTransposicion(t => t - 1)}>⬇️</button>
-        <button onClick={() => setTransposicion(0)}>Reset</button>
-        <button onClick={() => setTransposicion(t => t + 1)}>⬆️</button>
-        <button
-          onClick={() => setUsarAmericano(v => !v)}
-          style={{
-            padding: "8px 12px",
-            background: "#444",
-            color: "white",
-            border: "none",
-            borderRadius: "6px",
-            marginLeft: "10px"
-          }}
-        >
-          {usarAmericano ? "Escala: Americana (C D E)" : "Escala: Latina (Do Re Mi)"}
-</button>
-      </div>
-
-      {/* TOGGLE */}
-      <div style={{ position: "fixed", bottom: 20, left: 20 }}>
-        <button onClick={() => setMostrarAcordes(a => !a)}>
-          {mostrarAcordes ? "Ocultar acordes" : "Mostrar acordes"}
-        </button>
-      </div>
     </div>
-  )
+
+    <div
+      style={{
+        position: "fixed",
+        bottom: 18,
+        right: 18,
+        display: "flex",
+        gap: "8px",
+        alignItems: "center",
+        background: "rgba(20,20,20,0.9)",
+        padding: "10px 12px",
+        borderRadius: "12px",
+        border: "1px solid rgba(255,255,255,0.12)"
+      }}
+    >
+      <button onClick={() => setTransposicion(t => t - 1)}>⬇️</button>
+      <button onClick={() => setTransposicion(0)}>Reset</button>
+      <button onClick={() => setTransposicion(t => t + 1)}>⬆️</button>
+      <button
+        onClick={() => setUsarAmericano(v => !v)}
+        style={{
+          padding: "8px 12px",
+          background: "#444",
+          color: "white",
+          border: "none",
+          borderRadius: "6px"
+        }}
+      >
+        {usarAmericano ? "Escala: Americana" : "Escala: Latina"}
+      </button>
+    </div>
+
+    <div
+      style={{
+        position: "fixed",
+        bottom: 18,
+        left: 18,
+        background: "rgba(20,20,20,0.9)",
+        padding: "10px 12px",
+        borderRadius: "12px",
+        border: "1px solid rgba(255,255,255,0.12)"
+      }}
+    >
+      <button onClick={() => setMostrarAcordes(a => !a)}>
+        {mostrarAcordes ? "Ocultar acordes" : "Mostrar acordes"}
+      </button>
+    </div>
+  </div>
+)
 }

@@ -39,24 +39,32 @@ io.on("connection", (socket) => {
     io.emit("mostrar-biblia", data)
   })
 
-socket.on("control-siguiente", () => {
-  console.log("➡️ control siguiente")
-  io.emit("control-siguiente")
-})
+  socket.on("control-siguiente", () => {
+    console.log("➡️ control siguiente")
+    io.emit("control-siguiente")
+  })
 
-socket.on("control-anterior", () => {
-  console.log("⬅️ control anterior")
-  io.emit("control-anterior")
-})
+  socket.on("control-anterior", () => {
+    console.log("⬅️ control anterior")
+    io.emit("control-anterior")
+  })
 
-socket.on("cambiar-pagina-biblia", (pagina) => {
-  console.log("📖 cambiar página biblia:", pagina)
-  io.emit("cambiar-pagina-biblia", pagina)
-})
+  socket.on("cambiar-pagina-biblia", (pagina) => {
+    console.log("📖 cambiar página biblia:", pagina)
+    io.emit("cambiar-pagina-biblia", pagina)
+  })
 
   socket.on("disconnect", () => {
     console.log("❌ Cliente desconectado:", socket.id)
   })
+
+  socket.on("precargar-imagenes", (urls) => {
+  io.emit("precargar-imagenes", urls)
+  })
+
+  socket.on("mostrar-estado", (data) => {
+  io.emit("mostrar-estado", data)
+})
 })
 
 server.listen(4000, "0.0.0.0", () => {

@@ -38,7 +38,11 @@ export default function ControlPage() {
   const loopCoroRef = useRef(loopCoro)
   const siguienteRef = useRef<() => Promise<void>>(async () => {})
   const anteriorRef = useRef<() => Promise<void>>(async () => {})
-
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [mensajeRapido, setMensajeRapido] = useState("Oremos")
+  const [logoEsperaUrl, setLogoEsperaUrl] = useState("")
+  const [logoEsperaNombre, setLogoEsperaNombre] = useState("")
+  
   
 
  useEffect(() => {
@@ -113,22 +117,13 @@ useEffect(() => {
   }
 }, [socket])
 
-useEffect(() => {
-  window.scrollTo({ top: 0, behavior: "smooth" })
-}, [index])
 
-  const cargarCanciones = async () => {
-  //console.log("🔥 CARGANDO CANCIONES")
 
-  const { data, error } = await supabase
-    .from("canciones")
-    .select("*")
-
-  console.log("DATA:", data)
-  console.log("ERROR:", error)
-
-  if (data) setCanciones(data)
-}
+ useEffect(() => {
+  if (listaIdActual) {
+    cargarLista()
+  }
+}, [listaIdActual])
 
 useEffect(() => {
   listaRef.current = lista
@@ -142,30 +137,39 @@ useEffect(() => {
 
 useEffect(() => {
   cargarCanciones()
-}, [])
-
-useEffect(() => {
-  cargarCanciones()
   cargarCultos()
   cargarNombreIglesia()
 }, [])
 
-const [isMobile, setIsMobile] = useState(true)
-
 useEffect(() => {
   setIsMobile(window.innerWidth < 768)
 }, [])
+
+useEffect(() => {
+  if (!socket || lista.length === 0) return
+  enviarPrecargaImagenes(lista)
+}, [socket, lista])
+
+
+const [isMobile, setIsMobile] = useState(true)
 
 const cargarLista = async () => {
   if (!listaIdActual) return
   await cargarListaDesdeBD(listaIdActual)
 }
 
-useEffect(() => {
-  if (listaIdActual) {
-    cargarLista()
-  }
-}, [listaIdActual])
+ const cargarCanciones = async () => {
+  //console.log("🔥 CARGANDO CANCIONES")
+
+  const { data, error } = await supabase
+    .from("canciones")
+    .select("*")
+
+  console.log("DATA:", data)
+  console.log("ERROR:", error)
+
+  if (data) setCanciones(data)
+}
 
 
 
@@ -175,7 +179,7 @@ const cargarNombreIglesia = async () => {
 
   const { data, error } = await supabase
     .from("iglesias")
-    .select("nombre")
+    .select("nombre, logo_url, logo_nombre")
     .eq("id", iglesiaId)
     .single()
 
@@ -185,6 +189,8 @@ const cargarNombreIglesia = async () => {
   }
 
   setNombreIglesia(data?.nombre || "")
+  setLogoEsperaUrl(data?.logo_url || "")
+  setLogoEsperaNombre(data?.logo_nombre || "")
 }
 
 const proyectar = async (id: string) => {
@@ -391,6 +397,48 @@ const agregarALista = (cancion: any) => {
   ])
 }
 
+
+const moverItemLista = (from: number, to: number) => {
+  if (from === to || from < 0 || to < 0) return
+
+  setLista(prev => {
+    const nueva = [...prev]
+    const [movido] = nueva.splice(from, 1)
+    nueva.splice(to, 0, movido)
+    return nueva
+  })
+
+  setIndiceActivoLista(prev => {
+    if (prev === null) return prev
+    if (prev === from) return to
+
+    if (from < to && prev > from && prev <= to) return prev - 1
+    if (from > to && prev >= to && prev < from) return prev + 1
+
+    return prev
+  })
+
+  setIndiceLista(prev => {
+    if (prev === null) return prev
+    if (prev === from) return to
+
+    if (from < to && prev > from && prev <= to) return prev - 1
+    if (from > to && prev >= to && prev < from) return prev + 1
+
+    return prev
+  })
+}
+
+const subirItemLista = (i: number) => {
+  if (i <= 0) return
+  moverItemLista(i, i - 1)
+}
+
+const bajarItemLista = (i: number) => {
+  if (i >= lista.length - 1) return
+  moverItemLista(i, i + 1)
+}
+
 const eliminarDeLista = async (index: number) => {
   const item = lista[index]
 
@@ -440,7 +488,11 @@ const guardarCulto = async () => {
         tipo: item.tipo,
         imagen_url: item.tipo === "imagen" ? item.url : null,
         referencia_biblica: item.tipo === "biblia" ? item.referencia : null,
-        texto_biblico: item.tipo === "biblia" ? item.texto : null
+        texto_biblico: item.tipo === "biblia" ? item.texto : null,
+        estado_modo: item.tipo === "estado" ? item.modo : null,
+        estado_titulo: item.tipo === "estado" ? item.titulo : null,
+        estado_subtitulo: item.tipo === "estado" ? item.subtitulo : null,
+        estado_url: item.tipo === "estado" ? item.url : null
       })
     )
 
@@ -485,7 +537,11 @@ const guardarCulto = async () => {
         tipo: item.tipo,
         imagen_url: item.tipo === "imagen" ? item.url : null,
         referencia_biblica: item.tipo === "biblia" ? item.referencia : null,
-        texto_biblico: item.tipo === "biblia" ? item.texto : null
+        texto_biblico: item.tipo === "biblia" ? item.texto : null,
+        estado_modo: item.tipo === "estado" ? item.modo : null,
+        estado_titulo: item.tipo === "estado" ? item.titulo : null,
+        estado_subtitulo: item.tipo === "estado" ? item.subtitulo : null,
+        estado_url: item.tipo === "estado" ? item.url : null
       })
     )
 
@@ -510,6 +566,94 @@ const guardarCulto = async () => {
   }
 }
 
+const renombrarCulto = async (culto: any) => {
+  const nuevoNombre = prompt("Nuevo nombre del culto", culto.nombre || "")
+  if (!nuevoNombre || !nuevoNombre.trim()) return
+
+  const { error } = await supabase
+    .from("listas_culto")
+    .update({ nombre: nuevoNombre.trim() })
+    .eq("id", culto.id)
+
+  if (error) {
+    console.error("Error renombrando culto:", error)
+    alert("No se pudo renombrar el culto")
+    return
+  }
+
+  if (listaIdActual === culto.id) {
+    setNombreCulto(nuevoNombre.trim())
+  }
+
+  await cargarCultos()
+  alert("✅ Culto renombrado")
+}
+
+const duplicarCulto = async (culto: any) => {
+  const nuevoNombre = prompt(
+    "Nombre para la copia",
+    `${culto.nombre || "Culto"} (copia)`
+  )
+  if (!nuevoNombre || !nuevoNombre.trim()) return
+
+  const iglesiaId = await getIglesiaId()
+
+  const { data: nuevoCulto, error: errorCulto } = await supabase
+    .from("listas_culto")
+    .insert({
+      nombre: nuevoNombre.trim(),
+      iglesia_id: iglesiaId
+    })
+    .select()
+    .single()
+
+  if (errorCulto || !nuevoCulto) {
+    console.error("Error duplicando culto:", errorCulto)
+    alert("No se pudo crear la copia del culto")
+    return
+  }
+
+  const { data: items, error: errorItems } = await supabase
+    .from("items_lista")
+    .select("*")
+    .eq("lista_id", culto.id)
+    .order("orden")
+
+  if (errorItems) {
+    console.error("Error leyendo items del culto:", errorItems)
+    alert("La copia del culto se creó, pero no se pudieron leer los items")
+    return
+  }
+
+  if (items && items.length > 0) {
+    const inserts = items.map((item) => ({
+      lista_id: nuevoCulto.id,
+      orden: item.orden,
+      cancion_id: item.cancion_id,
+      tipo: item.tipo,
+      imagen_url: item.imagen_url,
+      referencia_biblica: item.referencia_biblica,
+      texto_biblico: item.texto_biblico,
+      estado_modo: item.estado_modo,
+      estado_titulo: item.estado_titulo,
+      estado_subtitulo: item.estado_subtitulo,
+      estado_url: item.estado_url
+    }))
+
+    const { error: errorInsert } = await supabase
+      .from("items_lista")
+      .insert(inserts)
+
+    if (errorInsert) {
+      console.error("Error copiando items:", errorInsert)
+      alert("El culto se duplicó, pero falló la copia de elementos")
+      return
+    }
+  }
+
+  await cargarCultos()
+  alert("✅ Culto duplicado")
+}
 
 const cargarCultos = async () => {
   const { data, error } = await supabase
@@ -522,6 +666,20 @@ const cargarCultos = async () => {
 useEffect(() => {
   cargarCultos()
 }, [])
+
+const nombreImagenAmigable = (url?: string, fallback = "Imagen") => {
+  if (!url) return fallback
+
+  const ultimo = url.split("/").pop() || fallback
+  const sinExtension = ultimo.replace(/\.[^/.]+$/, "")
+  const sinPrefijo = sinExtension.replace(/^\d+-[a-z0-9]+-/i, "")
+  const limpio = sinPrefijo
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+
+  return limpio || fallback
+}
 
 const cargarListaDesdeBD = async (id: string) => {
   setListaIdActual(id)
@@ -565,7 +723,7 @@ const cargarListaDesdeBD = async (id: string) => {
       return {
         tipo: "imagen",
         url: item.imagen_url,
-        titulo: item.imagen_url?.split("/").pop() || "Imagen"
+        titulo: nombreImagenAmigable(item.imagen_url, "Imagen")
       }
     }
 
@@ -577,9 +735,18 @@ const cargarListaDesdeBD = async (id: string) => {
     texto,
     paginas: partirEnPaginasCliente(texto),
     titulo: `📖 ${item.referencia_biblica || "Palabra"}`
-  }
+      }
   
-}
+    }
+    if (item.tipo === "estado") {
+      return {
+        tipo: "estado",
+        modo: item.estado_modo,
+        titulo: item.estado_titulo || "Estado",
+        subtitulo: item.estado_subtitulo || "",
+        url: item.estado_url || ""
+      }
+    }
 
     const cancion = cancionesBD.find(c => c.id === item.cancion_id)
 
@@ -643,6 +810,21 @@ const irAItemLista = async (i: number, alFinal = false) => {
     return
   }
 
+  if (item.tipo === "estado") {
+  setActivaId(null)
+  setPartes([])
+  setIndex(0)
+  limpiarModoBiblia()
+
+  socket.emit("mostrar-estado", {
+    tipo: item.modo,
+    titulo: item.titulo || "",
+    subtitulo: item.subtitulo || "",
+    url: item.url || ""
+  })
+  return
+}
+
   const { data, error } = await supabase
     .from("partes_cancion")
     .select("*")
@@ -679,8 +861,68 @@ const proyectarDesdeLista = async (i: number) => {
   await irAItemLista(i, false)
 }
 
-const proyectarDesdeListaAlFinal = async (i: number) => {
-  await irAItemLista(i, true)
+const optimizarImagen = (file: File): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const reader = new FileReader()
+
+    reader.onload = () => {
+      img.src = reader.result as string
+    }
+
+    reader.onerror = reject
+
+    img.onload = () => {
+      const maxWidth = 1920
+      const maxHeight = 1080
+
+      let { width, height } = img
+
+      const scale = Math.min(
+        1,
+        maxWidth / width,
+        maxHeight / height
+      )
+
+      const newWidth = Math.round(width * scale)
+      const newHeight = Math.round(height * scale)
+
+      const canvas = document.createElement("canvas")
+      canvas.width = newWidth
+      canvas.height = newHeight
+
+      const ctx = canvas.getContext("2d")
+      if (!ctx) {
+        reject(new Error("No se pudo crear canvas"))
+        return
+      }
+
+      ctx.drawImage(img, 0, 0, newWidth, newHeight)
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error("No se pudo optimizar la imagen"))
+            return
+          }
+
+          const nombreBase = file.name.replace(/\.[^/.]+$/, "")
+          const optimizedFile = new File(
+            [blob],
+            `${nombreBase}.webp`,
+            { type: "image/webp" }
+          )
+
+          resolve(optimizedFile)
+        },
+        "image/webp",
+        0.82
+      )
+    }
+
+    img.onerror = reject
+    reader.readAsDataURL(file)
+  })
 }
 
 const limpiarModoBiblia = () => {
@@ -689,20 +931,8 @@ const limpiarModoBiblia = () => {
 }
 
 const nombreTono = (tono?: string) => {
-  const mapa: Record<string, string> = {
-    C: "Do",
-    Cm: "Do menor",
-    D: "Re",
-    Dm: "Re menor",
-    E: "Mi",
-    F: "Fa",
-    G: "Sol",
-    A: "La",
-    B: "Si"
-  }
-
   if (!tono) return ""
-  return mapa[tono] || tono
+  return tono
 }
 
 useEffect(() => {
@@ -717,14 +947,16 @@ useEffect(() => {
 
 const subirImagen = async (file: File) => {
   try {
-    const extension = file.name.split(".").pop()
+    const archivoOptimizado = await optimizarImagen(file)
+
+    const extension = "webp"
     const baseName = file.name.replace(/\.[^/.]+$/, "")
     const safeBaseName = baseName.replace(/\s+/g, " ").trim()
     const nombreArchivo = `${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`
 
     const { error } = await supabase.storage
       .from("imagenes-culto")
-      .upload(nombreArchivo, file, {
+      .upload(nombreArchivo, archivoOptimizado, {
         cacheControl: "3600",
         upsert: false
       })
@@ -748,6 +980,46 @@ const subirImagen = async (file: File) => {
     alert("Falló la subida de imagen")
     return null
   }
+}
+
+const enviarPrecargaImagenes = (items: any[]) => {
+  if (!socket) return
+
+  const urls = items
+    .filter((item) => item?.tipo === "imagen" && item?.url)
+    .map((item) => item.url)
+
+  if (urls.length > 0) {
+    socket.emit("precargar-imagenes", urls)
+  }
+}
+
+const subirLogoEspera = async (file: File) => {
+  const resultado = await subirImagen(file)
+  if (!resultado?.url) return
+
+  const iglesiaId = await getIglesiaId()
+  if (!iglesiaId) {
+    alert("No se encontró la iglesia actual")
+    return
+  }
+
+  const { error } = await supabase
+    .from("iglesias")
+    .update({
+      logo_url: resultado.url,
+      logo_nombre: resultado.nombre || "Logo"
+    })
+    .eq("id", iglesiaId)
+
+  if (error) {
+    console.error("Error guardando logo en iglesia:", error)
+    alert("El logo se subió, pero no se pudo guardar en la iglesia")
+    return
+  }
+
+  setLogoEsperaUrl(resultado.url)
+  setLogoEsperaNombre(resultado.nombre || "Logo")
 }
 
 const buscarVersiculo = async (ref: string) => {
@@ -809,6 +1081,175 @@ const agregarBibliaALista = async (ref: string) => {
   }
 }
 
+const proyectarMensajeRapido = () => {
+  if (!socket) return
+
+  setActivaId(null)
+  setIndiceLista(null)
+  setIndiceActivoLista(null)
+  setPartes([])
+  setIndex(0)
+  limpiarModoBiblia()
+
+  socket.emit("mostrar-estado", {
+    tipo: "mensaje",
+    titulo: mensajeRapido || "Espere un momento",
+    subtitulo: nombreIglesia || ""
+  })
+}
+
+const proyectarPantallaLogo = () => {
+  if (!socket) return
+  if (!logoEsperaUrl.trim()) {
+    alert("Primero ingresa la URL del logo o imagen")
+    return
+  }
+
+  setActivaId(null)
+  setIndiceLista(null)
+  setIndiceActivoLista(null)
+  setPartes([])
+  setIndex(0)
+  limpiarModoBiblia()
+
+  socket.emit("mostrar-estado", {
+    tipo: "logo",
+    url: logoEsperaUrl.trim(),
+    titulo: nombreIglesia || "",
+    subtitulo: "Espere un momento"
+  })
+}
+
+const proyectarPantallaNegra = () => {
+  if (!socket) return
+
+  setActivaId(null)
+  setIndiceLista(null)
+  setIndiceActivoLista(null)
+  setPartes([])
+  setIndex(0)
+  limpiarModoBiblia()
+
+  socket.emit("mostrar-estado", {
+    tipo: "negro"
+  })
+}
+
+const proyectarPantallaEspera = () => {
+  if (!socket) return
+
+  setActivaId(null)
+  setIndiceLista(null)
+  setIndiceActivoLista(null)
+  setPartes([])
+  setIndex(0)
+  limpiarModoBiblia()
+
+  socket.emit("mostrar-estado", {
+    tipo: "espera",
+    titulo: "Espere un momento",
+    subtitulo: nombreIglesia || ""
+  })
+}
+
+const agregarNegroALista = () => {
+  setLista(prev => [
+    ...prev,
+    {
+      tipo: "estado",
+      modo: "negro",
+      titulo: "Pantalla negra"
+    }
+  ])
+}
+
+const agregarEsperaALista = () => {
+  setLista(prev => [
+    ...prev,
+    {
+      tipo: "estado",
+      modo: "espera",
+      titulo: "Pantalla de espera",
+      subtitulo: nombreIglesia || ""
+    }
+  ])
+}
+
+const agregarMensajeALista = () => {
+  setLista(prev => [
+    ...prev,
+    {
+      tipo: "estado",
+      modo: "mensaje",
+      titulo: mensajeRapido || "Mensaje rápido",
+      subtitulo: nombreIglesia || ""
+    }
+  ])
+}
+
+const agregarLogoALista = () => {
+  if (!logoEsperaUrl.trim()) {
+    alert("Primero carga un logo")
+    return
+  }
+
+  setLista(prev => [
+    ...prev,
+    {
+      tipo: "estado",
+      modo: "logo",
+      titulo: logoEsperaNombre || "Logo de espera",
+      subtitulo: nombreIglesia || "",
+      url: logoEsperaUrl,
+      nombre: logoEsperaNombre || "Logo"
+    }
+  ])
+}
+
+const limpiarTituloLista = (titulo?: string) => {
+  return (titulo || "")
+    .replace(/^(🎵|📖|🖼️|⚫|⏳|✍️|✨)\s*/u, "")
+    .trim()
+}
+
+const resumirTexto = (texto?: string, max = 45) => {
+  const limpio = (texto || "").trim()
+  if (limpio.length <= max) return limpio
+  return limpio.slice(0, max).trimEnd() + "..."
+}
+
+const subtituloItemLista = (item: any) => {
+  if (item?.tipo === "cancion") return "Canción"
+  if (item?.tipo === "biblia") return "Palabra"
+  if (item?.tipo === "imagen") return "Imagen"
+
+  if (item?.tipo === "estado") {
+    if (item.modo === "mensaje") return "Mensaje"
+    if (item.modo === "espera") return "Espera"
+    if (item.modo === "negro") return "Pantalla negra"
+    if (item.modo === "logo") return "Logo"
+    return "Estado"
+  }
+
+  return ""
+}
+
+const iconoItemLista = (item: any) => {
+  if (item?.tipo === "cancion") return "🎵"
+  if (item?.tipo === "biblia") return "📖"
+  if (item?.tipo === "imagen") return "🖼️"
+
+  if (item?.tipo === "estado") {
+    if (item.modo === "negro") return "⚫"
+    if (item.modo === "espera") return "⏳"
+    if (item.modo === "mensaje") return "✍️"
+    if (item.modo === "logo") return "🖼️"
+    return "✨"
+  }
+
+  return "•"
+}
+
 const sugerenciasBiblia = [
   "Génesis 1",
   "Éxodo 20",
@@ -843,10 +1284,10 @@ const container: CSSProperties = {
   background: "linear-gradient(180deg, #081120 0%, #0f172a 100%)",
   color: "white",
   padding: isMobile ? "10px" : "18px",
+  paddingTop: isMobile ? "10px" : "18px",
   display: "flex",
   flexDirection: "column",
   gap: "16px",
-  overflowX: "hidden",
   boxSizing: "border-box"
 }
 
@@ -862,24 +1303,30 @@ const controles: CSSProperties = {
   display: "flex",
   justifyContent: "center",
   alignItems: "center",
-  gap: "12px",
-  flexWrap: "wrap",
-  background: "rgba(15, 23, 42, 0.92)",
+  gap: "10px",
+  flexWrap: "nowrap",
+  background: "rgba(15, 23, 42, 0.97)",
   border: "1px solid rgba(255,255,255,0.08)",
   borderRadius: "16px",
-  padding: "14px"
+  padding: isMobile ? "8px 10px" : "14px",
+  position: "sticky",
+  top: isMobile ? "8px" : "12px",
+  zIndex: 80,
+  backdropFilter: "blur(8px)",
+  boxShadow: "0 8px 20px rgba(0,0,0,0.18)",
+  alignSelf: "stretch"
 }
 
 const seccion: CSSProperties = {
   background: "rgba(30, 41, 59, 0.96)",
-  padding: "16px",
+  padding: isMobile ? "12px" : "16px",
   borderRadius: "16px",
   border: "1px solid rgba(255,255,255,0.08)",
   boxShadow: "0 10px 25px rgba(0,0,0,0.22)"
 }
 
 const titulo: CSSProperties = {
-  fontSize: "22px",
+  fontSize: isMobile ? "18px" : "22px",
   fontWeight: 700,
   marginBottom: "12px"
 }
@@ -892,23 +1339,32 @@ const subtitulo: CSSProperties = {
 
 const card: CSSProperties = {
   background: "#243449",
-  padding: "12px",
+  padding: isMobile ? "8px 10px" : "12px",
   borderRadius: "12px",
   marginBottom: "10px",
   display: "flex",
   justifyContent: "space-between",
-  alignItems: "center",
-  gap: "12px"
+  alignItems: isMobile ? "flex-start" : "center",
+  gap: "10px"
 }
 
-const acciones: CSSProperties = {
-  display: "flex",
-  gap: "8px",
-  flexWrap: "wrap"
-}
+const acciones: CSSProperties = isMobile
+  ? {
+      display: "grid",
+      gridTemplateColumns: "repeat(2, 42px)",
+      gap: "6px",
+      flexShrink: 0
+    }
+  : {
+      display: "flex",
+      gap: "8px",
+      flexWrap: "nowrap",
+      justifyContent: "flex-start",
+      flexShrink: 0
+    }
 
 const btn: CSSProperties = {
-  padding: "10px 14px",
+  padding: isMobile ? "8px 10px" : "10px 14px",
   borderRadius: "10px",
   border: "none",
   background: "#2563eb",
@@ -919,7 +1375,8 @@ const btn: CSSProperties = {
 
 const btnSecundario: CSSProperties = {
   ...btn,
-  background: "#334155"
+  background: "#334155",
+  padding: isMobile ? "8px 10px" : "10px 14px"
 }
 
 const btnVerde: CSSProperties = {
@@ -933,7 +1390,7 @@ const btnRojo: CSSProperties = {
 }
 
 const btnGrande: CSSProperties = {
-  padding: isMobile ? "10px 12px" : "12px 16px",
+  padding: isMobile ? "8px 12px" : "12px 16px",
   fontSize: isMobile ? "16px" : "18px",
   borderRadius: "12px",
   border: "none",
@@ -941,19 +1398,19 @@ const btnGrande: CSSProperties = {
   color: "white",
   cursor: "pointer",
   fontWeight: 700,
-  minWidth: isMobile ? "54px" : "64px"
+  minWidth: isMobile ? "56px" : "64px"
 }
 
 const input: CSSProperties = {
   width: "100%",
-  padding: "12px 14px",
+  padding: isMobile ? "10px 12px" : "12px 14px",
   marginBottom: "10px",
   borderRadius: "10px",
   border: "1px solid rgba(255,255,255,0.08)",
   background: "#0f172a",
   color: "white",
   outline: "none",
-  fontSize: "15px"
+  fontSize: isMobile ? "14px" : "15px"
 }
 
 const fila: CSSProperties = {
@@ -978,13 +1435,75 @@ const columna: CSSProperties = {
   gap: "16px"
 }
 
+const btnListaMini: CSSProperties = {
+  width: "42px",
+  height: "42px",
+  padding: 0,
+  borderRadius: "10px",
+  border: "none",
+  background: "#334155",
+  color: "white",
+  cursor: "pointer",
+  fontWeight: 700,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center"
+}
+const btnListaPlay: CSSProperties = {
+  ...btnListaMini,
+  background: "#2563eb"
+}
+const btnListaDelete: CSSProperties = {
+  ...btnListaMini,
+  background: "#dc2626"
+}
+
+const textoCardPrincipal: CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  overflow: "hidden",
+  alignSelf: "stretch"
+}
+
+const tituloCardResponsive = (isMobile: boolean): CSSProperties => ({
+  display: "-webkit-box",
+  WebkitLineClamp: isMobile ? 2 : 1,
+  WebkitBoxOrient: "vertical" as any,
+  fontWeight: 700,
+  minWidth: 0,
+  lineHeight: 1.25,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  wordBreak: "break-word"
+})
+
+const subtituloCardResponsive = (isMobile: boolean): CSSProperties => ({
+  fontSize: isMobile ? "11px" : "12px",
+  opacity: 0.68,
+  marginTop: "4px",
+  whiteSpace: isMobile ? "normal" : "nowrap",
+  overflow: "hidden",
+  textOverflow: isMobile ? "clip" : "ellipsis",
+  wordBreak: "break-word",
+  lineHeight: 1.2
+})
+
 return (
   <div style={container}>
     <div style={topbar}>
       <div>
-        <h1 style={{ margin: 0, fontSize: "28px" }}>Control de Culto</h1>
-        {nombreCulto && (
-          <div style={{ marginTop: "6px", opacity: 0.85, fontSize: "15px" }}>
+        {!isMobile && (
+          <h1 style={{ margin: 0, fontSize: "28px" }}>Control de Culto</h1>
+        )}
+
+        {nombreCulto && !isMobile && (
+          <div
+            style={{
+              marginTop: "6px",
+              opacity: 0.9,
+              fontSize: "15px"
+            }}
+          >
             Culto actual: <strong>{nombreCulto}</strong>
           </div>
         )}
@@ -994,8 +1513,8 @@ return (
     <div style={controles}>
       <button disabled={!socket} style={btnGrande} onClick={anterior}>⬅️</button>
       <button disabled={!socket} style={btnGrande} onClick={siguiente}>➡️</button>
-      <button
-        disabled={!socket}
+      {/* <button 
+        disabled={!socket} 
         style={btnGrande}
         onClick={() => setAutoPlay(a => !a)}
       >
@@ -1010,7 +1529,7 @@ return (
         onClick={() => setLoopCoro(l => !l)}
       >
         🔁
-      </button>
+      </button>*/}
     </div>
 
     <div style={gridDesktop}>
@@ -1026,21 +1545,31 @@ return (
           />
 
           <select
-            value={filtroTono}
-            onChange={(e) => setFiltroTono(e.target.value)}
-            style={input}
-          >
-            <option value="">Todos los tonos</option>
-            <option value="C">Do</option>
-            <option value="Cm">Do menor</option>
-            <option value="D">Re</option>
-            <option value="Dm">Re menor</option>
-            <option value="E">Mi</option>
-            <option value="F">Fa</option>
-            <option value="G">Sol</option>
-            <option value="A">La</option>
-            <option value="B">Si</option>
-          </select>
+                  value={filtroTono}
+                  onChange={(e) => setFiltroTono(e.target.value)}
+                  style={input}
+                >
+                  <option value="">Todos los tonos</option>
+                  <option value="Do">Do</option>
+                  <option value="Dom">Do menor</option>
+                  <option value="Do#">Do#</option>
+                  <option value="Re">Re</option>
+                  <option value="Rem">Re menor</option>
+                  <option value="Re#">Re#</option>
+                  <option value="Mi">Mi</option>
+                  <option value="Mim">Mi menor</option>
+                  <option value="Fa">Fa</option>
+                  <option value="Fam">Fa menor</option>
+                  <option value="Fa#">Fa#</option>
+                  <option value="Sol">Sol</option>
+                  <option value="Solm">Sol menor</option>
+                  <option value="Sol#">Sol#</option>
+                  <option value="La">La</option>
+                  <option value="Lam">La menor</option>
+                  <option value="La#">La#</option>
+                  <option value="Si">Si</option>
+                  <option value="Sim">Si menor</option>
+                </select>
 
           {canciones
             .filter(c =>
@@ -1055,9 +1584,15 @@ return (
                   background: c.id === activaId ? "#16a34a" : "#243449"
                 }}
               >
-                <div style={{ flex: 1 }}>
-                  <strong>{c.titulo}</strong>
-                  <div style={{ fontSize: "12px", opacity: 0.7, marginTop: "4px" }}>
+                <div style={textoCardPrincipal}>
+                  <span
+                    style={tituloCardResponsive(isMobile)}
+                    title={c.titulo || "Sin título"}
+                  >
+                    {c.titulo || "Sin título"}
+                  </span>
+
+                  <div style={subtituloCardResponsive(isMobile)}>
                     {c.autor || ""} {c.tono ? `• ${nombreTono(c.tono)}` : ""}
                   </div>
                 </div>
@@ -1075,71 +1610,310 @@ return (
         </div>
 
         <div style={seccion}>
-          <h2 style={titulo}>🛠️ Acciones</h2>
+  <h2 style={titulo}>🛠️ Acciones</h2>
 
-          <div style={fila}>
-            <button disabled={!socket} style={btn} onClick={guardarCulto}>
-              💾 Guardar Culto
+  {/* acciones principales */}
+  <div style={{ ...fila, marginBottom: 16 }}>
+    <button disabled={!socket} style={btn} onClick={guardarCulto}>
+      💾 Guardar Culto
+    </button>
+
+    <button
+      disabled={!socket}
+      style={btnVerde}
+      onClick={() => {
+        const ok = confirm("¿Crear nuevo culto? Se perderá la lista actual")
+        if (!ok) return
+
+        setLista([])
+        setListaIdActual(null)
+        setNombreCulto("")
+        setActivaId(null)
+        setIndiceLista(null)
+        setIndiceActivoLista(null)
+        setPartes([])
+        setIndex(0)
+        limpiarModoBiblia()
+      }}
+    >
+      🆕 Nuevo
+    </button>
+  </div>
+
+  {/* utilidades inmediatas */}
+  <div
+    style={{
+      display: "grid",
+      gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, minmax(0, 1fr))",
+      gap: "10px",
+      marginBottom: 18
+    }}
+  >
+    <label
+      style={{
+        ...btnSecundario,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "8px",
+        cursor: "pointer",
+        textAlign: "center"
+      }}
+    >
+      🖼️ Subir imagen
+      <input
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={async (e) => {
+          const inputFile = e.target as HTMLInputElement
+          const file = inputFile.files?.[0]
+          if (!file) return
+
+          const resultado = await subirImagen(file)
+
+          if (resultado?.url) {
+            setLista(prev => [
+              ...prev,
+              {
+                tipo: "imagen",
+                url: resultado.url,
+                titulo: resultado.nombre
+              }
+            ])
+          }
+
+          inputFile.value = ""
+        }}
+      />
+    </label>
+
+    <button
+      disabled={!socket}
+      style={btnSecundario}
+      onClick={proyectarPantallaNegra}
+    >
+      ⚫ Pantalla negra
+    </button>
+
+    <button
+      disabled={!socket}
+      style={btnSecundario}
+      onClick={proyectarPantallaEspera}
+    >
+      ⏳ Pantalla de espera
+    </button>
+
+    <button
+      disabled={!socket || !logoEsperaUrl}
+      style={btnSecundario}
+      onClick={proyectarPantallaLogo}
+    >
+      🖼️ Proyectar logo
+    </button>
+  </div>
+
+  {/* estados agregables a lista */}
+  <div style={{ marginBottom: 18 }}>
+    <div style={subtitulo}>Agregar a lista de culto</div>
+
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr",
+        gap: "10px"
+      }}
+    >
+      {[
+        {
+          titulo: "⚫ Pantalla negra",
+          onPlay: proyectarPantallaNegra,
+          onAdd: agregarNegroALista
+        },
+        {
+          titulo: "⏳ Pantalla de espera",
+          onPlay: proyectarPantallaEspera,
+          onAdd: agregarEsperaALista
+        },
+        {
+          titulo: `✍️ ${mensajeRapido || "Mensaje rápido"}`,
+          onPlay: proyectarMensajeRapido,
+          onAdd: agregarMensajeALista
+        },
+        {
+          titulo: logoEsperaNombre
+            ? `🖼️ ${logoEsperaNombre}`
+            : "🖼️ Logo de espera",
+          onPlay: proyectarPantallaLogo,
+          onAdd: agregarLogoALista,
+          disabledPlay: !logoEsperaUrl,
+          disabledAdd: !logoEsperaUrl
+        }
+      ].map((item, i) => (
+        <div
+          key={i}
+          style={{
+            ...card,
+            marginBottom: 0
+          }}
+        >
+          <div style={textoCardPrincipal}>
+            <span
+              style={tituloCardResponsive(isMobile)}
+              title={item.titulo}
+            >
+              {item.titulo}
+            </span>
+          </div>
+
+          <div style={acciones}>
+            <button
+              disabled={!socket || item.disabledPlay}
+              style={btn}
+              onClick={item.onPlay}
+            >
+              ▶️
             </button>
 
             <button
-              disabled={!socket}
-              style={btnVerde}
-              onClick={() => {
-                const ok = confirm("¿Crear nuevo culto? Se perderá la lista actual")
-                if (!ok) return
-
-                setLista([])
-                setListaIdActual(null)
-                setNombreCulto("")
-                setActivaId(null)
-                setIndiceLista(null)
-                setIndiceActivoLista(null)
-                setPartes([])
-                setIndex(0)
-                limpiarModoBiblia()
-              }}
+              disabled={item.disabledAdd}
+              style={btnSecundario}
+              onClick={item.onAdd}
             >
-              🆕 Nuevo
+              ➕
             </button>
-
-            <label
-              style={{
-                ...btnSecundario,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px"
-              }}
-            >
-              🖼️ Subir imagen
-              <input
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={async (e) => {
-                const inputFile = e.target as HTMLInputElement
-                const file = inputFile.files?.[0]
-                if (!file) return
-
-                const resultado = await subirImagen(file)
-
-                if (resultado?.url) {
-                  setLista(prev => [
-                    ...prev,
-                    {
-                      tipo: "imagen",
-                      url: resultado.url,
-                      titulo: resultado.nombre
-                    }
-                  ])
-                }
-
-                inputFile.value = ""
-              }}
-              />
-            </label>
           </div>
         </div>
+      ))}
+    </div>
+  </div>
+
+  {/* mensaje rápido */}
+  <div style={{ marginBottom: 18 }}>
+    <div style={subtitulo}>Mensaje rápido</div>
+
+    <input
+      value={mensajeRapido}
+      onChange={(e) => setMensajeRapido(e.target.value)}
+      placeholder="Ej: Oremos, Bienvenidos, Santa Cena"
+      style={input}
+    />
+
+    <div style={fila}>
+      <button
+        disabled={!socket}
+        style={btnSecundario}
+        onClick={proyectarMensajeRapido}
+      >
+        ✍️ Proyectar mensaje
+      </button>
+    </div>
+  </div>
+
+  {/* logo */}
+  <div>
+    <div style={subtitulo}>Fondo con logo / imagen</div>
+
+    <div style={{ ...fila, marginBottom: logoEsperaUrl ? 12 : 0 }}>
+      <label
+        style={{
+          ...btnSecundario,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "8px",
+          cursor: "pointer"
+        }}
+      >
+        🖼️ Subir logo
+        <input
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={async (e) => {
+            const inputFile = e.target as HTMLInputElement
+            const file = inputFile.files?.[0]
+            if (!file) return
+
+            await subirLogoEspera(file)
+            inputFile.value = ""
+          }}
+        />
+      </label>
+
+      {logoEsperaUrl && (
+        <button
+          style={btnRojo}
+          onClick={async () => {
+            const iglesiaId = await getIglesiaId()
+            if (!iglesiaId) return
+
+            const { error } = await supabase
+              .from("iglesias")
+              .update({
+                logo_url: null,
+                logo_nombre: null
+              })
+              .eq("id", iglesiaId)
+
+            if (error) {
+              console.error("Error quitando logo:", error)
+              alert("No se pudo quitar el logo guardado")
+              return
+            }
+
+            setLogoEsperaUrl("")
+            setLogoEsperaNombre("")
+          }}
+        >
+          ❌ Quitar
+        </button>
+      )}
+    </div>
+
+    {logoEsperaUrl && (
+      <div
+        style={{
+          padding: 12,
+          borderRadius: 12,
+          background: "#0f172a",
+          border: "1px solid rgba(255,255,255,0.08)",
+          display: "flex",
+          alignItems: "center",
+          gap: 12
+        }}
+      >
+        <img
+          src={logoEsperaUrl}
+          alt="Vista previa logo"
+          style={{
+            width: 64,
+            height: 64,
+            objectFit: "contain",
+            borderRadius: 8,
+            background: "#000",
+            flexShrink: 0
+          }}
+        />
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontWeight: 700,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis"
+            }}
+          >
+            {logoEsperaNombre || "Logo cargado"}
+          </div>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>
+            Logo listo para proyectar o agregar a la lista
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+</div>
 
         <div style={seccion}>
   <h2 style={titulo}>📖 Palabra</h2>
@@ -1202,11 +1976,38 @@ return (
 
           {cultos.map((c) => (
             <div key={c.id} style={card}>
-              <span>{c.nombre}</span>
+              <div style={textoCardPrincipal}>
+                <span
+                  style={tituloCardResponsive(isMobile)}
+                  title={c.nombre || "Sin nombre"}
+                >
+                  {resumirTexto(c.nombre || "Sin nombre", isMobile ? 24 : 40)}
+                </span>
+              </div>
 
               <div style={acciones}>
-                <button disabled={!socket} style={btn} onClick={() => cargarListaDesdeBD(c.id)}>
+                <button
+                  disabled={!socket}
+                  style={btn}
+                  onClick={() => cargarListaDesdeBD(c.id)}
+                >
                   📂
+                </button>
+
+                <button
+                  disabled={!socket}
+                  style={btnSecundario}
+                  onClick={() => renombrarCulto(c)}
+                >
+                  ✏️
+                </button>
+
+                <button
+                  disabled={!socket}
+                  style={btnSecundario}
+                  onClick={() => duplicarCulto(c)}
+                >
+                  📄
                 </button>
 
                 <button
@@ -1239,49 +2040,144 @@ return (
 
       <div style={columna}>
         <div style={seccion}>
-          <h2 style={titulo}>📋 Lista de Culto {nombreCulto && `- ${nombreCulto}`}</h2>
-
+          <h2
+            style={{
+              ...titulo,
+              lineHeight: 1.2,
+              whiteSpace: "normal",
+              marginBottom: "12px"
+            }}
+            title={nombreCulto || ""}
+          >
+            📋 Lista de Culto
+            {nombreCulto && (
+              <span style={{ opacity: 0.9 }}>
+                {" "} - {resumirTexto(nombreCulto, isMobile ? 28 : 45)}
+              </span>
+            )}
+          </h2>
           {lista.length === 0 && (
-            <p style={{ opacity: 0.65 }}>No hay canciones o imágenes aún</p>
+            <p style={{ opacity: 0.65, margin: 0 }}>
+              Aún no hay elementos en la lista. Puedes agregar canciones, palabra, imágenes o estados.
+            </p>
           )}
 
           {lista.map((c, i) => (
         <div
           key={i}
+          draggable={!isMobile}
+          onDragStart={() => setDragIndex(i)}
+          onDragOver={(e) => {
+            if (!isMobile) e.preventDefault()
+          }}
+          onDrop={() => {
+            if (!isMobile && dragIndex !== null) {
+              moverItemLista(dragIndex, i)
+            }
+            setDragIndex(null)
+          }}
+          onDragEnd={() => setDragIndex(null)}
           style={{
             ...card,
-            background: i === indiceActivoLista ? "#16a34a" : "#243449"
+            background: i === indiceActivoLista ? "rgba(22, 163, 74, 0.92)" : "#243449",
+            border: i === indiceActivoLista
+              ? "1px solid rgba(255,255,255,0.18)"
+              : "1px solid rgba(255,255,255,0.08)"       
           }}
         >
-          <div style={{ flex: 1, overflow: "hidden" }}>
-            <span
+          <div style={{ flex: 1, overflow: "hidden", minWidth: 0,alignSelf: "stretch" }}>
+            <div
               style={{
-                display: "block",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis"
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                minWidth: 0
               }}
-              title={c?.titulo || "Sin título"}
             >
-              {i + 1}. {c?.titulo || "Sin título"}
-            </span>
+              <span style={{ opacity: 0.8, flexShrink: 0 }}>
+                {i + 1}.
+              </span>
+
+              <span style={{ flexShrink: 0 }}>
+                {iconoItemLista(c)}
+              </span>
+
+              <span
+                style={tituloCardResponsive(isMobile)}
+                title={limpiarTituloLista(c?.titulo || "Sin título")}
+              >
+                {limpiarTituloLista(c?.titulo || "Sin título")}
+              </span>
+            </div>
+
+            {(!isMobile || c?.tipo === "estado" || c?.tipo === "biblia") && (
+              <div
+                style={{
+                  ...subtituloCardResponsive(isMobile),
+                  marginLeft: "30px"
+                }}
+              >
+                {subtituloItemLista(c)}
+              </div>
+            )}
           </div>
 
           <div style={acciones}>
-            <button style={btn} disabled={!socket} onClick={() => proyectarDesdeLista(i)}>
-              ▶️
-            </button>
+            {isMobile ? (
+              <>
+                <button
+                  style={btnListaMini}
+                  onClick={() => subirItemLista(i)}
+                  disabled={i === 0}
+                >
+                  ⬆️
+                </button>
 
-            <button
-              disabled={!socket}
-              style={btnRojo}
-              onClick={() => {
-                const ok = confirm("¿Eliminar este elemento de la lista?")
-                if (ok) eliminarDeLista(i)
-              }}
-            >
-              ❌
-            </button>
+                <button
+                  style={btnListaMini}
+                  onClick={() => bajarItemLista(i)}
+                  disabled={i === lista.length - 1}
+                >
+                  ⬇️
+                </button>
+
+                <button
+                  style={btnListaPlay}
+                  disabled={!socket}
+                  onClick={() => proyectarDesdeLista(i)}
+                >
+                  ▶️
+                </button>
+
+                <button
+                  disabled={!socket}
+                  style={btnListaDelete}
+                  onClick={() => {
+                    const ok = confirm("¿Eliminar este elemento de la lista?")
+                    if (ok) eliminarDeLista(i)
+                  }}
+                >
+                  ❌
+                </button>
+              </>
+            ) : (
+              <>
+                <button style={btn} disabled={!socket} onClick={() => proyectarDesdeLista(i)}>
+                  ▶️
+                </button>
+
+                <button
+                  disabled={!socket}
+                  style={btnRojo}
+                  onClick={() => {
+                    const ok = confirm("¿Eliminar este elemento de la lista?")
+                    if (ok) eliminarDeLista(i)
+                  }}
+                >
+                  ❌
+                </button>
+              </>
+            )}
           </div>
         </div>
       ))}

@@ -7,9 +7,9 @@ import { supabase } from "@/lib/supabase"
 export default function Navbar() {
   const pathname = usePathname()
 
-  if (pathname === "/proyectar") {
-    return null
-  }
+  if (pathname === "/proyectar" || pathname === "/musicos") {
+  return null
+}
 
   const cerrarSesion = async () => {
     await supabase.auth.signOut()
