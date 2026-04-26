@@ -13,8 +13,10 @@ export default function CancionesPage() {
   { tipo: "Verso", texto: "", formato: "solo" }
 ])
   const [canciones, setCanciones] = useState<any[]>([])
+  const [idsCancionesConAcordes, setIdsCancionesConAcordes] = useState<string[]>([])
   const [busqueda, setBusqueda] = useState("")
-const [filtroTono, setFiltroTono] = useState("")
+  const [filtroTono, setFiltroTono] = useState("")
+  const [filtroCategoria, setFiltroCategoria] = useState("")
   const [editandoId, setEditandoId] = useState<string | null>(null)
   // 🧠 NORMALIZAR ACORDES (soporta do, DO, mi, etc)
 const normalizarAcorde = (acorde: string) => {
@@ -128,13 +130,29 @@ const convertirAcordesAutomatico = (texto: string) => {
 
   // CARGAR CANCIONES
   const cargarCanciones = async () => {
-    const { data,error } = await supabase.from("canciones").select("*")
-      console.log("DATOS:", data)
+  const { data, error } = await supabase.from("canciones").select("*")
+  console.log("DATOS:", data)
   console.log("ERROR:", error)
-  
-    setCanciones(data || [])
+
+  setCanciones(data || [])
+
+  const { data: partesConAcordes, error: errorAcordes } = await supabase
+    .from("partes_cancion")
+    .select("cancion_id")
+    .eq("tiene_acordes", true)
+
+  if (errorAcordes) {
+    console.error("Error cargando canciones con acordes:", errorAcordes)
+    setIdsCancionesConAcordes([])
+    return
   }
-  
+
+  const idsUnicos = Array.from(
+    new Set((partesConAcordes || []).map((p: any) => p.cancion_id).filter(Boolean))
+  )
+
+  setIdsCancionesConAcordes(idsUnicos)
+}
 
 useEffect(() => {
   if (!socket) {
@@ -193,9 +211,10 @@ const guardarCancion = async () => {
     const { error } = await supabase
       .from("canciones")
       .update({
-        titulo,
-        tono: tonoDetectado
-      })
+      titulo,
+      tono: tonoDetectado,
+      categoria: null
+    })
       .eq("id", editandoId)
 
     if (error) {
@@ -218,9 +237,11 @@ const guardarCancion = async () => {
     const { data: cancion, error } = await supabase
       .from("canciones")
       .insert({
-        titulo,
-        tono: tonoDetectado
-      })
+      titulo,
+      tono: tonoDetectado,
+      categoria: null,
+      numero: null
+    })
       .select()
       .single()
 
@@ -234,11 +255,14 @@ const guardarCancion = async () => {
   }
 
   const partesInsert = partes.map((p, i) => ({
-    cancion_id: cancionId,
-    tipo: p.tipo,
-    texto: p.texto,
-    orden: i
-  }))
+  cancion_id: cancionId,
+  tipo: p.tipo,
+  texto: p.texto,
+  texto_letra: p.texto,
+  texto_acordes: p.texto.includes("[") || inferirFormato(p.texto) !== "solo" ? p.texto : null,
+  tiene_acordes: p.texto.includes("[") || inferirFormato(p.texto) !== "solo",
+  orden: i
+}))
 
   const { error: errorPartes } = await supabase
     .from("partes_cancion")
@@ -378,6 +402,13 @@ const detectarTono = (texto: string) => {
   return ""
 }
 
+const categoriasDisponibles = Array.from(
+  new Set(
+    canciones
+      .map(c => c.categoria)
+      .filter(Boolean)
+  )
+).sort()
 
   const btn = {
   padding: 12,
@@ -702,12 +733,51 @@ Hay una senda que yo pude encontrar`
     <option value="Si">Si</option>
     <option value="Sim">Si menor</option>
   </select>
+  <select
+    value={filtroCategoria}
+    onChange={(e) => setFiltroCategoria(e.target.value)}
+    style={{
+      minWidth: "220px",
+      padding: 10,
+      background: "#333",
+      color: "white",
+      border: "1px solid rgba(255,255,255,0.08)",
+      borderRadius: "8px"
+    }}
+  >
+    <option value="">Todas las categorías</option>
+    {categoriasDisponibles.map((cat) => (
+      <option key={cat} value={cat}>
+        {cat}
+      </option>
+    ))}
+  </select>
 </div>
     {canciones
-  .filter((c) =>
-    c.titulo?.toLowerCase().includes(busqueda.toLowerCase())
-  )
+  .filter((c) => {
+    const q = busqueda.toLowerCase().trim()
+    if (!q) return true
+
+    const titulo = (c.titulo || "").toLowerCase()
+    const categoria = (c.categoria || "").toLowerCase()
+    const tono = (c.tono || "").toLowerCase()
+    const numero = String(c.numero || "")
+
+    return (
+      titulo.includes(q) ||
+      categoria.includes(q) ||
+      tono.includes(q) ||
+      numero.includes(q)
+    )
+  })
   .filter((c) => !filtroTono || c.tono === filtroTono)
+  .filter((c) => !filtroCategoria || c.categoria === filtroCategoria)
+  .sort((a, b) => {
+    const na = a.numero ?? 999999
+    const nb = b.numero ?? 999999
+    if (na !== nb) return na - nb
+    return (a.titulo || "").localeCompare(b.titulo || "")
+  })
   .map((c, i) => (
   <div
     key={c.id}
@@ -717,13 +787,22 @@ Hay una senda que yo pude encontrar`
     }}
   >
     <div>
-  <div style={{ fontWeight: 700 }}>{c.titulo}</div>
-  {c.tono && (
-    <div style={{ fontSize: "12px", opacity: 0.75, marginTop: "4px" }}>
-      Tono: {c.tono}
+      <div style={{ fontWeight: 700 }}>
+        {c.numero ? `${c.numero}. ` : ""}{c.titulo}
+      </div>
+
+      {(c.categoria || c.tono) && (
+        <div style={{ fontSize: "12px", opacity: 0.75, marginTop: "4px" }}>
+          {[
+            c.categoria || "Sin categoría",
+            c.tono || "",
+            idsCancionesConAcordes.includes(c.id) ? "Con acordes" : ""
+          ]
+            .filter(Boolean)
+            .join(" • ")}
+        </div>
+      )}
     </div>
-  )}
-</div>
 
     <div style={{ display: "flex", gap: 8 }}>
   <button

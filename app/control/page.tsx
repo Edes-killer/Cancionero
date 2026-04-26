@@ -17,6 +17,7 @@ export default function ControlPage() {
   const [cultos, setCultos] = useState<any[]>([])
   const [listaIdActual, setListaIdActual] = useState<string | null>(null)
   const [filtroTono, setFiltroTono] = useState("")
+  const [filtroCategoria, setFiltroCategoria] = useState("")
   const [busqueda, setBusqueda] = useState("")
   const [nombreCulto, setNombreCulto] = useState("")
   const [partes, setPartes] = useState<any[]>([])
@@ -42,8 +43,11 @@ export default function ControlPage() {
   const [mensajeRapido, setMensajeRapido] = useState("Oremos")
   const [logoEsperaUrl, setLogoEsperaUrl] = useState("")
   const [logoEsperaNombre, setLogoEsperaNombre] = useState("")
-  
-  
+  const [menuItemAbierto, setMenuItemAbierto] = useState<number | null>(null)
+  const [menuCultoAbierto, setMenuCultoAbierto] = useState<string | null>(null)
+  const [mensajeFlash, setMensajeFlash] = useState("")
+  const [flashListaCulto, setFlashListaCulto] = useState(false)
+  const [idsCancionesConAcordes, setIdsCancionesConAcordes] = useState<string[]>([])
 
  useEffect(() => {
   const check = async () => {
@@ -152,15 +156,16 @@ useEffect(() => {
 
 
 const [isMobile, setIsMobile] = useState(true)
-
+const [mostrarCanciones, setMostrarCanciones] = useState(true)
+const [mostrarAcciones, setMostrarAcciones] = useState(false)
+const [mostrarPalabra, setMostrarPalabra] = useState(false)
+const [mostrarCultos, setMostrarCultos] = useState(false)
 const cargarLista = async () => {
   if (!listaIdActual) return
   await cargarListaDesdeBD(listaIdActual)
 }
 
- const cargarCanciones = async () => {
-  //console.log("🔥 CARGANDO CANCIONES")
-
+const cargarCanciones = async () => {
   const { data, error } = await supabase
     .from("canciones")
     .select("*")
@@ -169,6 +174,23 @@ const cargarLista = async () => {
   console.log("ERROR:", error)
 
   if (data) setCanciones(data)
+
+  const { data: partesConAcordes, error: errorAcordes } = await supabase
+    .from("partes_cancion")
+    .select("cancion_id")
+    .eq("tiene_acordes", true)
+
+  if (errorAcordes) {
+    console.error("Error cargando canciones con acordes:", errorAcordes)
+    setIdsCancionesConAcordes([])
+    return
+  }
+
+  const idsUnicos = Array.from(
+    new Set((partesConAcordes || []).map((p: any) => p.cancion_id).filter(Boolean))
+  )
+
+  setIdsCancionesConAcordes(idsUnicos)
 }
 
 
@@ -383,7 +405,7 @@ const agregarALista = (cancion: any) => {
   const existe = lista.some(c => c.id === cancion.id)
 
   if (existe) {
-    alert("⚠️ Esta canción ya está en la lista")
+    mostrarFeedbackLista("⚠️ Esa canción ya está en la lista")
     return
   }
 
@@ -395,8 +417,22 @@ const agregarALista = (cancion: any) => {
       titulo: cancion.titulo
     }
   ])
+
+  mostrarFeedbackLista(`✅ Agregada: ${cancion.titulo}`)
 }
 
+const mostrarFeedbackLista = (mensaje: string) => {
+  setMensajeFlash(mensaje)
+  setFlashListaCulto(true)
+
+  setTimeout(() => {
+    setFlashListaCulto(false)
+  }, 900)
+
+  setTimeout(() => {
+    setMensajeFlash("")
+  }, 1600)
+}
 
 const moverItemLista = (from: number, to: number) => {
   if (from === to || from < 0 || to < 0) return
@@ -431,11 +467,13 @@ const moverItemLista = (from: number, to: number) => {
 
 const subirItemLista = (i: number) => {
   if (i <= 0) return
+  setMenuItemAbierto(null)
   moverItemLista(i, i - 1)
 }
 
 const bajarItemLista = (i: number) => {
   if (i >= lista.length - 1) return
+  setMenuItemAbierto(null)
   moverItemLista(i, i + 1)
 }
 
@@ -564,6 +602,61 @@ const guardarCulto = async () => {
   if (listaIdFinal) {
     await cargarListaDesdeBD(listaIdFinal)
   }
+}
+
+const guardarCultoComoCopia = async () => {
+  const nombreBase = nombreCulto?.trim() || "Culto"
+  const nombre = prompt("Nombre de la copia", `${nombreBase} (copia)`)
+  if (!nombre) return
+
+  const iglesiaId = await getIglesiaId()
+
+  const { data, error } = await supabase
+    .from("listas_culto")
+    .insert({
+      nombre: nombre.trim(),
+      iglesia_id: iglesiaId
+    })
+    .select()
+    .single()
+
+  if (error || !data) {
+    console.error("Error creando copia:", error)
+    alert("No se pudo crear la copia")
+    return
+  }
+
+  const nuevaId = data.id
+
+  const inserts = lista.map((item, i) =>
+    supabase.from("items_lista").insert({
+      lista_id: nuevaId,
+      orden: i,
+      cancion_id: item.tipo === "cancion" ? item.id : null,
+      tipo: item.tipo,
+      imagen_url: item.tipo === "imagen" ? item.url : null,
+      referencia_biblica: item.tipo === "biblia" ? item.referencia : null,
+      texto_biblico: item.tipo === "biblia" ? item.texto : null,
+      estado_modo: item.tipo === "estado" ? item.modo : null,
+      estado_titulo: item.tipo === "estado" ? item.titulo : null,
+      estado_subtitulo: item.tipo === "estado" ? item.subtitulo : null,
+      estado_url: item.tipo === "estado" ? item.url : null
+    })
+  )
+
+  const resultados = await Promise.all(inserts)
+  const errorInsert = resultados.find(r => r.error)
+
+  if (errorInsert?.error) {
+    console.error("Error copiando items:", errorInsert.error)
+    alert("La copia se creó, pero falló el guardado de elementos")
+    return
+  }
+
+  setListaIdActual(nuevaId)
+  setNombreCulto(nombre.trim())
+  await cargarCultos()
+  alert("✅ Copia creada")
 }
 
 const renombrarCulto = async (culto: any) => {
@@ -858,6 +951,7 @@ const irAItemLista = async (i: number, alFinal = false) => {
 }
 
 const proyectarDesdeLista = async (i: number) => {
+  setMenuItemAbierto(null)
   await irAItemLista(i, false)
 }
 
@@ -929,6 +1023,14 @@ const limpiarModoBiblia = () => {
   setPaginasBiblia([])
   setPaginaBibliaActual(0)
 }
+
+const categoriasDisponibles = Array.from(
+  new Set(
+    canciones
+      .map(c => c.categoria)
+      .filter(Boolean)
+  )
+).sort()
 
 const nombreTono = (tono?: string) => {
   if (!tono) return ""
@@ -1250,6 +1352,21 @@ const iconoItemLista = (item: any) => {
   return "•"
 }
 
+const tituloCancionVisible = (c: any) => {
+  const numero = c?.numero ? `${c.numero}. ` : ""
+  return `${numero}${c?.titulo || "Sin título"}`
+}
+
+const subtituloCancionVisible = (c: any) => {
+  const partes: string[] = []
+
+  if (c?.categoria) partes.push(c.categoria)
+  if (c?.tono) partes.push(nombreTono(c.tono))
+  if (idsCancionesConAcordes.includes(c?.id)) partes.push("Con acordes")
+
+  return partes.join(" • ")
+}
+
 const sugerenciasBiblia = [
   "Génesis 1",
   "Éxodo 20",
@@ -1458,6 +1575,11 @@ const btnListaDelete: CSSProperties = {
   background: "#dc2626"
 }
 
+const btnListaMenu: CSSProperties = {
+  ...btnListaMini,
+  background: "#475569"
+}
+
 const textoCardPrincipal: CSSProperties = {
   flex: 1,
   minWidth: 0,
@@ -1509,7 +1631,68 @@ return (
         )}
       </div>
     </div>
+        {listaIdActual && (
+          <div
+            style={{
+              background: "rgba(37, 99, 235, 0.15)",
+              border: "1px solid rgba(37, 99, 235, 0.35)",
+              borderRadius: "14px",
+              padding: isMobile ? "10px" : "12px 14px",
+              display: "flex",
+              flexDirection: isMobile ? "column" : "row",
+              alignItems: isMobile ? "stretch" : "center",
+              justifyContent: "space-between",
+              gap: "10px"
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700 }}>
+                ✏️ Editando culto guardado
+              </div>
 
+              <div
+                style={{
+                  fontSize: "13px",
+                  opacity: 0.8,
+                  marginTop: "3px",
+                  wordBreak: "break-word"
+                }}
+              >
+                {nombreCulto || "Sin nombre"}
+              </div>
+            </div>
+
+            <div style={{ ...fila, justifyContent: "flex-end" }}>
+              <button style={btn} onClick={guardarCulto}>
+                💾 Guardar cambios
+              </button>
+
+              <button style={btnSecundario} onClick={guardarCultoComoCopia}>
+                📄 Guardar como copia
+              </button>
+
+              <button
+                style={btnRojo}
+                onClick={() => {
+                  const ok = confirm("¿Salir del modo edición? Los cambios no guardados se perderán.")
+                  if (!ok) return
+
+                  setListaIdActual(null)
+                  setNombreCulto("")
+                  setLista([])
+                  setActivaId(null)
+                  setIndiceLista(null)
+                  setIndiceActivoLista(null)
+                  setPartes([])
+                  setIndex(0)
+                  limpiarModoBiblia()
+                }}
+              >
+                ❌ Salir
+              </button>
+            </div>
+          </div>
+        )}
     <div style={controles}>
       <button disabled={!socket} style={btnGrande} onClick={anterior}>⬅️</button>
       <button disabled={!socket} style={btnGrande} onClick={siguiente}>➡️</button>
@@ -1533,443 +1716,1170 @@ return (
     </div>
 
     <div style={gridDesktop}>
-      <div style={columna}>
-        <div style={seccion}>
-          <h2 style={titulo}>🎵 Canciones</h2>
+  {isMobile ? (
+  <div style={columna}>
+    <div
+      style={{
+        ...seccion,
+        boxShadow: flashListaCulto
+          ? "0 0 0 2px rgba(34,197,94,0.55), 0 10px 25px rgba(0,0,0,0.22)"
+          : seccion.boxShadow
+      }}
+    >
+      <h2
+        style={{
+          ...titulo,
+          lineHeight: 1.2,
+          whiteSpace: "normal",
+          marginBottom: "12px"
+        }}
+        title={nombreCulto || ""}
+      >
+        📋 Lista de Culto
+        {nombreCulto && (
+          <span style={{ opacity: 0.9 }}>
+            {" "} - {resumirTexto(nombreCulto, 28)}
+          </span>
+        )}
+      </h2>
+      {mensajeFlash && (
+        <div
+          style={{
+            marginBottom: "10px",
+            padding: "8px 10px",
+            borderRadius: "10px",
+            background: "rgba(34,197,94,0.14)",
+            border: "1px solid rgba(34,197,94,0.30)",
+            fontSize: isMobile ? "12px" : "13px",
+            opacity: 0.95
+          }}
+        >
+          {mensajeFlash}
+        </div>
+      )}
 
+      {lista.length === 0 && (
+        <p style={{ opacity: 0.65, margin: 0 }}>
+          Aún no hay elementos en la lista. Puedes agregar canciones, palabra, imágenes o estados.
+        </p>
+      )}
+
+      {lista.map((c, i) => (
+        <div
+          key={i}
+          style={{
+            ...card,
+            background: i === indiceActivoLista ? "rgba(22, 163, 74, 0.92)" : "#243449",
+            border:
+              i === indiceActivoLista
+                ? "1px solid rgba(255,255,255,0.18)"
+                : "1px solid rgba(255,255,255,0.08)"
+          }}
+        >
+          <div style={textoCardPrincipal}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                minWidth: 0
+              }}
+            >
+              <span style={{ opacity: 0.8, flexShrink: 0 }}>
+                {i + 1}.
+              </span>
+
+              <span style={{ flexShrink: 0 }}>
+                {iconoItemLista(c)}
+              </span>
+
+              <span
+                style={tituloCardResponsive(isMobile)}
+                title={limpiarTituloLista(c?.titulo || "Sin título")}
+              >
+                {limpiarTituloLista(c?.titulo || "Sin título")}
+              </span>
+            </div>
+
+            {(c?.tipo === "estado" || c?.tipo === "biblia") && (
+              <div
+                style={{
+                  fontSize: "11px",
+                  opacity: 0.68,
+                  marginTop: "2px",
+                  marginLeft: "30px"
+                }}
+              >
+                {subtituloItemLista(c)}
+              </div>
+            )}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              gap: "6px",
+              flexShrink: 0
+            }}
+          >
+            <div style={{ display: "flex", gap: "6px" }}>
+              <button
+                style={btnListaPlay}
+                disabled={!socket}
+                onClick={() => proyectarDesdeLista(i)}
+              >
+                ▶️
+              </button>
+
+              <button
+                style={btnListaMenu}
+                onClick={() =>
+                  setMenuItemAbierto(prev => (prev === i ? null : i))
+                }
+              >
+                ⋮
+              </button>
+            </div>
+
+            {menuItemAbierto === i && (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 42px)",
+                  gap: "6px"
+                }}
+              >
+                <button
+                  style={btnListaMini}
+                  onClick={() => subirItemLista(i)}
+                  disabled={i === 0}
+                >
+                  ⬆️
+                </button>
+
+                <button
+                  style={btnListaMini}
+                  onClick={() => bajarItemLista(i)}
+                  disabled={i === lista.length - 1}
+                >
+                  ⬇️
+                </button>
+
+                <button
+                  disabled={!socket}
+                  style={btnListaDelete}
+                  onClick={() => {
+                    const ok = confirm("¿Eliminar este elemento de la lista?")
+                    if (ok) {
+                      eliminarDeLista(i)
+                      setMenuItemAbierto(null)
+                    }
+                  }}
+                >
+                  ❌
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <div
+      style={{
+        ...seccion,
+        boxShadow: flashListaCulto
+          ? "0 0 0 2px rgba(34,197,94,0.55), 0 10px 25px rgba(0,0,0,0.22)"
+          : seccion.boxShadow
+      }}
+    >
+      <div
+        onClick={() => setMostrarCanciones(v => !v)}
+        style={{
+          ...titulo,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          cursor: "pointer",
+          marginBottom: "12px"
+        }}
+      >
+        <span>🎵 Canciones</span>
+        <span>{mostrarCanciones ? "▾" : "▸"}</span>
+      </div>
+
+      {mostrarCanciones && (
+        <>
           <input
-            placeholder="Buscar canción..."
+            placeholder="Buscar por número, título o categoría..."
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             style={input}
           />
 
           <select
-                  value={filtroTono}
-                  onChange={(e) => setFiltroTono(e.target.value)}
-                  style={input}
-                >
-                  <option value="">Todos los tonos</option>
-                  <option value="Do">Do</option>
-                  <option value="Dom">Do menor</option>
-                  <option value="Do#">Do#</option>
-                  <option value="Re">Re</option>
-                  <option value="Rem">Re menor</option>
-                  <option value="Re#">Re#</option>
-                  <option value="Mi">Mi</option>
-                  <option value="Mim">Mi menor</option>
-                  <option value="Fa">Fa</option>
-                  <option value="Fam">Fa menor</option>
-                  <option value="Fa#">Fa#</option>
-                  <option value="Sol">Sol</option>
-                  <option value="Solm">Sol menor</option>
-                  <option value="Sol#">Sol#</option>
-                  <option value="La">La</option>
-                  <option value="Lam">La menor</option>
-                  <option value="La#">La#</option>
-                  <option value="Si">Si</option>
-                  <option value="Sim">Si menor</option>
-                </select>
-
-          {canciones
-            .filter(c =>
-              c.titulo.toLowerCase().includes(busqueda.toLowerCase())
-            )
-            .filter(c => !filtroTono || c.tono === filtroTono)
-            .map((c, i) => (
-              <div
-                key={c.id}
-                style={{
-                  ...card,
-                  background: c.id === activaId ? "#16a34a" : "#243449"
-                }}
-              >
-                <div style={textoCardPrincipal}>
-                  <span
-                    style={tituloCardResponsive(isMobile)}
-                    title={c.titulo || "Sin título"}
-                  >
-                    {c.titulo || "Sin título"}
-                  </span>
-
-                  <div style={subtituloCardResponsive(isMobile)}>
-                    {c.autor || ""} {c.tono ? `• ${nombreTono(c.tono)}` : ""}
-                  </div>
-                </div>
-
-                <div style={acciones}>
-                  <button disabled={!socket} style={btn} onClick={() => proyectar(c.id)}>
-                    ▶️
-                  </button>
-                  <button disabled={!socket} style={btnSecundario} onClick={() => agregarALista(c)}>
-                    ➕
-                  </button>
-                </div>
-              </div>
+            value={filtroTono}
+            onChange={(e) => setFiltroTono(e.target.value)}
+            style={input}
+          >
+            <option value="">Todos los tonos</option>
+            <option value="Do">Do</option>
+            <option value="Dom">Do menor</option>
+            <option value="Do#">Do#</option>
+            <option value="Re">Re</option>
+            <option value="Rem">Re menor</option>
+            <option value="Re#">Re#</option>
+            <option value="Mi">Mi</option>
+            <option value="Mim">Mi menor</option>
+            <option value="Fa">Fa</option>
+            <option value="Fam">Fa menor</option>
+            <option value="Fa#">Fa#</option>
+            <option value="Sol">Sol</option>
+            <option value="Solm">Sol menor</option>
+            <option value="Sol#">Sol#</option>
+            <option value="La">La</option>
+            <option value="Lam">La menor</option>
+            <option value="La#">La#</option>
+            <option value="Si">Si</option>
+            <option value="Sim">Si menor</option>
+          </select>
+          <select
+            value={filtroCategoria}
+            onChange={(e) => setFiltroCategoria(e.target.value)}
+            style={input}
+          >
+            <option value="">Todas las categorías</option>
+            {categoriasDisponibles.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
             ))}
-        </div>
-
-        <div style={seccion}>
-  <h2 style={titulo}>🛠️ Acciones</h2>
-
-  {/* acciones principales */}
-  <div style={{ ...fila, marginBottom: 16 }}>
-    <button disabled={!socket} style={btn} onClick={guardarCulto}>
-      💾 Guardar Culto
-    </button>
-
-    <button
-      disabled={!socket}
-      style={btnVerde}
-      onClick={() => {
-        const ok = confirm("¿Crear nuevo culto? Se perderá la lista actual")
-        if (!ok) return
-
-        setLista([])
-        setListaIdActual(null)
-        setNombreCulto("")
-        setActivaId(null)
-        setIndiceLista(null)
-        setIndiceActivoLista(null)
-        setPartes([])
-        setIndex(0)
-        limpiarModoBiblia()
-      }}
-    >
-      🆕 Nuevo
-    </button>
-  </div>
-
-  {/* utilidades inmediatas */}
+          </select>
+          
   <div
     style={{
-      display: "grid",
-      gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, minmax(0, 1fr))",
-      gap: "10px",
-      marginBottom: 18
+      maxHeight: isMobile ? "420px" : "560px",
+      overflowY: "auto",
+      paddingRight: "4px",
+      marginTop: "6px"
     }}
   >
-    <label
-      style={{
-        ...btnSecundario,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: "8px",
-        cursor: "pointer",
-        textAlign: "center"
-      }}
-    >
-      🖼️ Subir imagen
-      <input
-        type="file"
-        accept="image/*"
-        style={{ display: "none" }}
-        onChange={async (e) => {
-          const inputFile = e.target as HTMLInputElement
-          const file = inputFile.files?.[0]
-          if (!file) return
+    {canciones
+      .filter((c) => {
+        const q = busqueda.toLowerCase().trim()
+        if (!q) return true
 
-          const resultado = await subirImagen(file)
+        const titulo = (c.titulo || "").toLowerCase()
+        const categoria = (c.categoria || "").toLowerCase()
+        const tono = (c.tono || "").toLowerCase()
+        const numero = String(c.numero || "")
 
-          if (resultado?.url) {
-            setLista(prev => [
-              ...prev,
-              {
-                tipo: "imagen",
-                url: resultado.url,
-                titulo: resultado.nombre
-              }
-            ])
-          }
-
-          inputFile.value = ""
-        }}
-      />
-    </label>
-
-    <button
-      disabled={!socket}
-      style={btnSecundario}
-      onClick={proyectarPantallaNegra}
-    >
-      ⚫ Pantalla negra
-    </button>
-
-    <button
-      disabled={!socket}
-      style={btnSecundario}
-      onClick={proyectarPantallaEspera}
-    >
-      ⏳ Pantalla de espera
-    </button>
-
-    <button
-      disabled={!socket || !logoEsperaUrl}
-      style={btnSecundario}
-      onClick={proyectarPantallaLogo}
-    >
-      🖼️ Proyectar logo
-    </button>
-  </div>
-
-  {/* estados agregables a lista */}
-  <div style={{ marginBottom: 18 }}>
-    <div style={subtitulo}>Agregar a lista de culto</div>
-
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "1fr",
-        gap: "10px"
-      }}
-    >
-      {[
-        {
-          titulo: "⚫ Pantalla negra",
-          onPlay: proyectarPantallaNegra,
-          onAdd: agregarNegroALista
-        },
-        {
-          titulo: "⏳ Pantalla de espera",
-          onPlay: proyectarPantallaEspera,
-          onAdd: agregarEsperaALista
-        },
-        {
-          titulo: `✍️ ${mensajeRapido || "Mensaje rápido"}`,
-          onPlay: proyectarMensajeRapido,
-          onAdd: agregarMensajeALista
-        },
-        {
-          titulo: logoEsperaNombre
-            ? `🖼️ ${logoEsperaNombre}`
-            : "🖼️ Logo de espera",
-          onPlay: proyectarPantallaLogo,
-          onAdd: agregarLogoALista,
-          disabledPlay: !logoEsperaUrl,
-          disabledAdd: !logoEsperaUrl
-        }
-      ].map((item, i) => (
+        return (
+          titulo.includes(q) ||
+          categoria.includes(q) ||
+          tono.includes(q) ||
+          numero.includes(q)
+        )
+      })
+      .filter(c => !filtroTono || c.tono === filtroTono)
+      .filter(c => !filtroCategoria || c.categoria === filtroCategoria)
+      .sort((a, b) => {
+        const na = a.numero ?? 999999
+        const nb = b.numero ?? 999999
+        if (na !== nb) return na - nb
+        return (a.titulo || "").localeCompare(b.titulo || "")
+      })
+      .map((c) => (
         <div
-          key={i}
+          key={c.id}
           style={{
             ...card,
-            marginBottom: 0
+            background: c.id === activaId ? "#16a34a" : "#243449"
           }}
         >
           <div style={textoCardPrincipal}>
             <span
               style={tituloCardResponsive(isMobile)}
-              title={item.titulo}
+              title={tituloCancionVisible(c)}
             >
-              {item.titulo}
+              {tituloCancionVisible(c)}
             </span>
+
+            <div style={subtituloCardResponsive(isMobile)}>
+              {subtituloCancionVisible(c)}
+            </div>
           </div>
 
           <div style={acciones}>
-            <button
-              disabled={!socket || item.disabledPlay}
-              style={btn}
-              onClick={item.onPlay}
-            >
+            <button disabled={!socket} style={btn} onClick={() => proyectar(c.id)}>
               ▶️
             </button>
-
-            <button
-              disabled={item.disabledAdd}
-              style={btnSecundario}
-              onClick={item.onAdd}
-            >
+            <button disabled={!socket} style={btnSecundario} onClick={() => agregarALista(c)}>
               ➕
             </button>
           </div>
         </div>
       ))}
-    </div>
   </div>
 
-  {/* mensaje rápido */}
-  <div style={{ marginBottom: 18 }}>
-    <div style={subtitulo}>Mensaje rápido</div>
-
-    <input
-      value={mensajeRapido}
-      onChange={(e) => setMensajeRapido(e.target.value)}
-      placeholder="Ej: Oremos, Bienvenidos, Santa Cena"
-      style={input}
-    />
-
-    <div style={fila}>
-      <button
-        disabled={!socket}
-        style={btnSecundario}
-        onClick={proyectarMensajeRapido}
-      >
-        ✍️ Proyectar mensaje
-      </button>
-    </div>
-  </div>
-
-  {/* logo */}
-  <div>
-    <div style={subtitulo}>Fondo con logo / imagen</div>
-
-    <div style={{ ...fila, marginBottom: logoEsperaUrl ? 12 : 0 }}>
-      <label
-        style={{
-          ...btnSecundario,
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "8px",
-          cursor: "pointer"
-        }}
-      >
-        🖼️ Subir logo
-        <input
-          type="file"
-          accept="image/*"
-          style={{ display: "none" }}
-          onChange={async (e) => {
-            const inputFile = e.target as HTMLInputElement
-            const file = inputFile.files?.[0]
-            if (!file) return
-
-            await subirLogoEspera(file)
-            inputFile.value = ""
-          }}
-        />
-      </label>
-
-      {logoEsperaUrl && (
-        <button
-          style={btnRojo}
-          onClick={async () => {
-            const iglesiaId = await getIglesiaId()
-            if (!iglesiaId) return
-
-            const { error } = await supabase
-              .from("iglesias")
-              .update({
-                logo_url: null,
-                logo_nombre: null
-              })
-              .eq("id", iglesiaId)
-
-            if (error) {
-              console.error("Error quitando logo:", error)
-              alert("No se pudo quitar el logo guardado")
-              return
-            }
-
-            setLogoEsperaUrl("")
-            setLogoEsperaNombre("")
-          }}
-        >
-          ❌ Quitar
-        </button>
+        </>
       )}
     </div>
 
-    {logoEsperaUrl && (
+    <div style={seccion}>
       <div
+        onClick={() => setMostrarAcciones(v => !v)}
         style={{
-          padding: 12,
-          borderRadius: 12,
-          background: "#0f172a",
-          border: "1px solid rgba(255,255,255,0.08)",
+          ...titulo,
           display: "flex",
+          justifyContent: "space-between",
           alignItems: "center",
-          gap: 12
+          cursor: "pointer",
+          marginBottom: "12px"
         }}
       >
-        <img
-          src={logoEsperaUrl}
-          alt="Vista previa logo"
-          style={{
-            width: 64,
-            height: 64,
-            objectFit: "contain",
-            borderRadius: 8,
-            background: "#000",
-            flexShrink: 0
-          }}
-        />
+        <span>🛠️ Acciones</span>
+        <span>{mostrarAcciones ? "▾" : "▸"}</span>
+      </div>
 
-        <div style={{ flex: 1, minWidth: 0 }}>
+      {mostrarAcciones && (
+        <>
+          <div style={{ ...fila, marginBottom: 16 }}>
+            <button disabled={!socket} style={btn} onClick={guardarCulto}>
+              💾 Guardar Culto
+            </button>
+
+            <button
+              disabled={!socket}
+              style={btnVerde}
+              onClick={() => {
+                const ok = confirm("¿Crear nuevo culto? Se perderá la lista actual")
+                if (!ok) return
+
+                setLista([])
+                setListaIdActual(null)
+                setNombreCulto("")
+                setActivaId(null)
+                setIndiceLista(null)
+                setIndiceActivoLista(null)
+                setPartes([])
+                setIndex(0)
+                limpiarModoBiblia()
+              }}
+            >
+              🆕 Nuevo
+            </button>
+          </div>
+
+          <div style={{ marginBottom: 18 }}>
+            <div style={subtitulo}>Mensaje rápido</div>
+
+            <input
+              value={mensajeRapido}
+              onChange={(e) => setMensajeRapido(e.target.value)}
+              placeholder="Ej: Oremos, Bienvenidos, Santa Cena"
+              style={input}
+            />
+
+            <div style={fila}>
+              <button
+                disabled={!socket}
+                style={btnSecundario}
+                onClick={proyectarMensajeRapido}
+              >
+                ✍️ Proyectar mensaje
+              </button>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 18 }}>
+            <div style={subtitulo}>Fondo con logo / imagen</div>
+
+            <div style={{ ...fila, marginBottom: logoEsperaUrl ? 12 : 0 }}>
+              <label
+                style={{
+                  ...btnSecundario,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  cursor: "pointer"
+                }}
+              >
+                🖼️ Subir logo
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={async (e) => {
+                    const inputFile = e.target as HTMLInputElement
+                    const file = inputFile.files?.[0]
+                    if (!file) return
+
+                    await subirLogoEspera(file)
+                    inputFile.value = ""
+                  }}
+                />
+              </label>
+
+              {logoEsperaUrl && (
+                <button
+                  style={btnRojo}
+                  onClick={async () => {
+                    const iglesiaId = await getIglesiaId()
+                    if (!iglesiaId) return
+
+                    const { error } = await supabase
+                      .from("iglesias")
+                      .update({
+                        logo_url: null,
+                        logo_nombre: null
+                      })
+                      .eq("id", iglesiaId)
+
+                    if (error) {
+                      console.error("Error quitando logo:", error)
+                      alert("No se pudo quitar el logo guardado")
+                      return
+                    }
+
+                    setLogoEsperaUrl("")
+                    setLogoEsperaNombre("")
+                  }}
+                >
+                  ❌ Quitar
+                </button>
+              )}
+            </div>
+
+            {logoEsperaUrl && (
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 12,
+                  background: "#0f172a",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12
+                }}
+              >
+                <img
+                  src={logoEsperaUrl}
+                  alt="Vista previa logo"
+                  style={{
+                    width: 64,
+                    height: 64,
+                    objectFit: "contain",
+                    borderRadius: 8,
+                    background: "#000",
+                    flexShrink: 0
+                  }}
+                />
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis"
+                    }}
+                  >
+                    {logoEsperaNombre || "Logo cargado"}
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.7 }}>
+                    Logo listo para proyectar o agregar a la lista
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+
+    <div style={seccion}>
+      <div
+        onClick={() => setMostrarPalabra(v => !v)}
+        style={{
+          ...titulo,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          cursor: "pointer",
+          marginBottom: "12px"
+        }}
+      >
+        <span>📖 Palabra</span>
+        <span>{mostrarPalabra ? "▾" : "▸"}</span>
+      </div>
+
+      {mostrarPalabra && (
+        <>
+          <div style={subtitulo}>
+            Ejemplos: Juan 3:16, 1 Corintios 13:4-7, Salmo 23
+          </div>
+
+          <input
+            list="libros-biblia"
+            placeholder="Escribe una cita bíblica..."
+            value={inputBiblia}
+            onChange={(e) => setInputBiblia(e.target.value)}
+            onKeyDown={async (e) => {
+              if (e.key === "Enter") {
+                if (!inputBiblia.trim()) return
+                await proyectarBiblia(inputBiblia)
+                setInputBiblia("")
+              }
+            }}
+            style={input}
+          />
+
+          <datalist id="libros-biblia">
+            {sugerenciasBiblia.map((item) => (
+              <option key={item} value={item} />
+            ))}
+          </datalist>
+
+          <div style={fila}>
+            <button
+              disabled={!socket}
+              style={btn}
+              onClick={async () => {
+                if (!inputBiblia.trim()) return
+                await proyectarBiblia(inputBiblia)
+                setInputBiblia("")
+              }}
+            >
+              Proyectar
+            </button>
+
+            <button
+              disabled={!socket}
+              style={btnSecundario}
+              onClick={async () => {
+                if (!inputBiblia.trim()) return
+                await agregarBibliaALista(inputBiblia)
+                setInputBiblia("")
+              }}
+            >
+              ➕ Agregar a lista
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+
+    <div style={seccion}>
+      <div
+        onClick={() => setMostrarCultos(v => !v)}
+        style={{
+          ...titulo,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          cursor: "pointer",
+          marginBottom: "12px"
+        }}
+      >
+        <span>💾 Cultos Guardados</span>
+        <span>{mostrarCultos ? "▾" : "▸"}</span>
+      </div>
+
+      {mostrarCultos && (
+        <>
+          {cultos.map((c) => (
+            <div key={c.id} style={card}>
+              <div style={textoCardPrincipal}>
+                <span
+                  style={tituloCardResponsive(isMobile)}
+                  title={c.nombre || "Sin nombre"}
+                >
+                  {resumirTexto(c.nombre || "Sin nombre", 24)}
+                </span>
+              </div>
+
+              <div
+  style={{
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    gap: "6px",
+    flexShrink: 0
+  }}
+>
+  <div style={{ display: "flex", gap: "6px" }}>
+    <button
+      disabled={!socket}
+      style={btnListaPlay}
+      onClick={() => {
+        setMenuCultoAbierto(null)
+        cargarListaDesdeBD(c.id)
+      }}
+    >
+      📂
+    </button>
+
+    <button
+      style={btnListaMenu}
+      onClick={() =>
+        setMenuCultoAbierto(prev => (prev === c.id ? null : c.id))
+      }
+    >
+      ⋮
+    </button>
+  </div>
+
+  {menuCultoAbierto === c.id && (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(3, 42px)",
+        gap: "6px"
+      }}
+    >
+      <button
+        disabled={!socket}
+        style={btnListaMini}
+        onClick={() => {
+          setMenuCultoAbierto(null)
+          renombrarCulto(c)
+        }}
+      >
+        ✏️
+      </button>
+
+      <button
+        disabled={!socket}
+        style={btnListaMini}
+        onClick={() => {
+          setMenuCultoAbierto(null)
+          duplicarCulto(c)
+        }}
+      >
+        📄
+      </button>
+
+      <button
+        disabled={!socket}
+        style={btnListaDelete}
+        onClick={async () => {
+          const ok = confirm("¿Eliminar este culto completo?")
+          if (!ok) return
+
+          await supabase
+            .from("items_lista")
+            .delete()
+            .eq("lista_id", c.id)
+
+          await supabase
+            .from("listas_culto")
+            .delete()
+            .eq("id", c.id)
+
+          setMenuCultoAbierto(null)
+          cargarCultos()
+        }}
+      >
+        🗑️
+      </button>
+    </div>
+  )}
+</div>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  </div>
+) : (
+    <>
+      <div style={columna}>
+        <div style={seccion}>
+          <h2 style={titulo}>🎵 Canciones</h2>
+
+          <input
+            placeholder="Buscar por número, título o categoría..."
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            style={input}
+          />
+
+          <select
+            value={filtroTono}
+            onChange={(e) => setFiltroTono(e.target.value)}
+            style={input}
+          >
+            <option value="">Todos los tonos</option>
+            <option value="Do">Do</option>
+            <option value="Dom">Do menor</option>
+            <option value="Do#">Do#</option>
+            <option value="Re">Re</option>
+            <option value="Rem">Re menor</option>
+            <option value="Re#">Re#</option>
+            <option value="Mi">Mi</option>
+            <option value="Mim">Mi menor</option>
+            <option value="Fa">Fa</option>
+            <option value="Fam">Fa menor</option>
+            <option value="Fa#">Fa#</option>
+            <option value="Sol">Sol</option>
+            <option value="Solm">Sol menor</option>
+            <option value="Sol#">Sol#</option>
+            <option value="La">La</option>
+            <option value="Lam">La menor</option>
+            <option value="La#">La#</option>
+            <option value="Si">Si</option>
+            <option value="Sim">Si menor</option>
+          </select>
+          <select
+            value={filtroCategoria}
+            onChange={(e) => setFiltroCategoria(e.target.value)}
+            style={input}
+          >
+            <option value="">Todas las categorías</option>
+            {categoriasDisponibles.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+          </select>
           <div
             style={{
-              fontWeight: 700,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis"
+              maxHeight: "620px",
+              overflowY: "auto",
+              paddingRight: "6px",
+              marginTop: "6px"
             }}
           >
-            {logoEsperaNombre || "Logo cargado"}
-          </div>
-          <div style={{ fontSize: 12, opacity: 0.7 }}>
-            Logo listo para proyectar o agregar a la lista
+            {canciones
+              .filter((c) => {
+                const q = busqueda.toLowerCase().trim()
+                if (!q) return true
+
+                const titulo = (c.titulo || "").toLowerCase()
+                const categoria = (c.categoria || "").toLowerCase()
+                const tono = (c.tono || "").toLowerCase()
+                const numero = String(c.numero || "")
+
+                return (
+                  titulo.includes(q) ||
+                  categoria.includes(q) ||
+                  tono.includes(q) ||
+                  numero.includes(q)
+                )
+              })
+              .filter(c => !filtroTono || c.tono === filtroTono)
+              .filter(c => !filtroCategoria || c.categoria === filtroCategoria)
+              .sort((a, b) => {
+                const na = a.numero ?? 999999
+                const nb = b.numero ?? 999999
+                if (na !== nb) return na - nb
+                return (a.titulo || "").localeCompare(b.titulo || "")
+              })
+              .map((c) => (
+                <div
+                  key={c.id}
+                  style={{
+                    ...card,
+                    background: c.id === activaId ? "#16a34a" : "#243449"
+                  }}
+                >
+                  <div style={textoCardPrincipal}>
+                    <span
+                      style={tituloCardResponsive(isMobile)}
+                      title={tituloCancionVisible(c)}
+                    >
+                      {tituloCancionVisible(c)}
+                    </span>
+
+                    <div style={subtituloCardResponsive(isMobile)}>
+                      {subtituloCancionVisible(c)}
+                    </div>
+                  </div>
+
+                  <div style={acciones}>
+                    <button disabled={!socket} style={btn} onClick={() => proyectar(c.id)}>
+                      ▶️
+                    </button>
+                    <button disabled={!socket} style={btnSecundario} onClick={() => agregarALista(c)}>
+                      ➕
+                    </button>
+                  </div>
+                </div>
+              ))}
           </div>
         </div>
-      </div>
-    )}
-  </div>
-</div>
 
         <div style={seccion}>
-  <h2 style={titulo}>📖 Palabra</h2>
-  <div style={subtitulo}>
-    Ejemplos: Juan 3:16, 1 Corintios 13:4-7, Salmo 23
-  </div>
+          <h2 style={titulo}>🛠️ Acciones</h2>
+            <div style={{ ...fila, marginBottom: 16 }}>
+              <button
+                style={btnSecundario}
+                onClick={() => window.open("/proyectar", "_blank")}
+              >
+                🖥️ Abrir Proyector
+              </button>
 
-  <div style={{ position: "relative" }}>
-    <input
-      list="libros-biblia"
-      placeholder="Escribe una cita bíblica..."
-      value={inputBiblia}
-      onChange={(e) => setInputBiblia(e.target.value)}
-      onKeyDown={async (e) => {
-        if (e.key === "Enter") {
-          if (!inputBiblia.trim()) return
-          await proyectarBiblia(inputBiblia)
-          setInputBiblia("")
-        }
-      }}
-      style={input}
-    />
+              <button
+                style={btnSecundario}
+                onClick={() => window.open("/musicos", "_blank")}
+              >
+                🎹 Abrir Músicos
+              </button>
+            </div>
+          <div style={{ ...fila, marginBottom: 16 }}>
+            <button disabled={!socket} style={btn} onClick={guardarCulto}>
+              💾 Guardar Culto
+            </button>
 
-    <datalist id="libros-biblia">
-  {sugerenciasBiblia.map((item) => (
-    <option key={item} value={item} />
-  ))}
-</datalist>
-  </div>
+            <button
+              disabled={!socket}
+              style={btnVerde}
+              onClick={() => {
+                const ok = confirm("¿Crear nuevo culto? Se perderá la lista actual")
+                if (!ok) return
 
-  <div style={fila}>
-    <button
-      disabled={!socket}
-      style={btn}
-      onClick={async () => {
-        if (!inputBiblia.trim()) return
-        await proyectarBiblia(inputBiblia)
-        setInputBiblia("")
-      }}
-    >
-      Proyectar
-    </button>
+                setLista([])
+                setListaIdActual(null)
+                setNombreCulto("")
+                setActivaId(null)
+                setIndiceLista(null)
+                setIndiceActivoLista(null)
+                setPartes([])
+                setIndex(0)
+                limpiarModoBiblia()
+              }}
+            >
+              🆕 Nuevo
+            </button>
+          </div>
 
-    <button
-      disabled={!socket}
-      style={btnSecundario}
-      onClick={async () => {
-        if (!inputBiblia.trim()) return
-        await agregarBibliaALista(inputBiblia)
-        setInputBiblia("")
-      }}
-    >
-      ➕ Agregar a lista
-    </button>
-  </div>
-</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, minmax(0, 1fr))",
+              gap: "10px",
+              marginBottom: 18
+            }}
+          >
+            <label
+              style={{
+                ...btnSecundario,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px",
+                cursor: "pointer",
+                textAlign: "center"
+              }}
+            >
+              🖼️ Subir imagen
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={async (e) => {
+                  const inputFile = e.target as HTMLInputElement
+                  const file = inputFile.files?.[0]
+                  if (!file) return
+
+                  const resultado = await subirImagen(file)
+
+                  if (resultado?.url) {
+                    setLista(prev => [
+                      ...prev,
+                      {
+                        tipo: "imagen",
+                        url: resultado.url,
+                        titulo: resultado.nombre
+                      }
+                    ])
+                  }
+
+                  inputFile.value = ""
+                }}
+              />
+            </label>
+
+            <button
+              disabled={!socket}
+              style={btnSecundario}
+              onClick={proyectarPantallaNegra}
+            >
+              ⚫ Pantalla negra
+            </button>
+
+            <button
+              disabled={!socket}
+              style={btnSecundario}
+              onClick={proyectarPantallaEspera}
+            >
+              ⏳ Pantalla de espera
+            </button>
+
+            <button
+              disabled={!socket || !logoEsperaUrl}
+              style={btnSecundario}
+              onClick={proyectarPantallaLogo}
+            >
+              🖼️ Proyectar logo
+            </button>
+          </div>
+
+          <div style={{ marginBottom: 18 }}>
+            <div style={subtitulo}>Agregar a lista de culto</div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr",
+                gap: "10px"
+              }}
+            >
+              {[
+                {
+                  titulo: "⚫ Pantalla negra",
+                  onPlay: proyectarPantallaNegra,
+                  onAdd: agregarNegroALista
+                },
+                {
+                  titulo: "⏳ Pantalla de espera",
+                  onPlay: proyectarPantallaEspera,
+                  onAdd: agregarEsperaALista
+                },
+                {
+                  titulo: `✍️ ${mensajeRapido || "Mensaje rápido"}`,
+                  onPlay: proyectarMensajeRapido,
+                  onAdd: agregarMensajeALista
+                },
+                {
+                  titulo: logoEsperaNombre
+                    ? `🖼️ ${logoEsperaNombre}`
+                    : "🖼️ Logo de espera",
+                  onPlay: proyectarPantallaLogo,
+                  onAdd: agregarLogoALista,
+                  disabledPlay: !logoEsperaUrl,
+                  disabledAdd: !logoEsperaUrl
+                }
+              ].map((item, i) => (
+                <div
+                  key={i}
+                  style={{
+                    ...card,
+                    marginBottom: 0
+                  }}
+                >
+                  <div style={textoCardPrincipal}>
+                    <span
+                      style={tituloCardResponsive(isMobile)}
+                      title={item.titulo}
+                    >
+                      {item.titulo}
+                    </span>
+                  </div>
+
+                  <div style={acciones}>
+                    <button
+                      disabled={!socket || item.disabledPlay}
+                      style={btn}
+                      onClick={item.onPlay}
+                    >
+                      ▶️
+                    </button>
+
+                    <button
+                      disabled={item.disabledAdd}
+                      style={btnSecundario}
+                      onClick={item.onAdd}
+                    >
+                      ➕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 18 }}>
+            <div style={subtitulo}>Mensaje rápido</div>
+
+            <input
+              value={mensajeRapido}
+              onChange={(e) => setMensajeRapido(e.target.value)}
+              placeholder="Ej: Oremos, Bienvenidos, Santa Cena"
+              style={input}
+            />
+
+            <div style={fila}>
+              <button
+                disabled={!socket}
+                style={btnSecundario}
+                onClick={proyectarMensajeRapido}
+              >
+                ✍️ Proyectar mensaje
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div style={subtitulo}>Fondo con logo / imagen</div>
+
+            <div style={{ ...fila, marginBottom: logoEsperaUrl ? 12 : 0 }}>
+              <label
+                style={{
+                  ...btnSecundario,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  cursor: "pointer"
+                }}
+              >
+                🖼️ Subir logo
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={async (e) => {
+                    const inputFile = e.target as HTMLInputElement
+                    const file = inputFile.files?.[0]
+                    if (!file) return
+
+                    await subirLogoEspera(file)
+                    inputFile.value = ""
+                  }}
+                />
+              </label>
+
+              {logoEsperaUrl && (
+                <button
+                  style={btnRojo}
+                  onClick={async () => {
+                    const iglesiaId = await getIglesiaId()
+                    if (!iglesiaId) return
+
+                    const { error } = await supabase
+                      .from("iglesias")
+                      .update({
+                        logo_url: null,
+                        logo_nombre: null
+                      })
+                      .eq("id", iglesiaId)
+
+                    if (error) {
+                      console.error("Error quitando logo:", error)
+                      alert("No se pudo quitar el logo guardado")
+                      return
+                    }
+
+                    setLogoEsperaUrl("")
+                    setLogoEsperaNombre("")
+                  }}
+                >
+                  ❌ Quitar
+                </button>
+              )}
+            </div>
+
+            {logoEsperaUrl && (
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 12,
+                  background: "#0f172a",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12
+                }}
+              >
+                <img
+                  src={logoEsperaUrl}
+                  alt="Vista previa logo"
+                  style={{
+                    width: 64,
+                    height: 64,
+                    objectFit: "contain",
+                    borderRadius: 8,
+                    background: "#000",
+                    flexShrink: 0
+                  }}
+                />
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis"
+                    }}
+                  >
+                    {logoEsperaNombre || "Logo cargado"}
+                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.7 }}>
+                    Logo listo para proyectar o agregar a la lista
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={seccion}>
+          <h2 style={titulo}>📖 Palabra</h2>
+          <div style={subtitulo}>
+            Ejemplos: Juan 3:16, 1 Corintios 13:4-7, Salmo 23
+          </div>
+
+          <input
+            list="libros-biblia"
+            placeholder="Escribe una cita bíblica..."
+            value={inputBiblia}
+            onChange={(e) => setInputBiblia(e.target.value)}
+            onKeyDown={async (e) => {
+              if (e.key === "Enter") {
+                if (!inputBiblia.trim()) return
+                await proyectarBiblia(inputBiblia)
+                setInputBiblia("")
+              }
+            }}
+            style={input}
+          />
+
+          <datalist id="libros-biblia">
+            {sugerenciasBiblia.map((item) => (
+              <option key={item} value={item} />
+            ))}
+          </datalist>
+
+          <div style={fila}>
+            <button
+              disabled={!socket}
+              style={btn}
+              onClick={async () => {
+                if (!inputBiblia.trim()) return
+                await proyectarBiblia(inputBiblia)
+                setInputBiblia("")
+              }}
+            >
+              Proyectar
+            </button>
+
+            <button
+              disabled={!socket}
+              style={btnSecundario}
+              onClick={async () => {
+                if (!inputBiblia.trim()) return
+                await agregarBibliaALista(inputBiblia)
+                setInputBiblia("")
+              }}
+            >
+              ➕ Agregar a lista
+            </button>
+          </div>
+        </div>
 
         <div style={seccion}>
           <h2 style={titulo}>💾 Cultos Guardados</h2>
@@ -1981,7 +2891,7 @@ return (
                   style={tituloCardResponsive(isMobile)}
                   title={c.nombre || "Sin nombre"}
                 >
-                  {resumirTexto(c.nombre || "Sin nombre", isMobile ? 24 : 40)}
+                  {resumirTexto(c.nombre || "Sin nombre", 24)}
                 </span>
               </div>
 
@@ -2056,6 +2966,21 @@ return (
               </span>
             )}
           </h2>
+          {mensajeFlash && (
+            <div
+              style={{
+                marginBottom: "10px",
+                padding: "8px 10px",
+                borderRadius: "10px",
+                background: "rgba(34,197,94,0.14)",
+                border: "1px solid rgba(34,197,94,0.30)",
+                fontSize: isMobile ? "12px" : "13px",
+                opacity: 0.95
+              }}
+            >
+              {mensajeFlash}
+            </div>
+          )}
           {lista.length === 0 && (
             <p style={{ opacity: 0.65, margin: 0 }}>
               Aún no hay elementos en la lista. Puedes agregar canciones, palabra, imágenes o estados.
@@ -2063,127 +2988,133 @@ return (
           )}
 
           {lista.map((c, i) => (
-        <div
-          key={i}
-          draggable={!isMobile}
-          onDragStart={() => setDragIndex(i)}
-          onDragOver={(e) => {
-            if (!isMobile) e.preventDefault()
-          }}
-          onDrop={() => {
-            if (!isMobile && dragIndex !== null) {
-              moverItemLista(dragIndex, i)
-            }
-            setDragIndex(null)
-          }}
-          onDragEnd={() => setDragIndex(null)}
-          style={{
-            ...card,
-            background: i === indiceActivoLista ? "rgba(22, 163, 74, 0.92)" : "#243449",
-            border: i === indiceActivoLista
-              ? "1px solid rgba(255,255,255,0.18)"
-              : "1px solid rgba(255,255,255,0.08)"       
-          }}
-        >
-          <div style={{ flex: 1, overflow: "hidden", minWidth: 0,alignSelf: "stretch" }}>
             <div
+              key={i}
+              draggable={!isMobile}
+              onDragStart={() => setDragIndex(i)}
+              onDragOver={(e) => {
+                if (!isMobile) e.preventDefault()
+              }}
+              onDrop={() => {
+                if (!isMobile && dragIndex !== null) {
+                  moverItemLista(dragIndex, i)
+                }
+                setDragIndex(null)
+              }}
+              onDragEnd={() => setDragIndex(null)}
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                minWidth: 0
+                ...card,
+                background: i === indiceActivoLista ? "rgba(22, 163, 74, 0.92)" : "#243449",
+                border:
+                  i === indiceActivoLista
+                    ? "1px solid rgba(255,255,255,0.18)"
+                    : "1px solid rgba(255,255,255,0.08)",
+                opacity: dragIndex === i ? 0.55 : 1
               }}
             >
-              <span style={{ opacity: 0.8, flexShrink: 0 }}>
-                {i + 1}.
-              </span>
+              <div style={textoCardPrincipal}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    minWidth: 0
+                  }}
+                >
+                  <span style={{ opacity: 0.8, flexShrink: 0 }}>
+                    {i + 1}.
+                  </span>
 
-              <span style={{ flexShrink: 0 }}>
-                {iconoItemLista(c)}
-              </span>
+                  <span style={{ flexShrink: 0 }}>
+                    {iconoItemLista(c)}
+                  </span>
 
-              <span
-                style={tituloCardResponsive(isMobile)}
-                title={limpiarTituloLista(c?.titulo || "Sin título")}
-              >
-                {limpiarTituloLista(c?.titulo || "Sin título")}
-              </span>
-            </div>
+                  <span
+                    style={tituloCardResponsive(isMobile)}
+                    title={limpiarTituloLista(c?.titulo || "Sin título")}
+                  >
+                    {limpiarTituloLista(c?.titulo || "Sin título")}
+                  </span>
+                </div>
 
-            {(!isMobile || c?.tipo === "estado" || c?.tipo === "biblia") && (
-              <div
-                style={{
-                  ...subtituloCardResponsive(isMobile),
-                  marginLeft: "30px"
-                }}
-              >
-                {subtituloItemLista(c)}
+                {(!isMobile || c?.tipo === "estado" || c?.tipo === "biblia") && (
+                  <div
+                    style={{
+                      fontSize: isMobile ? "11px" : "12px",
+                      opacity: 0.68,
+                      marginTop: "2px",
+                      marginLeft: "30px"
+                    }}
+                  >
+                    {subtituloItemLista(c)}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <div style={acciones}>
-            {isMobile ? (
-              <>
-                <button
-                  style={btnListaMini}
-                  onClick={() => subirItemLista(i)}
-                  disabled={i === 0}
-                >
-                  ⬆️
-                </button>
+              <div style={acciones}>
+                {isMobile ? (
+                  <>
+                    <button
+                      style={btnListaMini}
+                      onClick={() => subirItemLista(i)}
+                      disabled={i === 0}
+                    >
+                      ⬆️
+                    </button>
 
-                <button
-                  style={btnListaMini}
-                  onClick={() => bajarItemLista(i)}
-                  disabled={i === lista.length - 1}
-                >
-                  ⬇️
-                </button>
+                    <button
+                      style={btnListaMini}
+                      onClick={() => bajarItemLista(i)}
+                      disabled={i === lista.length - 1}
+                    >
+                      ⬇️
+                    </button>
 
-                <button
-                  style={btnListaPlay}
-                  disabled={!socket}
-                  onClick={() => proyectarDesdeLista(i)}
-                >
-                  ▶️
-                </button>
+                    <button
+                      style={btnListaPlay}
+                      disabled={!socket}
+                      onClick={() => proyectarDesdeLista(i)}
+                    >
+                      ▶️
+                    </button>
 
-                <button
-                  disabled={!socket}
-                  style={btnListaDelete}
-                  onClick={() => {
-                    const ok = confirm("¿Eliminar este elemento de la lista?")
-                    if (ok) eliminarDeLista(i)
-                  }}
-                >
-                  ❌
-                </button>
-              </>
-            ) : (
-              <>
-                <button style={btn} disabled={!socket} onClick={() => proyectarDesdeLista(i)}>
-                  ▶️
-                </button>
+                    <button
+                      disabled={!socket}
+                      style={btnListaDelete}
+                      onClick={() => {
+                        const ok = confirm("¿Eliminar este elemento de la lista?")
+                        if (ok) eliminarDeLista(i)
+                      }}
+                    >
+                      ❌
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button style={btn} disabled={!socket} onClick={() => proyectarDesdeLista(i)}>
+                      ▶️
+                    </button>
 
-                <button
-                  disabled={!socket}
-                  style={btnRojo}
-                  onClick={() => {
-                    const ok = confirm("¿Eliminar este elemento de la lista?")
-                    if (ok) eliminarDeLista(i)
-                  }}
-                >
-                  ❌
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      ))}
+                    <button
+                      disabled={!socket}
+                      style={btnRojo}
+                      onClick={() => {
+                        const ok = confirm("¿Eliminar este elemento de la lista?")
+                        if (ok) eliminarDeLista(i)
+                      }}
+                    >
+                      ❌
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
-    </div>
+    </>
+  )}
+</div>
   </div>
 )
 }

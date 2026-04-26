@@ -75,68 +75,164 @@ const esAcorde = (token: string) => {
   return /^(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B)(#|b)?(m|maj|min|sus|dim|aug)?\d*(\/(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B|C|D|E|F|G|A|B)(#|b)?)?$/i.test(token.trim())
 }
 
+const esAcordeOTextoDeAcordes = (linea: string) => {
+  const tokens = linea
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+
+  if (tokens.length === 0) return false
+
+  return tokens.every((token) => {
+    const limpio = token.replace(/[.,;:]+$/g, "")
+    return esAcorde(limpio)
+  })
+}
+
 const transponerLinea = (linea: string, pasos: number) => {
   return linea.replace(/\S+/g, (token) =>
     esAcorde(token) ? transponerAcorde(token, pasos) : token
   )
 }
   // 🎸 PARSER INTELIGENTE (corchetes + formato iglesia)
-  const detectarFormato = (texto: string) => {
-    const lineas = texto.split("\n")
-    const resultado: any[] = []
+const detectarFormato = (texto: string) => {
+  const lineas = texto
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((l) => l.trimEnd())
 
-    for (let i = 0; i < lineas.length; i++) {
-      const actual = lineas[i]
-      const siguiente = lineas[i + 1]
+  const resultado: any[] = []
 
-      // 🟢 FORMATO CORCHETES
-      if (actual.includes("[")) {
-        const acordes: any[] = []
-        let letra = actual.replace(/\[(.*?)\]/g, "")
+  for (let i = 0; i < lineas.length; i++) {
+    const actual = lineas[i] || ""
+    const siguiente = lineas[i + 1] || ""
 
-        const regex = /\[(.*?)\]/g
-        let match
+    if (!actual.trim()) continue
 
-        while ((match = regex.exec(actual)) !== null) {
-          acordes.push({
-            acorde: match[1],
-            pos: match.index
-          })
-        }
+    // 🟢 FORMATO CORCHETES
+    if (actual.includes("[")) {
+      const acordes: any[] = []
+      const letra = actual.replace(/\[(.*?)\]/g, "")
 
-        resultado.push({
-          tipo: "corchete",
-          letra,
-          acordes
-        })
+      const regex = /\[(.*?)\]/g
+      let match
 
-        continue
-      }
-
-      // 🔵 FORMATO IGLESIA (línea arriba)
-       if (
-          actual.trim() &&
-          actual.trim().split(/\s+/).every((t: string) =>
-            t.match(/^(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B)(#|b)?(m|maj|min|sus|dim|aug)?\d*(\/(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B)(#|b)?)?(\(.*?\))?$/i)
-          ) &&
-          siguiente
-        ) {
-        resultado.push({
-          tipo: "linea",
-          acordes: actual,
-          letra: siguiente
-        })
-        i++
-      } else {
-        resultado.push({
-          tipo: "solo",
-          letra: actual
+      while ((match = regex.exec(actual)) !== null) {
+        acordes.push({
+          acorde: match[1],
+          pos: match.index
         })
       }
+
+      resultado.push({
+        tipo: "corchete",
+        letra,
+        acordes
+      })
+      continue
     }
 
-    return resultado
+    // 🔵 FORMATO IGLESIA: línea de acordes arriba + línea de letra abajo
+    if (esAcordeOTextoDeAcordes(actual) && siguiente.trim()) {
+      resultado.push({
+        tipo: "linea",
+        acordes: actual,
+        letra: siguiente
+      })
+      i++
+      continue
+    }
+
+    // ⚪ SOLO TEXTO
+    resultado.push({
+      tipo: "solo",
+      letra: actual
+    })
   }
+
+  return resultado
+}
+
+const normalizarTextoBase = (texto: string) => {
+  return (texto || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/^[0-9]+\.\s*/gm, "")
+    .replace(/[¡!¿?.,;:"“”‘’()]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()
+}
+
+const primeraLineaUtil = (texto: string) => {
+  return (texto || "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)[0] || ""
+}
+
+const extraerBloqueDesdeTextoCompleto = (textoAcordes: string, textoParte: string) => {
+  const lineas = (textoAcordes || "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((l) => l.trimEnd())
+
+  const lineasParte = (textoParte || "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+
+  const primeraLineaParte = lineasParte[0] || ""
+  const clave = normalizarTextoBase(primeraLineaParte)
+
+  if (!clave) return textoAcordes
+
+  let inicio = -1
+
+  for (let i = 0; i < lineas.length; i++) {
+    const actual = normalizarTextoBase(lineas[i])
+    if (actual.includes(clave) || clave.includes(actual)) {
+      inicio = i
+      break
+    }
+  }
+
+  if (inicio === -1) return textoParte
+
+  // incluir línea anterior si era línea de acordes
+  if (inicio > 0 && esAcordeOTextoDeAcordes(lineas[inicio - 1])) {
+    inicio = inicio - 1
+  }
+
+  const totalLineasLetra = lineasParte.length
+
+  let fin = lineas.length
+  let lineasLetraEncontradas = 0
+
+  for (let i = inicio; i < lineas.length; i++) {
+    const actual = lineas[i].trim()
+
+    if (!actual) continue
+
+    if (!esAcordeOTextoDeAcordes(actual)) {
+      lineasLetraEncontradas++
+    }
+
+    if (lineasLetraEncontradas >= totalLineasLetra) {
+      fin = i + 1
+      break
+    }
+  }
+
+  // limpieza final: si al final quedó una línea de puros acordes, quitarla
+  while (fin > inicio && esAcordeOTextoDeAcordes(lineas[fin - 1] || "")) {
+    fin--
+  }
+
+  return lineas.slice(inicio, fin).join("\n").trim()
+}
+ 
 
 const convertirEscala = (acorde: string, aAmericano: boolean) => {
   const mapaLatinoAme: Record<string, string> = {
@@ -181,8 +277,58 @@ const convertirEscala = (acorde: string, aAmericano: boolean) => {
   ) + resto
 }
 
-  const parte = partes[index]
-  const bloque = detectarFormato(parte?.texto || "")
+const parte = partes[index]
+
+const textoLimpio =
+  parte?.texto_letra || parte?.texto || ""
+
+const textoAcordesOriginal = parte?.texto_acordes || ""
+
+const textoAcordesLineas = textoAcordesOriginal
+  .split(/\r?\n/)
+  .map((l: string) => l.trim())
+  .filter(Boolean)
+
+const hayLineasDeAcordes = textoAcordesLineas.some((l: string) =>
+  esAcordeOTextoDeAcordes(l)
+)
+
+const largoTextoLimpio = textoLimpio.trim().length
+const largoTextoAcordes = textoAcordesOriginal.trim().length
+
+const acordesParecenCancionCompleta =
+  !!textoAcordesOriginal &&
+  largoTextoLimpio > 0 &&
+  largoTextoAcordes > largoTextoLimpio * 4
+
+const textoFuente =
+  parte?.tiene_acordes &&
+  !!parte?.texto_acordes &&
+  hayLineasDeAcordes
+    ? acordesParecenCancionCompleta
+      ? extraerBloqueDesdeTextoCompleto(textoAcordesOriginal, textoLimpio)
+      : textoAcordesOriginal
+    : textoLimpio
+
+const bloque = detectarFormato(textoFuente)
+
+const largoVisualParte = textoLimpio.length
+
+const fontSizeLetra =
+  largoVisualParte < 120
+    ? "clamp(42px, 6.2vw, 96px)"
+    : largoVisualParte < 220
+    ? "clamp(34px, 5vw, 76px)"
+    : largoVisualParte < 360
+    ? "clamp(26px, 3.8vw, 58px)"
+    : "clamp(20px, 2.6vw, 42px)"
+
+const fontSizeAcordes =
+  largoVisualParte < 120
+    ? "clamp(22px, 2.8vw, 34px)"
+    : largoVisualParte < 220
+    ? "clamp(18px, 2.2vw, 28px)"
+    : "clamp(13px, 1.2vw, 18px)"
 
 const tonoMostrado = () => {
   if (!tono) return ""
@@ -238,15 +384,16 @@ const tonoMostrado = () => {
     </div>
 
     <div
-      style={{
-        flex: 1,
-        width: "100%",
-        display: "flex",
-        justifyContent: "center",
-        overflow: "auto",
-        padding: "10px 0 90px 0"
-      }}
-    >
+  style={{
+    flex: 1,
+    width: "100%",
+    display: "flex",
+    justifyContent: "center",
+    overflowY: "auto",
+    overflowX: "hidden",
+    padding: "10px 0 90px 0"
+  }}
+>
       <div
         style={{
           width: "100%",
@@ -261,89 +408,94 @@ const tonoMostrado = () => {
             }}
           >
             {linea.tipo === "corchete" && (
-              <>
-                {mostrarAcordes && (
-                  <div
-                    style={{
-                      position: "relative",
-                      minHeight: "28px",
-                      marginBottom: "4px",
-                      fontSize: "clamp(16px, 2vw, 24px)",
-                      color: "#22c55e",
-                      fontWeight: 700,
-                      fontFamily: "monospace"
-                    }}
-                  >
-                    {linea.acordes.map((a: any, j: number) => (
-                      <span
-                        key={j}
-                        style={{
-                          position: "absolute",
-                          left: `${a.pos}ch`,
-                          top: 0,
-                          whiteSpace: "nowrap"
-                        }}
-                      >
-                        {convertirEscala(
-                          transponerAcorde(a.acorde, transposicion),
-                          usarAmericano
-                        )}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
+            <>
+              {mostrarAcordes && (
                 <div
                   style={{
-                    fontSize: "clamp(34px, 4.8vw, 64px)",
-                    lineHeight: 1.25,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word"
+                    position: "relative",
+                    minHeight: "24px",
+                    marginBottom: "4px",
+                    fontSize: fontSizeAcordes,
+                    color: "#22c55e",
+                    fontWeight: 700,
+                    fontFamily: "monospace"
                   }}
                 >
-                  {linea.letra}
+                  {linea.acordes.map((a: any, j: number) => (
+                    <span
+                      key={j}
+                      style={{
+                        position: "absolute",
+                        left: `${a.pos}ch`,
+                        top: 0,
+                        whiteSpace: "nowrap"
+                      }}
+                    >
+                      {convertirEscala(
+                        transponerAcorde(a.acorde, transposicion),
+                        usarAmericano
+                      )}
+                    </span>
+                  ))}
                 </div>
-              </>
-            )}
+              )}
 
-            {linea.tipo === "linea" && (
-              <>
-                {mostrarAcordes && (
-                  <div
-                    style={{
-                      color: "#22c55e",
-                      fontWeight: 700,
-                      fontSize: "clamp(16px, 2vw, 24px)",
-                      marginBottom: "6px",
-                      whiteSpace: "pre",
-                      fontFamily: "monospace",
-                      lineHeight: 1.3
-                    }}
-                  >
-                    {transponerLinea(linea.acordes, transposicion)}
-                  </div>
-                )}
+    <div
+      style={{
+        fontSize: fontSizeLetra,
+        lineHeight: 1.1,
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+        overflowWrap: "anywhere"
+      }}
+    >
+      {linea.letra}
+    </div>
+  </>
+)}
 
-                <div
-                  style={{
-                    fontSize: "clamp(34px, 4.8vw, 64px)",
-                    lineHeight: 1.25,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word"
-                  }}
-                >
-                  {linea.letra}
-                </div>
-              </>
-            )}
+{linea.tipo === "linea" && (
+  <>
+    {mostrarAcordes && (
+      <div
+        style={{
+          color: "#22c55e",
+          fontWeight: 700,
+          fontSize: fontSizeAcordes,
+          marginBottom: "8px",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          overflowWrap: "anywhere",
+          fontFamily: "monospace",
+          lineHeight: 1.25
+        }}
+      >
+        {transponerLinea(linea.acordes, transposicion)}
+      </div>
+    )}
+
+    <div
+      style={{
+        fontSize: fontSizeLetra,
+        lineHeight: 1.1,
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+        overflowWrap: "anywhere"
+      }}
+    >
+      {linea.letra}
+    </div>
+  </>
+)}
 
             {linea.tipo === "solo" && (
               <div
                 style={{
-                  fontSize: "clamp(34px, 4.8vw, 64px)",
-                  lineHeight: 1.25,
+                  fontSize: fontSizeLetra,
+                  lineHeight: 1.1,
                   whiteSpace: "pre-wrap",
-                  wordBreak: "break-word"
+                  wordBreak: "break-word",
+                  overflowWrap: "anywhere"
                 }}
               >
                 {linea.letra}
@@ -381,7 +533,7 @@ const tonoMostrado = () => {
           borderRadius: "6px"
         }}
       >
-        {usarAmericano ? "Escala: Americana" : "Escala: Latina"}
+        {usarAmericano ? "Escala activa: Americana" : "Escala activa: Latina"}
       </button>
     </div>
 

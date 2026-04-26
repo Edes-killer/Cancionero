@@ -3,13 +3,22 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { useEffect, useState } from "react"
 
 export default function Navbar() {
   const pathname = usePathname()
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    checkMobile()
+    window.addEventListener("resize", checkMobile)
+    return () => window.removeEventListener("resize", checkMobile)
+  }, [])
 
   if (pathname === "/proyectar" || pathname === "/musicos") {
-  return null
-}
+    return null
+  }
 
   const cerrarSesion = async () => {
     await supabase.auth.signOut()
@@ -21,34 +30,41 @@ export default function Navbar() {
       style={{
         background: "#000",
         color: "white",
-        padding: "8px 10px",
+        padding: isMobile ? "8px 10px" : "10px 14px",
         display: "flex",
-        gap: "10px",
         alignItems: "center",
-        flexWrap: "wrap",
-        fontSize: "14px",
-        overflowX: "auto"
+        justifyContent: "space-between",
+        gap: "12px"
       }}
     >
-      <Link href="/" style={linkStyle}>Inicio</Link>
-      <Link href="/canciones" style={linkStyle}>Canciones</Link>
-      <Link href="/control" style={linkStyle}>Control</Link>
-      <Link href="/proyectar" style={linkStyle}>Proyectar</Link>
-      <Link href="/musicos" style={linkStyle}>Músicos</Link>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: isMobile ? "10px" : "16px",
+          alignItems: "center"
+        }}
+      >
+        <Link href="/" style={linkStyle}>Inicio</Link>
+        <Link href="/canciones" style={linkStyle}>Canciones</Link>
+        <Link href="/control" style={linkStyle}>Control</Link>
+      </div>
 
       <button
         onClick={cerrarSesion}
         style={{
-          marginLeft: "auto",
           background: "#dc2626",
           color: "white",
           border: "none",
           borderRadius: "8px",
-          padding: "8px 10px",
-          fontSize: "13px"
+          padding: isMobile ? "6px 10px" : "7px 11px",
+          fontSize: isMobile ? "12px" : "13px",
+          fontWeight: 600,
+          cursor: "pointer",
+          flexShrink: 0
         }}
       >
-        Cerrar sesión
+        Salir
       </button>
     </nav>
   )

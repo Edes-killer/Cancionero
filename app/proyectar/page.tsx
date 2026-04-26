@@ -278,8 +278,9 @@ const limpiarCancionParaProyector = (texto: string) => {
     biblia?.paginas?.[paginaBiblia] || biblia?.texto || ""
   )
 
-  const textoCancionActual = limpiarCancionParaProyector(parteActual?.texto || "")
-
+  const textoCancionActual = limpiarCancionParaProyector(
+  parteActual?.texto_letra || parteActual?.texto || ""
+)
   const etiquetaParteActual = (() => {
     if (!parteActual?.tipo) return ""
 
@@ -538,14 +539,22 @@ const limpiarCancionParaProyector = (texto: string) => {
                 maxHeight: "72vh",
                 overflow: "hidden",
                 fontSize:
-                  textoCancionActual.length > 500
-                    ? "clamp(22px, 2.5vw, 40px)"
-                    : textoCancionActual.length > 250
-                    ? "clamp(28px, 3.4vw, 56px)"
-                    : "clamp(40px, 5vw, 90px)",
-                lineHeight: 1.25,
+                  textoCancionActual.length > 1000
+                    ? "clamp(12px, 1.2vw, 20px)"
+                    : textoCancionActual.length > 800
+                    ? "clamp(14px, 1.4vw, 24px)"
+                    : textoCancionActual.length > 600
+                    ? "clamp(16px, 1.8vw, 28px)"
+                    : textoCancionActual.length > 420
+                    ? "clamp(20px, 2.2vw, 34px)"
+                    : textoCancionActual.length > 260
+                    ? "clamp(24px, 2.8vw, 42px)"
+                    : "clamp(34px, 4vw, 72px)",
+                lineHeight: 1.08,
                 wordBreak: "break-word",
-                whiteSpace: "normal"
+                overflowWrap: "anywhere",
+                whiteSpace: "pre-line",
+                textAlign: "center"
               }}
             >
               {textoCancionActual}
@@ -601,9 +610,18 @@ const limpiarCancionParaProyector = (texto: string) => {
       >
         <div
           style={{
-            fontSize: "clamp(42px, 5vw, 90px)",
+            fontSize:
+              (estadoEspecial.titulo || "").length > 180
+                ? "clamp(20px, 2.2vw, 34px)"
+                : (estadoEspecial.titulo || "").length > 90
+                ? "clamp(28px, 3vw, 50px)"
+                : "clamp(42px, 5vw, 90px)",
             fontWeight: 700,
-            lineHeight: 1.2
+            lineHeight: 1.15,
+            wordBreak: "break-word",
+            overflowWrap: "anywhere",
+            whiteSpace: "pre-line",
+            maxWidth: "92vw"
           }}
         >
           {estadoEspecial.titulo}
