@@ -97,14 +97,6 @@ useEffect(() => {
 }, [])
 
 useEffect(() => {
-  const intervalo = setInterval(() => {
-    cargarCanciones()
-  }, 3000)
-
-  return () => clearInterval(intervalo)
-}, [])
-
-useEffect(() => {
   if (!socket) {
   console.log("❌ SOCKET NO LISTO")
   return
@@ -1367,6 +1359,7 @@ const subtituloCancionVisible = (c: any) => {
   return partes.join(" • ")
 }
 
+
 const sugerenciasBiblia = [
   "Génesis 1",
   "Éxodo 20",
@@ -1395,6 +1388,13 @@ const sugerenciasBiblia = [
   "Apocalipsis 21"
 ]
 
+
+function normalizar(texto: string) {
+  return texto
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+}
 
 const container: CSSProperties = {
   minHeight: "100vh",
@@ -1540,7 +1540,7 @@ const fila: CSSProperties = {
 const gridDesktop: CSSProperties = {
   display: "grid",
   gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1fr",
-  gap: "16px",
+  gap: isMobile ? "16px" : "28px",
   alignItems: "start",
   width: "100%",
   boxSizing: "border-box"
@@ -1551,6 +1551,16 @@ const columna: CSSProperties = {
   flexDirection: "column",
   gap: "16px"
 }
+
+const columnaLista: CSSProperties = {
+ display: "flex",
+  flexDirection: "column",
+  gap: "16px",
+  height: "100%",
+  minHeight: 0
+}
+
+
 
 const btnListaMini: CSSProperties = {
   width: "42px",
@@ -1611,6 +1621,49 @@ const subtituloCardResponsive = (isMobile: boolean): CSSProperties => ({
 })
 
 return (
+<>
+      
+<style>{`
+#scroll-canciones::-webkit-scrollbar {
+  width: 10px;
+}
+
+#scroll-canciones::-webkit-scrollbar-track {
+  background: rgba(255,255,255,0.05);
+  border-radius: 999px;
+}
+
+#scroll-canciones::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #3b82f6, #2563eb);
+  border-radius: 999px;
+}
+
+#scroll-canciones::-webkit-scrollbar-thumb:hover {
+  background: #60a5fa;
+}
+`}</style>
+
+<style>{`
+#scroll-lista::-webkit-scrollbar {
+  width: 10px;
+}
+
+#scroll-lista::-webkit-scrollbar-track {
+  background: rgba(255,255,255,0.05);
+  border-radius: 999px;
+}
+
+#scroll-lista::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #3b82f6, #2563eb);
+  border-radius: 999px;
+}
+
+#scroll-lista::-webkit-scrollbar-thumb:hover {
+  background: #60a5fa;
+}
+
+`}</style>
+
   <div style={container}>
     <div style={topbar}>
       <div>
@@ -1718,14 +1771,7 @@ return (
     <div style={gridDesktop}>
   {isMobile ? (
   <div style={columna}>
-    <div
-      style={{
-        ...seccion,
-        boxShadow: flashListaCulto
-          ? "0 0 0 2px rgba(34,197,94,0.55), 0 10px 25px rgba(0,0,0,0.22)"
-          : seccion.boxShadow
-      }}
-    >
+    <div id="scroll-lista" style={seccion}>
       <h2
         style={{
           ...titulo,
@@ -1958,22 +2004,35 @@ return (
             ))}
           </select>
           
-  <div
-    style={{
-      maxHeight: isMobile ? "420px" : "560px",
-      overflowY: "auto",
-      paddingRight: "4px",
-      marginTop: "6px"
-    }}
-  >
+ <div
+  id={!isMobile ? "scroll-canciones" : undefined}
+  style={
+    isMobile
+      ? {
+          marginTop: "6px",
+          paddingRight: "0px"
+        }
+      : {
+          height: "620px",
+          maxHeight: "620px",
+          minHeight: 0,
+          overflowY: "auto",
+          overflowX: "hidden",
+          paddingRight: "6px",
+          marginTop: "6px",
+          boxSizing: "border-box",
+          overscrollBehavior: "contain"
+        }
+  }
+>
     {canciones
       .filter((c) => {
-        const q = busqueda.toLowerCase().trim()
+        const q = normalizar(busqueda || "").trim()
         if (!q) return true
 
-        const titulo = (c.titulo || "").toLowerCase()
-        const categoria = (c.categoria || "").toLowerCase()
-        const tono = (c.tono || "").toLowerCase()
+        const titulo = normalizar(c.titulo || "")
+        const categoria = normalizar(c.categoria || "")
+        const tono = normalizar(c.tono || "")
         const numero = String(c.numero || "")
 
         return (
@@ -2393,7 +2452,9 @@ return (
         </>
       )}
     </div>
+    {/* aca empieza movil */}
   </div>
+
 ) : (
     <>
       <div style={columna}>
@@ -2446,21 +2507,28 @@ return (
             ))}
           </select>
           <div
+            id="scroll-canciones"
             style={{
+              height: "620px",
               maxHeight: "620px",
+              minHeight: 0,
               overflowY: "auto",
-              paddingRight: "6px",
-              marginTop: "6px"
+              overflowX: "hidden",
+              scrollbarGutter: "stable",
+              paddingRight: "10px",
+              marginTop: "6px",
+              boxSizing: "border-box",
+              overscrollBehavior: "contain"
             }}
           >
             {canciones
               .filter((c) => {
-                const q = busqueda.toLowerCase().trim()
+                const q = normalizar(busqueda || "").trim()
                 if (!q) return true
 
-                const titulo = (c.titulo || "").toLowerCase()
-                const categoria = (c.categoria || "").toLowerCase()
-                const tono = (c.tono || "").toLowerCase()
+                const titulo = normalizar(c.titulo || "")
+                const categoria = normalizar(c.categoria || "")
+                const tono = normalizar(c.tono || "")
                 const numero = String(c.numero || "")
 
                 return (
@@ -2948,8 +3016,29 @@ return (
         </div>
       </div>
 
-      <div style={columna}>
-        <div style={seccion}>
+      <div
+        style={{
+          ...columna,
+          alignSelf: "start",
+          position: "sticky",
+          top: "110px",
+          borderLeft: "1px solid rgba(255,255,255,0.08)",
+          paddingLeft: "18px",
+          minWidth: 0
+        }}
+      >
+        <div
+          id="scroll-lista"
+          style={{
+            ...seccion,
+            maxHeight: "calc(100vh - 140px)",
+            overflowY: "auto",
+            overflowX: "hidden",
+            paddingRight: "10px",
+            scrollbarGutter: "stable",
+            overscrollBehavior: "contain"
+          }}
+        >
           <h2
             style={{
               ...titulo,
@@ -3116,6 +3205,7 @@ return (
   )}
 </div>
   </div>
+  </>
 )
 }
 

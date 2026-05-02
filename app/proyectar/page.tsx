@@ -20,7 +20,6 @@ export default function ProyectarPage() {
 const [overlayVisible, setOverlayVisible] = useState(false)
 const [overlayFadingOut, setOverlayFadingOut] = useState(false)
 const overlayTimeoutRef = useRef<any>(null)
-  
 
   useEffect(() => {
     const check = async () => {
@@ -92,68 +91,121 @@ const ejecutarConTransicion = (accion: () => void) => {
   })
 }
 
-  useEffect(() => {
-  const s = io("http://" + window.location.hostname + ":4000")
+ useEffect(() => {
+  const s = io("http://" + window.location.hostname + ":4000", {
+  reconnection: true,
+  reconnectionAttempts: 10,
+  reconnectionDelay: 1000
+})
+  // 🔥 PEDIR ESTADO AL ABRIR
+  s.emit("get-estado")
 
+  // 🔥 RECIBIR ESTADO INICIAL
+  s.on("estado-actual", (estado: any) => {
+    console.log("📺 estado recibido:", estado)
+
+    if (estado.tipo === "cancion") {
+      ejecutarConTransicion(() => {
+        const data = estado.data
+
+        setEstadoEspecial(null)
+        setBiblia(null)
+        setImagen(null)
+        setPartes(data.partes || [])
+        setIndex(data.index || 0)
+        setTitulo(data.titulo || "")
+        setTono(data.tono || "")
+        setIglesia(data.iglesia || "")
+        setPaginaBiblia(0)
+      })
+    }
+
+    if (estado.tipo === "imagen") {
+      ejecutarConTransicion(() => {
+        const data = estado.data
+
+        limpiarPantalla()
+        if (data?.url) {
+          precargarImagen(data.url)
+        }
+        setImagen(data.url)
+        setIglesia(data.iglesia || "")
+      })
+    }
+
+    if (estado.tipo === "biblia") {
+      ejecutarConTransicion(() => {
+        const data = estado.data
+
+        limpiarPantalla()
+        setBiblia(data)
+        setIglesia(data.iglesia || "")
+        setPaginaBiblia(data.pagina || 0)
+      })
+    }
+  })
+
+  // 🔥 TUS EVENTOS EXISTENTES (SE DEJAN TAL CUAL)
   s.on("cargar-cancion", (data: any) => {
-  ejecutarConTransicion(() => {
-    setEstadoEspecial(null)
-    setBiblia(null)
-    setImagen(null)
-    setPartes(data.partes || [])
-    setIndex(data.index || 0)
-    setTitulo(data.titulo || "")
-    setTono(data.tono || "")
-    setIglesia(data.iglesia || "")
-    setPaginaBiblia(0)
+    ejecutarConTransicion(() => {
+      setEstadoEspecial(null)
+      setBiblia(null)
+      setImagen(null)
+      setPartes(data.partes || [])
+      setIndex(data.index || 0)
+      setTitulo(data.titulo || "")
+      setTono(data.tono || "")
+      setIglesia(data.iglesia || "")
+      setPaginaBiblia(0)
+    })
   })
-})
-
-  s.on("cambiar-parte", (i: number) => {
-  ejecutarConTransicion(() => {
-    setEstadoEspecial(null)
-    setIndex(i)
-  })
-})
-
-  s.on("mostrar-biblia", (data: any) => {
-  ejecutarConTransicion(() => {
-    limpiarPantalla()
-    setBiblia(data)
-    setIglesia(data.iglesia || "")
-    setPaginaBiblia(data.pagina || 0)
-  })
-})
-
-  s.on("cambiar-pagina-biblia", (pagina: number) => {
-  ejecutarConTransicion(() => {
-    setEstadoEspecial(null)
-    setPaginaBiblia(pagina)
-  })
-})
 
   s.on("mostrar-imagen", (data: any) => {
-  ejecutarConTransicion(() => {
-    limpiarPantalla()
-    if (data?.url) {
-      precargarImagen(data.url)
-    }
-    setImagen(data.url)
-    setIglesia(data.iglesia || "")
+    ejecutarConTransicion(() => {
+      limpiarPantalla()
+      if (data?.url) {
+        precargarImagen(data.url)
+      }
+      setImagen(data.url)
+      setIglesia(data.iglesia || "")
+    })
   })
-})
+
+  s.on("mostrar-biblia", (data: any) => {
+    ejecutarConTransicion(() => {
+      limpiarPantalla()
+      setBiblia(data)
+      setIglesia(data.iglesia || "")
+      setPaginaBiblia(data.pagina || 0)
+    })
+  })
+
+  s.on("cambiar-parte", (i: number) => {
+    ejecutarConTransicion(() => {
+      setEstadoEspecial(null)
+      setIndex(i)
+    })
+  })
+
+  s.on("cambiar-pagina-biblia", (pagina: number) => {
+    ejecutarConTransicion(() => {
+      setEstadoEspecial(null)
+      setPaginaBiblia(pagina)
+    })
+  })
+
   s.on("precargar-imagenes", (urls: string[]) => {
     ;(urls || []).forEach((url) => {
       if (url) precargarImagen(url)
     })
   })
 
-s.on("mostrar-estado", (data: any) => {
-  ejecutarConTransicion(() => {
-    limpiarPantalla()
-    setEstadoEspecial(data)
+  s.on("mostrar-estado", (data: any) => {
+    ejecutarConTransicion(() => {
+      limpiarPantalla()
+      setEstadoEspecial(data)
+    })
   })
-})
 
   setSocket(s)
 
