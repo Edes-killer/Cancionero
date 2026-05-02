@@ -313,22 +313,29 @@ const textoFuente =
 const bloque = detectarFormato(textoFuente)
 
 const largoVisualParte = textoLimpio.length
-
+const totalLineasParte = textoLimpio
+  .split(/\r?\n/)
+  .map((l: string) => l.trim())
+  .filter(Boolean).length
 const fontSizeLetra =
-  largoVisualParte < 120
-    ? "clamp(42px, 6.2vw, 96px)"
-    : largoVisualParte < 220
-    ? "clamp(34px, 5vw, 76px)"
-    : largoVisualParte < 360
-    ? "clamp(26px, 3.8vw, 58px)"
-    : "clamp(20px, 2.6vw, 42px)"
+  largoVisualParte < 90 && totalLineasParte <= 3
+    ? "clamp(42px, 5.4vw, 82px)"
+    : largoVisualParte < 160 && totalLineasParte <= 4
+    ? "clamp(34px, 4.5vw, 64px)"
+    : largoVisualParte < 260 && totalLineasParte <= 5
+    ? "clamp(26px, 3.3vw, 48px)"
+    : largoVisualParte < 420
+    ? "clamp(20px, 2.5vw, 36px)"
+    : "clamp(16px, 1.8vw, 28px)"
 
 const fontSizeAcordes =
-  largoVisualParte < 120
-    ? "clamp(22px, 2.8vw, 34px)"
-    : largoVisualParte < 220
-    ? "clamp(18px, 2.2vw, 28px)"
-    : "clamp(13px, 1.2vw, 18px)"
+  largoVisualParte < 90 && totalLineasParte <= 3
+    ? "clamp(18px, 2.1vw, 28px)"
+    : largoVisualParte < 160 && totalLineasParte <= 4
+    ? "clamp(16px, 1.8vw, 24px)"
+    : largoVisualParte < 260 && totalLineasParte <= 5
+    ? "clamp(14px, 1.5vw, 20px)"
+    : "clamp(11px, 1vw, 16px)"
 
 const tonoMostrado = () => {
   if (!tono) return ""
@@ -343,18 +350,18 @@ const tonoMostrado = () => {
 
   return (
   <div
-    style={{
-      width: "100vw",
-      height: "100vh",
-      background: "#000",
-      color: "white",
-      display: "flex",
-      flexDirection: "column",
-      overflow: "hidden",
-      padding: "24px 32px",
-      boxSizing: "border-box"
-    }}
-  >
+  style={{
+    width: "100vw",
+    height: "100vh",
+    background: "#000",
+    color: "white",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    padding: "16px 14px",
+    boxSizing: "border-box"
+  }}
+>
     <div
       style={{
         textAlign: "center",
@@ -364,7 +371,7 @@ const tonoMostrado = () => {
     >
       <h1
         style={{
-          fontSize: "clamp(26px, 3vw, 42px)",
+          fontSize: "clamp(20px, 2.2vw, 32px)",
           margin: 0,
           fontWeight: 700
         }}
@@ -374,9 +381,9 @@ const tonoMostrado = () => {
 
       <div
         style={{
-          fontSize: "clamp(14px, 1.4vw, 20px)",
+          fontSize: "clamp(12px, 1vw, 16px)",
           opacity: 0.75,
-          marginTop: "8px"
+          marginTop: "4px"
         }}
       >
         {tono && `Tono: ${tonoMostrado()}`}
@@ -389,31 +396,36 @@ const tonoMostrado = () => {
     width: "100%",
     display: "flex",
     justifyContent: "center",
+    alignItems: "center",
     overflowY: "auto",
     overflowX: "hidden",
-    padding: "10px 0 90px 0"
+    padding: "6px 0 84px 0"
   }}
 >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: "1100px"
-        }}
-      >
+  <div
+    style={{
+      width: "96vw",
+      maxWidth: "1500px",
+      minHeight: "calc(100vh - 180px)",
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "center"
+    }}
+  >
         {bloque.map((linea, i) => (
           <div
-            key={i}
-            style={{
-              marginBottom: "22px"
-            }}
-          >
+  key={i}
+  style={{
+    marginBottom: totalLineasParte <= 4 ? "8px" : "12px"
+  }}
+>
             {linea.tipo === "corchete" && (
             <>
               {mostrarAcordes && (
                 <div
                   style={{
                     position: "relative",
-                    minHeight: "24px",
+                    minHeight: totalLineasParte <= 4 ? "30px" : "24px",
                     marginBottom: "4px",
                     fontSize: fontSizeAcordes,
                     color: "#22c55e",
@@ -443,7 +455,7 @@ const tonoMostrado = () => {
     <div
       style={{
         fontSize: fontSizeLetra,
-        lineHeight: 1.1,
+        lineHeight: totalLineasParte <= 4 ? 0.96 : 1.02,
         whiteSpace: "pre-wrap",
         wordBreak: "break-word",
         overflowWrap: "anywhere"
@@ -477,7 +489,7 @@ const tonoMostrado = () => {
     <div
       style={{
         fontSize: fontSizeLetra,
-        lineHeight: 1.1,
+        lineHeight: totalLineasParte <= 4 ? 0.96 : 1.02,
         whiteSpace: "pre-wrap",
         wordBreak: "break-word",
         overflowWrap: "anywhere"
@@ -492,7 +504,7 @@ const tonoMostrado = () => {
               <div
                 style={{
                   fontSize: fontSizeLetra,
-                  lineHeight: 1.1,
+                  lineHeight: totalLineasParte <= 4 ? 0.96 : 1.02,
                   whiteSpace: "pre-wrap",
                   wordBreak: "break-word",
                   overflowWrap: "anywhere"
