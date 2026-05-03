@@ -93,12 +93,16 @@ const ejecutarConTransicion = (accion: () => void) => {
 
  useEffect(() => {
   const s = io("http://" + window.location.hostname + ":4000", {
-  reconnection: true,
-  reconnectionAttempts: 10,
-  reconnectionDelay: 1000
+    reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 1000
+  })
+  s.on("connect", () => {
+  console.log("🟢 proyector conectado")
+  s.emit("get-estado")
 })
   // 🔥 PEDIR ESTADO AL ABRIR
-  s.emit("get-estado")
+  // s.emit("get-estado")
 
   // 🔥 RECIBIR ESTADO INICIAL
   s.on("estado-actual", (estado: any) => {
@@ -143,8 +147,16 @@ const ejecutarConTransicion = (accion: () => void) => {
         setPaginaBiblia(data.pagina || 0)
       })
     }
-  })
 
+    if (estado.tipo === "estado") {
+    const data = estado.data
+
+    ejecutarConTransicion(() => {
+      limpiarPantalla()
+      setEstadoEspecial(data)
+    })
+  }
+  })
   // 🔥 TUS EVENTOS EXISTENTES (SE DEJAN TAL CUAL)
   s.on("cargar-cancion", (data: any) => {
     ejecutarConTransicion(() => {

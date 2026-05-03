@@ -13,6 +13,8 @@ export default function MusicosPage() {
   const [mostrarAcordes, setMostrarAcordes] = useState(true)
   const [usarAmericano, setUsarAmericano] = useState(false)
 
+ const [esMovil, setEsMovil] = useState(false)
+
   const notasLatinas = [
   "Do", "Do#", "Re", "Re#", "Mi", "Fa",
   "Fa#", "Sol", "Sol#", "La", "La#", "Si"
