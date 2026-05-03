@@ -29,14 +29,17 @@ io.on("connection", (socket) => {
 
   estadoActual = {
     tipo: "cancion",
-    data
+    data: {
+      ...data,
+      index: data.index || 0
+    }
   }
-  fs.writeFileSync("estado.json", JSON.stringify(estadoActual))
+
   io.emit("cargar-cancion", data)
 })
 
   socket.on("cambiar-parte", (index) => {
-  console.log("➡️ parte:", index)
+  console.log("➡️ cambiar parte:", index)
 
   if (estadoActual && estadoActual.tipo === "cancion") {
     estadoActual.data.index = index
@@ -51,24 +54,29 @@ io.on("connection", (socket) => {
 })
 
   socket.on("mostrar-imagen", (data) => {
-    console.log("🖼️ imagen recibida:", data)
-    estadoActual = {
-      tipo: "imagen",
-      data
-    }
-    fs.writeFileSync("estado.json", JSON.stringify(estadoActual))
-    io.emit("mostrar-imagen", data)
-  })
+  console.log("🖼️ imagen recibida:", data)
+
+  estadoActual = {
+    tipo: "imagen",
+    data
+  }
+
+  io.emit("mostrar-imagen", data)
+})
 
   socket.on("mostrar-biblia", (data) => {
-    console.log("📖 Biblia recibida:", data)
-    estadoActual = {
-      tipo: "biblia",
-      data
+  console.log("📖 Biblia recibida:", data)
+
+  estadoActual = {
+    tipo: "biblia",
+    data: {
+      ...data,
+      pagina: data.pagina || 0
     }
-    fs.writeFileSync("estado.json", JSON.stringify(estadoActual))
-    io.emit("mostrar-biblia", data)
-  })
+  }
+
+  io.emit("mostrar-biblia", data)
+})
 
   socket.on("control-siguiente", () => {
     console.log("➡️ control siguiente")
@@ -81,9 +89,14 @@ io.on("connection", (socket) => {
   })
 
   socket.on("cambiar-pagina-biblia", (pagina) => {
-    console.log("📖 cambiar página biblia:", pagina)
-    io.emit("cambiar-pagina-biblia", pagina)
-  })
+  console.log("📖 cambiar página biblia:", pagina)
+
+  if (estadoActual && estadoActual.tipo === "biblia") {
+    estadoActual.data.pagina = pagina
+  }
+
+  io.emit("cambiar-pagina-biblia", pagina)
+})
 
   socket.on("disconnect", () => {
     console.log("❌ Cliente desconectado:", socket.id)
@@ -94,11 +107,24 @@ io.on("connection", (socket) => {
   })
 
   socket.on("mostrar-estado", (data) => {
+  console.log("🟡 estado especial recibido:", data)
+
+  estadoActual = {
+    tipo: "estado",
+    data
+  }
+
   io.emit("mostrar-estado", data)
 })
+
   socket.on("get-estado", () => {
+  console.log("📡 cliente pidió estado actual")
+
   if (estadoActual) {
+    console.log("📤 enviando estado actual:", estadoActual.tipo)
     socket.emit("estado-actual", estadoActual)
+  } else {
+    console.log("⚪ no hay estado actual guardado")
   }
 })
 })

@@ -48,7 +48,10 @@ export default function ControlPage() {
   const [mensajeFlash, setMensajeFlash] = useState("")
   const [flashListaCulto, setFlashListaCulto] = useState(false)
   const [idsCancionesConAcordes, setIdsCancionesConAcordes] = useState<string[]>([])
-
+  const itemListaRefs = useRef<(HTMLDivElement | null)[]>([])
+  const indicePendienteScrollRef = useRef<number | null>(null)
+  const [indiceItemAgregado, setIndiceItemAgregado] = useState<number | null>(null)
+  const cancionRefs = useRef<Record<string, HTMLDivElement | null>>({})
  useEffect(() => {
   const check = async () => {
     const { data } = await supabase.auth.getUser()
@@ -138,7 +141,18 @@ useEffect(() => {
 }, [])
 
 useEffect(() => {
-  setIsMobile(window.innerWidth < 768)
+  const actualizarPantalla = () => {
+    setIsMobile(window.innerWidth < 768)
+    setPantallaDetectada(true)
+  }
+
+  actualizarPantalla()
+
+  window.addEventListener("resize", actualizarPantalla)
+
+  return () => {
+    window.removeEventListener("resize", actualizarPantalla)
+  }
 }, [])
 
 useEffect(() => {
@@ -147,7 +161,21 @@ useEffect(() => {
 }, [socket, lista])
 
 
-const [isMobile, setIsMobile] = useState(true)
+useEffect(() => {
+  if (indiceActivoLista === null || indiceActivoLista === undefined) return
+
+  const el = itemListaRefs.current[indiceActivoLista]
+
+  if (!el) return
+
+  el.scrollIntoView({
+    behavior: "smooth",
+    block: "center"
+  })
+}, [indiceActivoLista])
+
+const [isMobile, setIsMobile] = useState(false)
+const [pantallaDetectada, setPantallaDetectada] = useState(false)
 const [mostrarCanciones, setMostrarCanciones] = useState(true)
 const [mostrarAcciones, setMostrarAcciones] = useState(false)
 const [mostrarPalabra, setMostrarPalabra] = useState(false)
@@ -233,6 +261,9 @@ const proyectar = async (id: string) => {
   }
 
   setActivaId(id)
+  requestAnimationFrame(() => {
+    centrarCancionEnLista(id)
+  })
   setIndiceLista(null)
   setIndiceActivoLista(null)
   limpiarModoBiblia()
@@ -401,16 +432,14 @@ const agregarALista = (cancion: any) => {
     return
   }
 
-  setLista(prev => [
-    ...prev,
-    {
-      tipo: "cancion",
-      id: cancion.id,
-      titulo: cancion.titulo
-    }
-  ])
-
-  mostrarFeedbackLista(`✅ Agregada: ${cancion.titulo}`)
+  agregarItemAListaConFeedback(
+  {
+    tipo: "cancion",
+    id: cancion.id,
+    titulo: cancion.titulo
+  },
+  `✅ Agregada: ${cancion.titulo}`
+)
 }
 
 const mostrarFeedbackLista = (mensaje: string) => {
@@ -1160,16 +1189,16 @@ const agregarBibliaALista = async (ref: string) => {
   try {
     const data = await buscarVersiculo(ref)
 
-    setLista(prev => [
-      ...prev,
-      {
-        tipo: "biblia",
-        referencia: data.referencia,
-        texto: data.texto,
-        paginas: data.paginas || [data.texto],
-        titulo: `📖 ${data.referencia}`
-      }
-    ])
+    agregarItemAListaConFeedback(
+    {
+      tipo: "biblia",
+      referencia: data.referencia,
+      texto: data.texto,
+      paginas: data.paginas || [data.texto],
+      titulo: `📖 ${data.referencia}`
+    },
+    `✅ Palabra agregada: ${data.referencia}`
+  )
   } catch (error: any) {
     alert(error.message || "No se pudo agregar la cita")
   }
@@ -1247,38 +1276,38 @@ const proyectarPantallaEspera = () => {
 }
 
 const agregarNegroALista = () => {
-  setLista(prev => [
-    ...prev,
+  agregarItemAListaConFeedback(
     {
       tipo: "estado",
       modo: "negro",
       titulo: "Pantalla negra"
-    }
-  ])
+    },
+    "✅ Pantalla negra agregada"
+  )
 }
 
 const agregarEsperaALista = () => {
-  setLista(prev => [
-    ...prev,
+  agregarItemAListaConFeedback(
     {
       tipo: "estado",
       modo: "espera",
       titulo: "Pantalla de espera",
       subtitulo: nombreIglesia || ""
-    }
-  ])
+    },
+    "✅ Pantalla de espera agregada"
+  )
 }
 
 const agregarMensajeALista = () => {
-  setLista(prev => [
-    ...prev,
+  agregarItemAListaConFeedback(
     {
       tipo: "estado",
       modo: "mensaje",
       titulo: mensajeRapido || "Mensaje rápido",
       subtitulo: nombreIglesia || ""
-    }
-  ])
+    },
+    "✅ Mensaje agregado"
+  )
 }
 
 const agregarLogoALista = () => {
@@ -1287,17 +1316,17 @@ const agregarLogoALista = () => {
     return
   }
 
-  setLista(prev => [
-    ...prev,
-    {
-      tipo: "estado",
-      modo: "logo",
-      titulo: logoEsperaNombre || "Logo de espera",
-      subtitulo: nombreIglesia || "",
-      url: logoEsperaUrl,
-      nombre: logoEsperaNombre || "Logo"
-    }
-  ])
+  agregarItemAListaConFeedback(
+  {
+    tipo: "estado",
+    modo: "logo",
+    titulo: logoEsperaNombre || "Logo de espera",
+    subtitulo: nombreIglesia || "",
+    url: logoEsperaUrl,
+    nombre: logoEsperaNombre || "Logo"
+  },
+  "✅ Logo agregado"
+)
 }
 
 const limpiarTituloLista = (titulo?: string) => {
@@ -1394,6 +1423,179 @@ function normalizar(texto: string) {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+}
+
+
+const cancionesFiltradas = useMemo(() => {
+  const q = normalizar(busqueda || "").trim()
+
+  return [...canciones]
+    .filter((c) => {
+      if (!q) return true
+
+      const titulo = normalizar(c.titulo || "")
+      const categoria = normalizar(c.categoria || "")
+      const tono = normalizar(c.tono || "")
+      const numero = String(c.numero || "")
+
+      return (
+        titulo.includes(q) ||
+        categoria.includes(q) ||
+        tono.includes(q) ||
+        numero.includes(q)
+      )
+    })
+    .filter((c) => !filtroTono || c.tono === filtroTono)
+    .filter((c) => !filtroCategoria || c.categoria === filtroCategoria)
+    .sort((a, b) => {
+      const na = a.numero ?? 999999
+      const nb = b.numero ?? 999999
+      if (na !== nb) return na - nb
+      return (a.titulo || "").localeCompare(b.titulo || "")
+    })
+}, [canciones, busqueda, filtroTono, filtroCategoria])
+
+const scrollCancionesRef = useRef<HTMLDivElement | null>(null)
+const [scrollTopCanciones, setScrollTopCanciones] = useState(0)
+
+const ALTURA_ITEM_CANCION = 78
+const OVERSCAN_CANCIONES = 8
+
+const inicioVirtualCanciones = Math.max(
+  0,
+  Math.floor(scrollTopCanciones / ALTURA_ITEM_CANCION) - OVERSCAN_CANCIONES
+)
+
+const cantidadVisibleCanciones = 12
+
+const finVirtualCanciones = Math.min(
+  cancionesFiltradas.length,
+  inicioVirtualCanciones + cantidadVisibleCanciones + OVERSCAN_CANCIONES * 2
+)
+
+const cancionesVirtuales = cancionesFiltradas.slice(
+  inicioVirtualCanciones,
+  finVirtualCanciones
+)
+
+useEffect(() => {
+  if (isMobile || !activaId) return
+
+  const contenedor = scrollCancionesRef.current
+  if (!contenedor) return
+
+  const posicion = cancionesFiltradas.findIndex((c) => c.id === activaId)
+  if (posicion === -1) return
+
+  const top = Math.max(
+    0,
+    posicion * ALTURA_ITEM_CANCION -
+      contenedor.clientHeight / 2 +
+      ALTURA_ITEM_CANCION / 2
+  )
+
+  requestAnimationFrame(() => {
+    contenedor.scrollTo({
+      top,
+      behavior: "smooth"
+    })
+  })
+}, [isMobile, activaId, cancionesFiltradas.length])
+
+const centrarCancionEnLista = (id: string) => {
+  if (isMobile) return
+
+  const contenedor = scrollCancionesRef.current
+  if (!contenedor) {
+    console.log("❌ No existe scrollCancionesRef")
+    return
+  }
+
+  const posicion = cancionesFiltradas.findIndex((c) => c.id === id)
+
+  if (posicion === -1) {
+    console.log("❌ Canción activa no está en cancionesFiltradas:", id)
+    return
+  }
+
+  const top = Math.max(
+    0,
+    posicion * ALTURA_ITEM_CANCION -
+      contenedor.clientHeight / 2 +
+      ALTURA_ITEM_CANCION / 2
+  )
+
+  console.log("🎯 centrando canción:", {
+    id,
+    posicion,
+    top,
+    alturaItem: ALTURA_ITEM_CANCION,
+    altoContenedor: contenedor.clientHeight
+  })
+
+  contenedor.scrollTo({
+    top,
+    behavior: "smooth"
+  })
+}
+
+useEffect(() => {
+  if (isMobile) return
+  if (!activaId) return
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      centrarCancionEnLista(activaId)
+    })
+  })
+}, [isMobile, activaId, cancionesFiltradas.length])
+
+const agregarItemAListaConFeedback = (item: any, mensaje: string) => {
+  setLista(prev => {
+    indicePendienteScrollRef.current = prev.length
+    return [...prev, item]
+  })
+
+  mostrarFeedbackLista(mensaje)
+}
+
+useEffect(() => {
+  const indice = indicePendienteScrollRef.current
+
+  if (indice === null) return
+
+  indicePendienteScrollRef.current = null
+  setIndiceItemAgregado(indice)
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const el = itemListaRefs.current[indice]
+
+      if (el) {
+        el.scrollIntoView({
+          behavior: "smooth",
+          block: "center"
+        })
+      }
+    })
+  })
+
+  const timeout = setTimeout(() => {
+    setIndiceItemAgregado(null)
+  }, 1400)
+
+  return () => clearTimeout(timeout)
+}, [lista.length])
+
+if (!pantallaDetectada) {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "linear-gradient(180deg, #081120 0%, #0f172a 100%)"
+      }}
+    />
+  )
 }
 
 const container: CSSProperties = {
@@ -1665,108 +1867,109 @@ return (
 `}</style>
 
   <div style={container}>
-    <div style={topbar}>
-      <div>
-        {!isMobile && (
-          <h1 style={{ margin: 0, fontSize: "28px" }}>Control de Culto</h1>
-        )}
+    {isMobile && (
+  <div style={topbar}>
+    <h1 style={{ margin: 0, fontSize: "24px" }}>Control de Culto</h1>
+  </div>
+)}
+        
+    <div
+  style={{
+    ...controles,
+    justifyContent: isMobile ? "center" : "space-between",
+    alignItems: "center",
+    gap: isMobile ? "10px" : "16px"
+  }}
+>
+  {!isMobile && (
+    <div
+      style={{
+        minWidth: 0,
+        flex: "1 1 0"
+      }}
+    >
+      <div
+        style={{
+          fontSize: "22px",
+          fontWeight: 800,
+          lineHeight: 1.1
+        }}
+      >
+        Control de Culto
+      </div>
 
-        {nombreCulto && !isMobile && (
-          <div
-            style={{
-              marginTop: "6px",
-              opacity: 0.9,
-              fontSize: "15px"
-            }}
-          >
-            Culto actual: <strong>{nombreCulto}</strong>
-          </div>
-        )}
+      <div
+        style={{
+          marginTop: "4px",
+          fontSize: "13px",
+          opacity: 0.78,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis"
+        }}
+        title={nombreCulto || ""}
+      >
+        
       </div>
     </div>
-        {listaIdActual && (
-          <div
-            style={{
-              background: "rgba(37, 99, 235, 0.15)",
-              border: "1px solid rgba(37, 99, 235, 0.35)",
-              borderRadius: "14px",
-              padding: isMobile ? "10px" : "12px 14px",
-              display: "flex",
-              flexDirection: isMobile ? "column" : "row",
-              alignItems: isMobile ? "stretch" : "center",
-              justifyContent: "space-between",
-              gap: "10px"
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700 }}>
-                ✏️ Editando culto guardado
-              </div>
+  )}
 
-              <div
-                style={{
-                  fontSize: "13px",
-                  opacity: 0.8,
-                  marginTop: "3px",
-                  wordBreak: "break-word"
-                }}
-              >
-                {nombreCulto || "Sin nombre"}
-              </div>
-            </div>
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "center",
+      gap: "12px",
+      flex: isMobile ? "0 0 auto" : "0 0 auto"
+    }}
+  >
+    <button disabled={!socket} style={btnGrande} onClick={anterior}>
+      ⬅️
+    </button>
 
-            <div style={{ ...fila, justifyContent: "flex-end" }}>
-              <button style={btn} onClick={guardarCulto}>
-                💾 Guardar cambios
-              </button>
+    <button disabled={!socket} style={btnGrande} onClick={siguiente}>
+      ➡️
+    </button>
+  </div>
 
-              <button style={btnSecundario} onClick={guardarCultoComoCopia}>
-                📄 Guardar como copia
-              </button>
-
-              <button
-                style={btnRojo}
-                onClick={() => {
-                  const ok = confirm("¿Salir del modo edición? Los cambios no guardados se perderán.")
-                  if (!ok) return
-
-                  setListaIdActual(null)
-                  setNombreCulto("")
-                  setLista([])
-                  setActivaId(null)
-                  setIndiceLista(null)
-                  setIndiceActivoLista(null)
-                  setPartes([])
-                  setIndex(0)
-                  limpiarModoBiblia()
-                }}
-              >
-                ❌ Salir
-              </button>
-            </div>
-          </div>
-        )}
-    <div style={controles}>
-      <button disabled={!socket} style={btnGrande} onClick={anterior}>⬅️</button>
-      <button disabled={!socket} style={btnGrande} onClick={siguiente}>➡️</button>
-      {/* <button 
-        disabled={!socket} 
-        style={btnGrande}
-        onClick={() => setAutoPlay(a => !a)}
-      >
-        {autoPlay ? "⏹️" : "▶️"}
-      </button>
-      <button
-        disabled={!socket}
-        style={{
-          ...btnGrande,
-          background: loopCoro ? "#16a34a" : "#2563eb"
-        }}
-        onClick={() => setLoopCoro(l => !l)}
-      >
-        🔁
-      </button>*/}
+  {!isMobile && (
+    <div
+      style={{
+        flex: "1 1 0",
+        display: "flex",
+        justifyContent: "flex-end",
+        minWidth: 0
+      }}
+    >
+      {listaIdActual ? (
+        <div
+          style={{
+            padding: "8px 10px",
+            borderRadius: "999px",
+            background: "rgba(37, 99, 235, 0.16)",
+            border: "1px solid rgba(37, 99, 235, 0.35)",
+            fontSize: "13px",
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            maxWidth: "280px"
+          }}
+          title={nombreCulto || ""}
+        >
+          Lista de Culto Actual: {nombreCulto || "Sin nombre"}
+        </div>
+      ) : (
+        <div style={{ opacity: 0.45, fontSize: "13px" }}>
+          Listo para proyectar
+        </div>
+      )}
     </div>
+  )}
+</div>
+
+{/* 📱 ========================================== MÓVIL =============================================================== */}
+{/* 📱 ========================================== MÓVIL =============================================================== */}
+{/* 📱 ========================================== MÓVIL =============================================================== */}
 
     <div style={gridDesktop}>
   {isMobile ? (
@@ -1813,6 +2016,9 @@ return (
       {lista.map((c, i) => (
         <div
           key={i}
+          ref={(el: HTMLDivElement | null) => {
+            itemListaRefs.current[i] = el
+          }}
           style={{
             ...card,
             background: i === indiceActivoLista ? "rgba(22, 163, 74, 0.92)" : "#243449",
@@ -2004,84 +2210,73 @@ return (
             ))}
           </select>
           
- <div
-  id={!isMobile ? "scroll-canciones" : undefined}
-  style={
-    isMobile
-      ? {
-          marginTop: "6px",
-          paddingRight: "0px"
-        }
-      : {
-          height: "620px",
-          maxHeight: "620px",
-          minHeight: 0,
-          overflowY: "auto",
-          overflowX: "hidden",
-          paddingRight: "6px",
-          marginTop: "6px",
-          boxSizing: "border-box",
-          overscrollBehavior: "contain"
-        }
-  }
->
-    {canciones
-      .filter((c) => {
-        const q = normalizar(busqueda || "").trim()
-        if (!q) return true
-
-        const titulo = normalizar(c.titulo || "")
-        const categoria = normalizar(c.categoria || "")
-        const tono = normalizar(c.tono || "")
-        const numero = String(c.numero || "")
-
-        return (
-          titulo.includes(q) ||
-          categoria.includes(q) ||
-          tono.includes(q) ||
-          numero.includes(q)
-        )
-      })
-      .filter(c => !filtroTono || c.tono === filtroTono)
-      .filter(c => !filtroCategoria || c.categoria === filtroCategoria)
-      .sort((a, b) => {
-        const na = a.numero ?? 999999
-        const nb = b.numero ?? 999999
-        if (na !== nb) return na - nb
-        return (a.titulo || "").localeCompare(b.titulo || "")
-      })
-      .map((c) => (
+        <div
+          style={{
+            maxHeight: "420px",
+            overflowY: "auto",
+            paddingRight: "4px",
+            marginTop: "6px"
+          }}
+        >
+  <div
+    style={{
+      height: cancionesFiltradas.length * ALTURA_ITEM_CANCION,
+      position: "relative"
+    }}
+  >
+    <div
+      style={{
+        transform: `translateY(${inicioVirtualCanciones * ALTURA_ITEM_CANCION}px)`
+      }}
+    >
+      {cancionesFiltradas.map((c) => (
         <div
           key={c.id}
           style={{
-            ...card,
-            background: c.id === activaId ? "#16a34a" : "#243449"
+            height: ALTURA_ITEM_CANCION,
+            paddingBottom: "10px",
+            boxSizing: "border-box"
           }}
         >
-          <div style={textoCardPrincipal}>
-            <span
-              style={tituloCardResponsive(isMobile)}
-              title={tituloCancionVisible(c)}
-            >
-              {tituloCancionVisible(c)}
-            </span>
+          <div
+            ref={(el: HTMLDivElement | null) => {
+              cancionRefs.current[c.id] = el
+            }}
+            style={{
+              ...card,
+              marginTop: 0,
+              height: "100%",
+              background: c.id === activaId ? "#16a34a" : "#243449"
+            }}
+          >
+            <div style={textoCardPrincipal}>
+              <span
+                style={tituloCardResponsive(isMobile)}
+                title={tituloCancionVisible(c)}
+              >
+                {tituloCancionVisible(c)}
+              </span>
 
-            <div style={subtituloCardResponsive(isMobile)}>
-              {subtituloCancionVisible(c)}
+              <div style={subtituloCardResponsive(isMobile)}>
+                {subtituloCancionVisible(c)}
+              </div>
             </div>
-          </div>
 
-          <div style={acciones}>
-            <button disabled={!socket} style={btn} onClick={() => proyectar(c.id)}>
-              ▶️
-            </button>
-            <button disabled={!socket} style={btnSecundario} onClick={() => agregarALista(c)}>
-              ➕
-            </button>
+            <div style={acciones}>
+              <button disabled={!socket} style={btn} onClick={() => proyectar(c.id)}>
+                ▶️
+              </button>
+
+              <button disabled={!socket} style={btnSecundario} onClick={() => agregarALista(c)}>
+                ➕
+              </button>
+            </div>
           </div>
         </div>
       ))}
+    </div>
   </div>
+</div>
 
         </>
       )}
@@ -2452,7 +2647,9 @@ return (
         </>
       )}
     </div>
-    {/* aca empieza movil */}
+{/* 🖥️ =============================================================== COMIENZA ESCRITORIO =============================================================== */}
+{/* 🖥️ =============================================================== COMIENZA ESCRITORIO =============================================================== */}
+{/* 🖥️ =============================================================== COMIENZA ESCRITORIO =============================================================== */}
   </div>
 
 ) : (
@@ -2507,79 +2704,89 @@ return (
             ))}
           </select>
           <div
-            id="scroll-canciones"
+  id="scroll-canciones"
+  ref={scrollCancionesRef}
+  onScroll={(e) => {
+    setScrollTopCanciones(e.currentTarget.scrollTop)
+  }}
+  style={{
+    height: "620px",
+    maxHeight: "620px",
+    minHeight: 0,
+    overflowY: "auto",
+    overflowX: "hidden",
+    scrollbarGutter: "stable",
+    paddingRight: "10px",
+    marginTop: "6px",
+    boxSizing: "border-box",
+    overscrollBehavior: "contain"
+  }}
+>
+  <div
+    style={{
+      height: cancionesFiltradas.length * ALTURA_ITEM_CANCION,
+      position: "relative"
+    }}
+  >
+    <div
+      style={{
+        transform: `translateY(${inicioVirtualCanciones * ALTURA_ITEM_CANCION}px)`
+      }}
+    >
+      {cancionesVirtuales.map((c) => (
+        <div
+          key={c.id}
+          style={{
+            height: ALTURA_ITEM_CANCION,
+            paddingBottom: "10px",
+            boxSizing: "border-box"
+          }}
+        >
+          <div
             style={{
-              height: "620px",
-              maxHeight: "620px",
-              minHeight: 0,
-              overflowY: "auto",
-              overflowX: "hidden",
-              scrollbarGutter: "stable",
-              paddingRight: "10px",
-              marginTop: "6px",
-              boxSizing: "border-box",
-              overscrollBehavior: "contain"
+              ...card,
+              marginTop: 0,
+              height: "100%",
+              background: c.id === activaId ? "#16a34a" : "#243449"
             }}
           >
-            {canciones
-              .filter((c) => {
-                const q = normalizar(busqueda || "").trim()
-                if (!q) return true
+            <div style={textoCardPrincipal}>
+              <span
+                style={tituloCardResponsive(isMobile)}
+                title={tituloCancionVisible(c)}
+              >
+                {tituloCancionVisible(c)}
+              </span>
 
-                const titulo = normalizar(c.titulo || "")
-                const categoria = normalizar(c.categoria || "")
-                const tono = normalizar(c.tono || "")
-                const numero = String(c.numero || "")
+              <div style={subtituloCardResponsive(isMobile)}>
+                {subtituloCancionVisible(c)}
+              </div>
+            </div>
 
-                return (
-                  titulo.includes(q) ||
-                  categoria.includes(q) ||
-                  tono.includes(q) ||
-                  numero.includes(q)
-                )
-              })
-              .filter(c => !filtroTono || c.tono === filtroTono)
-              .filter(c => !filtroCategoria || c.categoria === filtroCategoria)
-              .sort((a, b) => {
-                const na = a.numero ?? 999999
-                const nb = b.numero ?? 999999
-                if (na !== nb) return na - nb
-                return (a.titulo || "").localeCompare(b.titulo || "")
-              })
-              .map((c) => (
-                <div
-                  key={c.id}
-                  style={{
-                    ...card,
-                    background: c.id === activaId ? "#16a34a" : "#243449"
-                  }}
-                >
-                  <div style={textoCardPrincipal}>
-                    <span
-                      style={tituloCardResponsive(isMobile)}
-                      title={tituloCancionVisible(c)}
-                    >
-                      {tituloCancionVisible(c)}
-                    </span>
+            <div style={acciones}>
+              <button
+                disabled={!socket}
+                style={btn}
+                onClick={() => proyectar(c.id)}
+              >
+                ▶️
+              </button>
 
-                    <div style={subtituloCardResponsive(isMobile)}>
-                      {subtituloCancionVisible(c)}
-                    </div>
-                  </div>
-
-                  <div style={acciones}>
-                    <button disabled={!socket} style={btn} onClick={() => proyectar(c.id)}>
-                      ▶️
-                    </button>
-                    <button disabled={!socket} style={btnSecundario} onClick={() => agregarALista(c)}>
-                      ➕
-                    </button>
-                  </div>
-                </div>
-              ))}
+              <button
+                disabled={!socket}
+                style={btnSecundario}
+                onClick={() => agregarALista(c)}
+              >
+                ➕
+              </button>
+            </div>
           </div>
         </div>
-
+      ))}
+    </div>
+  </div>
+</div>
+              </div>
         <div style={seccion}>
           <h2 style={titulo}>🛠️ Acciones</h2>
             <div style={{ ...fila, marginBottom: 16 }}>
@@ -2656,14 +2863,14 @@ return (
                   const resultado = await subirImagen(file)
 
                   if (resultado?.url) {
-                    setLista(prev => [
-                      ...prev,
+                    agregarItemAListaConFeedback(
                       {
                         tipo: "imagen",
                         url: resultado.url,
                         titulo: resultado.nombre
-                      }
-                    ])
+                      },
+                      `✅ Imagen agregada: ${resultado.nombre || "Imagen"}`
+                    )
                   }
 
                   inputFile.value = ""
@@ -3021,7 +3228,7 @@ return (
           ...columna,
           alignSelf: "start",
           position: "sticky",
-          top: "110px",
+          top: "96px",
           borderLeft: "1px solid rgba(255,255,255,0.08)",
           paddingLeft: "18px",
           minWidth: 0
@@ -3055,6 +3262,106 @@ return (
               </span>
             )}
           </h2>
+          {listaIdActual && (
+            <div
+              style={{
+                marginBottom: "12px",
+                padding: "10px",
+                borderRadius: "12px",
+                background: "rgba(37, 99, 235, 0.13)",
+                border: "1px solid rgba(37, 99, 235, 0.28)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "10px",
+                flexWrap: "wrap"
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontWeight: 800,
+                    fontSize: "14px",
+                    lineHeight: 1.2
+                  }}
+                >
+                  ✏️ Editando culto guardado
+                </div>
+
+                <div
+                  style={{
+                    marginTop: "2px",
+                    fontSize: "12px",
+                    opacity: 0.75,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    maxWidth: "260px"
+                  }}
+                  title={nombreCulto || ""}
+                >
+                  {nombreCulto || "Sin nombre"}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: "6px",
+                  flexShrink: 0
+                }}
+              >
+                <button
+                  style={{
+                    ...btn,
+                    padding: "8px 10px",
+                    fontSize: "12px",
+                    borderRadius: "9px"
+                  }}
+                  onClick={guardarCulto}
+                >
+                  💾
+                </button>
+
+                <button
+                  style={{
+                    ...btnSecundario,
+                    padding: "8px 10px",
+                    fontSize: "12px",
+                    borderRadius: "9px"
+                  }}
+                  onClick={guardarCultoComoCopia}
+                >
+                  📄
+                </button>
+
+                <button
+                  style={{
+                    ...btnRojo,
+                    padding: "8px 10px",
+                    fontSize: "12px",
+                    borderRadius: "9px"
+                  }}
+                  onClick={() => {
+                    const ok = confirm("¿Salir del modo edición? Los cambios no guardados se perderán.")
+                    if (!ok) return
+
+                    setListaIdActual(null)
+                    setNombreCulto("")
+                    setLista([])
+                    setActivaId(null)
+                    setIndiceLista(null)
+                    setIndiceActivoLista(null)
+                    setPartes([])
+                    setIndex(0)
+                    limpiarModoBiblia()
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
           {mensajeFlash && (
             <div
               style={{
@@ -3079,6 +3386,9 @@ return (
           {lista.map((c, i) => (
             <div
               key={i}
+              ref={(el: HTMLDivElement | null) => {
+                itemListaRefs.current[i] = el
+              }}
               draggable={!isMobile}
               onDragStart={() => setDragIndex(i)}
               onDragOver={(e) => {
