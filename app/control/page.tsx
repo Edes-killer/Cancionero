@@ -48,10 +48,50 @@ export default function ControlPage() {
   const [mensajeFlash, setMensajeFlash] = useState("")
   const [flashListaCulto, setFlashListaCulto] = useState(false)
   const [idsCancionesConAcordes, setIdsCancionesConAcordes] = useState<string[]>([])
+  const [cargandoControl, setCargandoControl] = useState(true)
+  const [mensajeCargaControl, setMensajeCargaControl] = useState("Preparando control...")
   const itemListaRefs = useRef<(HTMLDivElement | null)[]>([])
   const indicePendienteScrollRef = useRef<number | null>(null)
   const [indiceItemAgregado, setIndiceItemAgregado] = useState<number | null>(null)
   const cancionRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const [fondoCancionUrl, setFondoCancionUrl] = useState("")
+  const [fondoCancionNombre, setFondoCancionNombre] = useState("")
+  const [fondoCancionModo, setFondoCancionModo] = useState<"ninguno" | "preset" | "estatico" | "movimiento">("preset")
+  const [fondoCancionPreset, setFondoCancionPreset] = useState("cielo-dorado")
+  const [fondoCancionOscuridad, setFondoCancionOscuridad] = useState(55)
+  const [fondoCancionAjuste, setFondoCancionAjuste] = useState<"cover" | "contain">("cover")
+const fondosCancionPreset = [
+  {
+    id: "cielo-dorado",
+    nombre: "Cielo dorado",
+    fondo: "radial-gradient(circle at 50% 20%, rgba(251,191,36,0.45), transparent 34%), linear-gradient(135deg, #1e1b4b 0%, #7c2d12 48%, #0f172a 100%)"
+  },
+  {
+    id: "azul-profundo",
+    nombre: "Azul profundo",
+    fondo: "radial-gradient(circle at 20% 20%, rgba(59,130,246,0.38), transparent 32%), radial-gradient(circle at 80% 70%, rgba(14,165,233,0.25), transparent 34%), linear-gradient(135deg, #020617 0%, #0f172a 45%, #1e3a8a 100%)"
+  },
+  {
+    id: "amanecer-suave",
+    nombre: "Amanecer suave",
+    fondo: "radial-gradient(circle at 70% 25%, rgba(253,186,116,0.55), transparent 30%), linear-gradient(135deg, #312e81 0%, #9f1239 45%, #431407 100%)"
+  },
+  {
+    id: "verde-esperanza",
+    nombre: "Verde esperanza",
+    fondo: "radial-gradient(circle at 30% 20%, rgba(34,197,94,0.35), transparent 30%), radial-gradient(circle at 80% 80%, rgba(20,184,166,0.28), transparent 36%), linear-gradient(135deg, #022c22 0%, #064e3b 48%, #020617 100%)"
+  },
+  {
+    id: "purpura-noche",
+    nombre: "Púrpura noche",
+    fondo: "radial-gradient(circle at 20% 30%, rgba(168,85,247,0.38), transparent 32%), radial-gradient(circle at 85% 65%, rgba(236,72,153,0.28), transparent 32%), linear-gradient(135deg, #020617 0%, #312e81 52%, #581c87 100%)"
+  },
+  {
+    id: "fuego-suave",
+    nombre: "Fuego suave",
+    fondo: "radial-gradient(circle at 50% 35%, rgba(249,115,22,0.42), transparent 30%), radial-gradient(circle at 75% 75%, rgba(220,38,38,0.25), transparent 34%), linear-gradient(135deg, #1c1917 0%, #7c2d12 50%, #020617 100%)"
+  }
+]
  useEffect(() => {
   const check = async () => {
     const { data } = await supabase.auth.getUser()
@@ -67,9 +107,13 @@ export default function ControlPage() {
 useEffect(() => {
   const s = io("http://" + window.location.hostname + ":4000")
 
-  s.on("connect", () => {
-    console.log("🔥 SOCKET CONECTADO")
-  })
+  s.on("connect", async () => {
+  const sala = (await getIglesiaId()) || "global"
+
+  console.log("🔥 SOCKET CONECTADO A SALA:", sala)
+
+  s.emit("unirse-sala", { sala })
+})
 
   s.on("connect_error", (err) => {
     console.log("❌ ERROR SOCKET:", err)
@@ -135,9 +179,42 @@ useEffect(() => {
 }, [lista, indiceLista, index, partes, paginasBiblia, paginaBibliaActual, loopCoro])
 
 useEffect(() => {
-  cargarCanciones()
-  cargarCultos()
-  cargarNombreIglesia()
+  let activo = true
+
+  const cargarInicial = async () => {
+    try {
+      setCargandoControl(true)
+      setMensajeCargaControl("Cargando canciones y cultos...")
+
+      await Promise.all([
+        cargarCanciones(),
+        cargarCultos(),
+        cargarNombreIglesia()
+      ])
+
+      if (!activo) return
+
+      setMensajeCargaControl("Control listo")
+    } catch (error) {
+      console.error("Error cargando control:", error)
+
+      if (activo) {
+        setMensajeCargaControl("Hubo un problema cargando el control")
+      }
+    } finally {
+      if (activo) {
+        setTimeout(() => {
+          setCargandoControl(false)
+        }, 350)
+      }
+    }
+  }
+
+  cargarInicial()
+
+  return () => {
+    activo = false
+  }
 }, [])
 
 useEffect(() => {
@@ -173,6 +250,13 @@ useEffect(() => {
     block: "center"
   })
 }, [indiceActivoLista])
+
+useEffect(() => {
+  if (!socket) return
+  if (!fondoCancionUrl) return
+
+  socket.emit("precargar-imagenes", [fondoCancionUrl])
+}, [socket, fondoCancionUrl])
 
 const [isMobile, setIsMobile] = useState(false)
 const [pantallaDetectada, setPantallaDetectada] = useState(false)
@@ -235,6 +319,33 @@ const cargarNombreIglesia = async () => {
   setLogoEsperaNombre(data?.logo_nombre || "")
 }
 
+const fondoCancionActual = () => {
+  if (fondoCancionModo === "ninguno") return null
+
+  if (fondoCancionModo === "preset") {
+    const preset = fondosCancionPreset.find(f => f.id === fondoCancionPreset)
+
+    return {
+      tipo: "preset",
+      preset: fondoCancionPreset,
+      fondoCss: preset?.fondo || fondosCancionPreset[0].fondo,
+      nombre: preset?.nombre || "Fondo predeterminado",
+      oscuridad: fondoCancionOscuridad,
+      ajuste: fondoCancionAjuste
+    }
+  }
+
+  if (!fondoCancionUrl) return null
+
+  return {
+  tipo: fondoCancionModo,
+  url: fondoCancionUrl,
+  nombre: fondoCancionNombre,
+  oscuridad: fondoCancionOscuridad,
+  ajuste: fondoCancionAjuste
+}
+}
+
 const proyectar = async (id: string) => {
   if (!socket) return
 
@@ -272,12 +383,13 @@ const proyectar = async (id: string) => {
   setIndex(0)
 
   socket.emit("cargar-cancion", {
-    partes: data,
-    index: 0,
-    titulo: cancion?.titulo || "",
-    tono: cancion?.tono || "",
-    iglesia: ""
-  })
+  partes: data,
+  index: 0,
+  titulo: cancion?.titulo || "",
+  tono: cancion?.tono || "",
+  iglesia: "",
+  fondo: fondoCancionActual()
+})
 
   socket.emit("cancion-activa", { id })
 }
@@ -961,12 +1073,13 @@ const irAItemLista = async (i: number, alFinal = false) => {
   const cancion = canciones.find(c => c.id === item.id)
 
   socket.emit("cargar-cancion", {
-    partes: partesCancion,
-    index: parteInicial,
-    titulo: cancion?.titulo || item.titulo || "",
-    tono: cancion?.tono || "",
-    iglesia: ""
-  })
+  partes: partesCancion,
+  index: parteInicial,
+  titulo: cancion?.titulo || item.titulo || "",
+  tono: cancion?.tono || "",
+  iglesia: "",
+  fondo: fondoCancionActual()
+})
 
   socket.emit("cancion-activa", { id: item.id })
 }
@@ -1595,6 +1708,112 @@ if (!pantallaDetectada) {
         background: "linear-gradient(180deg, #081120 0%, #0f172a 100%)"
       }}
     />
+  )
+}
+if (cargandoControl) {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "linear-gradient(180deg, #081120 0%, #0f172a 100%)",
+        color: "white",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "24px",
+        boxSizing: "border-box"
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "420px",
+          background: "rgba(30, 41, 59, 0.96)",
+          border: "1px solid rgba(255,255,255,0.10)",
+          borderRadius: "22px",
+          padding: "28px",
+          boxShadow: "0 18px 45px rgba(0,0,0,0.35)",
+          textAlign: "center"
+        }}
+      >
+        <div
+          style={{
+            width: "58px",
+            height: "58px",
+            borderRadius: "999px",
+            border: "4px solid rgba(255,255,255,0.16)",
+            borderTopColor: "#38bdf8",
+            margin: "0 auto 18px auto",
+            animation: "spinCargaControl 0.9s linear infinite"
+          }}
+        />
+
+        <style>{`
+          @keyframes spinCargaControl {
+            from {
+              transform: rotate(0deg);
+            }
+            to {
+              transform: rotate(360deg);
+            }
+          }
+        `}</style>
+
+        <div
+          style={{
+            fontSize: "24px",
+            fontWeight: 800,
+            marginBottom: "8px"
+          }}
+        >
+          Control de Culto
+        </div>
+
+        <div
+          style={{
+            fontSize: "14px",
+            opacity: 0.78,
+            lineHeight: 1.5
+          }}
+        >
+          {mensajeCargaControl}
+        </div>
+
+        <div
+          style={{
+            marginTop: "18px",
+            height: "8px",
+            borderRadius: "999px",
+            overflow: "hidden",
+            background: "rgba(255,255,255,0.08)"
+          }}
+        >
+          <div
+            style={{
+              height: "100%",
+              width: "68%",
+              borderRadius: "999px",
+              background: "linear-gradient(90deg, #2563eb, #38bdf8)",
+              animation: "barraCargaControl 1.2s ease-in-out infinite"
+            }}
+          />
+        </div>
+
+        <style>{`
+          @keyframes barraCargaControl {
+            0% {
+              transform: translateX(-110%);
+            }
+            50% {
+              transform: translateX(30%);
+            }
+            100% {
+              transform: translateX(160%);
+            }
+          }
+        `}</style>
+      </div>
+    </div>
   )
 }
 
@@ -2347,7 +2566,7 @@ return (
               </button>
             </div>
           </div>
-
+              
           <div style={{ marginBottom: 18 }}>
             <div style={subtitulo}>Fondo con logo / imagen</div>
 
@@ -2997,7 +3216,205 @@ return (
               </button>
             </div>
           </div>
+              <div style={{ marginBottom: 18 }}>
+                <div style={subtitulo}>Fondo para canciones</div>
 
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "10px",
+                    marginBottom: "10px"
+                  }}
+                >
+                  <select
+                    value={fondoCancionModo}
+                    onChange={(e) =>
+                      setFondoCancionModo(e.target.value as "estatico" | "ninguno" | "preset" |  "movimiento")
+                    }
+                    style={input}
+                  >
+                    <option value="preset">Fondo predeterminado</option>
+                    <option value="ninguno">Sin fondo</option>
+                    <option value="estatico">Imagen estática subida</option>
+                    <option value="movimiento">Imagen subida con movimiento</option>
+                  </select>
+
+                  <label
+                    style={{
+                      ...btnSecundario,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "8px",
+                      cursor: "pointer"
+                    }}
+                  >
+                    🖼️ Subir fondo
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: "none" }}
+                      onChange={async (e) => {
+                        const inputFile = e.target as HTMLInputElement
+                        const file = inputFile.files?.[0]
+                        if (!file) return
+
+                        const resultado = await subirImagen(file)
+
+                        if (resultado?.url) {
+                          setFondoCancionUrl(resultado.url)
+                          setFondoCancionNombre(resultado.nombre || "Fondo")
+                          setFondoCancionModo("estatico")
+                        }
+
+                        inputFile.value = ""
+                      }}
+                    />
+                  </label>
+                </div>
+
+                {fondoCancionModo === "preset" && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                      gap: "8px",
+                      marginBottom: "12px"
+                    }}
+                  >
+                    {fondosCancionPreset.map((fondo) => (
+                      <button
+                        key={fondo.id}
+                        type="button"
+                        onClick={() => {
+                          setFondoCancionPreset(fondo.id)
+                          setFondoCancionModo("preset")
+                        }}
+                        style={{
+                          minHeight: "62px",
+                          borderRadius: "12px",
+                          border:
+                            fondoCancionPreset === fondo.id
+                              ? "2px solid rgba(255,255,255,0.85)"
+                              : "1px solid rgba(255,255,255,0.14)",
+                          background: fondo.fondo,
+                          color: "white",
+                          cursor: "pointer",
+                          padding: "8px",
+                          fontWeight: 800,
+                          textShadow: "0 2px 8px rgba(0,0,0,0.75)",
+                          boxShadow:
+                            fondoCancionPreset === fondo.id
+                              ? "0 0 0 2px rgba(37,99,235,0.65)"
+                              : "none"
+                        }}
+                      >
+                        {fondo.nombre}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {fondoCancionModo !== "preset" && (
+                <div style={{ marginBottom: "10px" }}>
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      opacity: 0.75,
+                      marginBottom: "6px"
+                    }}
+                  >
+                    Ajuste de imagen
+                  </div>
+
+                  <select
+                    value={fondoCancionAjuste}
+                    onChange={(e) =>
+                      setFondoCancionAjuste(e.target.value as "cover" | "contain")
+                    }
+                    style={input}
+                  >
+                    <option value="cover">Cubrir pantalla</option>
+                    <option value="contain">Mostrar imagen completa</option>
+                  </select>
+                </div>
+              )}
+                <div style={{ marginBottom: "10px" }}>
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      opacity: 0.75,
+                      marginBottom: "6px"
+                    }}
+                  >
+                    Oscuridad del fondo: {fondoCancionOscuridad}%
+                  </div>
+
+                  <input
+                    type="range"
+                    min="20"
+                    max="80"
+                    value={fondoCancionOscuridad}
+                    onChange={(e) => setFondoCancionOscuridad(Number(e.target.value))}
+                    style={{ width: "100%" }}
+                  />
+                </div>
+
+                {fondoCancionModo !== "preset" && fondoCancionUrl && (
+                  <div
+                    style={{
+                      padding: 12,
+                      borderRadius: 12,
+                      background: "#0f172a",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12
+                    }}
+                  >
+                    <img
+                      src={fondoCancionUrl}
+                      alt="Vista previa fondo canciones"
+                      style={{
+                        width: 82,
+                        height: 52,
+                        objectFit: "cover",
+                        borderRadius: 8,
+                        background: "#000",
+                        flexShrink: 0
+                      }}
+                    />
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis"
+                        }}
+                      >
+                        {fondoCancionNombre || "Fondo cargado"}
+                      </div>
+
+                      <div style={{ fontSize: 12, opacity: 0.7 }}>
+                        Se aplicará a las canciones proyectadas
+                      </div>
+                    </div>
+
+                    <button
+                      style={btnRojo}
+                      onClick={() => {
+                        setFondoCancionUrl("")
+                        setFondoCancionNombre("")
+                        setFondoCancionModo("preset")
+                      }}
+                    >
+                      ❌
+                    </button>
+                  </div>
+                )}
+              </div>
           <div>
             <div style={subtitulo}>Fondo con logo / imagen</div>
 

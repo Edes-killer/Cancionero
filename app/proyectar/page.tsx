@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { io } from "socket.io-client"
 import { supabase } from "@/lib/supabase"
+import { getIglesiaId } from "../../lib/getIglesia"
 
 export default function ProyectarPage() {
   const [socket, setSocket] = useState<any>(null)
@@ -15,6 +16,7 @@ export default function ProyectarPage() {
   const [paginaBiblia, setPaginaBiblia] = useState(0)
   const [iglesia, setIglesia] = useState("")
   const [estadoEspecial, setEstadoEspecial] = useState<any>(null)
+  const [fondoCancion, setFondoCancion] = useState<any>(null)
   const parteActual = partes[index]
   const [imagenesPrecargadas, setImagenesPrecargadas] = useState<string[]>([])
 const [overlayVisible, setOverlayVisible] = useState(false)
@@ -93,6 +95,7 @@ const ejecutarConTransicion = (accion: () => void) => {
 
  useEffect(() => {
   const s = io("http://" + window.location.hostname + ":4000", {
+    
     reconnection: true,
     reconnectionAttempts: 10,
     reconnectionDelay: 1000
@@ -101,8 +104,15 @@ const ejecutarConTransicion = (accion: () => void) => {
   console.log("🟢 proyector conectado")
   s.emit("get-estado")
 })
-  // 🔥 PEDIR ESTADO AL ABRIR
-  // s.emit("get-estado")
+
+s.on("connect", async () => {
+  const sala = (await getIglesiaId()) || "global"
+
+  console.log("🖥️ PROYECTOR conectado a sala:", sala)
+
+  s.emit("unirse-sala", { sala })
+  s.emit("get-estado")
+})
 
   // 🔥 RECIBIR ESTADO INICIAL
   s.on("estado-actual", (estado: any) => {
@@ -159,18 +169,24 @@ const ejecutarConTransicion = (accion: () => void) => {
   })
   // 🔥 TUS EVENTOS EXISTENTES (SE DEJAN TAL CUAL)
   s.on("cargar-cancion", (data: any) => {
-    ejecutarConTransicion(() => {
-      setEstadoEspecial(null)
-      setBiblia(null)
-      setImagen(null)
-      setPartes(data.partes || [])
-      setIndex(data.index || 0)
-      setTitulo(data.titulo || "")
-      setTono(data.tono || "")
-      setIglesia(data.iglesia || "")
-      setPaginaBiblia(0)
-    })
+  ejecutarConTransicion(() => {
+    setEstadoEspecial(null)
+    setBiblia(null)
+    setImagen(null)
+
+    if (data.fondo?.url) {
+      precargarImagen(data.fondo.url)
+    }
+
+    setFondoCancion(data.fondo || null)
+    setPartes(data.partes || [])
+    setIndex(data.index || 0)
+    setTitulo(data.titulo || "")
+    setTono(data.tono || "")
+    setIglesia(data.iglesia || "")
+    setPaginaBiblia(0)
   })
+})
 
   s.on("mostrar-imagen", (data: any) => {
     ejecutarConTransicion(() => {
@@ -262,12 +278,14 @@ useEffect(() => {
   setEstadoEspecial(null)
   setBiblia(null)
   setImagen(null)
+  setFondoCancion(null)
   setPartes([])
   setTitulo("")
   setTono("")
   setIglesia("")
   setIndex(0)
   setPaginaBiblia(0)
+  
 }
 
 const esAcordeProyeccion = (token: string) => {
@@ -403,55 +421,135 @@ const limpiarCancionParaProyector = (texto: string) => {
 
       }}
     >
-      {estadoEspecial?.tipo === "negro" && (
-  <div
-    style={{
-      width: "100vw",
-      height: "100vh",
-      background: "#000"
-    }}
-  />
-)}
+      <style>{`
+        @keyframes fondoCancionMovimiento {
+          0% {
+            transform: scale(1.04) translate3d(0, 0, 0);
+          }
+          50% {
+            transform: scale(1.12) translate3d(-1.8%, -1.2%, 0);
+          }
+          100% {
+            transform: scale(1.04) translate3d(0, 0, 0);
+          }
+        }
+      `}</style>
 
-{estadoEspecial?.tipo === "espera" && (
-  <div
-    style={{
-      width: "100vw",
-      height: "100vh",
-      background: "#000",
-      color: "white",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      textAlign: "center",
-      padding: "4vh 5vw",
-      boxSizing: "border-box",
-      gap: "18px"
-    }}
-  >
+      {!estadoEspecial && !imagen && !biblia && fondoCancion?.tipo === "preset" && (
+  <>
     <div
       style={{
-        fontSize: "clamp(34px, 4vw, 64px)",
-        fontWeight: 700
+        position: "fixed",
+        inset: 0,
+        background: fondoCancion.fondoCss,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+        zIndex: 0
       }}
-    >
-      {estadoEspecial.titulo || "Espere un momento"}
-    </div>
+    />
 
-    {!!estadoEspecial.subtitulo && (
-      <div
-        style={{
-          fontSize: "clamp(18px, 2vw, 28px)",
-          opacity: 0.7
-        }}
-      >
-        {estadoEspecial.subtitulo}
-      </div>
-    )}
-  </div>
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        backgroundColor: `rgba(0,0,0,${(fondoCancion.oscuridad ?? 55) / 100})`,
+        zIndex: 1
+      }}
+    />
+  </>
 )}
 
+        {!estadoEspecial &&
+          !imagen &&
+          !biblia &&
+          fondoCancion &&
+          fondoCancion.tipo !== "preset" &&
+          fondoCancion.url && (
+            <>
+              <div
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  backgroundImage: `url(${fondoCancion.url})`,
+                  backgroundSize: fondoCancion.ajuste || "cover",
+                  backgroundPosition: "center",
+                  backgroundRepeat: "no-repeat",
+                  backgroundColor: "#000",
+                  transform:
+                  fondoCancion.tipo === "movimiento"
+                    ? "scale(1.04)"
+                    : "none",
+                animation:
+                  fondoCancion.tipo === "movimiento"
+                    ? "fondoCancionMovimiento 45s ease-in-out infinite"
+                    : "none",
+                willChange:
+                  fondoCancion.tipo === "movimiento"
+                    ? "transform"
+                    : "auto",
+                  zIndex: 0
+                }}
+              />
+
+              <div
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  backgroundColor: `rgba(0,0,0,${(fondoCancion.oscuridad ?? 55) / 100})`,
+                  zIndex: 1
+                }}
+              />
+            </>
+          )}
+              {estadoEspecial?.tipo === "negro" && (
+          <div
+            style={{
+              width: "100vw",
+              height: "100vh",
+              background: "#000"
+            }}
+          />
+        )}
+
+        {estadoEspecial?.tipo === "espera" && (
+          <div
+            style={{
+              width: "100vw",
+              height: "100vh",
+              background: "#000",
+              color: "white",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+              padding: "4vh 5vw",
+              boxSizing: "border-box",
+              gap: "18px"
+            }}
+          >
+            <div
+              style={{
+                fontSize: "clamp(34px, 4vw, 64px)",
+                fontWeight: 700
+              }}
+            >
+              {estadoEspecial.titulo || "Espere un momento"}
+            </div>
+
+            {!!estadoEspecial.subtitulo && (
+              <div
+                style={{
+                  fontSize: "clamp(18px, 2vw, 28px)",
+                  opacity: 0.7
+                }}
+              >
+                {estadoEspecial.subtitulo}
+              </div>
+            )}
+          </div>
+        )}
       {!estadoEspecial && imagen && (
         <div
           style={{
@@ -541,20 +639,22 @@ const limpiarCancionParaProyector = (texto: string) => {
       )}
 
       {!estadoEspecial && !imagen && !biblia && (
-        <div
-          style={{
-            width: "100vw",
-            height: "100vh",
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "3vh 4vw",
-            boxSizing: "border-box",
-            textAlign: "center"
-          }}
-        >
+      <div
+        style={{
+          width: "100vw",
+          height: "100vh",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "3vh 4vw",
+          boxSizing: "border-box",
+          textAlign: "center",
+          position: "relative",
+          zIndex: 2
+        }}
+      >
           <div
             style={{
               display: "flex",
