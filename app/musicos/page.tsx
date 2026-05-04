@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { io } from "socket.io-client"
 import { supabase } from "../../lib/supabase"
+import { getIglesiaId } from "../../lib/getIglesia"
 
 export default function MusicosPage() {
   const [partes, setPartes] = useState<any[]>([])
@@ -21,24 +22,44 @@ export default function MusicosPage() {
 ]
    
   // 🔌 SOCKET
-  useEffect(() => {
-    const s = io("http://" + window.location.hostname + ":4000")
+useEffect(() => {
+  const s = io("http://" + window.location.hostname + ":4000")
 
-    s.on("cargar-cancion", (data: any) => {
-      setPartes(data.partes || [])
-      setIndex(data.index || 0)
-      setTitulo(data.titulo || "")
-      setTono(data.tono || "")
-    })
+  s.on("connect", async () => {
+    const sala = (await getIglesiaId()) || "global"
 
-    s.on("cambiar-parte", (i: number) => {
-      setIndex(i)
-    })
+    console.log("🎹 MÚSICOS conectado a sala:", sala)
 
-    return () => {
-      s.disconnect()
-    }
-  }, [])
+    s.emit("unirse-sala", { sala })
+    s.emit("get-estado")
+  })
+
+  s.on("estado-actual", (estado: any) => {
+    if (estado?.tipo !== "cancion") return
+
+    const data = estado.data || {}
+
+    setPartes(data.partes || [])
+    setIndex(data.index || 0)
+    setTitulo(data.titulo || "")
+    setTono(data.tono || "")
+  })
+
+  s.on("cargar-cancion", (data: any) => {
+    setPartes(data.partes || [])
+    setIndex(data.index || 0)
+    setTitulo(data.titulo || "")
+    setTono(data.tono || "")
+  })
+
+  s.on("cambiar-parte", (i: number) => {
+    setIndex(i)
+  })
+
+  return () => {
+    s.disconnect()
+  }
+}, [])
 
 
 useEffect(() => {
