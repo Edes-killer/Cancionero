@@ -17,11 +17,14 @@ export default function ProyectarPage() {
   const [iglesia, setIglesia] = useState("")
   const [estadoEspecial, setEstadoEspecial] = useState<any>(null)
   const [fondoCancion, setFondoCancion] = useState<any>(null)
+  const [cargandoProyector, setCargandoProyector] = useState(true)
+  const timeoutCargaProyectorRef = useRef<any>(null)
+  const [estadoInicialRevisado, setEstadoInicialRevisado] = useState(false)
   const parteActual = partes[index]
   const [imagenesPrecargadas, setImagenesPrecargadas] = useState<string[]>([])
-const [overlayVisible, setOverlayVisible] = useState(false)
-const [overlayFadingOut, setOverlayFadingOut] = useState(false)
-const overlayTimeoutRef = useRef<any>(null)
+  const [overlayVisible, setOverlayVisible] = useState(false)
+  const [overlayFadingOut, setOverlayFadingOut] = useState(false)
+  const overlayTimeoutRef = useRef<any>(null)
 
   useEffect(() => {
     const check = async () => {
@@ -100,75 +103,96 @@ const ejecutarConTransicion = (accion: () => void) => {
     reconnectionAttempts: 10,
     reconnectionDelay: 1000
   })
-  s.on("connect", () => {
-  console.log("🟢 proyector conectado")
-  s.emit("get-estado")
-})
-
+  
 s.on("connect", async () => {
   const sala = (await getIglesiaId()) || "global"
 
   console.log("🖥️ PROYECTOR conectado a sala:", sala)
 
+  setCargandoProyector(true)
+  setEstadoInicialRevisado(false)
+
   s.emit("unirse-sala", { sala })
   s.emit("get-estado")
+
+  if (timeoutCargaProyectorRef.current) {
+    clearTimeout(timeoutCargaProyectorRef.current)
+  }
+
+  timeoutCargaProyectorRef.current = setTimeout(() => {
+    setEstadoInicialRevisado(true)
+    setCargandoProyector(false)
+  }, 1800)
 })
 
   // 🔥 RECIBIR ESTADO INICIAL
-  s.on("estado-actual", (estado: any) => {
-    console.log("📺 estado recibido:", estado)
+s.on("estado-actual", (estado: any) => {
+  setEstadoInicialRevisado(true)
+  setCargandoProyector(false)
 
-    if (estado.tipo === "cancion") {
-      ejecutarConTransicion(() => {
-        const data = estado.data
-
-        setEstadoEspecial(null)
-        setBiblia(null)
-        setImagen(null)
-        setPartes(data.partes || [])
-        setIndex(data.index || 0)
-        setTitulo(data.titulo || "")
-        setTono(data.tono || "")
-        setIglesia(data.iglesia || "")
-        setPaginaBiblia(0)
-      })
-    }
-
-    if (estado.tipo === "imagen") {
-      ejecutarConTransicion(() => {
-        const data = estado.data
-
-        limpiarPantalla()
-        if (data?.url) {
-          precargarImagen(data.url)
-        }
-        setImagen(data.url)
-        setIglesia(data.iglesia || "")
-      })
-    }
-
-    if (estado.tipo === "biblia") {
-      ejecutarConTransicion(() => {
-        const data = estado.data
-
-        limpiarPantalla()
-        setBiblia(data)
-        setIglesia(data.iglesia || "")
-        setPaginaBiblia(data.pagina || 0)
-      })
-    }
-
-    if (estado.tipo === "estado") {
-    const data = estado.data
-
-    ejecutarConTransicion(() => {
-      limpiarPantalla()
-      setEstadoEspecial(data)
-    })
+  if (timeoutCargaProyectorRef.current) {
+    clearTimeout(timeoutCargaProyectorRef.current)
   }
-  })
+
+  console.log("📺 estado recibido:", estado)
+
+  if (estado.tipo === "cancion") {
+    const data = estado.data || {}
+
+    setEstadoEspecial(null)
+    setBiblia(null)
+    setImagen(null)
+
+    if (data.fondo?.url) {
+      precargarImagen(data.fondo.url)
+    }
+
+    setFondoCancion(data.fondo || null)
+    setPartes(data.partes || [])
+    setIndex(data.index || 0)
+    setTitulo(data.titulo || "")
+    setTono(data.tono || "")
+    setIglesia(data.iglesia || "")
+    setPaginaBiblia(0)
+    return
+  }
+
+  if (estado.tipo === "imagen") {
+    const data = estado.data || {}
+
+    limpiarPantalla()
+
+    if (data?.url) {
+      precargarImagen(data.url)
+    }
+
+    setImagen(data.url)
+    setIglesia(data.iglesia || "")
+    return
+  }
+
+  if (estado.tipo === "biblia") {
+    const data = estado.data || {}
+
+    limpiarPantalla()
+    setBiblia(data)
+    setIglesia(data.iglesia || "")
+    setPaginaBiblia(data.pagina || 0)
+    return
+  }
+
+  if (estado.tipo === "estado") {
+    const data = estado.data || {}
+
+    limpiarPantalla()
+    setEstadoEspecial(data)
+    return
+  }
+})
   // 🔥 TUS EVENTOS EXISTENTES (SE DEJAN TAL CUAL)
   s.on("cargar-cancion", (data: any) => {
+  setEstadoInicialRevisado(true)
+  setCargandoProyector(false)
   ejecutarConTransicion(() => {
     setEstadoEspecial(null)
     setBiblia(null)
@@ -189,6 +213,8 @@ s.on("connect", async () => {
 })
 
   s.on("mostrar-imagen", (data: any) => {
+    setEstadoInicialRevisado(true)
+    setCargandoProyector(false)
     ejecutarConTransicion(() => {
       limpiarPantalla()
       if (data?.url) {
@@ -200,6 +226,8 @@ s.on("connect", async () => {
   })
 
   s.on("mostrar-biblia", (data: any) => {
+    setEstadoInicialRevisado(true)
+    setCargandoProyector(false)
     ejecutarConTransicion(() => {
       limpiarPantalla()
       setBiblia(data)
@@ -209,6 +237,7 @@ s.on("connect", async () => {
   })
 
   s.on("cambiar-parte", (i: number) => {
+    
     ejecutarConTransicion(() => {
       setEstadoEspecial(null)
       setIndex(i)
@@ -229,6 +258,8 @@ s.on("connect", async () => {
   })
 
   s.on("mostrar-estado", (data: any) => {
+    setEstadoInicialRevisado(true)
+    setCargandoProyector(false)
     ejecutarConTransicion(() => {
       limpiarPantalla()
       setEstadoEspecial(data)
@@ -238,6 +269,10 @@ s.on("connect", async () => {
   setSocket(s)
 
   return () => {
+    if (timeoutCargaProyectorRef.current) {
+      clearTimeout(timeoutCargaProyectorRef.current)
+    }
+
     s.disconnect()
   }
 }, [])
@@ -401,6 +436,125 @@ const limpiarCancionParaProyector = (texto: string) => {
       )
     }
   }
+const hayContenidoProyector =
+  !!estadoEspecial ||
+  !!imagen ||
+  !!biblia ||
+  partes.length > 0 ||
+  !!titulo
+
+if (cargandoProyector) {
+  return (
+    <div
+      style={{
+        width: "100vw",
+        height: "100vh",
+        background: "linear-gradient(180deg, #020617 0%, #0f172a 100%)",
+        color: "white",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "fixed",
+        inset: 0,
+        overflow: "hidden"
+      }}
+    >
+      <div
+        style={{
+          textAlign: "center",
+          padding: "32px",
+          borderRadius: "24px",
+          background: "rgba(15,23,42,0.82)",
+          border: "1px solid rgba(255,255,255,0.10)",
+          boxShadow: "0 20px 60px rgba(0,0,0,0.45)",
+          minWidth: "320px"
+        }}
+      >
+        <div
+          style={{
+            width: "64px",
+            height: "64px",
+            borderRadius: "999px",
+            border: "4px solid rgba(255,255,255,0.15)",
+            borderTopColor: "#38bdf8",
+            margin: "0 auto 20px auto",
+            animation: "spinProyector 0.9s linear infinite"
+          }}
+        />
+
+        <style>{`
+          @keyframes spinProyector {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
+
+        <div
+          style={{
+            fontSize: "clamp(28px, 3vw, 48px)",
+            fontWeight: 800,
+            marginBottom: "10px"
+          }}
+        >
+          Proyector
+        </div>
+
+        <div
+          style={{
+            fontSize: "clamp(16px, 1.6vw, 24px)",
+            opacity: 0.72
+          }}
+        >
+          Preparando proyección...
+        </div>
+      </div>
+    </div>
+  )
+}
+
+if (estadoInicialRevisado && !hayContenidoProyector) {
+  return (
+    <div
+      style={{
+        width: "100vw",
+        height: "100vh",
+        background:
+          "radial-gradient(circle at 50% 25%, rgba(37,99,235,0.28), transparent 35%), linear-gradient(180deg, #020617 0%, #0f172a 100%)",
+        color: "white",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "fixed",
+        inset: 0,
+        overflow: "hidden",
+        textAlign: "center",
+        padding: "5vw",
+        boxSizing: "border-box"
+      }}
+    >
+      <div>
+        <div
+          style={{
+            fontSize: "clamp(34px, 5vw, 82px)",
+            fontWeight: 900,
+            marginBottom: "14px"
+          }}
+        >
+          Cancionero Cristiano
+        </div>
+
+        <div
+          style={{
+            fontSize: "clamp(18px, 2vw, 32px)",
+            opacity: 0.72
+          }}
+        >
+          Esperando proyección...
+        </div>
+      </div>
+    </div>
+  )
+}
 
   return (
     <div
