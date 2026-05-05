@@ -60,6 +60,8 @@ export default function ControlPage() {
   const [fondoCancionPreset, setFondoCancionPreset] = useState("cielo-dorado")
   const [fondoCancionOscuridad, setFondoCancionOscuridad] = useState(55)
   const [fondoCancionAjuste, setFondoCancionAjuste] = useState<"cover" | "contain">("cover")
+  const [iglesiaIdActual, setIglesiaIdActual] = useState<string | null>(null)
+  const [fondoCancionConfigLista, setFondoCancionConfigLista] = useState(false)
 const fondosCancionPreset = [
   {
     id: "cielo-dorado",
@@ -299,9 +301,34 @@ const cargarCanciones = async () => {
 
 
 
-const cargarNombreIglesia = async () => {
+  const cargarNombreIglesia = async () => {
   const iglesiaId = await getIglesiaId()
-  if (!iglesiaId) return
+
+  if (!iglesiaId) {
+    setFondoCancionConfigLista(true)
+    return
+  }
+
+  setIglesiaIdActual(iglesiaId)
+
+  try {
+    const guardado = localStorage.getItem(`fondo-cancion-${iglesiaId}`)
+
+    if (guardado) {
+      const config = JSON.parse(guardado)
+
+      setFondoCancionUrl(config.url || "")
+      setFondoCancionNombre(config.nombre || "")
+      setFondoCancionModo(config.modo || "preset")
+      setFondoCancionPreset(config.preset || "cielo-dorado")
+      setFondoCancionOscuridad(config.oscuridad ?? 55)
+      setFondoCancionAjuste(config.ajuste || "cover")
+    }
+  } catch (error) {
+    console.error("No se pudo cargar configuración de fondo:", error)
+  } finally {
+    setFondoCancionConfigLista(true)
+  }
 
   const { data, error } = await supabase
     .from("iglesias")
@@ -1699,6 +1726,34 @@ useEffect(() => {
 
   return () => clearTimeout(timeout)
 }, [lista.length])
+
+useEffect(() => {
+  if (!iglesiaIdActual) return
+  if (!fondoCancionConfigLista) return
+
+  const config = {
+    url: fondoCancionUrl,
+    nombre: fondoCancionNombre,
+    modo: fondoCancionModo,
+    preset: fondoCancionPreset,
+    oscuridad: fondoCancionOscuridad,
+    ajuste: fondoCancionAjuste
+  }
+
+  localStorage.setItem(
+    `fondo-cancion-${iglesiaIdActual}`,
+    JSON.stringify(config)
+  )
+}, [
+  iglesiaIdActual,
+  fondoCancionConfigLista,
+  fondoCancionUrl,
+  fondoCancionNombre,
+  fondoCancionModo,
+  fondoCancionPreset,
+  fondoCancionOscuridad,
+  fondoCancionAjuste
+])
 
 if (!pantallaDetectada) {
   return (

@@ -13,7 +13,7 @@ export default function MusicosPage() {
   const [transposicion, setTransposicion] = useState(0)
   const [mostrarAcordes, setMostrarAcordes] = useState(true)
   const [usarAmericano, setUsarAmericano] = useState(false)
-
+  const [cargandoMusicos, setCargandoMusicos] = useState(true)
  const [esMovil, setEsMovil] = useState(false)
 
   const notasLatinas = [
@@ -30,11 +30,18 @@ useEffect(() => {
 
     console.log("🎹 MÚSICOS conectado a sala:", sala)
 
+    setCargandoMusicos(true)
+
     s.emit("unirse-sala", { sala })
     s.emit("get-estado")
+
+    setTimeout(() => {
+      setCargandoMusicos(false)
+    }, 1200)
   })
 
   s.on("estado-actual", (estado: any) => {
+    setCargandoMusicos(false)
     if (estado?.tipo !== "cancion") return
 
     const data = estado.data || {}
@@ -46,6 +53,7 @@ useEffect(() => {
   })
 
   s.on("cargar-cancion", (data: any) => {
+    setCargandoMusicos(false)
     setPartes(data.partes || [])
     setIndex(data.index || 0)
     setTitulo(data.titulo || "")
@@ -369,6 +377,106 @@ const tonoMostrado = () => {
   return usarAmericano
     ? convertirEscala(tonoTranspuesto, true)
     : tonoTranspuesto
+}
+
+if (cargandoMusicos) {
+  return (
+    <div
+      style={{
+        width: "100vw",
+        height: "100vh",
+        background: "linear-gradient(180deg, #020617 0%, #111827 100%)",
+        color: "white",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        padding: "24px",
+        boxSizing: "border-box"
+      }}
+    >
+      <div>
+        <div
+          style={{
+            width: "58px",
+            height: "58px",
+            borderRadius: "999px",
+            border: "4px solid rgba(255,255,255,0.14)",
+            borderTopColor: "#22c55e",
+            margin: "0 auto 18px auto",
+            animation: "spinMusicos 0.9s linear infinite"
+          }}
+        />
+
+        <style>{`
+          @keyframes spinMusicos {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
+
+        <div
+          style={{
+            fontSize: "clamp(26px, 3vw, 46px)",
+            fontWeight: 800,
+            marginBottom: "8px"
+          }}
+        >
+          Músicos
+        </div>
+
+        <div
+          style={{
+            fontSize: "clamp(15px, 1.5vw, 22px)",
+            opacity: 0.7
+          }}
+        >
+          Preparando acordes...
+        </div>
+      </div>
+    </div>
+  )
+}
+
+if (!partes.length) {
+  return (
+    <div
+      style={{
+        width: "100vw",
+        height: "100vh",
+        background:
+          "radial-gradient(circle at 50% 25%, rgba(34,197,94,0.20), transparent 36%), linear-gradient(180deg, #020617 0%, #111827 100%)",
+        color: "white",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        padding: "24px",
+        boxSizing: "border-box"
+      }}
+    >
+      <div>
+        <div
+          style={{
+            fontSize: "clamp(30px, 4vw, 64px)",
+            fontWeight: 900,
+            marginBottom: "10px"
+          }}
+        >
+          Pantalla de Músicos
+        </div>
+
+        <div
+          style={{
+            fontSize: "clamp(16px, 1.6vw, 24px)",
+            opacity: 0.72
+          }}
+        >
+          Esperando canción...
+        </div>
+      </div>
+    </div>
+  )
 }
 
   return (

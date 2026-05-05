@@ -35,76 +35,45 @@
     "data": {
       "partes": [
         {
-          "id": "cae0f3b7-8f9e-4223-af82-c782b1879ca7",
-          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
+          "id": "4434bb83-9f2a-44ed-b38c-814e65e03810",
+          "cancion_id": "785950a9-544f-46a0-b6eb-74772e171109",
           "tipo": "Verso",
-          "texto": "Hijo, no temas, Yo soy el que habla contigo\nVi tus lágrimas y escuché tu gemido\nEn las madrugadas me buscas sin importarte el sueño\nHijo, tus oraciones han llegado a mi Trono",
-          "orden": 0,
-          "texto_letra": null,
-          "texto_acordes": null,
-          "tiene_acordes": false
-        },
-        {
-          "id": "877da6b8-678f-4bea-8a4a-1a7759ea7cfc",
-          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
-          "tipo": "Verso",
-          "texto": "Yo he visto las luchas que estás pasando\nY en tus ojos la cruz pesada que estás cargando\nSon momentos tan difíciles que hasta piensas así:\nCiertamente el Dios que sirvo se olvidó de mí",
+          "texto": "1. VENID, PECADORES,\nA CRISTO VENID;\nA ÈL CONFIADOS\nEL ALMA RENDID.\nSU VOZ CARIÑOSA\nINSPIRA VALOR;\nVENID PECADORES,\nAL FIEL SALVADOR.",
           "orden": 1,
-          "texto_letra": null,
+          "texto_letra": "1. VENID, PECADORES,\nA CRISTO VENID;\nA ÈL CONFIADOS\nEL ALMA RENDID.\nSU VOZ CARIÑOSA\nINSPIRA VALOR;\nVENID PECADORES,\nAL FIEL SALVADOR.",
           "texto_acordes": null,
           "tiene_acordes": false
         },
         {
-          "id": "db25064d-9ba7-4210-88f5-8d1856df61da",
-          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
-          "tipo": "Coro",
-          "texto": "Hijo, Yo no te olvide ni jamás te abandoné\nSepas que cuando llorabas, Yo contigo lloré\nHijo, Yo estoy aquí, siempre al lado de ti\nY hoy una gran victoria tengo para ti",
+          "id": "4c2238dd-71f6-4b9a-a3ac-e21bd3ba0e89",
+          "cancion_id": "785950a9-544f-46a0-b6eb-74772e171109",
+          "tipo": "Verso",
+          "texto": "2. VENID, PECADORES,\nA CRISTO VENID;\nEL DON QUE OFRECE\nJESÚS, RECIBID.\nVENID PRESUROSOS,\nPERDÓN HALLARÉIS,\nALIVIO DEL ALMA\nDESCANSO Y PAZ.",
           "orden": 2,
-          "texto_letra": null,
+          "texto_letra": "2. VENID, PECADORES,\nA CRISTO VENID;\nEL DON QUE OFRECE\nJESÚS, RECIBID.\nVENID PRESUROSOS,\nPERDÓN HALLARÉIS,\nALIVIO DEL ALMA\nDESCANSO Y PAZ.",
           "texto_acordes": null,
           "tiene_acordes": false
         },
         {
-          "id": "4e26fa27-fa92-4bd2-b6a5-5568cf739686",
-          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
+          "id": "3eb49137-a8cd-49fe-8b2c-056fd2cd193f",
+          "cancion_id": "785950a9-544f-46a0-b6eb-74772e171109",
           "tipo": "Verso",
-          "texto": "En las horas de angustia yo estaba a tu lado\nY te cargué en mis Brazos cuando estabas cansado\nEn los momentos más difíciles Yo fui tu Abrigo\nY tu hermano, tu Dios, tu Padre, tu Amigo",
+          "texto": "3. VENID, PECADORES,\nA CRISTO VENID;\nAL TRONO DE GRACIA\nCON FE ACUDID.\nCONFIAD EN SU SANGRE,\nY OS SALVARÁ,\nY VIDA ETERNA\nJESÚS OS DARÁ.",
           "orden": 3,
-          "texto_letra": null,
-          "texto_acordes": null,
-          "tiene_acordes": false
-        },
-        {
-          "id": "8f524a04-d663-453e-9bfb-25a4a0ce22a2",
-          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
-          "tipo": "Verso",
-          "texto": "Recuerda cuando del mundo con amor te llamé\nAntes que tú me amaras, Yo primero te amé\nNi por un segundo siquiera Yo jamás te olvidé\nEntre los muchos que llamé, a ti te escogí",
-          "orden": 4,
-          "texto_letra": null,
-          "texto_acordes": null,
-          "tiene_acordes": false
-        },
-        {
-          "id": "1a683bf9-d4bf-43ea-b587-229c0115101a",
-          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
-          "tipo": "Coro",
-          "texto": "Hijo, Yo no te olvide ni jamás te abandoné\nSepas que cuando llorabas, Yo contigo lloré\nHijo, Yo estoy aquí, siempre al lado de ti\nY hoy una gran victoria tengo para ti\n\nHijo, Yo no te olvide ni jamás te abandoné\nSepas que cuando llorabas, Yo contigo lloré\nHijo, Yo estoy aquí, siempre al lado de ti\nY hoy una gran victoria tengo para ti",
-          "orden": 5,
-          "texto_letra": null,
+          "texto_letra": "3. VENID, PECADORES,\nA CRISTO VENID;\nAL TRONO DE GRACIA\nCON FE ACUDID.\nCONFIAD EN SU SANGRE,\nY OS SALVARÁ,\nY VIDA ETERNA\nJESÚS OS DARÁ.",
           "texto_acordes": null,
           "tiene_acordes": false
         }
       ],
       "index": 0,
-      "titulo": "LA GRAN VICTORIA",
-      "tono": "Re",
+      "titulo": "VENID, PECADORES A CRISTO",
+      "tono": "",
       "iglesia": "",
       "fondo": {
-        "tipo": "preset",
-        "preset": "cielo-dorado",
-        "fondoCss": "radial-gradient(circle at 50% 20%, rgba(251,191,36,0.45), transparent 34%), linear-gradient(135deg, #1e1b4b 0%, #7c2d12 48%, #0f172a 100%)",
-        "nombre": "Cielo dorado",
-        "oscuridad": 55,
+        "tipo": "estatico",
+        "url": "https://dkufqtrfvduonsubmwka.supabase.co/storage/v1/object/public/imagenes-culto/1777939939285-b9gib65cies.webp",
+        "nombre": "imgi_29_adfdea80e7ea6fe8fc8c73d738903a6f",
+        "oscuridad": 80,
         "ajuste": "cover"
       }
     }
