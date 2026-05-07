@@ -32,7 +32,7 @@ useEffect(() => {
 
     setCargandoMusicos(true)
 
-    s.emit("unirse-sala", { sala })
+    s.emit("unirse-sala", { sala, pantalla: "musicos" })
     s.emit("get-estado")
 
     setTimeout(() => {
@@ -68,20 +68,6 @@ useEffect(() => {
     s.disconnect()
   }
 }, [])
-
-
-useEffect(() => {
-  const check = async () => {
-    const { data } = await supabase.auth.getUser()
-
-    if (!data.user) {
-      window.location.href = "/login"
-    }
-  }
-
-  check()
-}, []) 
-
 
   // 🎹 TRANSPOSICIÓN
  const transponerAcorde = (acorde: string, pasos: number) => {

@@ -35,45 +35,36 @@
     "data": {
       "partes": [
         {
-          "id": "4434bb83-9f2a-44ed-b38c-814e65e03810",
-          "cancion_id": "785950a9-544f-46a0-b6eb-74772e171109",
+          "id": "769d53fa-f6fb-4741-9929-277bb532abe0",
+          "cancion_id": "eadd06e5-e9a1-47d3-9d89-cdd3189b0dab",
           "tipo": "Verso",
-          "texto": "1. VENID, PECADORES,\nA CRISTO VENID;\nA ÈL CONFIADOS\nEL ALMA RENDID.\nSU VOZ CARIÑOSA\nINSPIRA VALOR;\nVENID PECADORES,\nAL FIEL SALVADOR.",
+          "texto": "///SOLAMENTE EL AMOR DE JESÚS///\nPUEDE CAMBIAR PUEDE CAMBIAR TU CORAZÓN.",
           "orden": 1,
-          "texto_letra": "1. VENID, PECADORES,\nA CRISTO VENID;\nA ÈL CONFIADOS\nEL ALMA RENDID.\nSU VOZ CARIÑOSA\nINSPIRA VALOR;\nVENID PECADORES,\nAL FIEL SALVADOR.",
+          "texto_letra": "///SOLAMENTE EL AMOR DE JESÚS///\nPUEDE CAMBIAR PUEDE CAMBIAR TU CORAZÓN.",
           "texto_acordes": null,
           "tiene_acordes": false
         },
         {
-          "id": "4c2238dd-71f6-4b9a-a3ac-e21bd3ba0e89",
-          "cancion_id": "785950a9-544f-46a0-b6eb-74772e171109",
+          "id": "814f1ed4-0d13-40e2-a0c3-5cedcc715285",
+          "cancion_id": "eadd06e5-e9a1-47d3-9d89-cdd3189b0dab",
           "tipo": "Verso",
-          "texto": "2. VENID, PECADORES,\nA CRISTO VENID;\nEL DON QUE OFRECE\nJESÚS, RECIBID.\nVENID PRESUROSOS,\nPERDÓN HALLARÉIS,\nALIVIO DEL ALMA\nDESCANSO Y PAZ.",
+          "texto": "///CUANTAS VECES QUISISTE AMAR///\nY NO SABIAS NO SABIAS PERDONAR.",
           "orden": 2,
-          "texto_letra": "2. VENID, PECADORES,\nA CRISTO VENID;\nEL DON QUE OFRECE\nJESÚS, RECIBID.\nVENID PRESUROSOS,\nPERDÓN HALLARÉIS,\nALIVIO DEL ALMA\nDESCANSO Y PAZ.",
-          "texto_acordes": null,
-          "tiene_acordes": false
-        },
-        {
-          "id": "3eb49137-a8cd-49fe-8b2c-056fd2cd193f",
-          "cancion_id": "785950a9-544f-46a0-b6eb-74772e171109",
-          "tipo": "Verso",
-          "texto": "3. VENID, PECADORES,\nA CRISTO VENID;\nAL TRONO DE GRACIA\nCON FE ACUDID.\nCONFIAD EN SU SANGRE,\nY OS SALVARÁ,\nY VIDA ETERNA\nJESÚS OS DARÁ.",
-          "orden": 3,
-          "texto_letra": "3. VENID, PECADORES,\nA CRISTO VENID;\nAL TRONO DE GRACIA\nCON FE ACUDID.\nCONFIAD EN SU SANGRE,\nY OS SALVARÁ,\nY VIDA ETERNA\nJESÚS OS DARÁ.",
+          "texto_letra": "///CUANTAS VECES QUISISTE AMAR///\nY NO SABIAS NO SABIAS PERDONAR.",
           "texto_acordes": null,
           "tiene_acordes": false
         }
       ],
-      "index": 0,
-      "titulo": "VENID, PECADORES A CRISTO",
-      "tono": "",
+      "index": 1,
+      "titulo": "SOLAMENTE EL AMOR DE JESUS",
+      "tono": "Mim",
       "iglesia": "",
       "fondo": {
-        "tipo": "estatico",
-        "url": "https://dkufqtrfvduonsubmwka.supabase.co/storage/v1/object/public/imagenes-culto/1777939939285-b9gib65cies.webp",
-        "nombre": "imgi_29_adfdea80e7ea6fe8fc8c73d738903a6f",
-        "oscuridad": 80,
+        "tipo": "preset",
+        "preset": "cielo-dorado",
+        "fondoCss": "radial-gradient(circle at 50% 20%, rgba(251,191,36,0.45), transparent 34%), linear-gradient(135deg, #1e1b4b 0%, #7c2d12 48%, #0f172a 100%)",
+        "nombre": "Cielo dorado",
+        "oscuridad": 55,
         "ajuste": "cover"
       }
     }
