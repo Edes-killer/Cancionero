@@ -94,17 +94,6 @@ const fondosCancionPreset = [
     fondo: "radial-gradient(circle at 50% 35%, rgba(249,115,22,0.42), transparent 30%), radial-gradient(circle at 75% 75%, rgba(220,38,38,0.25), transparent 34%), linear-gradient(135deg, #1c1917 0%, #7c2d12 50%, #020617 100%)"
   }
 ]
- useEffect(() => {
-  const check = async () => {
-    const { data } = await supabase.auth.getUser()
-
-    if (!data.user) {
-      window.location.href = "/login"
-    }
-  }
-
-  check()
-}, []) 
   
 useEffect(() => {
   const s = io("http://" + window.location.hostname + ":4000")
@@ -114,7 +103,7 @@ useEffect(() => {
 
   console.log("🔥 SOCKET CONECTADO A SALA:", sala)
 
-  s.emit("unirse-sala", { sala })
+  s.emit("unirse-sala", { sala, pantalla: "control" })
 })
 
   s.on("connect_error", (err) => {
@@ -2595,6 +2584,7 @@ return (
                 setPartes([])
                 setIndex(0)
                 limpiarModoBiblia()
+
               }}
             >
               🆕 Nuevo
@@ -3065,15 +3055,35 @@ return (
           <h2 style={titulo}>🛠️ Acciones</h2>
             <div style={{ ...fila, marginBottom: 16 }}>
               <button
+                type="button"
                 style={btnSecundario}
-                onClick={() => window.open("/proyectar", "_blank")}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+
+                  window.open(
+                    `${window.location.origin}/proyectar`,
+                    "_blank",
+                    "noopener,noreferrer"
+                  )
+                }}
               >
                 🖥️ Abrir Proyector
               </button>
 
               <button
+                type="button"
                 style={btnSecundario}
-                onClick={() => window.open("/musicos", "_blank")}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+
+                  window.open(
+                    `${window.location.origin}/musicos`,
+                    "_blank",
+                    "noopener,noreferrer"
+                  )
+                }}
               >
                 🎹 Abrir Músicos
               </button>
@@ -3827,6 +3837,7 @@ return (
                     setPartes([])
                     setIndex(0)
                     limpiarModoBiblia()
+
                   }}
                 >
                   ✕

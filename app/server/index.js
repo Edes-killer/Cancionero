@@ -53,14 +53,17 @@ const io = new Server(server, {
 io.on("connection", (socket) => {
   console.log("📱 Cliente conectado:", socket.id)
 
-  socket.on("unirse-sala", ({ sala }) => {
-    const salaFinal = sala || "global"
+ socket.on("unirse-sala", ({ sala, pantalla }) => {
+  const salaFinal = sala || "global"
+  const pantallaFinal = pantalla || "desconocida"
 
-    socket.data.sala = salaFinal
-    socket.join(salaFinal)
+  socket.data.sala = salaFinal
+  socket.data.pantalla = pantallaFinal
 
-    console.log(`🏠 ${socket.id} unido a sala: ${salaFinal}`)
-  })
+  socket.join(salaFinal)
+
+  console.log(`🏠 ${socket.id} unido a sala: ${salaFinal} | pantalla: ${pantallaFinal}`)
+})
 
   socket.on("cargar-cancion", (data) => {
     const sala = salaDe(socket)
@@ -225,8 +228,12 @@ io.on("connection", (socket) => {
   })
 
   socket.on("disconnect", () => {
-    console.log("❌ Cliente desconectado:", socket.id)
+  console.log("❌ Cliente desconectado:", {
+    id: socket.id,
+    sala: socket.data?.sala,
+    pantalla: socket.data?.pantalla
   })
+})
 })
 
 const PORT = process.env.PORT || 4000

@@ -26,16 +26,6 @@ export default function ProyectarPage() {
   const [overlayFadingOut, setOverlayFadingOut] = useState(false)
   const overlayTimeoutRef = useRef<any>(null)
 
-  useEffect(() => {
-    const check = async () => {
-      const { data } = await supabase.auth.getUser()
-      if (!data.user) {
-        window.location.href = "/login"
-      }
-    }
-
-    check()
-  }, [])
 
   useEffect(() => {
     const entrarFullscreen = () => {
@@ -112,8 +102,10 @@ s.on("connect", async () => {
   setCargandoProyector(true)
   setEstadoInicialRevisado(false)
 
-  s.emit("unirse-sala", { sala })
-  s.emit("get-estado")
+  s.emit("unirse-sala", { sala, pantalla: "proyectar" })
+  setTimeout(() => {
+    s.emit("get-estado")
+  }, 150)
 
   if (timeoutCargaProyectorRef.current) {
     clearTimeout(timeoutCargaProyectorRef.current)
@@ -367,10 +359,31 @@ const detectarFormatoProyeccion = (texto: string) => {
   return resultado
 }
 
+const limpiarHTMLProyeccion = (texto: string) => {
+  return (texto || "")
+    // quitar bloques completos de autor/créditos antiguos
+    .replace(/<font[^>]*>\s*Por:[\s\S]*?<\/font>/gi, "")
+    .replace(/<font[^>]*>\s*Autor:[\s\S]*?<\/font>/gi, "")
+    .replace(/<font[^>]*>\s*Iglesia:[\s\S]*?<\/font>/gi, "")
+
+    // quitar cualquier etiqueta HTML restante
+    .replace(/<[^>]+>/g, "")
+
+    // limpiar entidades básicas
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+}
+
 const limpiarCancionParaProyector = (texto: string) => {
-  return detectarFormatoProyeccion(texto)
+  const textoSinHTML = limpiarHTMLProyeccion(texto)
+
+  return detectarFormatoProyeccion(textoSinHTML)
     .map((b) =>
-      (b.letra || "")
+      limpiarHTMLProyeccion(b.letra || "")
         .replace(/\/n/g, " ")
         .replace(/\\n/g, " ")
         .replace(/\s+/g, " ")
@@ -382,14 +395,14 @@ const limpiarCancionParaProyector = (texto: string) => {
   
 
   const limpiarTextoProyeccion = (texto: string) => {
-    return (texto || "")
-      .replace(/\[(.*?)\]/g, "")
-      .replace(/\/n/g, " ")
-      .replace(/\\n/g, " ")
-      .replace(/\r?\n|\r/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-  }
+  return limpiarHTMLProyeccion(texto)
+    .replace(/\[(.*?)\]/g, "")
+    .replace(/\/n/g, " ")
+    .replace(/\\n/g, " ")
+    .replace(/\r?\n|\r/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
 
   const textoBibliaActual = limpiarTextoProyeccion(
     biblia?.paginas?.[paginaBiblia] || biblia?.texto || ""
@@ -398,6 +411,49 @@ const limpiarCancionParaProyector = (texto: string) => {
   const textoCancionActual = limpiarCancionParaProyector(
   parteActual?.texto_letra || parteActual?.texto || ""
 )
+
+  const lineasCancionActual = textoCancionActual
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+
+  const totalLineasCancionActual = lineasCancionActual.length
+  const largoCancionActual = textoCancionActual.length
+
+  const largoLineaMasLargaCancionActual = lineasCancionActual.reduce(
+    (max, linea) => Math.max(max, linea.length),
+    0
+  )
+
+  const fontSizeCancionProyector =
+  totalLineasCancionActual >= 10 &&
+  (largoLineaMasLargaCancionActual >= 42 || largoCancionActual > 950)
+    ? "clamp(18px, 1.9vw, 30px)"
+    : totalLineasCancionActual >= 10
+    ? "clamp(24px, 2.7vw, 42px)"
+    : totalLineasCancionActual >= 8 &&
+      (largoLineaMasLargaCancionActual >= 40 || largoCancionActual > 780)
+    ? "clamp(21px, 2.3vw, 36px)"
+    : totalLineasCancionActual >= 8
+    ? "clamp(28px, 3.2vw, 52px)"
+    : totalLineasCancionActual >= 6 &&
+      (largoLineaMasLargaCancionActual >= 38 || largoCancionActual > 620)
+    ? "clamp(24px, 2.8vw, 42px)"
+    : totalLineasCancionActual >= 6
+    ? "clamp(32px, 3.8vw, 60px)"
+    : totalLineasCancionActual >= 4 &&
+      (largoLineaMasLargaCancionActual >= 36 || largoCancionActual > 420)
+    ? "clamp(28px, 3.2vw, 50px)"
+    : totalLineasCancionActual >= 4
+    ? "clamp(38px, 4.6vw, 74px)"
+    : "clamp(44px, 5.2vw, 84px)"
+
+  const lineHeightCancionProyector =
+  totalLineasCancionActual >= 10
+    ? 1.02
+    : totalLineasCancionActual >= 7
+    ? 1.06
+    : 1.1
   const etiquetaParteActual = (() => {
     if (!parteActual?.tipo) return ""
 
@@ -814,15 +870,25 @@ if (estadoInicialRevisado && !hayContenidoProyector) {
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: "8px",
-              minHeight: "64px"
+              gap: "10px",
+              minHeight: "78px",
+              paddingTop: "0.5vh",
+              maxWidth: "92vw"
             }}
           >
             <div
               style={{
-                fontSize: "clamp(18px, 2vw, 30px)",
-                opacity: 0.85
+                fontSize: "clamp(16px, 1.7vw, 28px)",
+                opacity: 0.72,
+                fontWeight: 700,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                whiteSpace: "nowrap",
+                maxWidth: "92vw",
+                overflow: "hidden",
+                textOverflow: "ellipsis"
               }}
+              title={titulo}
             >
               {titulo}
             </div>
@@ -830,9 +896,13 @@ if (estadoInicialRevisado && !hayContenidoProyector) {
             {!!etiquetaParteActual && (
               <div
                 style={{
-                  fontSize: "clamp(16px, 1.8vw, 24px)",
-                  opacity: 0.65,
-                  fontWeight: 700
+                  fontSize: "clamp(14px, 1.35vw, 22px)",
+                  opacity: 0.82,
+                  fontWeight: 800,
+                  padding: "5px 16px",
+                  borderRadius: "999px",
+                  background: "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.10)"
                 }}
               >
                 {etiquetaParteActual}
@@ -854,21 +924,10 @@ if (estadoInicialRevisado && !hayContenidoProyector) {
             <div
               style={{
                 maxWidth: "92vw",
-                maxHeight: "72vh",
+                maxHeight: "70vh",
                 overflow: "hidden",
-                fontSize:
-                  textoCancionActual.length > 1000
-                    ? "clamp(12px, 1.2vw, 20px)"
-                    : textoCancionActual.length > 800
-                    ? "clamp(14px, 1.4vw, 24px)"
-                    : textoCancionActual.length > 600
-                    ? "clamp(16px, 1.8vw, 28px)"
-                    : textoCancionActual.length > 420
-                    ? "clamp(20px, 2.2vw, 34px)"
-                    : textoCancionActual.length > 260
-                    ? "clamp(24px, 2.8vw, 42px)"
-                    : "clamp(34px, 4vw, 72px)",
-                lineHeight: 1.08,
+                fontSize: fontSizeCancionProyector,
+                lineHeight: lineHeightCancionProyector,
                 wordBreak: "break-word",
                 overflowWrap: "anywhere",
                 whiteSpace: "pre-line",
@@ -884,27 +943,34 @@ if (estadoInicialRevisado && !hayContenidoProyector) {
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: "6px",
-              minHeight: "48px"
+              gap: "4px",
+              minHeight: "42px",
+              justifyContent: "center"
             }}
           >
-            <div
-              style={{
-                fontSize: "clamp(16px, 1.8vw, 24px)",
-                opacity: 0.8
-              }}
-            >
-              {tono && `Tono: ${tono}`}
-            </div>
+            {tono && (
+              <div
+                style={{
+                  fontSize: "clamp(13px, 1.25vw, 20px)",
+                  opacity: 0.48,
+                  fontWeight: 600,
+                  letterSpacing: "0.02em"
+                }}
+              >
+                Tono: {tono}
+              </div>
+            )}
 
-            <div
-              style={{
-                fontSize: "clamp(14px, 1.5vw, 20px)",
-                opacity: 0.6
-              }}
-            >
-              {iglesia}
-            </div>
+            {iglesia && (
+              <div
+                style={{
+                  fontSize: "clamp(12px, 1.1vw, 18px)",
+                  opacity: 0.38
+                }}
+              >
+                {iglesia}
+              </div>
+            )}
           </div>
         </div>
       )}
