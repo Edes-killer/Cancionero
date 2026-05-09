@@ -408,6 +408,33 @@ const limpiarCancionParaProyector = (texto: string) => {
     biblia?.paginas?.[paginaBiblia] || biblia?.texto || ""
   )
 
+  const palabrasBibliaActual = textoBibliaActual
+  .split(/\s+/)
+  .filter(Boolean)
+
+const largoBibliaActual = textoBibliaActual.length
+const totalPalabrasBibliaActual = palabrasBibliaActual.length
+
+const fontSizeBibliaProyector =
+  largoBibliaActual > 1800 || totalPalabrasBibliaActual > 300
+    ? "clamp(16px, 1.6vw, 26px)"
+    : largoBibliaActual > 1300 || totalPalabrasBibliaActual > 220
+    ? "clamp(18px, 1.9vw, 30px)"
+    : largoBibliaActual > 900 || totalPalabrasBibliaActual > 150
+    ? "clamp(22px, 2.4vw, 38px)"
+    : largoBibliaActual > 550 || totalPalabrasBibliaActual > 90
+    ? "clamp(28px, 3vw, 50px)"
+    : largoBibliaActual > 260 || totalPalabrasBibliaActual > 45
+    ? "clamp(36px, 4vw, 66px)"
+    : "clamp(46px, 5.4vw, 88px)"
+
+const lineHeightBibliaProyector =
+  largoBibliaActual > 1300 || totalPalabrasBibliaActual > 220
+    ? 1.22
+    : largoBibliaActual > 700 || totalPalabrasBibliaActual > 120
+    ? 1.28
+    : 1.34
+
   const textoCancionActual = limpiarCancionParaProyector(
   parteActual?.texto_letra || parteActual?.texto || ""
 )
@@ -723,43 +750,52 @@ if (estadoInicialRevisado && !hayContenidoProyector) {
         )}
 
         {estadoEspecial?.tipo === "espera" && (
-          <div
-            style={{
-              width: "100vw",
-              height: "100vh",
-              background: "#000",
-              color: "white",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              textAlign: "center",
-              padding: "4vh 5vw",
-              boxSizing: "border-box",
-              gap: "18px"
-            }}
-          >
-            <div
-              style={{
-                fontSize: "clamp(34px, 4vw, 64px)",
-                fontWeight: 700
-              }}
-            >
-              {estadoEspecial.titulo || "Espere un momento"}
-            </div>
+  <div
+    style={{
+      width: "100vw",
+      height: "100vh",
+      background:
+        "radial-gradient(circle at 50% 30%, rgba(37,99,235,0.22), transparent 38%), linear-gradient(180deg, #020617 0%, #000 100%)",
+      color: "white",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      textAlign: "center",
+      padding: "5vh 6vw",
+      boxSizing: "border-box",
+      gap: "18px"
+    }}
+  >
+    <div
+      style={{
+        fontSize:
+          (estadoEspecial.titulo || "").length > 70
+            ? "clamp(34px, 4vw, 64px)"
+            : "clamp(48px, 6vw, 104px)",
+        fontWeight: 900,
+        lineHeight: 1.05,
+        maxWidth: "90vw",
+        textShadow: "0 8px 30px rgba(0,0,0,0.45)"
+      }}
+    >
+      {estadoEspecial.titulo || "Espere un momento"}
+    </div>
 
-            {!!estadoEspecial.subtitulo && (
-              <div
-                style={{
-                  fontSize: "clamp(18px, 2vw, 28px)",
-                  opacity: 0.7
-                }}
-              >
-                {estadoEspecial.subtitulo}
-              </div>
-            )}
-          </div>
-        )}
+    {!!estadoEspecial.subtitulo && (
+      <div
+        style={{
+          fontSize: "clamp(18px, 2vw, 32px)",
+          opacity: 0.68,
+          fontWeight: 600,
+          maxWidth: "80vw"
+        }}
+      >
+        {estadoEspecial.subtitulo}
+      </div>
+    )}
+  </div>
+)}
       {!estadoEspecial && imagen && (
         <div
           style={{
@@ -804,31 +840,31 @@ if (estadoInicialRevisado && !hayContenidoProyector) {
         >
           <div
             style={{
-              fontSize: "clamp(24px, 3vw, 46px)",
-              fontWeight: 700,
-              opacity: 0.95
+              fontSize: "clamp(18px, 2vw, 34px)",
+              fontWeight: 800,
+              opacity: 0.78,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              maxWidth: "90vw",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis"
             }}
+            title={biblia.referencia}
           >
             {biblia.referencia}
           </div>
 
           <div
             style={{
-              maxWidth: "92vw",
-              maxHeight: "78vh",
+              maxWidth: "90vw",
+              maxHeight: "74vh",
               overflow: "hidden",
-              fontSize:
-                textoBibliaActual.length > 1800
-                  ? "clamp(16px, 1.8vw, 26px)"
-                  : textoBibliaActual.length > 1200
-                  ? "clamp(18px, 2vw, 30px)"
-                  : textoBibliaActual.length > 700
-                  ? "clamp(22px, 2.5vw, 38px)"
-                  : textoBibliaActual.length > 350
-                  ? "clamp(28px, 3vw, 48px)"
-                  : "clamp(36px, 4.5vw, 72px)",
-              lineHeight: 1.35,
+              fontSize: fontSizeBibliaProyector,
+              lineHeight: lineHeightBibliaProyector,
               wordBreak: "break-word",
+              overflowWrap: "anywhere",
+              whiteSpace: "normal",
               textAlign: "center"
             }}
           >
@@ -976,46 +1012,108 @@ if (estadoInicialRevisado && !hayContenidoProyector) {
       )}
 
       {estadoEspecial?.tipo === "mensaje" && (
+        <div
+          style={{
+            width: "100vw",
+            height: "100vh",
+            background:
+              "radial-gradient(circle at 50% 35%, rgba(34,197,94,0.18), transparent 38%), linear-gradient(180deg, #020617 0%, #000 100%)",
+            color: "white",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+            padding: "5vh 6vw",
+            boxSizing: "border-box",
+            gap: "20px"
+          }}
+        >
+          <div
+            style={{
+              fontSize:
+                (estadoEspecial.titulo || "").length > 220
+                  ? "clamp(22px, 2.4vw, 38px)"
+                  : (estadoEspecial.titulo || "").length > 140
+                  ? "clamp(28px, 3.2vw, 52px)"
+                  : (estadoEspecial.titulo || "").length > 70
+                  ? "clamp(38px, 4.5vw, 74px)"
+                  : "clamp(54px, 6.5vw, 112px)",
+              fontWeight: 900,
+              lineHeight: 1.08,
+              wordBreak: "break-word",
+              overflowWrap: "anywhere",
+              whiteSpace: "pre-line",
+              maxWidth: "90vw",
+              textShadow: "0 8px 30px rgba(0,0,0,0.45)"
+            }}
+          >
+            {estadoEspecial.titulo}
+          </div>
+
+          {!!estadoEspecial.subtitulo && (
+            <div
+              style={{
+                fontSize: "clamp(17px, 1.8vw, 30px)",
+                opacity: 0.62,
+                fontWeight: 600,
+                maxWidth: "80vw"
+              }}
+            >
+              {estadoEspecial.subtitulo}
+            </div>
+          )}
+        </div>
+      )}
+    {estadoEspecial?.tipo === "logo" && (
       <div
         style={{
           width: "100vw",
           height: "100vh",
-          background: "#000",
+          background:
+            "radial-gradient(circle at 50% 35%, rgba(255,255,255,0.08), transparent 36%), linear-gradient(180deg, #020617 0%, #000 100%)",
           color: "white",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
           textAlign: "center",
-          padding: "4vh 5vw",
+          padding: "5vh 6vw",
           boxSizing: "border-box",
-          gap: "18px"
+          gap: "28px"
         }}
       >
-        <div
+        <img
+          src={estadoEspecial.url}
+          alt="Logo espera"
           style={{
-            fontSize:
-              (estadoEspecial.titulo || "").length > 180
-                ? "clamp(20px, 2.2vw, 34px)"
-                : (estadoEspecial.titulo || "").length > 90
-                ? "clamp(28px, 3vw, 50px)"
-                : "clamp(42px, 5vw, 90px)",
-            fontWeight: 700,
-            lineHeight: 1.15,
-            wordBreak: "break-word",
-            overflowWrap: "anywhere",
-            whiteSpace: "pre-line",
-            maxWidth: "92vw"
+            maxWidth: "42vw",
+            maxHeight: "42vh",
+            objectFit: "contain",
+            filter: "drop-shadow(0 16px 35px rgba(0,0,0,0.5))"
           }}
-        >
-          {estadoEspecial.titulo}
-        </div>
+        />
+
+        {!!estadoEspecial.titulo && (
+          <div
+            style={{
+              fontSize: "clamp(28px, 3.2vw, 56px)",
+              fontWeight: 900,
+              lineHeight: 1.08,
+              maxWidth: "90vw",
+              textShadow: "0 8px 30px rgba(0,0,0,0.45)"
+            }}
+          >
+            {estadoEspecial.titulo}
+          </div>
+        )}
 
         {!!estadoEspecial.subtitulo && (
           <div
             style={{
-              fontSize: "clamp(18px, 2vw, 28px)",
-              opacity: 0.7
+              fontSize: "clamp(18px, 2vw, 32px)",
+              opacity: 0.65,
+              fontWeight: 600
             }}
           >
             {estadoEspecial.subtitulo}
@@ -1023,56 +1121,6 @@ if (estadoInicialRevisado && !hayContenidoProyector) {
         )}
       </div>
     )}
-    {estadoEspecial?.tipo === "logo" && (
-  <div
-    style={{
-      width: "100vw",
-      height: "100vh",
-      background: "#000",
-      color: "white",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      textAlign: "center",
-      padding: "4vh 5vw",
-      boxSizing: "border-box",
-      gap: "24px"
-    }}
-  >
-    <img
-      src={estadoEspecial.url}
-      alt="Logo espera"
-      style={{
-        maxWidth: "40vw",
-        maxHeight: "40vh",
-        objectFit: "contain"
-      }}
-    />
-
-    {!!estadoEspecial.titulo && (
-      <div
-        style={{
-          fontSize: "clamp(28px, 3vw, 48px)",
-          fontWeight: 700
-        }}
-      >
-        {estadoEspecial.titulo}
-      </div>
-    )}
-
-    {!!estadoEspecial.subtitulo && (
-      <div
-        style={{
-          fontSize: "clamp(18px, 2vw, 28px)",
-          opacity: 0.7
-        }}
-      >
-        {estadoEspecial.subtitulo}
-      </div>
-    )}
-  </div>
-)}
     {overlayVisible && (
   <div
     style={{

@@ -134,25 +134,6 @@ useEffect(() => {
   }
 }, [])
 
-useEffect(() => {
-  if (!socket) {
-  console.log("❌ SOCKET NO LISTO")
-  return
-}
-
-  const handleActiva = (data: any) => {
-    setActivaId(data.id)
-  }
-
-  socket.on("cancion-activa", handleActiva)
-
-  return () => {
-    socket.off("cancion-activa", handleActiva)
-  }
-}, [socket])
-
-
-
  useEffect(() => {
   if (listaIdActual) {
     cargarLista()
@@ -264,10 +245,10 @@ const cargarCanciones = async () => {
   const { data, error } = await supabase
     .from("canciones")
     .select("*")
-
-  console.log("DATA:", data)
-  console.log("ERROR:", error)
-
+  if (error) {
+    console.error("Error cargando canciones:", error)
+    return
+  }
   if (data) setCanciones(data)
 
   const { data: partesConAcordes, error: errorAcordes } = await supabase
@@ -362,6 +343,26 @@ const fondoCancionActual = () => {
 }
 }
 
+const registrarProyeccionCancion = async (cancion: any) => {
+  if (!cancion?.id) return
+
+  try {
+    const iglesiaId = await getIglesiaId()
+
+    await supabase.from("historial_proyecciones").insert({
+      iglesia_id: iglesiaId,
+      cancion_id: cancion.id,
+      lista_id: listaIdActual || null,
+      tipo: "cancion",
+      titulo: cancion.titulo || "",
+      tono: cancion.tono || "",
+      categoria: cancion.categoria || ""
+    })
+  } catch (error) {
+    console.error("Error registrando historial:", error)
+  }
+}
+
 const proyectar = async (id: string) => {
   if (!socket) return
 
@@ -397,7 +398,7 @@ const proyectar = async (id: string) => {
 
   setPartes(data || [])
   setIndex(0)
-
+  await registrarProyeccionCancion(cancion)
   socket.emit("cargar-cancion", {
   partes: data,
   index: 0,
@@ -649,8 +650,17 @@ const eliminarDeLista = async (index: number) => {
 }
 
 const guardarCulto = async () => {
-  const nombre = prompt("Nombre del culto", nombreCulto || "")
-  if (!nombre) return
+  if (lista.length === 0) {
+    alert("No hay elementos en la lista de culto para guardar.")
+    return
+  }
+
+  const mensajePrompt = listaIdActual
+    ? "Actualizar nombre del culto"
+    : "Nombre para la nueva lista de culto"
+
+  const nombre = prompt(mensajePrompt, nombreCulto || "")
+  if (!nombre || !nombre.trim()) return
 
   let listaIdFinal = listaIdActual
 
@@ -692,8 +702,8 @@ const guardarCulto = async () => {
       return
     }
 
-    setNombreCulto(nombre)
-    alert("✅ Culto actualizado")
+    setNombreCulto(nombre.trim())
+    alert("✅ Lista de culto actualizada correctamente")
   } else {
     // CREAR CULTO NUEVO
     const iglesiaId = await getIglesiaId()
@@ -701,7 +711,7 @@ const guardarCulto = async () => {
     const { data, error } = await supabase
       .from("listas_culto")
       .insert({
-        nombre,
+        nombre: nombre.trim(),
         iglesia_id: iglesiaId
       })
       .select()
@@ -742,10 +752,10 @@ const guardarCulto = async () => {
     }
 
     setListaIdActual(nuevaId)
-    setNombreCulto(nombre)
-    alert("✅ Culto guardado")
+    setNombreCulto(nombre.trim())
+    alert("✅ Nueva lista de culto guardada correctamente")
   }
-  setNombreCulto(nombre)
+  setNombreCulto(nombre.trim())
   await cargarCultos()
 
   if (listaIdFinal) {
@@ -905,9 +915,6 @@ const cargarCultos = async () => {
 
   if (data) setCultos(data)
 }
-useEffect(() => {
-  cargarCultos()
-}, [])
 
 const nombreImagenAmigable = (url?: string, fallback = "Imagen") => {
   if (!url) return fallback
@@ -1087,7 +1094,7 @@ const irAItemLista = async (i: number, alFinal = false) => {
   setIndex(parteInicial)
 
   const cancion = canciones.find(c => c.id === item.id)
-
+  await registrarProyeccionCancion(cancion || item)
   socket.emit("cargar-cancion", {
   partes: partesCancion,
   index: parteInicial,
@@ -1172,6 +1179,18 @@ const optimizarImagen = (file: File): Promise<File> => {
 const limpiarModoBiblia = () => {
   setPaginasBiblia([])
   setPaginaBibliaActual(0)
+}
+
+const limpiarCultoActual = () => {
+  setLista([])
+  setListaIdActual(null)
+  setNombreCulto("")
+  setActivaId(null)
+  setIndiceLista(null)
+  setIndiceActivoLista(null)
+  setPartes([])
+  setIndex(0)
+  limpiarModoBiblia()
 }
 
 const categoriasDisponibles = Array.from(
@@ -1744,6 +1763,10 @@ useEffect(() => {
   fondoCancionAjuste
 ])
 
+const etiquetaBoton = (texto: string) => {
+  return isMobile ? "" : ` ${texto}`
+}
+
 if (!pantallaDetectada) {
   return (
     <div
@@ -1860,6 +1883,39 @@ if (cargandoControl) {
     </div>
   )
 }
+
+const etiquetaParteControl = (() => {
+  if (paginasBiblia.length > 0) {
+    return `📖 Palabra • Página ${paginaBibliaActual + 1} de ${paginasBiblia.length}`
+  }
+
+  if (partes.length > 0) {
+    const parteActual = partes[index]
+    const tipo = parteActual?.tipo || "Parte"
+
+    let nombreParte = tipo
+
+    if (tipo === "Verso") {
+      let numeroVerso = 0
+
+      for (let i = 0; i <= index; i++) {
+        if (partes[i]?.tipo === "Verso") {
+          numeroVerso++
+        }
+      }
+
+      nombreParte = `Verso ${numeroVerso}`
+    }
+
+    return `🎵 ${nombreParte} • Parte ${index + 1} de ${partes.length}`
+  }
+
+  if (indiceActivoLista !== null && lista[indiceActivoLista]) {
+    return `📋 Elemento ${indiceActivoLista + 1} de ${lista.length}`
+  }
+
+  return "Sin proyección activa"
+})()
 
 const container: CSSProperties = {
   minHeight: "100vh",
@@ -2174,9 +2230,11 @@ return (
       >
         
       </div>
+      
     </div>
+    
   )}
-
+  
   <div
     style={{
       display: "flex",
@@ -2193,6 +2251,27 @@ return (
       ➡️
     </button>
   </div>
+    
+    <div
+      style={{
+        alignSelf: "center",
+        marginTop: "-6px",
+        marginBottom: "2px",
+        padding: isMobile ? "7px 12px" : "8px 16px",
+        borderRadius: "999px",
+        background: "rgba(15, 23, 42, 0.82)",
+        border: "1px solid rgba(255,255,255,0.10)",
+        color: "white",
+        fontSize: isMobile ? "12px" : "14px",
+        fontWeight: 700,
+        opacity: 0.92,
+        textAlign: "center",
+        maxWidth: "100%",
+        boxSizing: "border-box"
+      }}
+    >
+      {etiquetaParteControl}
+    </div>
 
   {!isMobile && (
     <div
@@ -2526,12 +2605,24 @@ return (
             </div>
 
             <div style={acciones}>
-              <button disabled={!socket} style={btn} onClick={() => proyectar(c.id)}>
-                ▶️
+              <button
+                disabled={!socket}
+                style={btn}
+                title="Proyectar canción"
+                aria-label="Proyectar canción"
+                onClick={() => proyectar(c.id)}
+              >
+                ▶️{etiquetaBoton("Proyectar")}
               </button>
 
-              <button disabled={!socket} style={btnSecundario} onClick={() => agregarALista(c)}>
-                ➕
+              <button
+                disabled={!socket}
+                style={btnSecundario}
+                title="Agregar canción a la lista de culto"
+                aria-label="Agregar canción a la lista de culto"
+                onClick={() => agregarALista(c)}
+              >
+                ➕{etiquetaBoton("Agregar")}
               </button>
             </div>
           </div>
@@ -2565,29 +2656,31 @@ return (
         <>
           <div style={{ ...fila, marginBottom: 16 }}>
             <button disabled={!socket} style={btn} onClick={guardarCulto}>
-              💾 Guardar Culto
+              💾 Guardar Lista de Culto
             </button>
 
             <button
               disabled={!socket}
               style={btnVerde}
               onClick={() => {
-                const ok = confirm("¿Crear nuevo culto? Se perderá la lista actual")
+                const hayAlgoEnCurso =
+                lista.length > 0 ||
+                partes.length > 0 ||
+                paginasBiblia.length > 0 ||
+                !!nombreCulto
+
+              if (hayAlgoEnCurso) {
+                const ok = confirm(
+                  "¿Crear un nuevo culto?\n\nSe limpiará la lista actual del Control. Esto no borra los cultos guardados."
+                )
+
                 if (!ok) return
+              }
 
-                setLista([])
-                setListaIdActual(null)
-                setNombreCulto("")
-                setActivaId(null)
-                setIndiceLista(null)
-                setIndiceActivoLista(null)
-                setPartes([])
-                setIndex(0)
-                limpiarModoBiblia()
-
+              limpiarCultoActual()
               }}
             >
-              🆕 Nuevo
+              🆕 Nueva Lista de Culto
             </button>
           </div>
 
@@ -2920,7 +3013,28 @@ return (
     <>
       <div style={columna}>
         <div style={seccion}>
-          <h2 style={titulo}>🎵 Canciones</h2>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "10px",
+              marginBottom: "12px"
+            }}
+          >
+            <h2 style={{ ...titulo, marginBottom: 0 }}>🎵 Canciones</h2>
+
+            <button
+              style={{
+                ...btnSecundario,
+                padding: isMobile ? "7px 10px" : "8px 12px",
+                fontSize: isMobile ? "12px" : "13px"
+              }}
+              onClick={cargarCanciones}
+            >
+              🔄 Actualizar
+            </button>
+          </div>
 
           <input
             placeholder="Buscar por número, título o categoría..."
@@ -3097,21 +3211,24 @@ return (
               disabled={!socket}
               style={btnVerde}
               onClick={() => {
-                const ok = confirm("¿Crear nuevo culto? Se perderá la lista actual")
-                if (!ok) return
+                const hayAlgoEnCurso =
+                lista.length > 0 ||
+                partes.length > 0 ||
+                paginasBiblia.length > 0 ||
+                !!nombreCulto
 
-                setLista([])
-                setListaIdActual(null)
-                setNombreCulto("")
-                setActivaId(null)
-                setIndiceLista(null)
-                setIndiceActivoLista(null)
-                setPartes([])
-                setIndex(0)
-                limpiarModoBiblia()
+              if (hayAlgoEnCurso) {
+                const ok = confirm(
+                  "¿Crear un nuevo culto?\n\nSe limpiará la lista actual del Control. Esto no borra los cultos guardados."
+                )
+
+                if (!ok) return
+              }
+
+              limpiarCultoActual()
               }}
             >
-              🆕 Nuevo
+              🆕 Nueva Lista de Culto
             </button>
           </div>
 
@@ -3825,18 +3942,13 @@ return (
                     borderRadius: "9px"
                   }}
                   onClick={() => {
-                    const ok = confirm("¿Salir del modo edición? Los cambios no guardados se perderán.")
+                    const ok = confirm(
+                      "¿Salir del modo edición?\n\nLos cambios no guardados se perderán, pero el culto guardado no se borrará."
+                    )
+
                     if (!ok) return
 
-                    setListaIdActual(null)
-                    setNombreCulto("")
-                    setLista([])
-                    setActivaId(null)
-                    setIndiceLista(null)
-                    setIndiceActivoLista(null)
-                    setPartes([])
-                    setIndex(0)
-                    limpiarModoBiblia()
+                    limpiarCultoActual()
 
                   }}
                 >
