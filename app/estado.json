@@ -4,30 +4,89 @@
     "data": {
       "partes": [
         {
-          "id": "f6cec2f2-28d8-4a78-b9c6-fb514addc4ad",
-          "cancion_id": "033f94b6-26fb-4b7a-aa14-b6d1426ab3ce",
+          "id": "668c4057-703a-4f64-911c-9a109dc3eb22",
+          "cancion_id": "034fc264-7abb-4897-a3b4-e6be5722f114",
           "tipo": "Verso",
-          "texto": "1. LUZ DE VIDA CELESTIAL,\nFUEGO DE DIVINO AMOR,\nBRILLA EN MI CORAZÓN,\nVEN, INSPÍRAME FERVOR.\nA CANTAR AYÚDAME\nDIGNAMENTE EN HONOR\nDEL CORDERO QUE MURIÓ\nPOR SALVAR AL PECADOR",
-          "orden": 1,
-          "texto_letra": "1. LUZ DE VIDA CELESTIAL,\nFUEGO DE DIVINO AMOR,\nBRILLA EN MI CORAZÓN,\nVEN, INSPÍRAME FERVOR.\nA CANTAR AYÚDAME\nDIGNAMENTE EN HONOR\nDEL CORDERO QUE MURIÓ\nPOR SALVAR AL PECADOR",
+          "texto": "SEÑOR MI DIOS, AL\nCONTEMPLAR LOS CIELOS,\nEI FIRMAMENTO Y LAS\nESTRELLAS MIL.",
+          "orden": 0,
+          "texto_letra": "SEÑOR MI DIOS, AL\nCONTEMPLAR LOS CIELOS,\nEI FIRMAMENTO Y LAS\nESTRELLAS MIL.",
           "texto_acordes": null,
           "tiene_acordes": false
         },
         {
-          "id": "7be8c05c-ad03-4519-871f-dcc03dfe56a4",
-          "cancion_id": "033f94b6-26fb-4b7a-aa14-b6d1426ab3ce",
+          "id": "f1537e8d-a32e-4e6c-8903-343757e147da",
+          "cancion_id": "034fc264-7abb-4897-a3b4-e6be5722f114",
           "tipo": "Verso",
-          "texto": "2. DIGNO, DIGNO DE HONOR\nES MI REDENTO JESÚS,\nQUIEN AL MUNDO REDIMIÓ\nPOR SU MUERTE EN LA CRUZ.\nGLORIA SEA A JESÚS,\nGLORIA SEA Y LOOR,\nY DOMINIO ETERNAL\nA JESÚS, MI REDENTOR.",
+          "texto": "AL OÍR TU VOZ EN LOS\nPOTENTES TRUENOS,\nY VER BRILLAR EL SOL EN SU\nCENIT.\n\n//MI CORAZÓN ENTONA LA\nCANCIÓN.\nCUAN GRANDE ES EL,\nCUAN GRANDE ES EL.//\n\nAI RECORRER LOS MONTES\nY LOS VALLES,\nY VER LAS BELLAS FLORES AL\nPASAR",
+          "orden": 1,
+          "texto_letra": "AL OÍR TU VOZ EN LOS\nPOTENTES TRUENOS,\nY VER BRILLAR EL SOL EN SU\nCENIT.\n\n//MI CORAZÓN ENTONA LA\nCANCIÓN.\nCUAN GRANDE ES EL,\nCUAN GRANDE ES EL.//\n\nAI RECORRER LOS MONTES\nY LOS VALLES,\nY VER LAS BELLAS FLORES AL\nPASAR",
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "b46e73b3-48ac-478a-b6dc-cc34fca112db",
+          "cancion_id": "034fc264-7abb-4897-a3b4-e6be5722f114",
+          "tipo": "Verso",
+          "texto": "AL ESCUCHAR EL CANTO DE\nLAS AVES,\nY EL MURMURAR DEI CLARO\nMANANTIAL.",
           "orden": 2,
-          "texto_letra": "2. DIGNO, DIGNO DE HONOR\nES MI REDENTO JESÚS,\nQUIEN AL MUNDO REDIMIÓ\nPOR SU MUERTE EN LA CRUZ.\nGLORIA SEA A JESÚS,\nGLORIA SEA Y LOOR,\nY DOMINIO ETERNAL\nA JESÚS, MI REDENTOR.",
+          "texto_letra": "AL ESCUCHAR EL CANTO DE\nLAS AVES,\nY EL MURMURAR DEI CLARO\nMANANTIAL.",
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "d8fa7f2e-fe8a-4bdd-b7b9-1c9623dad8fb",
+          "cancion_id": "034fc264-7abb-4897-a3b4-e6be5722f114",
+          "tipo": "Verso",
+          "texto": "CUANDO EL SEÑOR ME\nLLAME A SU PRESENCIA,\nAL DULCE HOGAR AL CIELO",
+          "orden": 3,
+          "texto_letra": "CUANDO EL SEÑOR ME\nLLAME A SU PRESENCIA,\nAL DULCE HOGAR AL CIELO",
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "4b7d617f-dca0-4a01-a8a8-369e7e070100",
+          "cancion_id": "034fc264-7abb-4897-a3b4-e6be5722f114",
+          "tipo": "Verso",
+          "texto": "DE ESPLENDOR.",
+          "orden": 4,
+          "texto_letra": "DE ESPLENDOR.",
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "d998b2bc-f4bd-4885-a6eb-e64f9afcdcf1",
+          "cancion_id": "034fc264-7abb-4897-a3b4-e6be5722f114",
+          "tipo": "Verso",
+          "texto": "LE ADORARÉ CANTANDO LA\nGRANDEZA,\nDE SU PODER Y SU INFINITO\nAMOR.",
+          "orden": 5,
+          "texto_letra": "LE ADORARÉ CANTANDO LA\nGRANDEZA,\nDE SU PODER Y SU INFINITO\nAMOR.",
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "5accaced-5156-40c3-84cd-f64c42fbd7ed",
+          "cancion_id": "034fc264-7abb-4897-a3b4-e6be5722f114",
+          "tipo": "Verso",
+          "texto": "\n//MI CORAZÓN ENTONA LA\nCANCIÓN.\nCUAN GRANDE ES EL,\nCUAN GRANDE ES EL.//",
+          "orden": 6,
+          "texto_letra": "\n//MI CORAZÓN ENTONA LA\nCANCIÓN.\nCUAN GRANDE ES EL,\nCUAN GRANDE ES EL.//",
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "b9ed5c55-54f1-478e-972c-7d9900ef4cfb",
+          "cancion_id": "034fc264-7abb-4897-a3b4-e6be5722f114",
+          "tipo": "Verso",
+          "texto": "CUAN GRANDE ES EL,\nCUAN GRANDE ES EL,\nCUAN GRANDE ES EL.\n",
+          "orden": 7,
+          "texto_letra": "CUAN GRANDE ES EL,\nCUAN GRANDE ES EL,\nCUAN GRANDE ES EL.\n",
           "texto_acordes": null,
           "tiene_acordes": false
         }
       ],
       "index": 0,
-      "titulo": "LUZ DE VIDA",
-      "tono": "Re",
-      "iglesia": ""
+      "titulo": "CUAN GRANDE ES EL",
+      "tono": "Sol"
     }
   },
   "9c6246da-b5bb-449a-b283-13dd465b46d2": {
@@ -35,35 +94,55 @@
     "data": {
       "partes": [
         {
-          "id": "769d53fa-f6fb-4741-9929-277bb532abe0",
-          "cancion_id": "eadd06e5-e9a1-47d3-9d89-cdd3189b0dab",
+          "id": "ca750ebc-6606-479d-a055-f05213f3ffac",
+          "cancion_id": "acfabb27-faf1-4441-97e0-946967a029ed",
           "tipo": "Verso",
-          "texto": "///SOLAMENTE EL AMOR DE JESÚS///\nPUEDE CAMBIAR PUEDE CAMBIAR TU CORAZÓN.",
-          "orden": 1,
-          "texto_letra": "///SOLAMENTE EL AMOR DE JESÚS///\nPUEDE CAMBIAR PUEDE CAMBIAR TU CORAZÓN.",
-          "texto_acordes": null,
-          "tiene_acordes": false
+          "texto": "VENID, CON CÁNTICOS, VENID\nDEL TRONO ALREDEDOR;\nCON ÁNGELES LOOR RENDID,\nA CRISTO EL SEÑOR.",
+          "orden": 0,
+          "texto_letra": "VENID, CON CÁNTICOS, VENID\nDEL TRONO ALREDEDOR;\nCON ÁNGELES LOOR RENDID,\nA CRISTO EL SEÑOR.",
+          "texto_acordes": "Apocalipsis 5.9,11, 7.9",
+          "tiene_acordes": true
         },
         {
-          "id": "814f1ed4-0d13-40e2-a0c3-5cedcc715285",
-          "cancion_id": "eadd06e5-e9a1-47d3-9d89-cdd3189b0dab",
+          "id": "bbf4bab6-08cf-41d7-bd70-66c36682ef36",
+          "cancion_id": "acfabb27-faf1-4441-97e0-946967a029ed",
           "tipo": "Verso",
-          "texto": "///CUANTAS VECES QUISISTE AMAR///\nY NO SABIAS NO SABIAS PERDONAR.",
+          "texto": "DE ALABANZAS DIGNO ES EL,\nQUE EN LA CRUZ BEBIÓ\nLA COPA DE AMARGA HIEL\nQUE VIDA AL HOMBRE DIO.",
+          "orden": 1,
+          "texto_letra": "DE ALABANZAS DIGNO ES EL,\nQUE EN LA CRUZ BEBIÓ\nLA COPA DE AMARGA HIEL\nQUE VIDA AL HOMBRE DIO.",
+          "texto_acordes": "A               E\nVenid con cánticos, venid,",
+          "tiene_acordes": true
+        },
+        {
+          "id": "78ca87d7-1728-46e3-a21d-fe3fa2eec423",
+          "cancion_id": "acfabb27-faf1-4441-97e0-946967a029ed",
+          "tipo": "Verso",
+          "texto": "CANTAD MORTALES POR DOQUIER,\nCANTADLE CON ARDOR;\nEL SIEMPRE ES DIGNO DE PODER,\nDOMINIO Y HONOR.",
           "orden": 2,
-          "texto_letra": "///CUANTAS VECES QUISISTE AMAR///\nY NO SABIAS NO SABIAS PERDONAR.",
-          "texto_acordes": null,
-          "tiene_acordes": false
+          "texto_letra": "CANTAD MORTALES POR DOQUIER,\nCANTADLE CON ARDOR;\nEL SIEMPRE ES DIGNO DE PODER,\nDOMINIO Y HONOR.",
+          "texto_acordes": "A       E       A\ndel trono alrededor,",
+          "tiene_acordes": true
+        },
+        {
+          "id": "b7d176d0-8798-4b48-a5ad-d52903a6da97",
+          "cancion_id": "acfabb27-faf1-4441-97e0-946967a029ed",
+          "tipo": "Verso",
+          "texto": "CON GOZO, PUES, ALZAD LA VOZ\nALEGRE VOZ ALZAD\nY CON LOS ÁNGELES DE DIOS,\nA CRISTO ADORAD.",
+          "orden": 3,
+          "texto_letra": "CON GOZO, PUES, ALZAD LA VOZ\nALEGRE VOZ ALZAD\nY CON LOS ÁNGELES DE DIOS,\nA CRISTO ADORAD.",
+          "texto_acordes": "D             A\ncon ángeles loor rendid",
+          "tiene_acordes": true
         }
       ],
-      "index": 1,
-      "titulo": "SOLAMENTE EL AMOR DE JESUS",
-      "tono": "Mim",
+      "index": 3,
+      "titulo": "VENID, CON CÁNTICOS",
+      "tono": "",
       "iglesia": "",
       "fondo": {
         "tipo": "preset",
-        "preset": "cielo-dorado",
-        "fondoCss": "radial-gradient(circle at 50% 20%, rgba(251,191,36,0.45), transparent 34%), linear-gradient(135deg, #1e1b4b 0%, #7c2d12 48%, #0f172a 100%)",
-        "nombre": "Cielo dorado",
+        "preset": "purpura-noche",
+        "fondoCss": "radial-gradient(circle at 20% 30%, rgba(168,85,247,0.38), transparent 32%), radial-gradient(circle at 85% 65%, rgba(236,72,153,0.28), transparent 32%), linear-gradient(135deg, #020617 0%, #312e81 52%, #581c87 100%)",
+        "nombre": "Púrpura noche",
         "oscuridad": 55,
         "ajuste": "cover"
       }

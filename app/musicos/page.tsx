@@ -88,28 +88,40 @@ useEffect(() => {
   return usarAmericano ? convertirEscala(resultado, true) : resultado
 }
 
+const limpiarTokenAcorde = (token: string) => {
+  return (token || "")
+    .trim()
+    .replace(/[.,;:]+$/g, "")
+}
+
 const esAcorde = (token: string) => {
-  return /^(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B)(#|b)?(m|maj|min|sus|dim|aug)?\d*(\/(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B|C|D|E|F|G|A|B)(#|b)?)?$/i.test(token.trim())
+  const t = limpiarTokenAcorde(token)
+
+  return /^((Do|Re|Mi|Fa|Sol|La|Si)|[A-G])(#|b)?(m|maj|min|sus|dim|aug|add|°|ø)?[0-9]*(maj7|m7|sus2|sus4|add9|dim7|m7b5)?(\/((Do|Re|Mi|Fa|Sol|La|Si)|[A-G])(#|b)?)?$/i.test(t)
 }
 
 const esAcordeOTextoDeAcordes = (linea: string) => {
-  const tokens = linea
+  const tokens = (linea || "")
+    .replace(/\u00A0/g, " ")
     .trim()
     .split(/\s+/)
     .filter(Boolean)
 
   if (tokens.length === 0) return false
 
-  return tokens.every((token) => {
-    const limpio = token.replace(/[.,;:]+$/g, "")
-    return esAcorde(limpio)
-  })
+  return tokens.every((token) => esAcorde(limpiarTokenAcorde(token)))
 }
 
 const transponerLinea = (linea: string, pasos: number) => {
-  return linea.replace(/\S+/g, (token) =>
-    esAcorde(token) ? transponerAcorde(token, pasos) : token
-  )
+  return linea.replace(/\S+/g, (token) => {
+    const limpio = limpiarTokenAcorde(token)
+
+    if (!esAcorde(limpio)) return token
+
+    const transpuesto = transponerAcorde(limpio, pasos)
+
+    return token.replace(limpio, transpuesto)
+  })
 }
   // 🎸 PARSER INTELIGENTE (corchetes + formato iglesia)
 const detectarFormato = (texto: string) => {
@@ -296,6 +308,29 @@ const convertirEscala = (acorde: string, aAmericano: boolean) => {
 
 const parte = partes[index]
 
+const etiquetaParteMusicos = (() => {
+  if (!partes.length) return "Esperando canción"
+
+  const parteActual = partes[index]
+  const tipo = parteActual?.tipo || "Parte"
+
+  let nombreParte = tipo
+
+  if (tipo === "Verso") {
+    let numeroVerso = 0
+
+    for (let i = 0; i <= index; i++) {
+      if (partes[i]?.tipo === "Verso") {
+        numeroVerso++
+      }
+    }
+
+    nombreParte = `Verso ${numeroVerso}`
+  }
+
+  return `${nombreParte} • Parte ${index + 1} de ${partes.length}`
+})()
+
 const textoLimpio =
   parte?.texto_letra || parte?.texto || ""
 
@@ -328,7 +363,9 @@ const textoFuente =
     : textoLimpio
 
 const bloque = detectarFormato(textoFuente)
-
+const hayAcordesVisibles =
+  mostrarAcordes &&
+  bloque.some((linea: any) => linea.tipo === "corchete" || linea.tipo === "linea")
 const largoVisualParte = textoLimpio.length
 const totalLineasParte = textoLimpio
   .split(/\r?\n/)
@@ -353,6 +390,62 @@ const fontSizeAcordes =
     : largoVisualParte < 260 && totalLineasParte <= 5
     ? "clamp(14px, 1.5vw, 20px)"
     : "clamp(11px, 1vw, 16px)"
+
+const acordeChipStyle = (compacto = false): React.CSSProperties => ({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: compacto ? "3px 8px" : "4px 10px",
+  borderRadius: "999px",
+  background: "rgba(34,197,94,0.16)",
+  border: "1px solid rgba(34,197,94,0.36)",
+  color: "#bbf7d0",
+  fontWeight: 900,
+  fontSize: fontSizeAcordes,
+  fontFamily: "Arial, sans-serif",
+  lineHeight: 1,
+  boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
+  whiteSpace: "nowrap"
+})
+
+const renderAcordeChip = (acorde: string, key?: any, compacto = false) => {
+  const limpio = limpiarTokenAcorde(acorde)
+
+  return (
+    <span key={key} style={acordeChipStyle(compacto)}>
+      {convertirEscala(
+        transponerAcorde(limpio, transposicion),
+        usarAmericano
+      )}
+    </span>
+  )
+}
+
+const renderLineaAcordesChips = (linea: string) => {
+  const tokens = (linea || "")
+    .replace(/\u00A0/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        gap: totalLineasParte <= 4 ? "12px" : "8px",
+        flexWrap: "wrap",
+        marginBottom: "10px",
+        maxWidth: "100%"
+      }}
+    >
+      {tokens.map((token, i) =>
+        renderAcordeChip(token, i, totalLineasParte > 4)
+      )}
+    </div>
+  )
+}
 
 const tonoMostrado = () => {
   if (!tono) return ""
@@ -479,10 +572,15 @@ if (!partes.length) {
     boxSizing: "border-box"
   }}
 >
+<style>{`
+  .scroll-musicos::-webkit-scrollbar {
+    display: none;
+  }
+`}</style>
     <div
       style={{
         textAlign: "center",
-        marginBottom: "18px",
+        marginBottom: "14px",
         flexShrink: 0
       }}
     >
@@ -490,64 +588,114 @@ if (!partes.length) {
         style={{
           fontSize: "clamp(20px, 2.2vw, 32px)",
           margin: 0,
-          fontWeight: 700
+          fontWeight: 800,
+          lineHeight: 1.15,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis"
         }}
+        title={titulo || "Sin título"}
       >
         {titulo || "Sin título"}
       </h1>
 
       <div
         style={{
-          fontSize: "clamp(12px, 1vw, 16px)",
-          opacity: 0.75,
-          marginTop: "4px"
+          marginTop: "8px",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: "10px",
+          flexWrap: "wrap"
         }}
       >
-        {tono && `Tono: ${tonoMostrado()}`}
+        <div
+          style={{
+            padding: "5px 12px",
+            borderRadius: "999px",
+            background: "rgba(34,197,94,0.14)",
+            border: "1px solid rgba(34,197,94,0.28)",
+            color: "#bbf7d0",
+            fontSize: "clamp(12px, 1vw, 16px)",
+            fontWeight: 800
+          }}
+        >
+          {etiquetaParteMusicos}
+        </div>
+
+        {tono && (
+          <div
+            style={{
+              padding: "5px 12px",
+              borderRadius: "999px",
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.10)",
+              fontSize: "clamp(12px, 1vw, 16px)",
+              opacity: 0.86,
+              fontWeight: 700
+            }}
+          >
+            Tono: {tonoMostrado()}
+          </div>
+        )}
       </div>
     </div>
 
     <div
+    className="scroll-musicos"
+      style={{
+        flex: 1,
+        width: "100%",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        overflowY: "auto",
+        overflowX: "hidden",
+        padding: "8px 0 96px 0",
+        scrollbarWidth: "none",
+        msOverflowStyle: "none"
+      }}
+    >
+  <div
   style={{
-    flex: 1,
-    width: "100%",
+    width: hayAcordesVisibles ? "92vw" : "88vw",
+    maxWidth: hayAcordesVisibles ? "1400px" : "1300px",
+    minHeight: "calc(100vh - 190px)",
     display: "flex",
+    flexDirection: "column",
     justifyContent: "center",
     alignItems: "center",
-    overflowY: "auto",
-    overflowX: "hidden",
-    padding: "6px 0 84px 0"
+    textAlign: "center",
+    margin: "0 auto"
   }}
 >
-  <div
-    style={{
-      width: "96vw",
-      maxWidth: "1500px",
-      minHeight: "calc(100vh - 180px)",
-      display: "flex",
-      flexDirection: "column",
-      justifyContent: "center"
-    }}
-  >
         {bloque.map((linea, i) => (
           <div
-  key={i}
-  style={{
-    marginBottom: totalLineasParte <= 4 ? "8px" : "12px"
-  }}
->
+            key={i}
+            style={{
+              marginBottom: totalLineasParte <= 4 ? "8px" : "12px",
+              width: "100%",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center"
+            }}
+          >
             {linea.tipo === "corchete" && (
             <>
               {mostrarAcordes && (
                 <div
                   style={{
-                    position: "relative",
+                   position: "relative",
                     minHeight: totalLineasParte <= 4 ? "30px" : "24px",
                     marginBottom: "4px",
                     fontSize: fontSizeAcordes,
                     color: "#22c55e",
                     fontWeight: 700,
-                    fontFamily: "monospace"
+                    fontFamily: "monospace",
+                    display: "inline-block",
+                    minWidth: `${Math.max((linea.letra || "").length, 1)}ch`,
+                    maxWidth: "100%",
+                    textAlign: "left"
                   }}
                 >
                   {linea.acordes.map((a: any, j: number) => (
@@ -560,10 +708,7 @@ if (!partes.length) {
                         whiteSpace: "nowrap"
                       }}
                     >
-                      {convertirEscala(
-                        transponerAcorde(a.acorde, transposicion),
-                        usarAmericano
-                      )}
+                      {renderAcordeChip(a.acorde, j, totalLineasParte > 4)}
                     </span>
                   ))}
                 </div>
@@ -575,7 +720,10 @@ if (!partes.length) {
         lineHeight: totalLineasParte <= 4 ? 0.96 : 1.02,
         whiteSpace: "pre-wrap",
         wordBreak: "break-word",
-        overflowWrap: "anywhere"
+        overflowWrap: "anywhere",
+        textAlign: hayAcordesVisibles ? "left" : "center",
+        display: "inline-block",
+        maxWidth: "100%"
       }}
     >
       {linea.letra}
@@ -585,23 +733,7 @@ if (!partes.length) {
 
 {linea.tipo === "linea" && (
   <>
-    {mostrarAcordes && (
-      <div
-        style={{
-          color: "#22c55e",
-          fontWeight: 700,
-          fontSize: fontSizeAcordes,
-          marginBottom: "8px",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          overflowWrap: "anywhere",
-          fontFamily: "monospace",
-          lineHeight: 1.25
-        }}
-      >
-        {transponerLinea(linea.acordes, transposicion)}
-      </div>
-    )}
+    {mostrarAcordes && renderLineaAcordesChips(linea.acordes)}
 
     <div
       style={{
@@ -609,7 +741,8 @@ if (!partes.length) {
         lineHeight: totalLineasParte <= 4 ? 0.96 : 1.02,
         whiteSpace: "pre-wrap",
         wordBreak: "break-word",
-        overflowWrap: "anywhere"
+        overflowWrap: "anywhere",
+        textAlign: "center"
       }}
     >
       {linea.letra}
@@ -618,17 +751,22 @@ if (!partes.length) {
 )}
 
             {linea.tipo === "solo" && (
-              <div
-                style={{
-                  fontSize: fontSizeLetra,
-                  lineHeight: totalLineasParte <= 4 ? 0.96 : 1.02,
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                  overflowWrap: "anywhere"
-                }}
-              >
-                {linea.letra}
-              </div>
+              esAcordeOTextoDeAcordes(linea.letra) && mostrarAcordes ? (
+                renderLineaAcordesChips(linea.letra)
+              ) : (
+                <div
+                  style={{
+                    fontSize: fontSizeLetra,
+                    lineHeight: totalLineasParte <= 4 ? 0.96 : 1.02,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    overflowWrap: "anywhere",
+                    textAlign: "center"
+                  }}
+                >
+                  {linea.letra}
+                </div>
+              )
             )}
           </div>
         ))}
@@ -638,13 +776,13 @@ if (!partes.length) {
     <div
       style={{
         position: "fixed",
-        bottom: 18,
-        right: 18,
+        bottom: 14,
+        right: 14,
         display: "flex",
         gap: "8px",
         alignItems: "center",
         background: "rgba(20,20,20,0.9)",
-        padding: "10px 12px",
+        padding: "8px 10px",
         borderRadius: "12px",
         border: "1px solid rgba(255,255,255,0.12)"
       }}
@@ -662,15 +800,15 @@ if (!partes.length) {
           borderRadius: "6px"
         }}
       >
-        {usarAmericano ? "Escala activa: Americana" : "Escala activa: Latina"}
+        {usarAmericano ? "Americana" : "Latina"}
       </button>
     </div>
 
     <div
       style={{
         position: "fixed",
-        bottom: 18,
-        left: 18,
+        bottom: 14,
+        left: 14,
         background: "rgba(20,20,20,0.9)",
         padding: "10px 12px",
         borderRadius: "12px",
@@ -678,7 +816,7 @@ if (!partes.length) {
       }}
     >
       <button onClick={() => setMostrarAcordes(a => !a)}>
-        {mostrarAcordes ? "Ocultar acordes" : "Mostrar acordes"}
+        {mostrarAcordes ? "Acordes: ON" : "Acordes: OFF"}
       </button>
     </div>
   </div>

@@ -1,18 +1,28 @@
-import { supabase } from "./supabase"
+import { supabase } from "@/lib/supabase"
 
 export const getIglesiaId = async () => {
-  const { data: sessionData } = await supabase.auth.getSession()
-  const user = sessionData.session?.user
+  const { data: userData, error: userError } = await supabase.auth.getUser()
 
-  if (!user) return null
+  if (userError) {
+    console.error("Error obteniendo usuario:", userError)
+    return null
+  }
+
+  const userId = userData.user?.id
+  if (!userId) return null
 
   const { data, error } = await supabase
     .from("usuarios_iglesia")
-    .select("iglesia_id")
-    .eq("user_id", user.id)
-    .single()
+    .select("iglesia_id, creado_en")
+    .eq("user_id", userId)
+    .order("creado_en", { ascending: true })
+    .limit(1)
+    .maybeSingle()
 
-  if (error || !data) return null
+  if (error) {
+    console.error("Error obteniendo iglesia:", error)
+    return null
+  }
 
-  return data.iglesia_id
+  return data?.iglesia_id || null
 }
