@@ -3,23 +3,23 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { setIglesiaActivaId } from "@/lib/getIglesia"
 
-export default function ConfigurarIglesiaPage() {
+export default function CrearIglesiaPage() {
   const router = useRouter()
 
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
-
   const [userId, setUserId] = useState("")
   const [nombreIglesia, setNombreIglesia] = useState("")
-  const [ciudad, setCiudad] = useState("")
   const [nombreCorto, setNombreCorto] = useState("")
+  const [localidad, setLocalidad] = useState("")
 
   useEffect(() => {
     const revisarUsuario = async () => {
-      const { data } = await supabase.auth.getUser()
+      const { data, error } = await supabase.auth.getUser()
 
-      if (!data.user) {
+      if (error || !data.user) {
         router.replace("/login")
         return
       }
@@ -45,13 +45,13 @@ export default function ConfigurarIglesiaPage() {
     try {
       setGuardando(true)
 
-      const nombreFinal = nombreIglesia.trim()
-      const nombreVisible = nombreCorto.trim() || nombreFinal
+      const nombreFinal = nombreCorto.trim() || nombreIglesia.trim()
 
       const { data: iglesia, error: errorIglesia } = await supabase
         .from("iglesias")
         .insert({
-          nombre: nombreVisible
+          nombre: nombreFinal,
+          localidad: localidad.trim() || null
         })
         .select()
         .single()
@@ -62,23 +62,26 @@ export default function ConfigurarIglesiaPage() {
         return
       }
 
-      const { error: errorUsuario } = await supabase
+      const { error: errorRelacion } = await supabase
         .from("usuarios_iglesia")
         .insert({
           user_id: userId,
           iglesia_id: iglesia.id
         })
 
-      if (errorUsuario) {
-        console.error("Error vinculando usuario:", errorUsuario)
-        alert("La iglesia se creó, pero no se pudo vincular tu usuario.")
+      if (errorRelacion) {
+        console.error("Error vinculando usuario a iglesia:", errorRelacion)
+        alert("La iglesia se creó, pero no se pudo vincular al usuario.")
         return
       }
 
+      setIglesiaActivaId(iglesia.id)
+
       router.replace("/")
+      router.refresh()
     } catch (error) {
-      console.error("Error configurando iglesia:", error)
-      alert("Ocurrió un error al configurar la iglesia.")
+      console.error("Error creando iglesia:", error)
+      alert("Ocurrió un error al crear la iglesia.")
     } finally {
       setGuardando(false)
     }
@@ -125,6 +128,18 @@ export default function ConfigurarIglesiaPage() {
     boxShadow: "0 14px 32px rgba(37,99,235,0.25)"
   }
 
+  const botonSecundario = {
+    width: "100%",
+    border: "1px solid rgba(255,255,255,0.10)",
+    borderRadius: "16px",
+    padding: "14px 18px",
+    background: "rgba(30,41,59,0.88)",
+    color: "white",
+    fontWeight: 800,
+    fontSize: "15px",
+    cursor: "pointer"
+  }
+
   if (cargando) {
     return (
       <div
@@ -144,12 +159,15 @@ export default function ConfigurarIglesiaPage() {
     )
   }
 
+  const nombrePreview =
+    nombreCorto.trim() || nombreIglesia.trim() || "Nombre de la iglesia"
+
   return (
     <div
       style={{
         minHeight: "100vh",
         background:
-          "radial-gradient(circle at top left, rgba(37,99,235,0.25), transparent 32%), radial-gradient(circle at bottom right, rgba(34,197,94,0.18), transparent 28%), linear-gradient(180deg, #020617 0%, #0f172a 100%)",
+          "radial-gradient(circle at top left, rgba(37,99,235,0.25), transparent 32%), radial-gradient(circle at bottom right, rgba(34,197,94,0.16), transparent 28%), linear-gradient(180deg, #020617 0%, #0f172a 100%)",
         color: "white",
         padding: "22px",
         boxSizing: "border-box",
@@ -161,9 +179,9 @@ export default function ConfigurarIglesiaPage() {
       <div
         style={{
           width: "100%",
-          maxWidth: "980px",
+          maxWidth: "1080px",
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
           gap: "18px",
           alignItems: "stretch"
         }}
@@ -171,7 +189,7 @@ export default function ConfigurarIglesiaPage() {
         <div
           style={{
             ...card,
-            padding: "26px",
+            padding: "28px",
             display: "flex",
             flexDirection: "column",
             justifyContent: "space-between",
@@ -181,16 +199,16 @@ export default function ConfigurarIglesiaPage() {
           <div>
             <div
               style={{
-                width: "72px",
-                height: "72px",
-                borderRadius: "22px",
+                width: "76px",
+                height: "76px",
+                borderRadius: "24px",
                 background: "rgba(37,99,235,0.18)",
                 border: "1px solid rgba(37,99,235,0.32)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: "38px",
-                marginBottom: "18px"
+                fontSize: "40px",
+                marginBottom: "20px"
               }}
             >
               ⛪
@@ -206,17 +224,17 @@ export default function ConfigurarIglesiaPage() {
                 marginBottom: "8px"
               }}
             >
-              Primera configuración
+              Configuración inicial
             </div>
 
             <h1
               style={{
                 margin: 0,
-                fontSize: "clamp(32px, 5vw, 54px)",
+                fontSize: "clamp(34px, 5vw, 56px)",
                 lineHeight: 1
               }}
             >
-              Configura tu iglesia
+              Crea tu iglesia
             </h1>
 
             <p
@@ -224,35 +242,68 @@ export default function ConfigurarIglesiaPage() {
                 marginTop: "16px",
                 opacity: 0.72,
                 lineHeight: 1.55,
-                fontSize: "15px"
+                fontSize: "15px",
+                maxWidth: "520px"
               }}
             >
-              Esta información se usará para identificar tu iglesia dentro del
-              sistema y preparar las pantallas de Control, Proyector y Músicos.
+              Esta iglesia será usada para tus listas de culto, logo,
+              estadísticas, canciones propias y configuración de proyección.
             </p>
           </div>
 
           <div
             style={{
-              padding: "14px",
-              borderRadius: "18px",
-              background: "rgba(34,197,94,0.10)",
-              border: "1px solid rgba(34,197,94,0.22)",
-              color: "#bbf7d0",
-              fontSize: "14px",
-              lineHeight: 1.45,
-              fontWeight: 700
+              display: "grid",
+              gap: "10px"
             }}
           >
-            Después podrás subir logo, preparar listas de culto y abrir las
-            pantallas de proyección desde el panel principal.
+            {[
+              "Control para operar el culto",
+              "Proyector para la congregación",
+              "Pantalla de músicos con acordes",
+              "Listas y estadísticas por iglesia"
+            ].map((item) => (
+              <div
+                key={item}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px",
+                  padding: "12px",
+                  borderRadius: "16px",
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  opacity: 0.9
+                }}
+              >
+                <span
+                  style={{
+                    width: "24px",
+                    height: "24px",
+                    borderRadius: "999px",
+                    background: "rgba(34,197,94,0.16)",
+                    color: "#bbf7d0",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 950,
+                    flexShrink: 0
+                  }}
+                >
+                  ✓
+                </span>
+                {item}
+              </div>
+            ))}
           </div>
         </div>
 
         <div
           style={{
             ...card,
-            padding: "26px"
+            padding: "28px"
           }}
         >
           <div
@@ -268,21 +319,10 @@ export default function ConfigurarIglesiaPage() {
                 style={input}
                 value={nombreIglesia}
                 onChange={(e) => setNombreIglesia(e.target.value)}
-                placeholder="Ej: Iglesia Metodista Pentecostal..."
+                placeholder="Ej: Iglesia Evangelica Pentecostal de..."
                 autoFocus
               />
             </div>
-
-            <div>
-              <div style={label}>Ciudad o localidad</div>
-              <input
-                style={input}
-                value={ciudad}
-                onChange={(e) => setCiudad(e.target.value)}
-                placeholder="Ej: La Ligua, Renca, Santiago..."
-              />
-            </div>
-
             <div>
               <div style={label}>Nombre corto visible</div>
               <input
@@ -299,45 +339,106 @@ export default function ConfigurarIglesiaPage() {
                   lineHeight: 1.35
                 }}
               >
-                Si lo dejas vacío, se usará el nombre completo de la iglesia.
+                Este nombre se verá en el dashboard y puede usarse en pantallas.
+              </div>
+            </div>
+
+            <div>
+              <div style={label}>Localidad o ciudad</div>
+              <input
+                style={input}
+                value={localidad}
+                onChange={(e) => setLocalidad(e.target.value)}
+                placeholder="Ej: La Ligua, Renca, Santiago..."
+              />
+              <div
+                style={{
+                  fontSize: "12px",
+                  opacity: 0.55,
+                  marginTop: "7px",
+                  lineHeight: 1.35
+                }}
+              >
+                Por ahora se usa solo como referencia visual. Después podemos
+                guardarla como columna si lo necesitas.
               </div>
             </div>
 
             <div
               style={{
-                padding: "14px",
-                borderRadius: "16px",
-                background: "rgba(255,255,255,0.05)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                marginTop: "4px"
+                marginTop: "4px",
+                padding: "16px",
+                borderRadius: "18px",
+                background:
+                  "radial-gradient(circle at top left, rgba(34,197,94,0.14), transparent 36%), rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.10)"
               }}
             >
-              <div style={{ fontSize: "13px", opacity: 0.65, fontWeight: 800 }}>
+              <div
+                style={{
+                  fontSize: "13px",
+                  opacity: 0.65,
+                  fontWeight: 900,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase"
+                }}
+              >
                 Vista previa
               </div>
 
               <div
                 style={{
-                  fontSize: "22px",
-                  fontWeight: 950,
-                  marginTop: "6px",
-                  wordBreak: "break-word"
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  marginTop: "12px"
                 }}
               >
-                {nombreCorto.trim() || nombreIglesia.trim() || "Nombre de iglesia"}
-              </div>
-
-              {ciudad.trim() && (
                 <div
                   style={{
-                    marginTop: "4px",
-                    fontSize: "13px",
-                    opacity: 0.64
+                    width: "56px",
+                    height: "56px",
+                    borderRadius: "18px",
+                    background: "rgba(37,99,235,0.18)",
+                    border: "1px solid rgba(37,99,235,0.30)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "28px",
+                    flexShrink: 0
                   }}
                 >
-                  {ciudad.trim()}
+                  ⛪
                 </div>
-              )}
+
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: "22px",
+                      fontWeight: 950,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis"
+                    }}
+                    title={nombrePreview}
+                  >
+                    {nombrePreview}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: "4px",
+                      fontSize: "13px",
+                      opacity: 0.65,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis"
+                    }}
+                  >
+                    {localidad.trim() || "Localidad no indicada"}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <button
@@ -345,20 +446,13 @@ export default function ConfigurarIglesiaPage() {
               disabled={guardando}
               onClick={crearIglesia}
             >
-              {guardando ? "Guardando..." : "Crear iglesia y continuar"}
+              {guardando ? "Creando iglesia..." : "Crear iglesia y continuar"}
             </button>
 
             <button
               type="button"
+              style={botonSecundario}
               onClick={() => router.replace("/")}
-              style={{
-                border: "none",
-                background: "transparent",
-                color: "rgba(255,255,255,0.62)",
-                cursor: "pointer",
-                fontWeight: 700,
-                padding: "8px"
-              }}
             >
               Volver al inicio
             </button>

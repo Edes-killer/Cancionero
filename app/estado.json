@@ -94,55 +94,135 @@
     "data": {
       "partes": [
         {
-          "id": "ca750ebc-6606-479d-a055-f05213f3ffac",
-          "cancion_id": "acfabb27-faf1-4441-97e0-946967a029ed",
+          "id": "f6cec2f2-28d8-4a78-b9c6-fb514addc4ad",
+          "cancion_id": "033f94b6-26fb-4b7a-aa14-b6d1426ab3ce",
           "tipo": "Verso",
-          "texto": "VENID, CON CÁNTICOS, VENID\nDEL TRONO ALREDEDOR;\nCON ÁNGELES LOOR RENDID,\nA CRISTO EL SEÑOR.",
+          "texto": "LUZ DE VIDA CELESTIAL,\nFUEGO DE DIVINO AMOR,\nBRILLA EN MI CORAZÓN,\nVEN, INSPÍRAME FERVOR.\nA CANTAR AYÚDAME\nDIGNAMENTE EN HONOR\nDEL CORDERO QUE MURIÓ\nPOR SALVAR AL PECADOR",
           "orden": 0,
-          "texto_letra": "VENID, CON CÁNTICOS, VENID\nDEL TRONO ALREDEDOR;\nCON ÁNGELES LOOR RENDID,\nA CRISTO EL SEÑOR.",
-          "texto_acordes": "Apocalipsis 5.9,11, 7.9",
-          "tiene_acordes": true
+          "texto_letra": "LUZ DE VIDA CELESTIAL,\nFUEGO DE DIVINO AMOR,\nBRILLA EN MI CORAZÓN,\nVEN, INSPÍRAME FERVOR.\nA CANTAR AYÚDAME\nDIGNAMENTE EN HONOR\nDEL CORDERO QUE MURIÓ\nPOR SALVAR AL PECADOR",
+          "texto_acordes": null,
+          "tiene_acordes": false
         },
         {
-          "id": "bbf4bab6-08cf-41d7-bd70-66c36682ef36",
-          "cancion_id": "acfabb27-faf1-4441-97e0-946967a029ed",
+          "id": "7be8c05c-ad03-4519-871f-dcc03dfe56a4",
+          "cancion_id": "033f94b6-26fb-4b7a-aa14-b6d1426ab3ce",
           "tipo": "Verso",
-          "texto": "DE ALABANZAS DIGNO ES EL,\nQUE EN LA CRUZ BEBIÓ\nLA COPA DE AMARGA HIEL\nQUE VIDA AL HOMBRE DIO.",
+          "texto": "DIGNO, DIGNO DE HONOR\nES MI REDENTO JESÚS,\nQUIEN AL MUNDO REDIMIÓ\nPOR SU MUERTE EN LA CRUZ.\nGLORIA SEA A JESÚS,\nGLORIA SEA Y LOOR,\nY DOMINIO ETERNAL\nA JESÚS, MI REDENTOR.",
           "orden": 1,
-          "texto_letra": "DE ALABANZAS DIGNO ES EL,\nQUE EN LA CRUZ BEBIÓ\nLA COPA DE AMARGA HIEL\nQUE VIDA AL HOMBRE DIO.",
-          "texto_acordes": "A               E\nVenid con cánticos, venid,",
-          "tiene_acordes": true
-        },
-        {
-          "id": "78ca87d7-1728-46e3-a21d-fe3fa2eec423",
-          "cancion_id": "acfabb27-faf1-4441-97e0-946967a029ed",
-          "tipo": "Verso",
-          "texto": "CANTAD MORTALES POR DOQUIER,\nCANTADLE CON ARDOR;\nEL SIEMPRE ES DIGNO DE PODER,\nDOMINIO Y HONOR.",
-          "orden": 2,
-          "texto_letra": "CANTAD MORTALES POR DOQUIER,\nCANTADLE CON ARDOR;\nEL SIEMPRE ES DIGNO DE PODER,\nDOMINIO Y HONOR.",
-          "texto_acordes": "A       E       A\ndel trono alrededor,",
-          "tiene_acordes": true
-        },
-        {
-          "id": "b7d176d0-8798-4b48-a5ad-d52903a6da97",
-          "cancion_id": "acfabb27-faf1-4441-97e0-946967a029ed",
-          "tipo": "Verso",
-          "texto": "CON GOZO, PUES, ALZAD LA VOZ\nALEGRE VOZ ALZAD\nY CON LOS ÁNGELES DE DIOS,\nA CRISTO ADORAD.",
-          "orden": 3,
-          "texto_letra": "CON GOZO, PUES, ALZAD LA VOZ\nALEGRE VOZ ALZAD\nY CON LOS ÁNGELES DE DIOS,\nA CRISTO ADORAD.",
-          "texto_acordes": "D             A\ncon ángeles loor rendid",
-          "tiene_acordes": true
+          "texto_letra": "DIGNO, DIGNO DE HONOR\nES MI REDENTO JESÚS,\nQUIEN AL MUNDO REDIMIÓ\nPOR SU MUERTE EN LA CRUZ.\nGLORIA SEA A JESÚS,\nGLORIA SEA Y LOOR,\nY DOMINIO ETERNAL\nA JESÚS, MI REDENTOR.",
+          "texto_acordes": null,
+          "tiene_acordes": false
         }
       ],
-      "index": 3,
-      "titulo": "VENID, CON CÁNTICOS",
-      "tono": "",
+      "index": 0,
+      "titulo": "LUZ DE VIDA",
+      "tono": "Re",
       "iglesia": "",
       "fondo": {
         "tipo": "preset",
         "preset": "purpura-noche",
         "fondoCss": "radial-gradient(circle at 20% 30%, rgba(168,85,247,0.38), transparent 32%), radial-gradient(circle at 85% 65%, rgba(236,72,153,0.28), transparent 32%), linear-gradient(135deg, #020617 0%, #312e81 52%, #581c87 100%)",
         "nombre": "Púrpura noche",
+        "oscuridad": 55,
+        "ajuste": "cover"
+      }
+    }
+  },
+  "cb7db0f2-7e9a-4cb7-bdfb-2bdd57ca1630": {
+    "tipo": "cancion",
+    "data": {
+      "partes": [
+        {
+          "id": "4c644eaf-32ea-47f0-8876-87978c57b128",
+          "cancion_id": "a86d7751-12cf-4fe2-ba00-8e3d0fdf0b4c",
+          "tipo": "Verso",
+          "texto": "I\nCOMO UN RAYO FUGAZ QUE SE PIERDE ENTRE LA OSCURIDAD\nCOMO UN GRAN MANANTIAL CALMA COMPLETAMENTE MI SER\nASÍ ES EL AMOR DE MI HERMOSO SEÑOR.\nÉL ES BRISA DEL MAR EL ROCÍO DEL MAÑANA ES LA MIEL DEL PANAL\nMEDICINA Y ES CURA HASTA MI ENFERMEDAD\nASÍ ES LA GRANDEZA DEL AMOR DE DIOS.\nPOR FAVOR NUNCA DIGAS QUE DIOS TE HA DESAMPARADO\nSI SUPIERAS QUE ES SÓLO SU AMOR EL QUE TE HA SUSTENTADO. OH, OH?",
+          "orden": 0,
+          "texto_letra": "I\nCOMO UN RAYO FUGAZ QUE SE PIERDE ENTRE LA OSCURIDAD\nCOMO UN GRAN MANANTIAL CALMA COMPLETAMENTE MI SER\nASÍ ES EL AMOR DE MI HERMOSO SEÑOR.\nÉL ES BRISA DEL MAR EL ROCÍO DEL MAÑANA ES LA MIEL DEL PANAL\nMEDICINA Y ES CURA HASTA MI ENFERMEDAD\nASÍ ES LA GRANDEZA DEL AMOR DE DIOS.\nPOR FAVOR NUNCA DIGAS QUE DIOS TE HA DESAMPARADO\nSI SUPIERAS QUE ES SÓLO SU AMOR EL QUE TE HA SUSTENTADO. OH, OH?",
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "3384fccd-1186-4539-bbe3-b9afbe9e63f8",
+          "cancion_id": "a86d7751-12cf-4fe2-ba00-8e3d0fdf0b4c",
+          "tipo": "Coro",
+          "texto": "ÁMALE, COMO A NADA EN EL MUNDO, BÚSCALE\nEN EL GOZO Y LA PENA, ESCÚCHALE\nSÓLO ÉL PUEDE AYUDARTE\nCUANDO TÚ ALMA GIME Y EXÁLTALE\nCUANDO NADIE EN DIOS CREA, TÚ ADÓRALE\nA MI DIOS DE LA GLORIA, CÁNTALE\nQUE DESPUÉS DE LA PRUEBA EL SOL BRILLARÁ.\nY LEVÁNTATE, EN EL NOMBRE DE CRISTO ANÍMATE\nPRONTO VIENE A BUSCARTE, ESFUÉRZATE\nSECA AHORA TUS LÁGRIMAS Y VEN A ALABAR AL DIOS DE ISRAEL\nAL DUEÑO DE TU VIDA, JEHOVÁ YIREH AL QUE TODO LO PUEDE, VEN A ÉL\nQUE TODOS TUS VACÍOS LOS PUEDE LLENAR EL AMOR DE MI DIOS.",
+          "orden": 1,
+          "texto_letra": "ÁMALE, COMO A NADA EN EL MUNDO, BÚSCALE\nEN EL GOZO Y LA PENA, ESCÚCHALE\nSÓLO ÉL PUEDE AYUDARTE\nCUANDO TÚ ALMA GIME Y EXÁLTALE\nCUANDO NADIE EN DIOS CREA, TÚ ADÓRALE\nA MI DIOS DE LA GLORIA, CÁNTALE\nQUE DESPUÉS DE LA PRUEBA EL SOL BRILLARÁ.\nY LEVÁNTATE, EN EL NOMBRE DE CRISTO ANÍMATE\nPRONTO VIENE A BUSCARTE, ESFUÉRZATE\nSECA AHORA TUS LÁGRIMAS Y VEN A ALABAR AL DIOS DE ISRAEL\nAL DUEÑO DE TU VIDA, JEHOVÁ YIREH AL QUE TODO LO PUEDE, VEN A ÉL\nQUE TODOS TUS VACÍOS LOS PUEDE LLENAR EL AMOR DE MI DIOS.",
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "b62d1bfc-afbb-4748-ac27-4eaa1621737c",
+          "cancion_id": "a86d7751-12cf-4fe2-ba00-8e3d0fdf0b4c",
+          "tipo": "Verso",
+          "texto": "II\nÉL ES BRISA DEL MAR EL ROCÍO DEL MAÑANA ES LA MIEL DEL PANAL\nMEDICINA Y ES CURA HASTA MI ENFERMEDAD\nASÍ ES EL AMOR DE MI HERMOSO SEÑOR...\nPOR FAVOR NUNCA DIGAS QUE DIOS TE HA DESAMPARADO\nSI SUPIERAS QUE SÓLO ES SU AMOR EL QUE TE HA SUSTENTADO. OH, OH?",
+          "orden": 2,
+          "texto_letra": "II\nÉL ES BRISA DEL MAR EL ROCÍO DEL MAÑANA ES LA MIEL DEL PANAL\nMEDICINA Y ES CURA HASTA MI ENFERMEDAD\nASÍ ES EL AMOR DE MI HERMOSO SEÑOR...\nPOR FAVOR NUNCA DIGAS QUE DIOS TE HA DESAMPARADO\nSI SUPIERAS QUE SÓLO ES SU AMOR EL QUE TE HA SUSTENTADO. OH, OH?",
+          "texto_acordes": null,
+          "tiene_acordes": false
+        }
+      ],
+      "index": 0,
+      "titulo": "RAYO FUGAZ",
+      "tono": "",
+      "iglesia": "IEP Moradora de Sion Renca",
+      "logo_marca_url": "https://dkufqtrfvduonsubmwka.supabase.co/storage/v1/object/public/imagenes-culto/logos/cb7db0f2-7e9a-4cb7-bdfb-2bdd57ca1630/1778516783046-kbg9fygymg.png",
+      "fondo": {
+        "tipo": "preset",
+        "preset": "cielo-dorado",
+        "fondoCss": "radial-gradient(circle at 50% 20%, rgba(251,191,36,0.45), transparent 34%), linear-gradient(135deg, #1e1b4b 0%, #7c2d12 48%, #0f172a 100%)",
+        "nombre": "Cielo dorado",
+        "oscuridad": 55,
+        "ajuste": "cover"
+      }
+    }
+  },
+  "c76bc168-da61-4a86-8881-9dc3c17391fe": {
+    "tipo": "cancion",
+    "data": {
+      "partes": [
+        {
+          "id": "21d85a6f-f792-4f4c-ac2a-263273af4e4b",
+          "cancion_id": "39e6b214-e8c0-4f38-b517-da9dfd1f341b",
+          "tipo": "Verso",
+          "texto": "I\nHOY TE SIENTO SEÑOR\nMUY DENTRO DE MI VIDA\nY NO PUEDO DEJAR DE SENTIRTE OTRA VEZ\nMIENTRAS TENGA YO VIDA\nPORQUE GRANDE ES\nES EL PODER, QUE REBOZA EN MI CORAZÓN\nY CON ÉL YO ACEPTÉ\nQUE NO VUELVA A CAER\nTU ME CUIDAS SEÑOR.",
+          "orden": 0,
+          "texto_letra": "I\nHOY TE SIENTO SEÑOR\nMUY DENTRO DE MI VIDA\nY NO PUEDO DEJAR DE SENTIRTE OTRA VEZ\nMIENTRAS TENGA YO VIDA\nPORQUE GRANDE ES\nES EL PODER, QUE REBOZA EN MI CORAZÓN\nY CON ÉL YO ACEPTÉ\nQUE NO VUELVA A CAER\nTU ME CUIDAS SEÑOR.",
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "6bfa7f36-0167-47b5-9e82-6303b589f943",
+          "cancion_id": "39e6b214-e8c0-4f38-b517-da9dfd1f341b",
+          "tipo": "Coro",
+          "texto": "GRANDE PRECIO PAGASTE\nEN ESA CRUZ, POR MI UN DÍA\nCON TU SANGRE LAVASTE\nCON TUS LLAGAS CURASTE, MIS HERIDAS\nCOMO HE DE PENSAR\nEN QUERERTE SOLTAR, SI TU ME GUÍAS\nPORQUE ERES MI RAZÓN DE VIVIR\nES POR ESO QUE TE QUIERO DECIR\nMORA EN MI VIDA.",
+          "orden": 1,
+          "texto_letra": "GRANDE PRECIO PAGASTE\nEN ESA CRUZ, POR MI UN DÍA\nCON TU SANGRE LAVASTE\nCON TUS LLAGAS CURASTE, MIS HERIDAS\nCOMO HE DE PENSAR\nEN QUERERTE SOLTAR, SI TU ME GUÍAS\nPORQUE ERES MI RAZÓN DE VIVIR\nES POR ESO QUE TE QUIERO DECIR\nMORA EN MI VIDA.",
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "29720472-ff52-477b-a181-99e323c4e66e",
+          "cancion_id": "39e6b214-e8c0-4f38-b517-da9dfd1f341b",
+          "tipo": "Verso",
+          "texto": "II\nRECONOZCO SEÑOR\nQUE TU AMOR GARANTIZA\nPAZ Y SEGURIDAD\nQUE NO PODRÍA HALLAR\nPUES NO TE CONOCÍA\nA MI ENCUENTRO, LLEGASTE TU\nME CUBRISTE EN TU MANTO DE AMOR\nME COMPRASTE SEÑOR\nCON LA SANGRE QUE HOY\nLAVAS MI CORAZÓN.",
+          "orden": 2,
+          "texto_letra": "II\nRECONOZCO SEÑOR\nQUE TU AMOR GARANTIZA\nPAZ Y SEGURIDAD\nQUE NO PODRÍA HALLAR\nPUES NO TE CONOCÍA\nA MI ENCUENTRO, LLEGASTE TU\nME CUBRISTE EN TU MANTO DE AMOR\nME COMPRASTE SEÑOR\nCON LA SANGRE QUE HOY\nLAVAS MI CORAZÓN.",
+          "texto_acordes": null,
+          "tiene_acordes": false
+        }
+      ],
+      "index": 0,
+      "titulo": "MORA EN MI VIDA",
+      "tono": "Sol",
+      "iglesia": "IEP Moradora de Sion La Ligua",
+      "logo_marca_url": "https://dkufqtrfvduonsubmwka.supabase.co/storage/v1/object/public/imagenes-culto/logos/c76bc168-da61-4a86-8881-9dc3c17391fe/1778514807728-hc7u8bqcy5o.png",
+      "fondo": {
+        "tipo": "preset",
+        "preset": "cielo-dorado",
+        "fondoCss": "radial-gradient(circle at 50% 20%, rgba(251,191,36,0.45), transparent 34%), linear-gradient(135deg, #1e1b4b 0%, #7c2d12 48%, #0f172a 100%)",
+        "nombre": "Cielo dorado",
         "oscuridad": 55,
         "ajuste": "cover"
       }

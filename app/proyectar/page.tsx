@@ -16,6 +16,7 @@ export default function ProyectarPage() {
   const [paginaBiblia, setPaginaBiblia] = useState(0)
   const [iglesia, setIglesia] = useState("")
   const [estadoEspecial, setEstadoEspecial] = useState<any>(null)
+  const [logoMarcaUrl, setLogoMarcaUrl] = useState("")
   const [fondoCancion, setFondoCancion] = useState<any>(null)
   const [cargandoProyector, setCargandoProyector] = useState(true)
   const timeoutCargaProyectorRef = useRef<any>(null)
@@ -200,6 +201,7 @@ s.on("estado-actual", (estado: any) => {
     setTitulo(data.titulo || "")
     setTono(data.tono || "")
     setIglesia(data.iglesia || "")
+    setLogoMarcaUrl(data.logo_marca_url || "")
     setPaginaBiblia(0)
   })
 })
@@ -224,6 +226,7 @@ s.on("estado-actual", (estado: any) => {
       limpiarPantalla()
       setBiblia(data)
       setIglesia(data.iglesia || "")
+      setLogoMarcaUrl(data.logo_marca_url || "")
       setPaginaBiblia(data.pagina || 0)
     })
   })
@@ -1119,6 +1122,40 @@ if (estadoInicialRevisado && !hayContenidoProyector) {
             {estadoEspecial.subtitulo}
           </div>
         )}
+      </div>
+    )}
+    {logoMarcaUrl && !estadoEspecial && !imagen && (
+      <div
+        style={{
+          position: "fixed",
+          top: "800px",
+          left: "580px",
+          width: "80px",
+          height: "80px",
+          borderRadius: "18px", 
+          overflow: "hidden",
+          background: "rgba(0,0,0,0.22)",
+          
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 30,
+          backdropFilter: "blur(4px)",
+          opacity: 0.75
+        }}
+      >
+        <img
+          src={logoMarcaUrl}
+          alt="Logo"
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            borderRadius: "999px",
+            transform: "scale(1)",
+            display: "block"
+          }}
+        />
       </div>
     )}
     {overlayVisible && (
