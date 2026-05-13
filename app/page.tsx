@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
-import { getIglesiaId } from "@/lib/getIglesia"
+import { getIglesiaId, setIglesiaActivaId } from "@/lib/getIglesia"
 
 export default function InicioPage() {
   const router = useRouter()
@@ -19,6 +19,9 @@ export default function InicioPage() {
   const [sinIglesia, setSinIglesia] = useState(false)
   const [topCancionesMes, setTopCancionesMes] = useState<any[]>([])
   const [totalProyeccionesMes, setTotalProyeccionesMes] = useState(0)
+  const [iglesiasUsuario, setIglesiasUsuario] = useState<any[]>([])
+  const [iglesiaActivaId, setIglesiaActivaIdState] = useState("")
+  const [localidadIglesia, setLocalidadIglesia] = useState("")
   const versiculosInicio = [
   {
     texto: "Cantad alegres a Dios, habitantes de toda la tierra.",
@@ -57,20 +60,38 @@ const versiculoInicio =
 
         const iglesiaId = await getIglesiaId()
 
-        if (!iglesiaId) {
-          setSinIglesia(true)
-          setCargando(false)
-          return
-        }
+if (!iglesiaId) {
+  setSinIglesia(true)
+  setCargando(false)
+  return
+}
+
+  setIglesiaActivaIdState(iglesiaId)
+
+  const { data: relacionesIglesias } = await supabase
+    .from("usuarios_iglesia")
+    .select("iglesia_id, iglesias(nombre)")
+    .eq("user_id", userData.user.id)
+
+ const iglesiasSinDuplicar = Array.from(
+  new Map(
+    (relacionesIglesias || [])
+      .filter((rel: any) => rel.iglesia_id)
+      .map((rel: any) => [rel.iglesia_id, rel])
+  ).values()
+)
+
+setIglesiasUsuario(iglesiasSinDuplicar)
 
         const { data: iglesia } = await supabase
           .from("iglesias")
-          .select("nombre, logo_url")
+          .select("nombre, logo_url, localidad")
           .eq("id", iglesiaId)
           .single()
 
         setNombreIglesia(iglesia?.nombre || "Iglesia")
         setLogoUrl(iglesia?.logo_url || "")
+        setLocalidadIglesia(iglesia?.localidad || "")
 
         const { count: cancionesCount } = await supabase
           .from("canciones")
@@ -373,9 +394,9 @@ const barraStat = (label: string, valor: number, porcentaje: number) => (
               style={{
                 width: "68px",
                 height: "68px",
-                borderRadius: "18px",
-                background: "rgba(255,255,255,0.08)",
-                border: "1px solid rgba(255,255,255,0.10)",
+                borderRadius: "999px",
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.14)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -390,9 +411,10 @@ const barraStat = (label: string, valor: number, porcentaje: number) => (
                   style={{
                     width: "100%",
                     height: "100%",
-                    objectFit: "contain",
-                    padding: "8px",
-                    boxSizing: "border-box"
+                    objectFit: "cover",
+                    borderRadius: "999px",
+                    transform: "scale(1)",
+                    display: "block"
                   }}
                 />
               ) : (
@@ -417,22 +439,70 @@ const barraStat = (label: string, valor: number, porcentaje: number) => (
                 title={nombreIglesia}
               >
                 {nombreIglesia}
+                    {localidadIglesia && (
+      <div
+        style={{
+          marginTop: "6px",
+          opacity: 0.62,
+          fontSize: "14px",
+          fontWeight: 700
+        }}
+      >
+        📍 {localidadIglesia}
+      </div>
+    )}
               </h1>
             </div>
           </div>
 
           <div
             style={{
-              padding: "8px 12px",
-              borderRadius: "999px",
-              background: "rgba(34,197,94,0.14)",
-              border: "1px solid rgba(34,197,94,0.28)",
-              color: "#bbf7d0",
-              fontWeight: 900,
-              fontSize: "13px"
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              flexWrap: "wrap"
             }}
           >
-            Sistema listo
+            {iglesiasUsuario.length > 1 && (
+              <select
+                value={iglesiaActivaId}
+                onChange={(e) => {
+                  const nuevaId = e.target.value
+                  setIglesiaActivaId(nuevaId)
+                  window.location.reload()
+                }}
+                style={{
+                  padding: "9px 12px",
+                  borderRadius: "999px",
+                  background: "rgba(15,23,42,0.95)",
+                  color: "white",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  fontWeight: 800,
+                  outline: "none"
+                }}
+                title="Cambiar iglesia activa"
+              >
+                {iglesiasUsuario.map((rel: any, i: number) => (
+                  <option key={`${rel.iglesia_id}-${i}`} value={rel.iglesia_id}>
+                    {rel.iglesias?.nombre || "Iglesia sin nombre"}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <div
+              style={{
+                padding: "8px 12px",
+                borderRadius: "999px",
+                background: "rgba(34,197,94,0.14)",
+                border: "1px solid rgba(34,197,94,0.28)",
+                color: "#bbf7d0",
+                fontWeight: 900,
+                fontSize: "13px"
+              }}
+            >
+              Sistema listo
+            </div>
           </div>
         </div>
 
@@ -521,6 +591,10 @@ const barraStat = (label: string, valor: number, porcentaje: number) => (
 
           <button style={botonSecundario} onClick={() => ir("/canciones")}>
             🎵 Administrar Canciones
+          </button>
+
+          <button style={botonSecundario} onClick={() => ir("/configuracion")}>
+            ⚙️ Configuración
           </button>
         </div>
 

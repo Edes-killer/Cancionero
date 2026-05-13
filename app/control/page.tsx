@@ -404,7 +404,8 @@ const proyectar = async (id: string) => {
   index: 0,
   titulo: cancion?.titulo || "",
   tono: cancion?.tono || "",
-  iglesia: "",
+  iglesia: nombreIglesia || "",
+  logo_marca_url: logoEsperaUrl || "",
   fondo: fondoCancionActual()
 })
 
@@ -1054,7 +1055,8 @@ const irAItemLista = async (i: number, alFinal = false) => {
       texto: item.texto,
       paginas,
       pagina,
-      iglesia: ""
+      iglesia: nombreIglesia || "",
+      logo_marca_url: logoEsperaUrl || ""
     })
     return
   }
@@ -1100,7 +1102,8 @@ const irAItemLista = async (i: number, alFinal = false) => {
   index: parteInicial,
   titulo: cancion?.titulo || item.titulo || "",
   tono: cancion?.tono || "",
-  iglesia: "",
+  iglesia: nombreIglesia || "",
+  logo_marca_url: logoEsperaUrl || "",
   fondo: fondoCancionActual()
 })
 
@@ -1324,7 +1327,8 @@ const proyectarBiblia = async (ref: string) => {
     texto: data.texto,
     paginas: data.paginas || [data.texto],
     pagina: 0,
-    iglesia: nombreIglesia || ""
+    iglesia: nombreIglesia || "",
+    logo_marca_url: logoEsperaUrl || ""
   })
   } catch (error: any) {
     alert(error.message || "No se pudo cargar el versículo")
@@ -1573,6 +1577,31 @@ function normalizar(texto: string) {
     .replace(/[\u0300-\u036f]/g, "")
 }
 
+const obtenerFragmentoBusqueda = (
+  texto: string,
+  busqueda: string,
+  largo = 90
+) => {
+  if (!texto || !busqueda) return ""
+
+  const textoNorm = normalizar(texto)
+  const busquedaNorm = normalizar(busqueda)
+
+  const index = textoNorm.indexOf(busquedaNorm)
+
+  if (index === -1) return ""
+
+  const inicio = Math.max(0, index - 30)
+  const fin = Math.min(texto.length, index + largo)
+
+  let fragmento = texto.slice(inicio, fin).trim()
+
+  if (inicio > 0) fragmento = "..." + fragmento
+  if (fin < texto.length) fragmento += "..."
+
+  return fragmento
+}
+
 
 const cancionesFiltradas = useMemo(() => {
   const q = normalizar(busqueda || "").trim()
@@ -1586,11 +1615,15 @@ const cancionesFiltradas = useMemo(() => {
       const tono = normalizar(c.tono || "")
       const numero = String(c.numero || "")
 
+      // NUEVO: búsqueda por letra
+      const textoBusqueda = normalizar(c.texto_busqueda || "")
+
       return (
         titulo.includes(q) ||
         categoria.includes(q) ||
         tono.includes(q) ||
-        numero.includes(q)
+        numero.includes(q) ||
+        textoBusqueda.includes(q)
       )
     })
     .filter((c) => !filtroTono || c.tono === filtroTono)
@@ -1598,7 +1631,9 @@ const cancionesFiltradas = useMemo(() => {
     .sort((a, b) => {
       const na = a.numero ?? 999999
       const nb = b.numero ?? 999999
+
       if (na !== nb) return na - nb
+
       return (a.titulo || "").localeCompare(b.titulo || "")
     })
 }, [canciones, busqueda, filtroTono, filtroCategoria])
@@ -2507,7 +2542,7 @@ return (
       {mostrarCanciones && (
         <>
           <input
-            placeholder="Buscar por número, título o categoría..."
+            placeholder="Buscar por número, título o letra..."
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             style={input}
@@ -2571,7 +2606,13 @@ return (
         transform: `translateY(${inicioVirtualCanciones * ALTURA_ITEM_CANCION}px)`
       }}
     >
-      {cancionesFiltradas.map((c) => (
+      {cancionesFiltradas.map((c) => {
+      const fragmento = obtenerFragmentoBusqueda(
+        c.texto_busqueda || "",
+        busqueda
+      )
+
+      return (
         <div
           key={c.id}
           style={{
@@ -2627,7 +2668,8 @@ return (
             </div>
           </div>
         </div>
-      ))}
+        )
+})}
     </div>
   </div>
 </div>
@@ -3037,7 +3079,7 @@ return (
           </div>
 
           <input
-            placeholder="Buscar por número, título o categoría..."
+            placeholder="Buscar por número, título o letra..."
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             style={input}
@@ -3137,8 +3179,36 @@ return (
               </span>
 
               <div style={subtituloCardResponsive(isMobile)}>
-                {subtituloCancionVisible(c)}
-              </div>
+  {subtituloCancionVisible(c)}
+</div>
+
+{busqueda && (() => {
+  const fragmento = obtenerFragmentoBusqueda(
+    c.texto_busqueda || "",
+    busqueda
+  )
+
+  if (!fragmento) return null
+
+  return (
+    <div
+      style={{
+        marginTop: "6px",
+        fontSize: isMobile ? "0.72rem" : "0.78rem",
+        opacity: 0.72,
+        lineHeight: 1.35,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        display: "-webkit-box",
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: "vertical"
+      }}
+    >
+      {fragmento}
+    </div>
+  )
+})()}
+              
             </div>
 
             <div style={acciones}>
