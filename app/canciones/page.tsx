@@ -1,833 +1,1144 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { io } from "socket.io-client"
 import { supabase } from "../../lib/supabase"
+import { getIglesiaId } from "../../lib/getIglesia"
 
-export default function CancionesPage() {
-  const [socket, setSocket] = useState<any>(null)
-  const [titulo, setTitulo] = useState("")
-  const [tono, setTono] = useState("")
-  const [activaId, setActivaId] = useState<string | null>(null)
-  const [partes, setPartes] = useState<any[]>([
-  { tipo: "Verso", texto: "", formato: "solo" }
-])
-  const [canciones, setCanciones] = useState<any[]>([])
-  const [idsCancionesConAcordes, setIdsCancionesConAcordes] = useState<string[]>([])
-  const [busqueda, setBusqueda] = useState("")
-  const [filtroTono, setFiltroTono] = useState("")
-  const [filtroCategoria, setFiltroCategoria] = useState("")
-  const [editandoId, setEditandoId] = useState<string | null>(null)
-  // 🧠 NORMALIZAR ACORDES (soporta do, DO, mi, etc)
+// ─── TIPOS ───────────────────────────────────────────────────────────────────
+
+interface Parte {
+  id?: string
+  tipo: "Verso" | "Coro" | "Puente" | "Intro" | "Outro" | "Observación"
+  texto: string
+  formato: "solo" | "linea" | "corchetes"
+  texto_letra?: string
+  texto_acordes?: string
+  tiene_acordes?: boolean
+  orden?: number
+}
+
+interface Cancion {
+  id: string
+  titulo: string
+  autor?: string
+  tono?: string
+  categoria?: string
+  numero?: number
+  iglesia_id?: string
+}
+
+// ─── CONSTANTES ──────────────────────────────────────────────────────────────
+
+const TONOS = [
+  "Do", "Dom", "Do#",
+  "Re", "Rem", "Re#",
+  "Mi", "Mim",
+  "Fa", "Fam", "Fa#",
+  "Sol", "Solm", "Sol#",
+  "La", "Lam", "La#",
+  "Si", "Sim"
+]
+
+const CATEGORIAS_PRESET = [
+  "Alabanza", "Adoración", "Avivamiento", "Comunión",
+  "Evangelismo", "Gratitud", "Ofrenda", "Bienvenida", "Cierre"
+]
+
+const TIPOS_PARTE: Parte["tipo"][] = [
+  "Verso", "Coro", "Puente", "Intro", "Outro", "Observación"
+]
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+
 const normalizarAcorde = (acorde: string) => {
   const mapaBase: Record<string, string> = {
-    do: "Do",
-    re: "Re",
-    mi: "Mi",
-    fa: "Fa",
-    sol: "Sol",
-    la: "La",
-    si: "Si",
-    c: "Do",
-    d: "Re",
-    e: "Mi",
-    f: "Fa",
-    g: "Sol",
-    a: "La",
-    b: "Si"
+    do: "Do", re: "Re", mi: "Mi", fa: "Fa",
+    sol: "Sol", la: "La", si: "Si",
+    c: "Do", d: "Re", e: "Mi", f: "Fa",
+    g: "Sol", a: "La", b: "Si"
   }
-
   const match = acorde.trim().match(/^(do|re|mi|fa|sol|la|si|c|d|e|f|g|a|b)(#|b)?(.*)$/i)
   if (!match) return acorde.trim()
-
   const base = mapaBase[match[1].toLowerCase()] || match[1]
-  const alteracion = match[2] || ""
-  const resto = match[3] || ""
-
-  return `${base}${alteracion}${resto}`
+  return `${base}${match[2] || ""}${match[3] || ""}`
 }
 
-// 🔍 detectar si una línea son acordes
 const esLineaAcordes = (linea: string) => {
   const tokens = linea.trim().split(/\s+/)
-
-  return tokens.every(t =>
-    t.match(
-      /^([A-G]|Do|Re|Mi|Fa|Sol|La|Si)(#|b)?(m|maj|min|sus|dim|aug)?\d*(\/[A-G])?(\(.*?\))?$/i
-    )
+  return tokens.length > 0 && tokens.every(t =>
+    t.match(/^([A-G]|Do|Re|Mi|Fa|Sol|La|Si)(#|b)?(m|maj|min|sus|dim|aug)?\d*(\/[A-G])?(\(.*?\))?$/i)
   )
 }
 
-// ⚡ convertir formato iglesia → corchetes
-const convertirAcordesAutomatico = (texto: string) => {
-  const lineas = texto.split("\n")
-  const resultado: string[] = []
-
-  for (let i = 0; i < lineas.length; i++) {
-    const acordesLinea = lineas[i]
-    const letraLinea = lineas[i + 1]
-
-    if (esLineaAcordes(acordesLinea) && letraLinea) {
-      let nuevaLinea = ""
-      let j = 0
-
-      while (j < letraLinea.length) {
-        const char = letraLinea[j]
-
-        // 🟢 Si hay acorde en esa posición
-        const posibleAcorde = acordesLinea[j]
-
-        if (posibleAcorde && posibleAcorde !== " ") {
-          // leer acorde completo (SOL, RE, DO, etc)
-          let acorde = ""
-          let k = j
-
-          while (acordesLinea[k] && acordesLinea[k] !== " ") {
-            acorde += acordesLinea[k]
-            k++
-          }
-
-          nuevaLinea += `[${normalizarAcorde(acorde)}]`
-          j = k
-          continue
-        }
-
-        nuevaLinea += char
-        j++
-      }
-
-      resultado.push(nuevaLinea)
-      i++ // saltar línea de letra
-    } else {
-      resultado.push(acordesLinea)
-    }
-  }
-
-  return resultado.join("\n")
-}
-
-// 🎯 detectar tono automático
-
-  
-  // SOCKET
-  useEffect(() => {
-  const s = io("http://" + window.location.hostname + ":4000")
-
-  s.on("connect", () => {
-    console.log("🔥 SOCKET CONECTADO")
-  })
-
-  s.on("connect_error", (err) => {
-    console.log("❌ ERROR SOCKET:", err)
-  })
-
-  setSocket(s)
-
-  return () => {
-    s.disconnect()  // ✅ ESTO ES CLAVE
-  }
-}, [])
-
-  // CARGAR CANCIONES
-  const cargarCanciones = async () => {
-  const { data, error } = await supabase.from("canciones").select("*")
-  console.log("DATOS:", data)
-  console.log("ERROR:", error)
-
-  setCanciones(data || [])
-
-  const { data: partesConAcordes, error: errorAcordes } = await supabase
-    .from("partes_cancion")
-    .select("cancion_id")
-    .eq("tiene_acordes", true)
-
-  if (errorAcordes) {
-    console.error("Error cargando canciones con acordes:", errorAcordes)
-    setIdsCancionesConAcordes([])
-    return
-  }
-
-  const idsUnicos = Array.from(
-    new Set((partesConAcordes || []).map((p: any) => p.cancion_id).filter(Boolean))
-  )
-
-  setIdsCancionesConAcordes(idsUnicos)
-}
-
-useEffect(() => {
-  if (!socket) {
-  console.log("❌ SOCKET NO LISTO")
-  return
-}
-
-  const handleActiva = (data: any) => {
-    setActivaId(data.id)
-  }
-
-  socket.on("cancion-activa", handleActiva)
-
-  return () => {
-    socket.off("cancion-activa", handleActiva)
-  }
-}, [socket])
-
-  useEffect(() => {
-     console.log("🔥 CARGANDO CANCIONES...")
-    cargarCanciones()
-  }, [])
-
-  // AGREGAR PARTE
-  const agregarParte = () => {
-  setPartes(prev => [
-    ...prev,
-    { tipo: "Verso", texto: "", formato: "solo" }
-  ])
-}
-
-  // EDITAR PARTE
-  const actualizarParte = (index: number, campo: string, valor: string) => {
-    const nuevas = [...partes]
-    nuevas[index][campo] = valor
-    setPartes(nuevas)
-  }
-  useEffect(() => {
-  const textoCompleto = partes.map(p => p.texto).join(" ")
-  const auto = detectarTono(textoCompleto)
-
-  if (auto && !tono) {
-    setTono(auto)
-  }
-}, [partes])
-
-  // GUARDAR
-  
-const guardarCancion = async () => {
-  const textoCompleto = partes.map(p => p.texto).join(" ")
-  const tonoDetectado = normalizarAcorde(tono || detectarTono(textoCompleto) || "")
-
-  let cancionId = editandoId
-
-  if (editandoId) {
-    const { error } = await supabase
-      .from("canciones")
-      .update({
-      titulo,
-      tono: tonoDetectado,
-      categoria: null
-    })
-      .eq("id", editandoId)
-
-    if (error) {
-      console.log(error)
-      alert("Error al actualizar canción")
-      return
-    }
-
-    const { error: errorDelete } = await supabase
-      .from("partes_cancion")
-      .delete()
-      .eq("cancion_id", editandoId)
-
-    if (errorDelete) {
-      console.log(errorDelete)
-      alert("Error actualizando partes")
-      return
-    }
-  } else {
-    const { data: cancion, error } = await supabase
-      .from("canciones")
-      .insert({
-      titulo,
-      tono: tonoDetectado,
-      categoria: null,
-      numero: null
-    })
-      .select()
-      .single()
-
-    if (error || !cancion) {
-      console.log(error)
-      alert("Error al guardar canción")
-      return
-    }
-
-    cancionId = cancion.id
-  }
-
-  const partesInsert = partes.map((p, i) => ({
-  cancion_id: cancionId,
-  tipo: p.tipo,
-  texto: p.texto,
-  texto_letra: p.texto,
-  texto_acordes: p.texto.includes("[") || inferirFormato(p.texto) !== "solo" ? p.texto : null,
-  tiene_acordes: p.texto.includes("[") || inferirFormato(p.texto) !== "solo",
-  orden: i
-}))
-
-  const { error: errorPartes } = await supabase
-    .from("partes_cancion")
-    .insert(partesInsert)
-
-  if (errorPartes) {
-    console.log(errorPartes)
-    alert("Error guardando partes")
-    return
-  }
-
-  setTitulo("")
-  setTono("")
-  setPartes([{ tipo: "Verso", texto: "", formato: "solo" }])
-  setEditandoId(null)
-  cargarCanciones()
-
-  alert(editandoId ? "Canción actualizada ✅" : "Guardado OK 🔥")
-}
-
-
-const proyectar = async (cancionId: string) => {
-  if (!socket) return
-
-  const { data } = await supabase
-    .from("partes_cancion")
-    .select("*")
-    .eq("cancion_id", cancionId)
-    .order("orden")
-
-  const cancion = canciones.find(c => c.id === cancionId)
-
-  // 🔥 EMITIR TODO CORRECTAMENTE
-  socket.emit("cargar-cancion", {
-    partes: data,
-    index: 0,
-    titulo: cancion?.titulo,
-    tono: cancion?.tono
-  })
-
-  socket.emit("cancion-activa", { id: cancionId })
-}
-  
-const inferirFormato = (texto: string) => {
+const inferirFormato = (texto: string): Parte["formato"] => {
   if (texto.includes("[")) return "corchetes"
-
   const lineas = texto.split("\n")
   for (let i = 0; i < lineas.length - 1; i++) {
-    if (esLineaAcordes(lineas[i]) && lineas[i + 1]?.trim()) {
-      return "linea"
-    }
+    if (esLineaAcordes(lineas[i]) && lineas[i + 1]?.trim()) return "linea"
   }
-
   return "solo"
 }
 
-const editarCancion = async (cancionId: string) => {
-  const cancion = canciones.find(c => c.id === cancionId)
-  if (!cancion) return
-
-  const { data, error } = await supabase
-    .from("partes_cancion")
-    .select("*")
-    .eq("cancion_id", cancionId)
-    .order("orden")
-
-  if (error) {
-    console.log(error)
-    alert("No se pudo cargar la canción")
-    return
-  }
-
-  setEditandoId(cancionId)
-  setTitulo(cancion.titulo || "")
-  setTono(cancion.tono || "")
-  setPartes(
-    (data || []).map((p: any) => ({
-      ...p,
-      formato: inferirFormato(p.texto)
-    }))
-  )
-
-  window.scrollTo({ top: 0, behavior: "smooth" })
-}
-
-const eliminarCancion = async (cancionId: string) => {
-  const ok = confirm("¿Eliminar esta canción? Esta acción no se puede deshacer.")
-  if (!ok) return
-
-  const { error: errorPartes } = await supabase
-    .from("partes_cancion")
-    .delete()
-    .eq("cancion_id", cancionId)
-
-  if (errorPartes) {
-    console.log(errorPartes)
-    alert("Error eliminando partes de la canción")
-    return
-  }
-
-  const { error: errorCancion } = await supabase
-    .from("canciones")
-    .delete()
-    .eq("id", cancionId)
-
-  if (errorCancion) {
-    console.log(errorCancion)
-    alert("Error eliminando canción")
-    return
-  }
-
-  if (editandoId === cancionId) {
-    setEditandoId(null)
-    setTitulo("")
-    setTono("")
-    setPartes([{ tipo: "Verso", texto: "", formato: "solo" }])
-  }
-
-  cargarCanciones()
-  alert("Canción eliminada ✅")
-}
-
-
-// 🎯 DETECTAR TONO AUTOMÁTICO
 const detectarTono = (texto: string) => {
   const palabras = texto.split(/\s+/)
-
   for (const palabra of palabras) {
     const limpia = palabra.replace(/[^a-zA-Z#b]/g, "")
-    const normalizada = normalizarAcorde(limpia)
-
-    if (normalizada.match(/^(Do|Re|Mi|Fa|Sol|La|Si)(#|b)?m?$/i)) {
-      return normalizada
-    }
+    const norm = normalizarAcorde(limpia)
+    if (norm.match(/^(Do|Re|Mi|Fa|Sol|La|Si)(#|b)?m?$/i)) return norm
   }
-
   return ""
 }
 
-const categoriasDisponibles = Array.from(
-  new Set(
-    canciones
-      .map(c => c.categoria)
-      .filter(Boolean)
+const tieneAcordes = (texto: string) =>
+  texto.includes("[") || inferirFormato(texto) !== "solo"
+
+// ─── RENDERIZADOR DE ACORDES (vista previa para músicos) ─────────────────────
+
+const VistaPrevia = ({ texto, formato }: { texto: string; formato: string }) => {
+  if (!texto.trim()) return (
+    <div style={{ opacity: 0.35, fontSize: "13px", fontStyle: "italic", padding: "12px 0" }}>
+      El texto aparecerá aquí...
+    </div>
   )
-).sort()
-
-  const btn = {
-  padding: 12,
-  marginRight: 10,
-  marginTop: 10,
-  background: "#333",
-  color: "white",
-  border: "none"
-}
-
-const btnPrimary = {
-  ...btn,
-  background: "#0070f3"
-}
-
-const card = {
-  padding: 15,
-  marginTop: 10,
-  background: "#222",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center"
-}
-
-const placeholderSegunFormato = (formato?: string) => {
-  if (formato === "linea") {
-    return `Ejemplo con acordes arriba:
-C                    F            C
-Hay una senda que el mundo no conoce
-        G7                       C
-Hay una senda que yo pude encontrar`
-  }
 
   if (formato === "corchetes") {
-    return `[Do]Hay una senda que el mundo [Fa]no conoce
-[Sol7]Hay una senda que yo pude [Do]encontrar`
+    const lineas = texto.split("\n")
+    return (
+      <div style={{ fontFamily: "'Courier New', monospace", fontSize: "14px", lineHeight: 1.9 }}>
+        {lineas.map((linea, li) => {
+          const partes: React.ReactNode[] = []
+          const regex = /\[([^\]]+)\]([^\[]*)/g
+          let match
+          let lastIndex = 0
+          let hayAcordes = false
+
+          const textoSinAcordes = linea.replace(/\[([^\]]+)\]/g, "")
+          const soloAcordes: string[] = []
+          let m2
+          const r2 = /\[([^\]]+)\]/g
+          while ((m2 = r2.exec(linea)) !== null) soloAcordes.push(m2[1])
+
+          if (soloAcordes.length > 0) {
+            return (
+              <div key={li}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "2px" }}>
+                  {soloAcordes.map((ac, ai) => (
+                    <span key={ai} style={{
+                      background: "rgba(250,204,21,0.15)",
+                      border: "1px solid rgba(250,204,21,0.35)",
+                      color: "#fcd34d",
+                      borderRadius: "5px",
+                      padding: "1px 7px",
+                      fontSize: "12px",
+                      fontWeight: 700
+                    }}>{ac}</span>
+                  ))}
+                </div>
+                {textoSinAcordes.trim() && (
+                  <div style={{ color: "rgba(255,255,255,0.9)" }}>{textoSinAcordes}</div>
+                )}
+              </div>
+            )
+          }
+
+          return <div key={li} style={{ color: "rgba(255,255,255,0.9)" }}>{linea || "\u00a0"}</div>
+        })}
+      </div>
+    )
   }
 
-  return `Ejemplo solo letra:
-Hay una senda que el mundo no conoce
-Hay una senda que yo pude encontrar`
-}
-
-
-const ejemploSegunFormato = (formato?: string) => {
   if (formato === "linea") {
-    return `C                    F            C
-Hay una senda que el mundo no conoce
-        G7                       C
-Hay una senda que yo pude encontrar`
+    const lineas = texto.split("\n")
+    const resultado: React.ReactNode[] = []
+    for (let i = 0; i < lineas.length; i++) {
+      if (esLineaAcordes(lineas[i]) && lineas[i + 1]) {
+        resultado.push(
+          <div key={`a${i}`} style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "2px" }}>
+            {lineas[i].trim().split(/\s+/).map((ac, ai) => (
+              <span key={ai} style={{
+                background: "rgba(250,204,21,0.15)",
+                border: "1px solid rgba(250,204,21,0.35)",
+                color: "#fcd34d",
+                borderRadius: "5px",
+                padding: "1px 7px",
+                fontSize: "12px",
+                fontWeight: 700
+              }}>{ac}</span>
+            ))}
+          </div>
+        )
+        resultado.push(
+          <div key={`l${i}`} style={{ color: "rgba(255,255,255,0.9)", marginBottom: "8px", fontFamily: "'Courier New', monospace", fontSize: "14px" }}>
+            {lineas[i + 1]}
+          </div>
+        )
+        i++
+      } else {
+        resultado.push(
+          <div key={i} style={{ color: "rgba(255,255,255,0.9)", fontFamily: "'Courier New', monospace", fontSize: "14px" }}>
+            {lineas[i] || "\u00a0"}
+          </div>
+        )
+      }
+    }
+    return <div style={{ lineHeight: 1.7 }}>{resultado}</div>
   }
-
-  if (formato === "corchetes") {
-    return `[Do]Hay una senda que el mundo [Fa]no conoce
-[Sol7]Hay una senda que yo pude [Do]encontrar`
-  }
-
-  return `Hay una senda que el mundo no conoce
-Hay una senda que yo pude encontrar`
-}
 
   return (
-  <div
-    style={{
-      padding: 20,
-      background: "#111",
-      color: "white",
-      minHeight: "100vh"
-    }}
-  >
-    <h1 style={{ fontSize: 28 }}>🎶 Cancionero</h1>
+    <div style={{
+      fontFamily: "'Courier New', monospace",
+      fontSize: "14px",
+      lineHeight: 1.8,
+      color: "rgba(255,255,255,0.88)",
+      whiteSpace: "pre-line"
+    }}>
+      {texto}
+    </div>
+  )
+}
 
-    {/* CREAR */}
-    <div style={{ marginBottom: 30 }}>
-      <h2>Crear Canción</h2>
-      {editandoId && (
-        <div style={{ marginBottom: 10, opacity: 0.8 }}>
-          Editando canción actual
-        </div>
-      )}
-      <input
-        placeholder="Título"
-        value={titulo}
-        onChange={(e) => setTitulo(e.target.value)}
-        style={{ padding: 10, width: "100%", marginBottom: 10 ,background: "#333",}}
-      />
+// ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 
-      <select
-  value={tono}
-  onChange={(e) => setTono(e.target.value)}
-  style={{
-    padding: "10px",
-    borderRadius: "8px",
-    marginTop: "10px",
-    background: "#333",
-  }}
->
-  <option value="">Tono</option>
-<option value="Do">Do</option>
-<option value="Dom">Do menor</option>
-<option value="Do#">Do#</option>
-<option value="Re">Re</option>
-<option value="Rem">Re menor</option>
-<option value="Re#">Re#</option>
-<option value="Mi">Mi</option>
-<option value="Mim">Mi menor</option>
-<option value="Fa">Fa</option>
-<option value="Fam">Fa menor</option>
-<option value="Fa#">Fa#</option>
-<option value="Sol">Sol</option>
-<option value="Solm">Sol menor</option>
-<option value="Sol#">Sol#</option>
-<option value="La">La</option>
-<option value="Lam">La menor</option>
-<option value="La#">La#</option>
-<option value="Si">Si</option>
-<option value="Sim">Si menor</option>
-</select>
-{tono && (
-  <div
-    style={{
-      marginTop: "8px",
-      fontSize: "13px",
-      opacity: 0.8
-    }}
-  >
-    Tono actual: <strong>{tono}</strong>
-  </div>
-)}
-      {partes.map((p, i) => (
-        <div key={i} style={{ marginBottom: 10 }}>
-          <select
-            value={p.tipo}
-            onChange={(e) =>
-              actualizarParte(i, "tipo", e.target.value)
-            }
-            style={{ width: "100%" ,background: "#333",padding: "10px",
-    borderRadius: "8px",
-    marginTop: "10px",}}
-          >
-            <option>Verso</option>
-            <option>Coro</option>
-            <option>Puente</option>
-          </select>
-          <select
-  value={p.formato || "solo"}
-  onChange={(e) => actualizarParte(i, "formato", e.target.value)}
-  style={{
-    width: "100%",
-    background: "#333",
-    padding: "10px",
-    borderRadius: "8px",
-    marginTop: "10px",
-    color: "white"
-  }}
->
-  <option value="solo">Solo letra</option>
-  <option value="linea">Acordes arriba</option>
-  <option value="corchetes">Corchetes</option>
-</select>
-          <div
-  style={{
-    fontSize: "13px",
-    opacity: 0.75,
-    marginTop: "10px",
-    marginBottom: "6px",
-    lineHeight: 1.4
-  }}
->
-  Formato seleccionado:{" "}
-  <strong>
-    {p.formato === "linea"
-      ? "Acordes arriba"
-      : p.formato === "corchetes"
-      ? "Corchetes"
-      : "Solo letra"}
-  </strong>
-</div>    
-          <textarea 
-          style={{
-  width: "100%",
-  minHeight: "220px",
-  background: "#333",
-  padding: "12px",
-  borderRadius: "8px",
-  marginTop: "10px",
-  color: "white",
-  border: "1px solid rgba(255,255,255,0.08)",
-  resize: "vertical",
-  lineHeight: 1.5,
-  fontSize: "15px",
-  boxSizing: "border-box"
-}}
-  placeholder={placeholderSegunFormato(p.formato)}
-  value={p.texto}
-  onChange={(e) =>
-    actualizarParte(i, "texto", e.target.value)
+export default function CancionesPage() {
+  const [socket, setSocket] = useState<any>(null)
+  const [canciones, setCanciones] = useState<Cancion[]>([])
+  const [idsConAcordes, setIdsConAcordes] = useState<string[]>([])
+  const [iglesiaId, setIglesiaId] = useState<string | null>(null)
+  const [cargando, setCargando] = useState(true)
+
+  // Editor
+  const [editandoId, setEditandoId] = useState<string | null>(null)
+  const [titulo, setTitulo] = useState("")
+  const [autor, setAutor] = useState("")
+  const [tono, setTono] = useState("")
+  const [categoria, setCategoria] = useState("")
+  const [categoriaCustom, setCategoriaCustom] = useState("")
+  const [numero, setNumero] = useState("")
+  const [partes, setPartes] = useState<Parte[]>([
+    { tipo: "Verso", texto: "", formato: "solo" }
+  ])
+  const [vistaPrevia, setVistaPrevia] = useState<number | null>(null)
+  const [guardando, setGuardando] = useState(false)
+  const [flashMsg, setFlashMsg] = useState("")
+
+  // Lista
+  const [busqueda, setBusqueda] = useState("")
+  const [filtroTono, setFiltroTono] = useState("")
+  const [filtroCategoria, setFiltroCategoria] = useState("")
+  const [activaId, setActivaId] = useState<string | null>(null)
+  const [vistaLista, setVistaLista] = useState<"lista" | "grid">("lista")
+  const [panelAbierto, setPanelAbierto] = useState<"editor" | "canciones">("canciones")
+
+  const editorRef = useRef<HTMLDivElement>(null)
+
+  // ── Socket ──────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const s = io("http://" + window.location.hostname + ":4000")
+    s.on("cancion-activa", (data: any) => setActivaId(data.id))
+    setSocket(s)
+    return () => { s.disconnect() }
+  }, [])
+
+  // ── Carga inicial ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const init = async () => {
+      const id = await getIglesiaId()
+      setIglesiaId(id)
+      await cargarCanciones(id)
+      setCargando(false)
+    }
+    init()
+  }, [])
+
+  const cargarCanciones = async (id?: string | null) => {
+    const igId = id ?? iglesiaId
+    let query = supabase.from("canciones").select("*")
+    if (igId) query = query.eq("iglesia_id", igId)
+
+    const { data } = await query
+    setCanciones(data || [])
+
+    const { data: conAcordes } = await supabase
+      .from("partes_cancion")
+      .select("cancion_id")
+      .eq("tiene_acordes", true)
+
+    const ids = Array.from(
+      new Set((conAcordes || []).map((p: any) => p.cancion_id).filter(Boolean))
+    )
+    setIdsConAcordes(ids)
   }
-/>
 
-<div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
-  <button
-    onClick={() => {
-      setPartes(prev => {
-        const nuevas = [...prev]
-        if (!nuevas[i]) return prev
+  // ── Editor helpers ───────────────────────────────────────────────────────────
 
-        nuevas[i].texto = nuevas[i].texto.trim()
-          ? nuevas[i].texto
-          : ejemploSegunFormato(nuevas[i].formato)
+  const flash = (msg: string) => {
+    setFlashMsg(msg)
+    setTimeout(() => setFlashMsg(""), 2800)
+  }
 
-        return nuevas
-      })
-    }}
-    style={btn}
-  >
-    ✍️ Ejemplo de esta parte
-  </button>
-</div>
-        </div>
-      ))}
+  const resetEditor = () => {
+    setEditandoId(null)
+    setTitulo("")
+    setAutor("")
+    setTono("")
+    setCategoria("")
+    setCategoriaCustom("")
+    setNumero("")
+    setPartes([{ tipo: "Verso", texto: "", formato: "solo" }])
+    setVistaPrevia(null)
+  }
 
-      
+  const agregarParte = () =>
+    setPartes(prev => [...prev, { tipo: "Verso", texto: "", formato: "solo" }])
 
-      <button onClick={agregarParte} style={btn}>
-        + Parte
-      </button>
+  const actualizarParte = (i: number, campo: keyof Parte, valor: string) => {
+    setPartes(prev => {
+      const nuevas = [...prev]
+      ;(nuevas[i] as any)[campo] = valor
+      return nuevas
+    })
+  }
 
-      <button onClick={guardarCancion} style={btnPrimary}>
-        💾 Guardar
-      </button>
-      {editandoId && (
-          <button
-            onClick={() => {
-              setEditandoId(null)
-              setTitulo("")
-              setTono("")
-              setPartes([{ tipo: "Verso", texto: "", formato: "solo" }])
-            }}
-            style={btn}
-          >
-            Cancelar edición
-          </button>
-        )}
-     
-<button
-  onClick={() => {
-  const textoCompleto = partes.map(p => p.texto).join(" ")
-  const tonoDetectado = detectarTono(textoCompleto)
-  if (tonoDetectado) setTono(tonoDetectado)
-}}
-  style={btn}
->
-  
-  🎯 Detectar tono
-</button>
+  const moverParte = (i: number, dir: -1 | 1) => {
+    setPartes(prev => {
+      const n = [...prev]
+      const dest = i + dir
+      if (dest < 0 || dest >= n.length) return prev
+      ;[n[i], n[dest]] = [n[dest], n[i]]
+      return n
+    })
+  }
 
-<button
-  onClick={() => {
-    setPartes(prev =>
-      prev.map(p => ({
+  const eliminarParte = (i: number) =>
+    setPartes(prev => prev.filter((_, idx) => idx !== i))
+
+  const duplicarParte = (i: number) =>
+    setPartes(prev => {
+      const n = [...prev]
+      n.splice(i + 1, 0, { ...n[i] })
+      return n
+    })
+
+  const detectarTonoDesdePartes = () => {
+    const texto = partes.map(p => p.texto).join(" ")
+    const t = detectarTono(texto)
+    if (t) { setTono(t); flash(`✅ Tono detectado: ${t}`) }
+    else flash("⚠️ No se detectó tono en los acordes")
+  }
+
+  const categoriaFinal = categoria === "__custom__" ? categoriaCustom.trim() : categoria
+
+  // ── Guardar ──────────────────────────────────────────────────────────────────
+
+  const guardarCancion = async () => {
+    if (!titulo.trim()) { flash("⚠️ El título es obligatorio"); return }
+    setGuardando(true)
+
+    const textoCompleto = partes.map(p => p.texto).join(" ")
+    const tonoFinal = normalizarAcorde(tono || detectarTono(textoCompleto) || "")
+
+    const datosCancion = {
+      titulo: titulo.trim(),
+      autor: autor.trim() || null,
+      tono: tonoFinal || null,
+      categoria: categoriaFinal || null,
+      numero: numero ? parseInt(numero) : null,
+      iglesia_id: iglesiaId
+    }
+
+    let cancionId = editandoId
+
+    if (editandoId) {
+      const { error } = await supabase.from("canciones").update(datosCancion).eq("id", editandoId)
+      if (error) { flash("❌ Error actualizando canción"); setGuardando(false); return }
+      await supabase.from("partes_cancion").delete().eq("cancion_id", editandoId)
+    } else {
+      const { data, error } = await supabase.from("canciones").insert(datosCancion).select().single()
+      if (error || !data) { flash("❌ Error creando canción"); setGuardando(false); return }
+      cancionId = data.id
+    }
+
+    const partesInsert = partes.map((p, i) => ({
+      cancion_id: cancionId,
+      tipo: p.tipo,
+      texto: p.texto,
+      texto_letra: p.texto,
+      texto_acordes: tieneAcordes(p.texto) ? p.texto : null,
+      tiene_acordes: tieneAcordes(p.texto),
+      orden: i
+    }))
+
+    const { error: errorPartes } = await supabase.from("partes_cancion").insert(partesInsert)
+    if (errorPartes) { flash("❌ Error guardando partes"); setGuardando(false); return }
+
+    flash(editandoId ? "✅ Canción actualizada" : "✅ Canción guardada")
+    resetEditor()
+    await cargarCanciones()
+    setGuardando(false)
+    setPanelAbierto("canciones")
+  }
+
+  // ── Editar / Eliminar ────────────────────────────────────────────────────────
+
+  const editarCancion = async (c: Cancion) => {
+    const { data } = await supabase
+      .from("partes_cancion").select("*").eq("cancion_id", c.id).order("orden")
+
+    setEditandoId(c.id)
+    setTitulo(c.titulo || "")
+    setAutor((c as any).autor || "")
+    setTono(c.tono || "")
+    setNumero(c.numero ? String(c.numero) : "")
+
+    const cat = c.categoria || ""
+    if (CATEGORIAS_PRESET.includes(cat) || cat === "") {
+      setCategoria(cat)
+      setCategoriaCustom("")
+    } else {
+      setCategoria("__custom__")
+      setCategoriaCustom(cat)
+    }
+
+    setPartes(
+      (data || []).map((p: any) => ({
         ...p,
-        texto: p.texto
-          .replace(/\r\n/g, "\n")
-          .replace(/\r/g, "\n")
+        formato: inferirFormato(p.texto || "")
       }))
     )
-  }}
-  style={btn}
->
-  🧹 Limpiar saltos
-</button>
-    </div>
+    setVistaPrevia(null)
+    setPanelAbierto("editor")
+    editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
 
-    {/* LISTA */}
-    <h2>Canciones</h2>
-    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-  <input
-    placeholder="Buscar por título..."
-    value={busqueda}
-    onChange={(e) => setBusqueda(e.target.value)}
-    style={{
-      flex: "1 1 260px",
-      padding: 10,
-      background: "#333",
-      color: "white",
-      border: "1px solid rgba(255,255,255,0.08)",
-      borderRadius: "8px"
-    }}
-  />
+  const eliminarCancion = async (id: string, titulo: string) => {
+    if (!confirm(`¿Eliminar "${titulo}"? Esta acción no se puede deshacer.`)) return
+    await supabase.from("partes_cancion").delete().eq("cancion_id", id)
+    await supabase.from("canciones").delete().eq("id", id)
+    if (editandoId === id) resetEditor()
+    flash("🗑️ Canción eliminada")
+    await cargarCanciones()
+  }
 
-  <select
-    value={filtroTono}
-    onChange={(e) => setFiltroTono(e.target.value)}
-    style={{
-      minWidth: "180px",
-      padding: 10,
-      background: "#333",
-      color: "white",
-      border: "1px solid rgba(255,255,255,0.08)",
-      borderRadius: "8px"
-    }}
-  >
-    <option value="">Todos los tonos</option>
-    <option value="Do">Do</option>
-    <option value="Dom">Do menor</option>
-    <option value="Do#">Do#</option>
-    <option value="Re">Re</option>
-    <option value="Rem">Re menor</option>
-    <option value="Re#">Re#</option>
-    <option value="Mi">Mi</option>
-    <option value="Mim">Mi menor</option>
-    <option value="Fa">Fa</option>
-    <option value="Fam">Fa menor</option>
-    <option value="Fa#">Fa#</option>
-    <option value="Sol">Sol</option>
-    <option value="Solm">Sol menor</option>
-    <option value="Sol#">Sol#</option>
-    <option value="La">La</option>
-    <option value="Lam">La menor</option>
-    <option value="La#">La#</option>
-    <option value="Si">Si</option>
-    <option value="Sim">Si menor</option>
-  </select>
-  <select
-    value={filtroCategoria}
-    onChange={(e) => setFiltroCategoria(e.target.value)}
-    style={{
-      minWidth: "220px",
-      padding: 10,
-      background: "#333",
-      color: "white",
-      border: "1px solid rgba(255,255,255,0.08)",
-      borderRadius: "8px"
-    }}
-  >
-    <option value="">Todas las categorías</option>
-    {categoriasDisponibles.map((cat) => (
-      <option key={cat} value={cat}>
-        {cat}
-      </option>
-    ))}
-  </select>
-</div>
-    {canciones
-  .filter((c) => {
+  const proyectar = async (c: Cancion) => {
+    if (!socket) return
+    const { data } = await supabase.from("partes_cancion").select("*").eq("cancion_id", c.id).order("orden")
+    socket.emit("cargar-cancion", { partes: data, index: 0, titulo: c.titulo, tono: c.tono || "" })
+    socket.emit("cancion-activa", { id: c.id })
+    flash(`▶ Proyectando: ${c.titulo}`)
+  }
+
+  // ── Filtrado ─────────────────────────────────────────────────────────────────
+
+  const categoriasDisponibles = useMemo(() =>
+    Array.from(new Set(canciones.map(c => c.categoria).filter(Boolean))).sort() as string[],
+    [canciones]
+  )
+
+  const cancionesFiltradas = useMemo(() => {
     const q = busqueda.toLowerCase().trim()
-    if (!q) return true
+    return canciones
+      .filter(c => {
+        if (!q) return true
+        return (
+          (c.titulo || "").toLowerCase().includes(q) ||
+          (c.categoria || "").toLowerCase().includes(q) ||
+          (c.tono || "").toLowerCase().includes(q) ||
+          String(c.numero || "").includes(q)
+        )
+      })
+      .filter(c => !filtroTono || c.tono === filtroTono)
+      .filter(c => !filtroCategoria || c.categoria === filtroCategoria)
+      .sort((a, b) => {
+        const na = a.numero ?? 999999, nb = b.numero ?? 999999
+        if (na !== nb) return na - nb
+        return (a.titulo || "").localeCompare(b.titulo || "")
+      })
+  }, [canciones, busqueda, filtroTono, filtroCategoria])
 
-    const titulo = (c.titulo || "").toLowerCase()
-    const categoria = (c.categoria || "").toLowerCase()
-    const tono = (c.tono || "").toLowerCase()
-    const numero = String(c.numero || "")
+  // ── ESTILOS BASE ─────────────────────────────────────────────────────────────
 
+  const colors = {
+    bg: "#0a0f1a",
+    surface: "#111827",
+    card: "#1a2235",
+    cardHover: "#1e2a40",
+    border: "rgba(255,255,255,0.07)",
+    borderActive: "rgba(99,179,237,0.4)",
+    text: "#f0f4ff",
+    textMuted: "rgba(240,244,255,0.5)",
+    accent: "#3b82f6",
+    accentGlow: "rgba(59,130,246,0.2)",
+    green: "#22c55e",
+    greenGlow: "rgba(34,197,94,0.15)",
+    gold: "#fbbf24",
+    red: "#ef4444",
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "10px 14px",
+    background: "#0d1526",
+    color: colors.text,
+    border: `1px solid ${colors.border}`,
+    borderRadius: "10px",
+    fontSize: "14px",
+    outline: "none",
+    boxSizing: "border-box",
+    transition: "border-color 0.2s"
+  }
+
+  const selectStyle: React.CSSProperties = {
+    ...inputStyle,
+    cursor: "pointer"
+  }
+
+  const btnBase: React.CSSProperties = {
+    padding: "9px 16px",
+    borderRadius: "9px",
+    border: "none",
+    cursor: "pointer",
+    fontSize: "13px",
+    fontWeight: 600,
+    transition: "all 0.15s",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px"
+  }
+
+  const btnPrimary: React.CSSProperties = {
+    ...btnBase,
+    background: colors.accent,
+    color: "white",
+  }
+
+  const btnSecondary: React.CSSProperties = {
+    ...btnBase,
+    background: "rgba(255,255,255,0.07)",
+    color: colors.text,
+    border: `1px solid ${colors.border}`
+  }
+
+  const btnDanger: React.CSSProperties = {
+    ...btnBase,
+    background: "rgba(239,68,68,0.12)",
+    color: "#fca5a5",
+    border: "1px solid rgba(239,68,68,0.25)"
+  }
+
+  const btnSuccess: React.CSSProperties = {
+    ...btnBase,
+    background: "rgba(34,197,94,0.15)",
+    color: "#86efac",
+    border: "1px solid rgba(34,197,94,0.3)"
+  }
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: "11px",
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase" as const,
+    color: colors.textMuted,
+    marginBottom: "6px",
+    display: "block"
+  }
+
+  const tipoBadgeColor: Record<string, string> = {
+    Verso: "rgba(99,179,237,0.18)",
+    Coro: "rgba(167,139,250,0.18)",
+    Puente: "rgba(52,211,153,0.18)",
+    Intro: "rgba(251,191,36,0.18)",
+    Outro: "rgba(251,191,36,0.18)",
+    Observación: "rgba(156,163,175,0.18)"
+  }
+
+  const tipoBadgeText: Record<string, string> = {
+    Verso: "#93c5fd",
+    Coro: "#c4b5fd",
+    Puente: "#6ee7b7",
+    Intro: "#fde68a",
+    Outro: "#fde68a",
+    Observación: "#d1d5db"
+  }
+
+  if (cargando) {
     return (
-      titulo.includes(q) ||
-      categoria.includes(q) ||
-      tono.includes(q) ||
-      numero.includes(q)
+      <div style={{
+        minHeight: "100vh", background: colors.bg, display: "flex",
+        alignItems: "center", justifyContent: "center", color: colors.text
+      }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: "50%",
+            border: "3px solid rgba(255,255,255,0.1)",
+            borderTopColor: colors.accent,
+            margin: "0 auto 16px",
+            animation: "spin 0.8s linear infinite"
+          }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+          <div style={{ opacity: 0.6 }}>Cargando cancionero...</div>
+        </div>
+      </div>
     )
-  })
-  .filter((c) => !filtroTono || c.tono === filtroTono)
-  .filter((c) => !filtroCategoria || c.categoria === filtroCategoria)
-  .sort((a, b) => {
-    const na = a.numero ?? 999999
-    const nb = b.numero ?? 999999
-    if (na !== nb) return na - nb
-    return (a.titulo || "").localeCompare(b.titulo || "")
-  })
-  .map((c, i) => (
-  <div
-    key={c.id}
-    style={{
-      ...card,
-      background: c.id === activaId ? "#16a34a" : "#334155"
-    }}
-  >
-    <div>
-      <div style={{ fontWeight: 700 }}>
-        {c.numero ? `${c.numero}. ` : ""}{c.titulo}
+  }
+
+  // ── RENDER ────────────────────────────────────────────────────────────────────
+
+  return (
+    <div style={{
+      minHeight: "100dvh",
+      background: colors.bg,
+      color: colors.text,
+      fontFamily: "'Segoe UI', system-ui, sans-serif",
+      overflowX: "hidden",
+      boxSizing: "border-box"
+    }}>
+
+      {/* ── HEADER ── */}
+      <div style={{
+        position: "sticky", top: 0, zIndex: 50,
+        background: "rgba(10,15,26,0.92)",
+        backdropFilter: "blur(12px)",
+        borderBottom: `1px solid ${colors.border}`,
+        padding: "0 20px"
+      }}>
+        <div style={{
+          maxWidth: 1100, margin: "0 auto",
+          display: "flex", alignItems: "center",
+          justifyContent: "space-between",
+          height: 60, gap: 16
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 10,
+              background: `linear-gradient(135deg, ${colors.accent}, #6366f1)`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 18, flexShrink: 0
+            }}>🎵</div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.2 }}>Cancionero</div>
+              <div style={{ fontSize: 11, color: colors.textMuted }}>
+                {canciones.length} canciones
+              </div>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div style={{
+            display: "flex", gap: 4,
+            background: "rgba(255,255,255,0.05)",
+            borderRadius: 10, padding: 4
+          }}>
+            {(["canciones", "editor"] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => {
+                  setPanelAbierto(tab)
+                  if (tab === "editor" && !editandoId) resetEditor()
+                }}
+                style={{
+                  ...btnBase,
+                  padding: "7px 16px",
+                  background: panelAbierto === tab ? colors.accent : "transparent",
+                  color: panelAbierto === tab ? "white" : colors.textMuted,
+                  fontSize: "13px"
+                }}
+              >
+                {tab === "canciones" ? `📋 Canciones (${canciones.length})` : editandoId ? "✏️ Editando" : "➕ Nueva"}
+              </button>
+            ))}
+          </div>
+
+          {/* vista toggle */}
+          {panelAbierto === "canciones" && (
+            <div style={{ display: "flex", gap: 4, background: "rgba(255,255,255,0.05)", borderRadius: 8, padding: 3 }}>
+              {(["lista", "grid"] as const).map(v => (
+                <button key={v} onClick={() => setVistaLista(v)} style={{
+                  ...btnBase, padding: "5px 10px", fontSize: 14,
+                  background: vistaLista === v ? "rgba(255,255,255,0.12)" : "transparent",
+                  color: vistaLista === v ? colors.text : colors.textMuted
+                }}>
+                  {v === "lista" ? "☰" : "⊞"}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {(c.categoria || c.tono) && (
-        <div style={{ fontSize: "12px", opacity: 0.75, marginTop: "4px" }}>
-          {[
-            c.categoria || "Sin categoría",
-            c.tono || "",
-            idsCancionesConAcordes.includes(c.id) ? "Con acordes" : ""
-          ]
-            .filter(Boolean)
-            .join(" • ")}
+      {/* ── FLASH ── */}
+      {flashMsg && (
+        <div style={{
+          position: "fixed", top: 70, left: "50%", transform: "translateX(-50%)",
+          background: flashMsg.startsWith("✅") || flashMsg.startsWith("▶")
+            ? "rgba(34,197,94,0.15)" : flashMsg.startsWith("❌") || flashMsg.startsWith("⚠️")
+            ? "rgba(239,68,68,0.15)" : "rgba(59,130,246,0.15)",
+          border: `1px solid ${flashMsg.startsWith("✅") || flashMsg.startsWith("▶") ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.35)"}`,
+          color: colors.text, padding: "10px 22px", borderRadius: 10,
+          fontSize: 14, fontWeight: 600, zIndex: 999,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+          whiteSpace: "nowrap"
+        }}>
+          {flashMsg}
         </div>
       )}
+
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px" }}>
+
+        {/* ═══════════════ PANEL EDITOR ═══════════════ */}
+        {panelAbierto === "editor" && (
+          <div ref={editorRef}>
+
+            {/* ── Encabezado editor ── */}
+            <div style={{ marginBottom: 24, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 700 }}>
+                  {editandoId ? "✏️ Editar canción" : "➕ Nueva canción"}
+                </div>
+                {editandoId && (
+                  <div style={{ fontSize: 13, color: colors.textMuted, marginTop: 4 }}>
+                    Modifica los datos y guarda los cambios
+                  </div>
+                )}
+              </div>
+              {editandoId && (
+                <button onClick={resetEditor} style={btnSecondary}>
+                  ✕ Cancelar edición
+                </button>
+              )}
+            </div>
+
+            {/* ── Metadatos ── */}
+            <div style={{
+              background: colors.surface,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 14, padding: 20, marginBottom: 20
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: colors.textMuted, marginBottom: 16 }}>
+                Información de la canción
+              </div>
+
+              {/* Título + Número */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, marginBottom: 14 }}>
+                <div>
+                  <label style={labelStyle}>Título *</label>
+                  <input
+                    placeholder="Ej: Grande es el Señor"
+                    value={titulo}
+                    onChange={e => setTitulo(e.target.value)}
+                    style={inputStyle}
+                  />
+                </div>
+                <div style={{ minWidth: 90 }}>
+                  <label style={labelStyle}>N°</label>
+                  <input
+                    placeholder="123"
+                    value={numero}
+                    onChange={e => setNumero(e.target.value)}
+                    type="number"
+                    style={{ ...inputStyle, width: 90 }}
+                  />
+                </div>
+              </div>
+
+              {/* Autor */}
+              <div style={{ marginBottom: 14 }}>
+                <label style={labelStyle}>Autor / Intérprete</label>
+                <input
+                  placeholder="Ej: Marcos Witt"
+                  value={autor}
+                  onChange={e => setAutor(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              {/* Tono + Categoría */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={labelStyle}>Tono</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <select value={tono} onChange={e => setTono(e.target.value)} style={{ ...selectStyle, flex: 1 }}>
+                      <option value="">Sin tono</option>
+                      {TONOS.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <button
+                      onClick={detectarTonoDesdePartes}
+                      title="Detectar tono automáticamente"
+                      style={{ ...btnSecondary, padding: "9px 12px", flexShrink: 0 }}
+                    >
+                      🎯
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Categoría</label>
+                  <select
+                    value={categoria}
+                    onChange={e => setCategoria(e.target.value)}
+                    style={selectStyle}
+                  >
+                    <option value="">Sin categoría</option>
+                    {CATEGORIAS_PRESET.map(c => <option key={c} value={c}>{c}</option>)}
+                    <option value="__custom__">✏️ Otra categoría...</option>
+                  </select>
+                  {categoria === "__custom__" && (
+                    <input
+                      placeholder="Escribe la categoría"
+                      value={categoriaCustom}
+                      onChange={e => setCategoriaCustom(e.target.value)}
+                      style={{ ...inputStyle, marginTop: 8 }}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* ── Partes ── */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: colors.textMuted }}>
+                  Partes de la canción — {partes.length}
+                </div>
+                <button onClick={agregarParte} style={btnSecondary}>
+                  + Agregar parte
+                </button>
+              </div>
+
+              {partes.map((p, i) => (
+                <div key={i} style={{
+                  background: colors.surface,
+                  border: `1px solid ${vistaPrevia === i ? colors.borderActive : colors.border}`,
+                  borderRadius: 14,
+                  marginBottom: 12,
+                  overflow: "hidden",
+                  transition: "border-color 0.2s"
+                }}>
+                  {/* Cabecera parte */}
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "12px 16px",
+                    background: "rgba(255,255,255,0.025)",
+                    borderBottom: `1px solid ${colors.border}`,
+                    flexWrap: "wrap"
+                  }}>
+                    {/* Orden */}
+                    <div style={{
+                      width: 26, height: 26, borderRadius: 6,
+                      background: "rgba(255,255,255,0.06)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 12, fontWeight: 700, color: colors.textMuted, flexShrink: 0
+                    }}>
+                      {i + 1}
+                    </div>
+
+                    {/* Tipo */}
+                    <select
+                      value={p.tipo}
+                      onChange={e => actualizarParte(i, "tipo", e.target.value)}
+                      style={{
+                        ...selectStyle,
+                        width: "auto",
+                        padding: "6px 10px",
+                        fontSize: 13,
+                        background: tipoBadgeColor[p.tipo] || "rgba(255,255,255,0.06)",
+                        color: tipoBadgeText[p.tipo] || colors.text,
+                        fontWeight: 700,
+                        border: "none"
+                      }}
+                    >
+                      {TIPOS_PARTE.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+
+                    {/* Formato */}
+                    <select
+                      value={p.formato}
+                      onChange={e => actualizarParte(i, "formato", e.target.value)}
+                      style={{ ...selectStyle, width: "auto", padding: "6px 10px", fontSize: 12 }}
+                    >
+                      <option value="solo">Solo letra</option>
+                      <option value="linea">Acordes arriba</option>
+                      <option value="corchetes">Corchetes [Do]</option>
+                    </select>
+
+                    {/* Indicador acordes */}
+                    {tieneAcordes(p.texto) && (
+                      <span style={{
+                        background: "rgba(251,191,36,0.12)",
+                        border: "1px solid rgba(251,191,36,0.3)",
+                        color: colors.gold,
+                        borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700
+                      }}>
+                        🎸 Con acordes
+                      </span>
+                    )}
+
+                    {/* Acciones */}
+                    <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+                      <button
+                        onClick={() => setVistaPrevia(vistaPrevia === i ? null : i)}
+                        title="Vista previa para músicos"
+                        style={{
+                          ...btnBase, padding: "5px 10px", fontSize: 12,
+                          background: vistaPrevia === i ? colors.accentGlow : "rgba(255,255,255,0.05)",
+                          color: vistaPrevia === i ? "#93c5fd" : colors.textMuted,
+                          border: `1px solid ${vistaPrevia === i ? colors.borderActive : "transparent"}`
+                        }}
+                      >
+                        👁 Vista
+                      </button>
+                      <button onClick={() => moverParte(i, -1)} disabled={i === 0} style={{ ...btnBase, padding: "5px 8px", background: "rgba(255,255,255,0.05)", color: colors.textMuted, opacity: i === 0 ? 0.3 : 1 }}>↑</button>
+                      <button onClick={() => moverParte(i, 1)} disabled={i === partes.length - 1} style={{ ...btnBase, padding: "5px 8px", background: "rgba(255,255,255,0.05)", color: colors.textMuted, opacity: i === partes.length - 1 ? 0.3 : 1 }}>↓</button>
+                      <button onClick={() => duplicarParte(i)} title="Duplicar" style={{ ...btnBase, padding: "5px 8px", background: "rgba(255,255,255,0.05)", color: colors.textMuted }}>⧉</button>
+                      <button onClick={() => eliminarParte(i)} disabled={partes.length === 1} style={{ ...btnBase, padding: "5px 8px", background: "rgba(239,68,68,0.08)", color: "#fca5a5", opacity: partes.length === 1 ? 0.3 : 1 }}>✕</button>
+                    </div>
+                  </div>
+
+                  {/* Body parte */}
+                  <div style={{ padding: 16, display: vistaPrevia === i ? "grid" : "block", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                    <textarea
+                      value={p.texto}
+                      onChange={e => actualizarParte(i, "texto", e.target.value)}
+                      placeholder={
+                        p.formato === "corchetes"
+                          ? "[Do]Canta al Señor [Fa]con alegría\n[Sol]Grande es [Do]su amor"
+                          : p.formato === "linea"
+                          ? "Do              Fa\nCanta al Señor con alegría"
+                          : "Canta al Señor con alegría\nGrande es su amor"
+                      }
+                      style={{
+                        ...inputStyle,
+                        minHeight: 160,
+                        resize: "vertical",
+                        lineHeight: 1.65,
+                        fontFamily: "'Courier New', monospace",
+                        fontSize: "14px"
+                      }}
+                    />
+
+                    {/* Vista previa inline */}
+                    {vistaPrevia === i && (
+                      <div style={{
+                        background: "#060d1a",
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: 10,
+                        padding: "14px 16px",
+                        minHeight: 160,
+                        overflowY: "auto"
+                      }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: colors.textMuted, marginBottom: 10 }}>
+                          Vista músicos
+                        </div>
+                        <VistaPrevia texto={p.texto} formato={p.formato} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* ── Acciones guardar ── */}
+            <div style={{
+              display: "flex", gap: 10, flexWrap: "wrap",
+              padding: "16px 20px",
+              background: colors.surface,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 14
+            }}>
+              <button
+                onClick={guardarCancion}
+                disabled={guardando}
+                style={{
+                  ...btnPrimary,
+                  opacity: guardando ? 0.7 : 1,
+                  padding: "11px 24px",
+                  fontSize: 14
+                }}
+              >
+                {guardando ? "⏳ Guardando..." : editandoId ? "💾 Actualizar canción" : "💾 Guardar canción"}
+              </button>
+
+              {editandoId && (
+                <button onClick={resetEditor} style={{ ...btnSecondary, padding: "11px 20px" }}>
+                  ✕ Cancelar
+                </button>
+              )}
+
+              <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                <button onClick={agregarParte} style={btnSecondary}>+ Parte</button>
+                <button onClick={detectarTonoDesdePartes} style={btnSecondary}>🎯 Detectar tono</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════ PANEL CANCIONES ═══════════════ */}
+        {panelAbierto === "canciones" && (
+          <div>
+            {/* Búsqueda y filtros */}
+            <div style={{
+              background: colors.surface,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 14, padding: 16, marginBottom: 20
+            }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <input
+                  placeholder="🔍  Buscar por título, categoría, tono o número..."
+                  value={busqueda}
+                  onChange={e => setBusqueda(e.target.value)}
+                  style={{ ...inputStyle, fontSize: 16 }}
+                />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <select value={filtroTono} onChange={e => setFiltroTono(e.target.value)} style={selectStyle}>
+                    <option value="">Todos los tonos</option>
+                    {TONOS.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <select value={filtroCategoria} onChange={e => setFiltroCategoria(e.target.value)} style={selectStyle}>
+                    <option value="">Todas categorías</option>
+                    {categoriasDisponibles.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                  </select>
+                </div>
+                {(busqueda || filtroTono || filtroCategoria) && (
+                  <button onClick={() => { setBusqueda(""); setFiltroTono(""); setFiltroCategoria("") }} style={btnSecondary}>
+                    ✕ Limpiar filtros
+                  </button>
+                )}
+              </div>
+
+              {cancionesFiltradas.length !== canciones.length && (
+                <div style={{ marginTop: 10, fontSize: 12, color: colors.textMuted }}>
+                  Mostrando {cancionesFiltradas.length} de {canciones.length} canciones
+                </div>
+              )}
+            </div>
+
+            {/* Lista */}
+            {cancionesFiltradas.length === 0 ? (
+              <div style={{
+                textAlign: "center", padding: "60px 20px",
+                color: colors.textMuted, fontSize: 15
+              }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>🎵</div>
+                {canciones.length === 0
+                  ? "No hay canciones aún. ¡Crea la primera!"
+                  : "No se encontraron canciones con esos filtros."}
+              </div>
+            ) : vistaLista === "grid" ? (
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+                gap: 12
+              }}>
+                {cancionesFiltradas.map(c => (
+                  <div key={c.id} style={{
+                    background: c.id === activaId ? "rgba(34,197,94,0.12)" : colors.card,
+                    border: `1px solid ${c.id === activaId ? "rgba(34,197,94,0.4)" : colors.border}`,
+                    borderRadius: 12, padding: "14px 16px",
+                    display: "flex", flexDirection: "column", gap: 10
+                  }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6, lineHeight: 1.3 }}>
+                        {c.numero ? <span style={{ color: colors.textMuted, marginRight: 6, fontWeight: 600 }}>{c.numero}.</span> : null}
+                        {c.titulo}
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                        {c.categoria && (
+                          <span style={{ background: "rgba(99,179,237,0.1)", color: "#93c5fd", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>
+                            {c.categoria}
+                          </span>
+                        )}
+                        {c.tono && (
+                          <span style={{ background: "rgba(167,139,250,0.1)", color: "#c4b5fd", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>
+                            {c.tono}
+                          </span>
+                        )}
+                        {idsConAcordes.includes(c.id) && (
+                          <span style={{ background: "rgba(251,191,36,0.1)", color: "#fcd34d", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>
+                            🎸
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => proyectar(c)} style={{ ...btnSuccess, flex: 1, justifyContent: "center" }}>▶</button>
+                      <button onClick={() => editarCancion(c)} style={{ ...btnSecondary, flex: 1, justifyContent: "center" }}>✏️</button>
+                      <button onClick={() => eliminarCancion(c.id, c.titulo)} style={{ ...btnDanger, padding: "9px 10px" }}>🗑</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {cancionesFiltradas.map(c => (
+                  <div key={c.id} style={{
+                    background: c.id === activaId ? "rgba(34,197,94,0.1)" : colors.card,
+                    border: `1px solid ${c.id === activaId ? "rgba(34,197,94,0.35)" : colors.border}`,
+                    borderRadius: 10, padding: "13px 16px",
+                    display: "flex", alignItems: "center", gap: 12,
+                    transition: "background 0.15s"
+                  }}>
+                    {/* Número */}
+                    {c.numero && (
+                      <div style={{
+                        minWidth: 34, textAlign: "center",
+                        fontSize: 13, fontWeight: 700, color: colors.textMuted,
+                        flexShrink: 0
+                      }}>
+                        {c.numero}
+                      </div>
+                    )}
+
+                    {/* Info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {c.titulo}
+                        {c.id === activaId && (
+                          <span style={{
+                            marginLeft: 8, fontSize: 10, fontWeight: 700,
+                            background: "rgba(34,197,94,0.2)", color: "#86efac",
+                            border: "1px solid rgba(34,197,94,0.3)",
+                            borderRadius: 4, padding: "1px 6px"
+                          }}>EN VIVO</span>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {c.categoria && (
+                          <span style={{ background: "rgba(99,179,237,0.1)", color: "#93c5fd", borderRadius: 5, padding: "1px 7px", fontSize: 11, fontWeight: 600 }}>
+                            {c.categoria}
+                          </span>
+                        )}
+                        {c.tono && (
+                          <span style={{ background: "rgba(167,139,250,0.1)", color: "#c4b5fd", borderRadius: 5, padding: "1px 7px", fontSize: 11, fontWeight: 600 }}>
+                            {c.tono}
+                          </span>
+                        )}
+                        {idsConAcordes.includes(c.id) && (
+                          <span style={{ background: "rgba(251,191,36,0.1)", color: "#fcd34d", borderRadius: 5, padding: "1px 7px", fontSize: 11, fontWeight: 600 }}>
+                            🎸 Acordes
+                          </span>
+                        )}
+                        {(c as any).autor && (
+                          <span style={{ color: colors.textMuted, fontSize: 11 }}>
+                            {(c as any).autor}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Acciones — compactas en mobile */}
+                    <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+                      <button onClick={() => proyectar(c)} style={{ ...btnSuccess, padding: "8px 10px", fontSize: 13 }}>▶</button>
+                      <button onClick={() => editarCancion(c)} style={{ ...btnSecondary, padding: "8px 10px", fontSize: 13 }}>✏️</button>
+                      <button onClick={() => eliminarCancion(c.id, c.titulo)} style={{ ...btnDanger, padding: "8px 10px", fontSize: 13 }}>🗑</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+      </div>
     </div>
-
-    <div style={{ display: "flex", gap: 8 }}>
-  <button
-    onClick={() => editarCancion(c.id)}
-    style={btn}
-  >
-    ✏️ Editar
-  </button>
-
-  <button
-    onClick={() => proyectar(c.id)}
-    style={btnPrimary}
-  >
-    ▶ Proyectar
-  </button>
-
-  <button
-    onClick={() => eliminarCancion(c.id)}
-    style={{ ...btn, background: "#dc2626" }}
-  >
-    🗑 Eliminar
-  </button>
-</div>
-  </div>
-))}
-  </div>
-)
+  )
 }
