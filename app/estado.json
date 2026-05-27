@@ -4,89 +4,79 @@
     "data": {
       "partes": [
         {
-          "id": "668c4057-703a-4f64-911c-9a109dc3eb22",
-          "cancion_id": "034fc264-7abb-4897-a3b4-e6be5722f114",
+          "id": "a4ec96a3-94cb-49c6-93cd-9889da2ddf2b",
+          "cancion_id": "ab977c7d-271b-499a-84c7-f5fd1f4b9e35",
           "tipo": "Verso",
-          "texto": "SEÑOR MI DIOS, AL\nCONTEMPLAR LOS CIELOS,\nEI FIRMAMENTO Y LAS\nESTRELLAS MIL.",
+          "texto": "¡CUÁN FIRME CIMIENTO SE HA DADO A LA FE,\nDE DIOS EN SU ETERNA PALABRA DE AMOR!\n¿QUÉ MÁS EL PUDIERA EN SU LIBRO AÑADIR\nSI TODO A SUS HIJOS LO HA DICHO EL SEÑOR?",
           "orden": 0,
-          "texto_letra": "SEÑOR MI DIOS, AL\nCONTEMPLAR LOS CIELOS,\nEI FIRMAMENTO Y LAS\nESTRELLAS MIL.",
-          "texto_acordes": null,
-          "tiene_acordes": false
+          "texto_letra": "¡CUÁN FIRME CIMIENTO SE HA DADO A LA FE,\nDE DIOS EN SU ETERNA PALABRA DE AMOR!\n¿QUÉ MÁS EL PUDIERA EN SU LIBRO AÑADIR\nSI TODO A SUS HIJOS LO HA DICHO EL SEÑOR?",
+          "texto_acordes": "C    F       C               Dm G7     C\n¡Cuán firme cimiento se ha dado a la fe\n        F            C            G C  D7      G\nde Dios en su eterna Palabra de amor!\nG7      C    F      C              Dm G7    C\n¿Qué más Él pudiera en su libro añadir,\n      F              C       Am C G7          C\nsi todo a sus hijos lo ha dicho el Señor?\n     C     F      C       D7   C     G7        C\nsi todo a sus hijos lo ha dicho el Señor?",
+          "tiene_acordes": true
         },
         {
-          "id": "f1537e8d-a32e-4e6c-8903-343757e147da",
-          "cancion_id": "034fc264-7abb-4897-a3b4-e6be5722f114",
+          "id": "4c1bef71-a0b3-4cb6-85c2-0a07bfc6c74a",
+          "cancion_id": "ab977c7d-271b-499a-84c7-f5fd1f4b9e35",
           "tipo": "Verso",
-          "texto": "AL OÍR TU VOZ EN LOS\nPOTENTES TRUENOS,\nY VER BRILLAR EL SOL EN SU\nCENIT.\n\n//MI CORAZÓN ENTONA LA\nCANCIÓN.\nCUAN GRANDE ES EL,\nCUAN GRANDE ES EL.//\n\nAI RECORRER LOS MONTES\nY LOS VALLES,\nY VER LAS BELLAS FLORES AL\nPASAR",
+          "texto": "YA TE HALLES ENFERMO O EN PLENA SALUD,\nYA RICO, YA POBRE SE ENCUENTRE TU SER,\nEN CASA, O VIAJANDO POR TIERRA, O POR MAR,\nCONFORME A TUS AÑOS SERÁ TU PODER.",
           "orden": 1,
-          "texto_letra": "AL OÍR TU VOZ EN LOS\nPOTENTES TRUENOS,\nY VER BRILLAR EL SOL EN SU\nCENIT.\n\n//MI CORAZÓN ENTONA LA\nCANCIÓN.\nCUAN GRANDE ES EL,\nCUAN GRANDE ES EL.//\n\nAI RECORRER LOS MONTES\nY LOS VALLES,\nY VER LAS BELLAS FLORES AL\nPASAR",
-          "texto_acordes": null,
-          "tiene_acordes": false
+          "texto_letra": "YA TE HALLES ENFERMO O EN PLENA SALUD,\nYA RICO, YA POBRE SE ENCUENTRE TU SER,\nEN CASA, O VIAJANDO POR TIERRA, O POR MAR,\nCONFORME A TUS AÑOS SERÁ TU PODER.",
+          "texto_acordes": "C      F       C               Dm G7     C\n“Ya te halles enfermo o en plena salud,\n        F            C            G C  D7      G\nya rico, ya pobre se encuentre tu ser,\nG7  C    F       C              Dm G7    C\nen casa o viajando por tierra o por mar,\n      F              Am C G7          C\nconforme a tu día será tu poder”\n      C     F       C   D7 C  G7   C\nconforme a tu día será tu poder”",
+          "tiene_acordes": true
         },
         {
-          "id": "b46e73b3-48ac-478a-b6dc-cc34fca112db",
-          "cancion_id": "034fc264-7abb-4897-a3b4-e6be5722f114",
+          "id": "1d8d167d-74fe-4eac-9f51-7a485ade36f8",
+          "cancion_id": "ab977c7d-271b-499a-84c7-f5fd1f4b9e35",
           "tipo": "Verso",
-          "texto": "AL ESCUCHAR EL CANTO DE\nLAS AVES,\nY EL MURMURAR DEI CLARO\nMANANTIAL.",
+          "texto": "NO TEMAS POR NADA, CONTIGO YO SOY;\nTU DIOS YO SOY SOLO, TU AYUDA SERÉ\nTU FUERZA Y FIRMEZA EN MI DIESTRA ESTARÁN,\nY EN ELLA SOSTÉN Y PODER TE DARÉ.",
           "orden": 2,
-          "texto_letra": "AL ESCUCHAR EL CANTO DE\nLAS AVES,\nY EL MURMURAR DEI CLARO\nMANANTIAL.",
-          "texto_acordes": null,
-          "tiene_acordes": false
+          "texto_letra": "NO TEMAS POR NADA, CONTIGO YO SOY;\nTU DIOS YO SOY SOLO, TU AYUDA SERÉ\nTU FUERZA Y FIRMEZA EN MI DIESTRA ESTARÁN,\nY EN ELLA SOSTÉN Y PODER TE DARÉ.",
+          "texto_acordes": "C    F       C           Dm G7     C\n“No temas por nada, contigo Yo soy,\n        F                C          G C  D7  G\nTu Dios Yo soy solo, tu ayuda seré;\nG7     C          F      C         Dm G7     C\nTu fuerza y firmeza en mi diestra estarán,\n       F             C.  Am C G7    C\ny en ella sostén y poder te daré.\n     C     F      C   D7   C   G   C\ny en ella sostén y poder te daré.",
+          "tiene_acordes": true
         },
         {
-          "id": "d8fa7f2e-fe8a-4bdd-b7b9-1c9623dad8fb",
-          "cancion_id": "034fc264-7abb-4897-a3b4-e6be5722f114",
+          "id": "5336f8f6-3d13-4edd-a197-081c757c82b3",
+          "cancion_id": "ab977c7d-271b-499a-84c7-f5fd1f4b9e35",
           "tipo": "Verso",
-          "texto": "CUANDO EL SEÑOR ME\nLLAME A SU PRESENCIA,\nAL DULCE HOGAR AL CIELO",
+          "texto": "NO HABRÁN DE ANEGARTE LAS ONDAS DEL MAR\nSI EN AGUAS PROFUNDAS TE ORDENO SALIR;\nYO SIEMPRE CONTIGO EN TU ANGUSTIA SERÉ\nY TODAS TUS PENAS PODRÉ BENDECIR.",
           "orden": 3,
-          "texto_letra": "CUANDO EL SEÑOR ME\nLLAME A SU PRESENCIA,\nAL DULCE HOGAR AL CIELO",
-          "texto_acordes": null,
-          "tiene_acordes": false
+          "texto_letra": "NO HABRÁN DE ANEGARTE LAS ONDAS DEL MAR\nSI EN AGUAS PROFUNDAS TE ORDENO SALIR;\nYO SIEMPRE CONTIGO EN TU ANGUSTIA SERÉ\nY TODAS TUS PENAS PODRÉ BENDECIR.",
+          "texto_acordes": "C  F       C          Dm G7     C\n“No habrán de anegarte las ondas del mar,\n          F            C         G   C      D7  G\nsi en aguas profundas te ordeno salir;\nG7      C    F      C              Dm G7    C\nPues siempre contigo en angustias seré\n      F          C       Am C G7     C\ny todas tus penas podré bendecir.\n    C     F     C      D7   C   G7  C\ny todas tus penas podré bendecir.",
+          "tiene_acordes": true
         },
         {
-          "id": "4b7d617f-dca0-4a01-a8a8-369e7e070100",
-          "cancion_id": "034fc264-7abb-4897-a3b4-e6be5722f114",
+          "id": "be703157-d038-4bc2-b555-77131483aba8",
+          "cancion_id": "ab977c7d-271b-499a-84c7-f5fd1f4b9e35",
           "tipo": "Verso",
-          "texto": "DE ESPLENDOR.",
+          "texto": "LA LLAMA NO PUEDE DAÑARTE JAMÁS\nSI EN MEDIO DEL FUEGO TE ORDENO PASAR,\nEL ORO DE TU ALMA MÁS PURO SERÁ,\nPUES SÓLO LA ESCORIA SE HABRÁ DE QUEMAR.",
           "orden": 4,
-          "texto_letra": "DE ESPLENDOR.",
-          "texto_acordes": null,
-          "tiene_acordes": false
+          "texto_letra": "LA LLAMA NO PUEDE DAÑARTE JAMÁS\nSI EN MEDIO DEL FUEGO TE ORDENO PASAR,\nEL ORO DE TU ALMA MÁS PURO SERÁ,\nPUES SÓLO LA ESCORIA SE HABRÁ DE QUEMAR.",
+          "texto_acordes": "C F       C          Dm G7    C\n“La llama no puede dañarte jamás,\n        F              C                 G C D7 G\nsi en medio del fuego te ordeno pasar;\n      G7         C    F  C   Dm G7  C\nEl oro de tu alma más puro será,\n          F        C       Am C G7        C\npues sólo la escoria se habrá de quemar”.\n          C      F      C           D7   C G7   C\npues sólo la escoria se habrá de quemar”.",
+          "tiene_acordes": true
         },
         {
-          "id": "d998b2bc-f4bd-4885-a6eb-e64f9afcdcf1",
-          "cancion_id": "034fc264-7abb-4897-a3b4-e6be5722f114",
+          "id": "38cfbd47-ba6d-47a3-bf25-24c5b7ee1f6d",
+          "cancion_id": "ab977c7d-271b-499a-84c7-f5fd1f4b9e35",
           "tipo": "Verso",
-          "texto": "LE ADORARÉ CANTANDO LA\nGRANDEZA,\nDE SU PODER Y SU INFINITO\nAMOR.",
+          "texto": "MI AMOR SIEMPRE TIERNO, INVARIABLE, ETERNAL\nCONSTANTE A MI PUEBLO MOSTRARLE PODRÉ;\nSI NÍVEA CORONA YA CIÑE SU SIEN,\nCUAL TIERNOS CORDEROS AÚN CUIDARÉ.",
           "orden": 5,
-          "texto_letra": "LE ADORARÉ CANTANDO LA\nGRANDEZA,\nDE SU PODER Y SU INFINITO\nAMOR.",
-          "texto_acordes": null,
-          "tiene_acordes": false
+          "texto_letra": "MI AMOR SIEMPRE TIERNO, INVARIABLE, ETERNAL\nCONSTANTE A MI PUEBLO MOSTRARLE PODRÉ;\nSI NÍVEA CORONA YA CIÑE SU SIEN,\nCUAL TIERNOS CORDEROS AÚN CUIDARÉ.",
+          "texto_acordes": "C    F       C                   Dm G7     C\n“Mi amor siempre tierno, invariable, eternal,\n        F            C                  G C  D7  G\nconstante a mi pueblo mostrarle podré,\nG7   C    F       C    Dm G7    C\nsi nívea corona ya ciñe su sien,\n      F              C       Am C G7   C\ncual tiernos corderos aún cuidaré”.\n     C     F           C   D7   C G7   C\ncual tiernos corderos aún cuidaré”.",
+          "tiene_acordes": true
         },
         {
-          "id": "5accaced-5156-40c3-84cd-f64c42fbd7ed",
-          "cancion_id": "034fc264-7abb-4897-a3b4-e6be5722f114",
+          "id": "592692d7-e20e-4a14-a60a-178a5b17493f",
+          "cancion_id": "ab977c7d-271b-499a-84c7-f5fd1f4b9e35",
           "tipo": "Verso",
-          "texto": "\n//MI CORAZÓN ENTONA LA\nCANCIÓN.\nCUAN GRANDE ES EL,\nCUAN GRANDE ES EL.//",
+          "texto": "AL ALMA QUE ANHELE LA PAZ QUE HAY EN MI\nJAMÁS EN SUS LUCHAS LE HABRÉ DE DEJAR;\nSI TODO EL INFIERNO LA QUIERE PERDER,\n¡YO NUNCA, NO, NUNCA LA PUEDO OLVIDAR!",
           "orden": 6,
-          "texto_letra": "\n//MI CORAZÓN ENTONA LA\nCANCIÓN.\nCUAN GRANDE ES EL,\nCUAN GRANDE ES EL.//",
-          "texto_acordes": null,
-          "tiene_acordes": false
-        },
-        {
-          "id": "b9ed5c55-54f1-478e-972c-7d9900ef4cfb",
-          "cancion_id": "034fc264-7abb-4897-a3b4-e6be5722f114",
-          "tipo": "Verso",
-          "texto": "CUAN GRANDE ES EL,\nCUAN GRANDE ES EL,\nCUAN GRANDE ES EL.\n",
-          "orden": 7,
-          "texto_letra": "CUAN GRANDE ES EL,\nCUAN GRANDE ES EL,\nCUAN GRANDE ES EL.\n",
-          "texto_acordes": null,
-          "tiene_acordes": false
+          "texto_letra": "AL ALMA QUE ANHELE LA PAZ QUE HAY EN MI\nJAMÁS EN SUS LUCHAS LE HABRÉ DE DEJAR;\nSI TODO EL INFIERNO LA QUIERE PERDER,\n¡YO NUNCA, NO, NUNCA LA PUEDO OLVIDAR!",
+          "texto_acordes": "C    F       C               Dm G7     C\n“Al alma que anhele la paz que hay en mí,\n        F            C            G C  D7      G\njamás en sus luchas la habré de dejar;\nG7      C    F      C              Dm G7    C\nSi todo el infierno la quiere perder,\n      F              C     Am     C G7       C\n¡Yo nunca, no nunca, la puedo olvidar!”\n     C     F      C          D7  C    G7     C\n¡Yo nunca, no nunca, la puedo olvidar!”",
+          "tiene_acordes": true
         }
       ],
       "index": 0,
-      "titulo": "CUAN GRANDE ES EL",
-      "tono": "Sol"
+      "titulo": "CUÁN FIRME CIMIENTO ",
+      "tono": "Do"
     }
   },
   "9c6246da-b5bb-449a-b283-13dd465b46d2": {
@@ -133,46 +123,45 @@
     "data": {
       "partes": [
         {
-          "id": "4c644eaf-32ea-47f0-8876-87978c57b128",
-          "cancion_id": "a86d7751-12cf-4fe2-ba00-8e3d0fdf0b4c",
+          "id": "c2c44c4a-b8b3-48e1-a709-d0d6223a24f6",
+          "cancion_id": "cfa232a0-ac72-4dcb-94ab-ee26483acb41",
           "tipo": "Verso",
-          "texto": "I\nCOMO UN RAYO FUGAZ QUE SE PIERDE ENTRE LA OSCURIDAD\nCOMO UN GRAN MANANTIAL CALMA COMPLETAMENTE MI SER\nASÍ ES EL AMOR DE MI HERMOSO SEÑOR.\nÉL ES BRISA DEL MAR EL ROCÍO DEL MAÑANA ES LA MIEL DEL PANAL\nMEDICINA Y ES CURA HASTA MI ENFERMEDAD\nASÍ ES LA GRANDEZA DEL AMOR DE DIOS.\nPOR FAVOR NUNCA DIGAS QUE DIOS TE HA DESAMPARADO\nSI SUPIERAS QUE ES SÓLO SU AMOR EL QUE TE HA SUSTENTADO. OH, OH?",
+          "texto": "TENEBROSO MAR, UNDOSO\nVAS SURCANDO, PECADOR,\nY EL PRESAGIO DEL NAUFRAGIO\nACRECIENTA TU TEMOR.\n¿VES NO LEJOS LOS REFLEJOS\nDE LA PURA Y BLANCA LUZ?\nESE BELLO, FIEL DESTELLO\nES EL FARO DE LA CRUZ.",
           "orden": 0,
-          "texto_letra": "I\nCOMO UN RAYO FUGAZ QUE SE PIERDE ENTRE LA OSCURIDAD\nCOMO UN GRAN MANANTIAL CALMA COMPLETAMENTE MI SER\nASÍ ES EL AMOR DE MI HERMOSO SEÑOR.\nÉL ES BRISA DEL MAR EL ROCÍO DEL MAÑANA ES LA MIEL DEL PANAL\nMEDICINA Y ES CURA HASTA MI ENFERMEDAD\nASÍ ES LA GRANDEZA DEL AMOR DE DIOS.\nPOR FAVOR NUNCA DIGAS QUE DIOS TE HA DESAMPARADO\nSI SUPIERAS QUE ES SÓLO SU AMOR EL QUE TE HA SUSTENTADO. OH, OH?",
+          "texto_letra": "TENEBROSO MAR, UNDOSO\nVAS SURCANDO, PECADOR,\nY EL PRESAGIO DEL NAUFRAGIO\nACRECIENTA TU TEMOR.\n¿VES NO LEJOS LOS REFLEJOS\nDE LA PURA Y BLANCA LUZ?\nESE BELLO, FIEL DESTELLO\nES EL FARO DE LA CRUZ.",
           "texto_acordes": null,
           "tiene_acordes": false
         },
         {
-          "id": "3384fccd-1186-4539-bbe3-b9afbe9e63f8",
-          "cancion_id": "a86d7751-12cf-4fe2-ba00-8e3d0fdf0b4c",
-          "tipo": "Coro",
-          "texto": "ÁMALE, COMO A NADA EN EL MUNDO, BÚSCALE\nEN EL GOZO Y LA PENA, ESCÚCHALE\nSÓLO ÉL PUEDE AYUDARTE\nCUANDO TÚ ALMA GIME Y EXÁLTALE\nCUANDO NADIE EN DIOS CREA, TÚ ADÓRALE\nA MI DIOS DE LA GLORIA, CÁNTALE\nQUE DESPUÉS DE LA PRUEBA EL SOL BRILLARÁ.\nY LEVÁNTATE, EN EL NOMBRE DE CRISTO ANÍMATE\nPRONTO VIENE A BUSCARTE, ESFUÉRZATE\nSECA AHORA TUS LÁGRIMAS Y VEN A ALABAR AL DIOS DE ISRAEL\nAL DUEÑO DE TU VIDA, JEHOVÁ YIREH AL QUE TODO LO PUEDE, VEN A ÉL\nQUE TODOS TUS VACÍOS LOS PUEDE LLENAR EL AMOR DE MI DIOS.",
-          "orden": 1,
-          "texto_letra": "ÁMALE, COMO A NADA EN EL MUNDO, BÚSCALE\nEN EL GOZO Y LA PENA, ESCÚCHALE\nSÓLO ÉL PUEDE AYUDARTE\nCUANDO TÚ ALMA GIME Y EXÁLTALE\nCUANDO NADIE EN DIOS CREA, TÚ ADÓRALE\nA MI DIOS DE LA GLORIA, CÁNTALE\nQUE DESPUÉS DE LA PRUEBA EL SOL BRILLARÁ.\nY LEVÁNTATE, EN EL NOMBRE DE CRISTO ANÍMATE\nPRONTO VIENE A BUSCARTE, ESFUÉRZATE\nSECA AHORA TUS LÁGRIMAS Y VEN A ALABAR AL DIOS DE ISRAEL\nAL DUEÑO DE TU VIDA, JEHOVÁ YIREH AL QUE TODO LO PUEDE, VEN A ÉL\nQUE TODOS TUS VACÍOS LOS PUEDE LLENAR EL AMOR DE MI DIOS.",
-          "texto_acordes": null,
-          "tiene_acordes": false
-        },
-        {
-          "id": "b62d1bfc-afbb-4748-ac27-4eaa1621737c",
-          "cancion_id": "a86d7751-12cf-4fe2-ba00-8e3d0fdf0b4c",
+          "id": "ccf4cd1a-9d36-45df-9d93-71174e343c3c",
+          "cancion_id": "cfa232a0-ac72-4dcb-94ab-ee26483acb41",
           "tipo": "Verso",
-          "texto": "II\nÉL ES BRISA DEL MAR EL ROCÍO DEL MAÑANA ES LA MIEL DEL PANAL\nMEDICINA Y ES CURA HASTA MI ENFERMEDAD\nASÍ ES EL AMOR DE MI HERMOSO SEÑOR...\nPOR FAVOR NUNCA DIGAS QUE DIOS TE HA DESAMPARADO\nSI SUPIERAS QUE SÓLO ES SU AMOR EL QUE TE HA SUSTENTADO. OH, OH?",
+          "texto": "ANHELANDO PUERTO AMADO,\nFUENTE VIVA DE SALUD;\nEN TI ALMA, DULCE CALMA\nGOZARÁ SIN INQUIETUD.\n¿QUÉ ES EL MUNDO? FOCO INMUNDO;\nDE ÉL ME QUIERO RETIRAR,\nY EL TRANQUILO GRATO ASILO\nDE LOS JUSTOS DISFRUTAR.",
+          "orden": 1,
+          "texto_letra": "ANHELANDO PUERTO AMADO,\nFUENTE VIVA DE SALUD;\nEN TI ALMA, DULCE CALMA\nGOZARÁ SIN INQUIETUD.\n¿QUÉ ES EL MUNDO? FOCO INMUNDO;\nDE ÉL ME QUIERO RETIRAR,\nY EL TRANQUILO GRATO ASILO\nDE LOS JUSTOS DISFRUTAR.",
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "19717c18-d138-484c-a642-a1f5dba0643e",
+          "cancion_id": "cfa232a0-ac72-4dcb-94ab-ee26483acb41",
+          "tipo": "Verso",
+          "texto": "YO ANSÍO, JESÚS MÍO,\nREVESTIRME DE TU AMOR;\nA TI SÓLO ACATARTE\nCUAL HUMILDE SERVIDOR.\nROCA FUERTE, QUE LA MUERTE\nNI LOS SIGLOS DESTRUIRÁN;\nDE LOS FIELES LOS LAURELES\nEN TU CUMBRE LUCIRÁN.",
           "orden": 2,
-          "texto_letra": "II\nÉL ES BRISA DEL MAR EL ROCÍO DEL MAÑANA ES LA MIEL DEL PANAL\nMEDICINA Y ES CURA HASTA MI ENFERMEDAD\nASÍ ES EL AMOR DE MI HERMOSO SEÑOR...\nPOR FAVOR NUNCA DIGAS QUE DIOS TE HA DESAMPARADO\nSI SUPIERAS QUE SÓLO ES SU AMOR EL QUE TE HA SUSTENTADO. OH, OH?",
+          "texto_letra": "YO ANSÍO, JESÚS MÍO,\nREVESTIRME DE TU AMOR;\nA TI SÓLO ACATARTE\nCUAL HUMILDE SERVIDOR.\nROCA FUERTE, QUE LA MUERTE\nNI LOS SIGLOS DESTRUIRÁN;\nDE LOS FIELES LOS LAURELES\nEN TU CUMBRE LUCIRÁN.",
           "texto_acordes": null,
           "tiene_acordes": false
         }
       ],
-      "index": 0,
-      "titulo": "RAYO FUGAZ",
-      "tono": "",
+      "index": 2,
+      "titulo": "TENEBROSO MAR, UNDOSO",
+      "tono": "Rem",
       "iglesia": "IEP Moradora de Sion Renca",
       "logo_marca_url": "https://dkufqtrfvduonsubmwka.supabase.co/storage/v1/object/public/imagenes-culto/logos/cb7db0f2-7e9a-4cb7-bdfb-2bdd57ca1630/1778516783046-kbg9fygymg.png",
       "fondo": {
-        "tipo": "preset",
-        "preset": "cielo-dorado",
-        "fondoCss": "radial-gradient(circle at 50% 20%, rgba(251,191,36,0.45), transparent 34%), linear-gradient(135deg, #1e1b4b 0%, #7c2d12 48%, #0f172a 100%)",
-        "nombre": "Cielo dorado",
+        "tipo": "estatico",
+        "url": "https://dkufqtrfvduonsubmwka.supabase.co/storage/v1/object/public/imagenes-culto/1779371052551-xmna7dff33g.webp",
+        "nombre": "WhatsApp Image 2026-05-18 at 19.55.07 (2)",
         "oscuridad": 55,
         "ajuste": "cover"
       }
@@ -183,39 +172,69 @@
     "data": {
       "partes": [
         {
-          "id": "21d85a6f-f792-4f4c-ac2a-263273af4e4b",
-          "cancion_id": "39e6b214-e8c0-4f38-b517-da9dfd1f341b",
+          "id": "cae0f3b7-8f9e-4223-af82-c782b1879ca7",
+          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
           "tipo": "Verso",
-          "texto": "I\nHOY TE SIENTO SEÑOR\nMUY DENTRO DE MI VIDA\nY NO PUEDO DEJAR DE SENTIRTE OTRA VEZ\nMIENTRAS TENGA YO VIDA\nPORQUE GRANDE ES\nES EL PODER, QUE REBOZA EN MI CORAZÓN\nY CON ÉL YO ACEPTÉ\nQUE NO VUELVA A CAER\nTU ME CUIDAS SEÑOR.",
+          "texto": "Hijo, no temas, Yo soy el que habla contigo\nVi tus lágrimas y escuché tu gemido\nEn las madrugadas me buscas sin importarte el sueño\nHijo, tus oraciones han llegado a mi Trono",
           "orden": 0,
-          "texto_letra": "I\nHOY TE SIENTO SEÑOR\nMUY DENTRO DE MI VIDA\nY NO PUEDO DEJAR DE SENTIRTE OTRA VEZ\nMIENTRAS TENGA YO VIDA\nPORQUE GRANDE ES\nES EL PODER, QUE REBOZA EN MI CORAZÓN\nY CON ÉL YO ACEPTÉ\nQUE NO VUELVA A CAER\nTU ME CUIDAS SEÑOR.",
+          "texto_letra": null,
           "texto_acordes": null,
           "tiene_acordes": false
         },
         {
-          "id": "6bfa7f36-0167-47b5-9e82-6303b589f943",
-          "cancion_id": "39e6b214-e8c0-4f38-b517-da9dfd1f341b",
-          "tipo": "Coro",
-          "texto": "GRANDE PRECIO PAGASTE\nEN ESA CRUZ, POR MI UN DÍA\nCON TU SANGRE LAVASTE\nCON TUS LLAGAS CURASTE, MIS HERIDAS\nCOMO HE DE PENSAR\nEN QUERERTE SOLTAR, SI TU ME GUÍAS\nPORQUE ERES MI RAZÓN DE VIVIR\nES POR ESO QUE TE QUIERO DECIR\nMORA EN MI VIDA.",
-          "orden": 1,
-          "texto_letra": "GRANDE PRECIO PAGASTE\nEN ESA CRUZ, POR MI UN DÍA\nCON TU SANGRE LAVASTE\nCON TUS LLAGAS CURASTE, MIS HERIDAS\nCOMO HE DE PENSAR\nEN QUERERTE SOLTAR, SI TU ME GUÍAS\nPORQUE ERES MI RAZÓN DE VIVIR\nES POR ESO QUE TE QUIERO DECIR\nMORA EN MI VIDA.",
-          "texto_acordes": null,
-          "tiene_acordes": false
-        },
-        {
-          "id": "29720472-ff52-477b-a181-99e323c4e66e",
-          "cancion_id": "39e6b214-e8c0-4f38-b517-da9dfd1f341b",
+          "id": "877da6b8-678f-4bea-8a4a-1a7759ea7cfc",
+          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
           "tipo": "Verso",
-          "texto": "II\nRECONOZCO SEÑOR\nQUE TU AMOR GARANTIZA\nPAZ Y SEGURIDAD\nQUE NO PODRÍA HALLAR\nPUES NO TE CONOCÍA\nA MI ENCUENTRO, LLEGASTE TU\nME CUBRISTE EN TU MANTO DE AMOR\nME COMPRASTE SEÑOR\nCON LA SANGRE QUE HOY\nLAVAS MI CORAZÓN.",
+          "texto": "Yo he visto las luchas que estás pasando\nY en tus ojos la cruz pesada que estás cargando\nSon momentos tan difíciles que hasta piensas así:\nCiertamente el Dios que sirvo se olvidó de mí",
+          "orden": 1,
+          "texto_letra": null,
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "db25064d-9ba7-4210-88f5-8d1856df61da",
+          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
+          "tipo": "Coro",
+          "texto": "Hijo, Yo no te olvide ni jamás te abandoné\nSepas que cuando llorabas, Yo contigo lloré\nHijo, Yo estoy aquí, siempre al lado de ti\nY hoy una gran victoria tengo para ti",
           "orden": 2,
-          "texto_letra": "II\nRECONOZCO SEÑOR\nQUE TU AMOR GARANTIZA\nPAZ Y SEGURIDAD\nQUE NO PODRÍA HALLAR\nPUES NO TE CONOCÍA\nA MI ENCUENTRO, LLEGASTE TU\nME CUBRISTE EN TU MANTO DE AMOR\nME COMPRASTE SEÑOR\nCON LA SANGRE QUE HOY\nLAVAS MI CORAZÓN.",
+          "texto_letra": null,
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "4e26fa27-fa92-4bd2-b6a5-5568cf739686",
+          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
+          "tipo": "Verso",
+          "texto": "En las horas de angustia yo estaba a tu lado\nY te cargué en mis Brazos cuando estabas cansado\nEn los momentos más difíciles Yo fui tu Abrigo\nY tu hermano, tu Dios, tu Padre, tu Amigo",
+          "orden": 3,
+          "texto_letra": null,
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "8f524a04-d663-453e-9bfb-25a4a0ce22a2",
+          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
+          "tipo": "Verso",
+          "texto": "Recuerda cuando del mundo con amor te llamé\nAntes que tú me amaras, Yo primero te amé\nNi por un segundo siquiera Yo jamás te olvidé\nEntre los muchos que llamé, a ti te escogí",
+          "orden": 4,
+          "texto_letra": null,
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "1a683bf9-d4bf-43ea-b587-229c0115101a",
+          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
+          "tipo": "Coro",
+          "texto": "Hijo, Yo no te olvide ni jamás te abandoné\nSepas que cuando llorabas, Yo contigo lloré\nHijo, Yo estoy aquí, siempre al lado de ti\nY hoy una gran victoria tengo para ti\n\nHijo, Yo no te olvide ni jamás te abandoné\nSepas que cuando llorabas, Yo contigo lloré\nHijo, Yo estoy aquí, siempre al lado de ti\nY hoy una gran victoria tengo para ti",
+          "orden": 5,
+          "texto_letra": null,
           "texto_acordes": null,
           "tiene_acordes": false
         }
       ],
       "index": 0,
-      "titulo": "MORA EN MI VIDA",
-      "tono": "Sol",
+      "titulo": "LA GRAN VICTORIA",
+      "tono": "",
       "iglesia": "IEP Moradora de Sion La Ligua",
       "logo_marca_url": "https://dkufqtrfvduonsubmwka.supabase.co/storage/v1/object/public/imagenes-culto/logos/c76bc168-da61-4a86-8881-9dc3c17391fe/1778514807728-hc7u8bqcy5o.png",
       "fondo": {

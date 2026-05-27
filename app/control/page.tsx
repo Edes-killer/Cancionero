@@ -7,6 +7,7 @@ import { CSSProperties, useEffect, useMemo, useRef, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { io } from "socket.io-client"
 import { getIglesiaId } from "../../lib/getIglesia"
+import { get } from "http"
 
 export default function ControlPage() {
   const [socket, setSocket] = useState<any>(null)
@@ -62,6 +63,8 @@ export default function ControlPage() {
   const [fondoCancionAjuste, setFondoCancionAjuste] = useState<"cover" | "contain">("cover")
   const [iglesiaIdActual, setIglesiaIdActual] = useState<string | null>(null)
   const [fondoCancionConfigLista, setFondoCancionConfigLista] = useState(false)
+  const [modalGuardar, setModalGuardar] = useState(false)
+const [nombreModal, setNombreModal] = useState("")
 const fondosCancionPreset = [
   {
     id: "cielo-dorado",
@@ -242,9 +245,8 @@ const cargarLista = async () => {
 }
 
 const cargarCanciones = async () => {
-  const { data, error } = await supabase
-    .from("canciones")
-    .select("*")
+  const igId = await getIglesiaId()
+  const { data, error } = await supabase.from("canciones").select("*").or(`iglesia_id.eq.${igId},iglesia_id.is.null`)
   if (error) {
     console.error("Error cargando canciones:", error)
     return
@@ -1798,6 +1800,12 @@ useEffect(() => {
   fondoCancionAjuste
 ])
 
+const guardarCultoConNombre = async (nombre: string) => {
+  if (!nombre.trim()) return
+  setNombreCulto(nombre.trim())
+  await guardarCulto()
+}
+
 const etiquetaBoton = (texto: string) => {
   return isMobile ? "" : ` ${texto}`
 }
@@ -2175,2012 +2183,1080 @@ const subtituloCardResponsive = (isMobile: boolean): CSSProperties => ({
   wordBreak: "break-word",
   lineHeight: 1.2
 })
-
 return (
 <>
-      
 <style>{`
-#scroll-canciones::-webkit-scrollbar {
-  width: 10px;
-}
-
-#scroll-canciones::-webkit-scrollbar-track {
-  background: rgba(255,255,255,0.05);
-  border-radius: 999px;
-}
-
-#scroll-canciones::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #3b82f6, #2563eb);
-  border-radius: 999px;
-}
-
-#scroll-canciones::-webkit-scrollbar-thumb:hover {
-  background: #60a5fa;
-}
+  @keyframes spinCtrl { to { transform: rotate(360deg) } }
+  #scroll-canciones::-webkit-scrollbar { width: 6px }
+  #scroll-canciones::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); border-radius: 999px }
+  #scroll-canciones::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 999px }
+  #scroll-lista::-webkit-scrollbar { width: 6px }
+  #scroll-lista::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); border-radius: 999px }
+  #scroll-lista::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 999px }
+  .ctrl-btn { transition: opacity 0.15s, transform 0.1s }
+  .ctrl-btn:active { transform: scale(0.95) }
+  .ctrl-btn:disabled { opacity: 0.4 !important; cursor: not-allowed }
 `}</style>
 
-<style>{`
-#scroll-lista::-webkit-scrollbar {
-  width: 10px;
-}
-
-#scroll-lista::-webkit-scrollbar-track {
-  background: rgba(255,255,255,0.05);
-  border-radius: 999px;
-}
-
-#scroll-lista::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #3b82f6, #2563eb);
-  border-radius: 999px;
-}
-
-#scroll-lista::-webkit-scrollbar-thumb:hover {
-  background: #60a5fa;
-}
-
-`}</style>
-
-  <div style={container}>
-    {isMobile && (
-  <div style={topbar}>
-    <h1 style={{ margin: 0, fontSize: "24px" }}>Control de Culto</h1>
+{/* ── Modal guardar culto ─────────────────────────────────────────────────── */}
+{modalGuardar && (
+  <div style={{
+    position: "fixed", inset: 0, zIndex: 999,
+    background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)",
+    display: "flex", alignItems: "center", justifyContent: "center", padding: 20
+  }}>
+    <div style={{
+      background: "#1a2235", border: "1px solid rgba(255,255,255,0.1)",
+      borderRadius: 20, padding: 24, width: "100%", maxWidth: 420,
+      boxShadow: "0 24px 60px rgba(0,0,0,0.5)"
+    }}>
+      <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 16 }}>
+        💾 {listaIdActual ? "Actualizar culto" : "Guardar lista de culto"}
+      </div>
+      <input
+        autoFocus
+        value={nombreModal}
+        onChange={e => setNombreModal(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === "Enter") {
+            setModalGuardar(false)
+            guardarCultoConNombre(nombreModal)
+          }
+          if (e.key === "Escape") setModalGuardar(false)
+        }}
+        placeholder="Nombre del culto..."
+        style={{
+          width: "100%", padding: "12px 14px", borderRadius: 12,
+          border: "1px solid rgba(255,255,255,0.1)", background: "#0a1525",
+          color: "white", fontSize: 16, outline: "none", boxSizing: "border-box",
+          marginBottom: 16
+        }}
+      />
+      <div style={{ display: "flex", gap: 10 }}>
+        <button
+          className="ctrl-btn"
+          onClick={() => { setModalGuardar(false); guardarCultoConNombre(nombreModal) }}
+          style={{
+            flex: 1, padding: "12px", borderRadius: 12, border: "none",
+            background: "#2563eb", color: "white", fontWeight: 800,
+            fontSize: 15, cursor: "pointer"
+          }}
+        >
+          Guardar
+        </button>
+        <button
+          className="ctrl-btn"
+          onClick={() => setModalGuardar(false)}
+          style={{
+            padding: "12px 18px", borderRadius: 12,
+            border: "1px solid rgba(255,255,255,0.1)",
+            background: "rgba(255,255,255,0.06)", color: "white",
+            fontWeight: 700, fontSize: 15, cursor: "pointer"
+          }}
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
   </div>
 )}
-        
-    <div
-  style={{
-    ...controles,
-    justifyContent: isMobile ? "center" : "space-between",
-    alignItems: "center",
-    gap: isMobile ? "10px" : "16px"
-  }}
->
-  {!isMobile && (
-    <div
-      style={{
-        minWidth: 0,
-        flex: "1 1 0"
-      }}
-    >
-      <div
-        style={{
-          fontSize: "22px",
-          fontWeight: 800,
-          lineHeight: 1.1
-        }}
-      >
-        Control de Culto
-      </div>
 
-      <div
-        style={{
-          marginTop: "4px",
-          fontSize: "13px",
-          opacity: 0.78,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis"
-        }}
-        title={nombreCulto || ""}
-      >
-        
+<div style={{
+  minHeight: "100dvh",
+  background: "linear-gradient(180deg, #060d1a 0%, #0f172a 100%)",
+  color: "white",
+  fontFamily: "'Segoe UI', system-ui, sans-serif",
+  display: "flex", flexDirection: "column",
+  boxSizing: "border-box"
+}}>
+
+  {/* ── BARRA DE NAVEGACIÓN SUPERIOR ─────────────────────────────────────── */}
+  <div style={{
+    position: "sticky", top: 0, zIndex: 80,
+    background: "rgba(6,13,26,0.97)",
+    borderBottom: "1px solid rgba(255,255,255,0.07)",
+    backdropFilter: "blur(12px)",
+    padding: isMobile ? "10px 14px" : "10px 20px",
+    display: "flex", alignItems: "center", gap: 12
+  }}>
+    {/* Título / culto activo */}
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ fontSize: isMobile ? 16 : 18, fontWeight: 800, lineHeight: 1.2 }}>
+        🎛️ Control de Culto
       </div>
-      
+      {nombreCulto && (
+        <div style={{
+          fontSize: 11, opacity: 0.5, marginTop: 2,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+        }}>
+          {listaIdActual ? "✏️ Editando: " : ""}{nombreCulto}
+        </div>
+      )}
     </div>
-    
-  )}
-  
-  <div
-    style={{
-      display: "flex",
-      justifyContent: "center",
-      gap: "12px",
-      flex: isMobile ? "0 0 auto" : "0 0 auto"
-    }}
-  >
-    <button disabled={!socket} style={btnGrande} onClick={anterior}>
-      ⬅️
-    </button>
 
-    <button disabled={!socket} style={btnGrande} onClick={siguiente}>
-      ➡️
-    </button>
+    {/* Botones navegación — siempre visibles */}
+    <button
+      className="ctrl-btn"
+      disabled={!socket}
+      onClick={anterior}
+      style={{
+        width: isMobile ? 48 : 56, height: isMobile ? 48 : 56,
+        borderRadius: 14, border: "none",
+        background: "rgba(255,255,255,0.08)",
+        color: "white", fontSize: isMobile ? 20 : 22,
+        cursor: "pointer", fontWeight: 700,
+        display: "flex", alignItems: "center", justifyContent: "center"
+      }}
+    >⬅️</button>
+
+    <button
+      className="ctrl-btn"
+      disabled={!socket}
+      onClick={siguiente}
+      style={{
+        width: isMobile ? 48 : 56, height: isMobile ? 48 : 56,
+        borderRadius: 14, border: "none",
+        background: "#2563eb",
+        color: "white", fontSize: isMobile ? 20 : 22,
+        cursor: "pointer", fontWeight: 700,
+        display: "flex", alignItems: "center", justifyContent: "center"
+      }}
+    >➡️</button>
+
+    {/* Pantalla negra rápida */}
+    <button
+      className="ctrl-btn"
+      disabled={!socket}
+      onClick={proyectarPantallaNegra}
+      title="Pantalla negra"
+      style={{
+        width: isMobile ? 44 : 52, height: isMobile ? 44 : 52,
+        borderRadius: 14, border: "1px solid rgba(255,255,255,0.1)",
+        background: "#111", color: "white", fontSize: 16,
+        cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center"
+      }}
+    >⚫</button>
   </div>
-    
-    <div
-      style={{
-        alignSelf: "center",
-        marginTop: "-6px",
-        marginBottom: "2px",
-        padding: isMobile ? "7px 12px" : "8px 16px",
-        borderRadius: "999px",
-        background: "rgba(15, 23, 42, 0.82)",
-        border: "1px solid rgba(255,255,255,0.10)",
-        color: "white",
-        fontSize: isMobile ? "12px" : "14px",
-        fontWeight: 700,
-        opacity: 0.92,
-        textAlign: "center",
-        maxWidth: "100%",
-        boxSizing: "border-box"
-      }}
-    >
-      {etiquetaParteControl}
-    </div>
 
-  {!isMobile && (
-    <div
-      style={{
-        flex: "1 1 0",
-        display: "flex",
-        justifyContent: "flex-end",
-        minWidth: 0
-      }}
-    >
-      {listaIdActual ? (
-        <div
-          style={{
-            padding: "8px 10px",
-            borderRadius: "999px",
-            background: "rgba(37, 99, 235, 0.16)",
-            border: "1px solid rgba(37, 99, 235, 0.35)",
-            fontSize: "13px",
-            fontWeight: 700,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            maxWidth: "280px"
-          }}
-          title={nombreCulto || ""}
-        >
-          Lista de Culto Actual: {nombreCulto || "Sin nombre"}
-        </div>
-      ) : (
-        <div style={{ opacity: 0.45, fontSize: "13px" }}>
-          Listo para proyectar
-        </div>
-      )}
-    </div>
-  )}
-</div>
-
-{/* 📱 ========================================== MÓVIL =============================================================== */}
-{/* 📱 ========================================== MÓVIL =============================================================== */}
-{/* 📱 ========================================== MÓVIL =============================================================== */}
-
-    <div style={gridDesktop}>
-  {isMobile ? (
-  <div style={columna}>
-    <div id="scroll-lista" style={seccion}>
-      <h2
-        style={{
-          ...titulo,
-          lineHeight: 1.2,
-          whiteSpace: "normal",
-          marginBottom: "12px"
-        }}
-        title={nombreCulto || ""}
-      >
-        📋 Lista de Culto
-        {nombreCulto && (
-          <span style={{ opacity: 0.9 }}>
-            {" "} - {resumirTexto(nombreCulto, 28)}
-          </span>
-        )}
-      </h2>
-      {mensajeFlash && (
-        <div
-          style={{
-            marginBottom: "10px",
-            padding: "8px 10px",
-            borderRadius: "10px",
-            background: "rgba(34,197,94,0.14)",
-            border: "1px solid rgba(34,197,94,0.30)",
-            fontSize: isMobile ? "12px" : "13px",
-            opacity: 0.95
-          }}
-        >
-          {mensajeFlash}
-        </div>
-      )}
-
-      {lista.length === 0 && (
-        <p style={{ opacity: 0.65, margin: 0 }}>
-          Aún no hay elementos en la lista. Puedes agregar canciones, palabra, imágenes o estados.
-        </p>
-      )}
-
-      {lista.map((c, i) => (
-        <div
-          key={i}
-          ref={(el: HTMLDivElement | null) => {
-            itemListaRefs.current[i] = el
-          }}
-          style={{
-            ...card,
-            background: i === indiceActivoLista ? "rgba(22, 163, 74, 0.92)" : "#243449",
-            border:
-              i === indiceActivoLista
-                ? "1px solid rgba(255,255,255,0.18)"
-                : "1px solid rgba(255,255,255,0.08)"
-          }}
-        >
-          <div style={textoCardPrincipal}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                minWidth: 0
-              }}
-            >
-              <span style={{ opacity: 0.8, flexShrink: 0 }}>
-                {i + 1}.
-              </span>
-
-              <span style={{ flexShrink: 0 }}>
-                {iconoItemLista(c)}
-              </span>
-
-              <span
-                style={tituloCardResponsive(isMobile)}
-                title={limpiarTituloLista(c?.titulo || "Sin título")}
-              >
-                {limpiarTituloLista(c?.titulo || "Sin título")}
-              </span>
-            </div>
-
-            {(c?.tipo === "estado" || c?.tipo === "biblia") && (
-              <div
-                style={{
-                  fontSize: "11px",
-                  opacity: 0.68,
-                  marginTop: "2px",
-                  marginLeft: "30px"
-                }}
-              >
-                {subtituloItemLista(c)}
-              </div>
-            )}
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-end",
-              gap: "6px",
-              flexShrink: 0
-            }}
-          >
-            <div style={{ display: "flex", gap: "6px" }}>
-              <button
-                style={btnListaPlay}
-                disabled={!socket}
-                onClick={() => proyectarDesdeLista(i)}
-              >
-                ▶️
-              </button>
-
-              <button
-                style={btnListaMenu}
-                onClick={() =>
-                  setMenuItemAbierto(prev => (prev === i ? null : i))
-                }
-              >
-                ⋮
-              </button>
-            </div>
-
-            {menuItemAbierto === i && (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3, 42px)",
-                  gap: "6px"
-                }}
-              >
-                <button
-                  style={btnListaMini}
-                  onClick={() => subirItemLista(i)}
-                  disabled={i === 0}
-                >
-                  ⬆️
-                </button>
-
-                <button
-                  style={btnListaMini}
-                  onClick={() => bajarItemLista(i)}
-                  disabled={i === lista.length - 1}
-                >
-                  ⬇️
-                </button>
-
-                <button
-                  disabled={!socket}
-                  style={btnListaDelete}
-                  onClick={() => {
-                    const ok = confirm("¿Eliminar este elemento de la lista?")
-                    if (ok) {
-                      eliminarDeLista(i)
-                      setMenuItemAbierto(null)
-                    }
-                  }}
-                >
-                  ❌
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-
-    <div
-      style={{
-        ...seccion,
-        boxShadow: flashListaCulto
-          ? "0 0 0 2px rgba(34,197,94,0.55), 0 10px 25px rgba(0,0,0,0.22)"
-          : seccion.boxShadow
-      }}
-    >
-      <div
-        onClick={() => setMostrarCanciones(v => !v)}
-        style={{
-          ...titulo,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          cursor: "pointer",
-          marginBottom: "12px"
-        }}
-      >
-        <span>🎵 Canciones</span>
-        <span>{mostrarCanciones ? "▾" : "▸"}</span>
-      </div>
-
-      {mostrarCanciones && (
-        <>
-          <input
-            placeholder="Buscar por número, título o letra..."
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            style={input}
-          />
-
-          <select
-            value={filtroTono}
-            onChange={(e) => setFiltroTono(e.target.value)}
-            style={input}
-          >
-            <option value="">Todos los tonos</option>
-            <option value="Do">Do</option>
-            <option value="Dom">Do menor</option>
-            <option value="Do#">Do#</option>
-            <option value="Re">Re</option>
-            <option value="Rem">Re menor</option>
-            <option value="Re#">Re#</option>
-            <option value="Mi">Mi</option>
-            <option value="Mim">Mi menor</option>
-            <option value="Fa">Fa</option>
-            <option value="Fam">Fa menor</option>
-            <option value="Fa#">Fa#</option>
-            <option value="Sol">Sol</option>
-            <option value="Solm">Sol menor</option>
-            <option value="Sol#">Sol#</option>
-            <option value="La">La</option>
-            <option value="Lam">La menor</option>
-            <option value="La#">La#</option>
-            <option value="Si">Si</option>
-            <option value="Sim">Si menor</option>
-          </select>
-          <select
-            value={filtroCategoria}
-            onChange={(e) => setFiltroCategoria(e.target.value)}
-            style={input}
-          >
-            <option value="">Todas las categorías</option>
-            {categoriasDisponibles.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
-          
-        <div
-          style={{
-            maxHeight: "420px",
-            overflowY: "auto",
-            paddingRight: "4px",
-            marginTop: "6px"
-          }}
-        >
-  <div
-    style={{
-      height: cancionesFiltradas.length * ALTURA_ITEM_CANCION,
-      position: "relative"
-    }}
-  >
-    <div
-      style={{
-        transform: `translateY(${inicioVirtualCanciones * ALTURA_ITEM_CANCION}px)`
-      }}
-    >
-      {cancionesFiltradas.map((c) => {
-      const fragmento = obtenerFragmentoBusqueda(
-        c.texto_busqueda || "",
-        busqueda
-      )
-
-      return (
-        <div
-          key={c.id}
-          style={{
-            height: ALTURA_ITEM_CANCION,
-            paddingBottom: "10px",
-            boxSizing: "border-box"
-          }}
-        >
-          <div
-            ref={(el: HTMLDivElement | null) => {
-              cancionRefs.current[c.id] = el
-            }}
-            style={{
-              ...card,
-              marginTop: 0,
-              height: "100%",
-              background: c.id === activaId ? "#16a34a" : "#243449"
-            }}
-          >
-            <div style={textoCardPrincipal}>
-              <span
-                style={tituloCardResponsive(isMobile)}
-                title={tituloCancionVisible(c)}
-              >
-                {tituloCancionVisible(c)}
-              </span>
-
-              <div style={subtituloCardResponsive(isMobile)}>
-                {subtituloCancionVisible(c)}
-              </div>
-            </div>
-
-            <div style={acciones}>
-              <button
-                disabled={!socket}
-                style={btn}
-                title="Proyectar canción"
-                aria-label="Proyectar canción"
-                onClick={() => proyectar(c.id)}
-              >
-                ▶️{etiquetaBoton("Proyectar")}
-              </button>
-
-              <button
-                disabled={!socket}
-                style={btnSecundario}
-                title="Agregar canción a la lista de culto"
-                aria-label="Agregar canción a la lista de culto"
-                onClick={() => agregarALista(c)}
-              >
-                ➕{etiquetaBoton("Agregar")}
-              </button>
-            </div>
-          </div>
-        </div>
-        )
-})}
-    </div>
+  {/* ── INDICADOR PARTE ACTUAL ──────────────────────────────────────────── */}
+  <div style={{
+    background: "rgba(15,23,42,0.9)",
+    borderBottom: "1px solid rgba(255,255,255,0.06)",
+    padding: isMobile ? "7px 14px" : "8px 20px",
+    fontSize: isMobile ? 12 : 13,
+    fontWeight: 700, opacity: 0.85,
+    textAlign: "center"
+  }}>
+    {etiquetaParteControl}
   </div>
-</div>
 
-        </>
-      )}
-    </div>
+  {/* ── CONTENIDO PRINCIPAL ────────────────────────────────────────────── */}
+  <div style={{
+    flex: 1,
+    display: "grid",
+    gridTemplateColumns: isMobile ? "1fr" : "1.3fr 1fr",
+    alignItems: "start",
+    padding: isMobile ? "10px" : "20px",
+    gap: isMobile ? 10 : 20,
+    boxSizing: "border-box",
+    // ✅ Evita scroll horizontal en móvil
+    overflowX: "hidden",
+    minWidth: 0,
+    width: "100%"
+  }}>
 
-    <div style={seccion}>
-      <div
-        onClick={() => setMostrarAcciones(v => !v)}
-        style={{
-          ...titulo,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          cursor: "pointer",
-          marginBottom: "12px"
-        }}
-      >
-        <span>🛠️ Acciones</span>
-        <span>{mostrarAcciones ? "▾" : "▸"}</span>
-      </div>
+    {/* ══ COLUMNA IZQUIERDA: Canciones + Herramientas ═══════════════════ */}
+    <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 12 : 16 }}>
 
-      {mostrarAcciones && (
-        <>
-          <div style={{ ...fila, marginBottom: 16 }}>
-            <button disabled={!socket} style={btn} onClick={guardarCulto}>
-              💾 Guardar Lista de Culto
-            </button>
-
-            <button
-              disabled={!socket}
-              style={btnVerde}
-              onClick={() => {
-                const hayAlgoEnCurso =
-                lista.length > 0 ||
-                partes.length > 0 ||
-                paginasBiblia.length > 0 ||
-                !!nombreCulto
-
-              if (hayAlgoEnCurso) {
-                const ok = confirm(
-                  "¿Crear un nuevo culto?\n\nSe limpiará la lista actual del Control. Esto no borra los cultos guardados."
-                )
-
-                if (!ok) return
-              }
-
-              limpiarCultoActual()
-              }}
-            >
-              🆕 Nueva Lista de Culto
-            </button>
+      {/* ── Canciones ─────────────────────────────────────────────────── */}
+      <div style={{
+        background: "rgba(17,27,46,0.95)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 16, overflow: "hidden"
+      }}>
+        {/* Header canciones */}
+        <div
+          onClick={() => setMostrarCanciones(v => !v)}
+          style={{
+            padding: isMobile ? "12px 14px" : "14px 18px",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            cursor: "pointer",
+            borderBottom: mostrarCanciones ? "1px solid rgba(255,255,255,0.06)" : "none"
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: isMobile ? 14 : 15 }}>
+            🎵 Canciones
+            <span style={{
+              marginLeft: 8, fontSize: 11, fontWeight: 600,
+              background: "rgba(59,130,246,0.15)", color: "#93c5fd",
+              borderRadius: 6, padding: "2px 7px"
+            }}>
+              {cancionesFiltradas.length}
+            </span>
           </div>
+          <span style={{ opacity: 0.5, fontSize: 18 }}>{mostrarCanciones ? "▾" : "▸"}</span>
+        </div>
 
-          <div style={{ marginBottom: 18 }}>
-            <div style={subtitulo}>Mensaje rápido</div>
-
+        {mostrarCanciones && (
+          <div style={{ padding: isMobile ? "12px 14px" : "14px 18px" }}>
+            {/* Búsqueda */}
             <input
-              value={mensajeRapido}
-              onChange={(e) => setMensajeRapido(e.target.value)}
-              placeholder="Ej: Oremos, Bienvenidos, Santa Cena"
-              style={input}
+              placeholder="🔍 Buscar por número, título o letra..."
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              style={{
+                width: "100%", padding: "11px 13px",
+                borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)",
+                background: "#0a1525", color: "white",
+                fontSize: 16, outline: "none",
+                boxSizing: "border-box", marginBottom: 8
+              }}
             />
 
-            <div style={fila}>
-              <button
-                disabled={!socket}
-                style={btnSecundario}
-                onClick={proyectarMensajeRapido}
-              >
-                ✍️ Proyectar mensaje
-              </button>
-            </div>
-          </div>
-              
-          <div style={{ marginBottom: 18 }}>
-            <div style={subtitulo}>Fondo con logo / imagen</div>
-
-            <div style={{ ...fila, marginBottom: logoEsperaUrl ? 12 : 0 }}>
-              <label
+            {/* Filtros en fila */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+              <select
+                value={filtroTono}
+                onChange={e => setFiltroTono(e.target.value)}
                 style={{
-                  ...btnSecundario,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  cursor: "pointer"
+                  padding: "9px 10px", borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "#0a1525", color: "white",
+                  fontSize: 13, outline: "none"
                 }}
               >
-                🖼️ Subir logo
-                <input
-                  type="file"
-                  accept="image/*"
-                  style={{ display: "none" }}
-                  onChange={async (e) => {
+                <option value="">Todos los tonos</option>
+                {["Do","Dom","Do#","Re","Rem","Re#","Mi","Mim","Fa","Fam","Fa#","Sol","Solm","Sol#","La","Lam","La#","Si","Sim"].map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+
+              <select
+                value={filtroCategoria}
+                onChange={e => setFiltroCategoria(e.target.value)}
+                style={{
+                  padding: "9px 10px", borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "#0a1525", color: "white",
+                  fontSize: 13, outline: "none"
+                }}
+              >
+                <option value="">Todas las categorías</option>
+                {categoriasDisponibles.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Lista virtualizada */}
+            <div
+              id="scroll-canciones"
+              ref={scrollCancionesRef}
+              onScroll={e => setScrollTopCanciones((e.target as HTMLDivElement).scrollTop)}
+              style={{ maxHeight: isMobile ? 360 : "calc(100vh - 420px)", overflowY: "auto", overflowX: "hidden" }}
+            >
+              <div style={{ height: cancionesFiltradas.length * ALTURA_ITEM_CANCION, position: "relative" }}>
+                <div style={{ transform: `translateY(${inicioVirtualCanciones * ALTURA_ITEM_CANCION}px)` }}>
+                  {cancionesVirtuales.map(c => {
+                    const activa = c.id === activaId
+                    const fragmento = obtenerFragmentoBusqueda(c.texto_busqueda || "", busqueda)
+                    return (
+                      <div
+                        key={c.id}
+                        ref={el => { cancionRefs.current[c.id] = el }}
+                        style={{
+                          height: ALTURA_ITEM_CANCION,
+                          paddingBottom: 8, boxSizing: "border-box"
+                        }}
+                      >
+                        <div style={{
+                          height: "100%",
+                          background: activa ? "rgba(22,163,74,0.85)" : "rgba(255,255,255,0.04)",
+                          border: `1px solid ${activa ? "rgba(34,197,94,0.5)" : "rgba(255,255,255,0.07)"}`,
+                          borderRadius: 11,
+                          display: "flex", alignItems: "center",
+                          gap: 10, padding: "0 12px",
+                          transition: "background 0.15s"
+                        }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{
+                              fontWeight: 700, fontSize: 14, lineHeight: 1.25,
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+                            }}>
+                              {tituloCancionVisible(c)}
+                            </div>
+                            <div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>
+                              {subtituloCancionVisible(c)}
+                            </div>
+                            {fragmento && busqueda && (
+                              <div style={{
+                                fontSize: 10, opacity: 0.5, marginTop: 2,
+                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+                              }}>
+                                {fragmento}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                            <button
+                              className="ctrl-btn"
+                              disabled={!socket}
+                              onClick={() => proyectar(c.id)}
+                              style={{
+                                padding: isMobile ? "7px 10px" : "8px 12px",
+                                borderRadius: 9, border: "none",
+                                background: "#2563eb", color: "white",
+                                fontWeight: 700, fontSize: 13, cursor: "pointer"
+                              }}
+                            >▶</button>
+                            <button
+                              className="ctrl-btn"
+                              disabled={!socket}
+                              onClick={() => agregarALista(c)}
+                              style={{
+                                padding: isMobile ? "7px 10px" : "8px 12px",
+                                borderRadius: 9, border: "none",
+                                background: "rgba(255,255,255,0.08)", color: "white",
+                                fontWeight: 700, fontSize: 13, cursor: "pointer"
+                              }}
+                            >+</button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Acciones rápidas ──────────────────────────────────────────── */}
+      <div style={{
+        background: "rgba(17,27,46,0.95)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 16, overflow: "hidden"
+      }}>
+        <div
+          onClick={() => setMostrarAcciones(v => !v)}
+          style={{
+            padding: isMobile ? "12px 14px" : "14px 18px",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            cursor: "pointer",
+            borderBottom: mostrarAcciones ? "1px solid rgba(255,255,255,0.06)" : "none"
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: isMobile ? 14 : 15 }}>🛠️ Herramientas</div>
+          <span style={{ opacity: 0.5, fontSize: 18 }}>{mostrarAcciones ? "▾" : "▸"}</span>
+        </div>
+
+        {mostrarAcciones && (
+          <div style={{ padding: isMobile ? "12px 14px" : "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
+
+            {/* Pantallas rápidas */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
+                Pantallas rápidas
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+                {[
+                  { label: "⚫ Pantalla negra", fn: proyectarPantallaNegra, color: "#111" },
+                  { label: "⏳ Pantalla espera", fn: proyectarPantallaEspera, color: "#334155" },
+                  { label: "🖼️ Logo / Espera", fn: proyectarPantallaLogo, color: "#1e3a8a" },
+                ].map(({ label, fn, color }) => (
+                  <button
+                    key={label}
+                    className="ctrl-btn"
+                    disabled={!socket}
+                    onClick={fn}
+                    style={{
+                      padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)",
+                      background: color, color: "white", fontWeight: 700,
+                      fontSize: 13, cursor: "pointer", textAlign: "left"
+                    }}
+                  >{label}</button>
+                ))}
+                <button
+                  className="ctrl-btn"
+                  disabled={!socket}
+                  onClick={proyectarMensajeRapido}
+                  style={{
+                    padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)",
+                    background: "#374151", color: "white", fontWeight: 700,
+                    fontSize: 13, cursor: "pointer", textAlign: "left"
+                  }}
+                >✍️ Mensaje</button>
+              </div>
+            </div>
+
+            {/* Mensaje rápido */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
+                Texto del mensaje
+              </div>
+              <input
+                value={mensajeRapido}
+                onChange={e => setMensajeRapido(e.target.value)}
+                placeholder="Ej: Oremos, Bienvenidos..."
+                style={{
+                  width: "100%", padding: "10px 12px", borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "#0a1525", color: "white",
+                  fontSize: 14, outline: "none", boxSizing: "border-box"
+                }}
+              />
+            </div>
+
+            {/* Subir imagen para lista */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
+                Imagen para el culto
+              </div>
+              <label style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "10px 14px", borderRadius: 10,
+                border: "1px dashed rgba(255,255,255,0.15)",
+                background: "rgba(255,255,255,0.03)",
+                cursor: "pointer", fontSize: 13, fontWeight: 600
+              }}>
+                🖼️ Subir imagen y agregar a lista
+                <input type="file" accept="image/*" style={{ display: "none" }}
+                  onChange={async e => {
                     const inputFile = e.target as HTMLInputElement
                     const file = inputFile.files?.[0]
                     if (!file) return
-
-                    await subirLogoEspera(file)
+                    const resultado = await subirImagen(file)
+                    if (resultado?.url) {
+                      agregarItemAListaConFeedback(
+                        { tipo: "imagen", url: resultado.url, titulo: resultado.nombre },
+                        `✅ Imagen agregada: ${resultado.nombre || "Imagen"}`
+                      )
+                    }
                     inputFile.value = ""
                   }}
                 />
               </label>
+            </div>
 
-              {logoEsperaUrl && (
-                <button
-                  style={btnRojo}
-                  onClick={async () => {
-                    const iglesiaId = await getIglesiaId()
-                    if (!iglesiaId) return
+            {/* Fondo para canciones */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
+                Fondo para canciones
+              </div>
 
-                    const { error } = await supabase
-                      .from("iglesias")
-                      .update({
-                        logo_url: null,
-                        logo_nombre: null
-                      })
-                      .eq("id", iglesiaId)
-
-                    if (error) {
-                      console.error("Error quitando logo:", error)
-                      alert("No se pudo quitar el logo guardado")
-                      return
-                    }
-
-                    setLogoEsperaUrl("")
-                    setLogoEsperaNombre("")
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                <select
+                  value={fondoCancionModo}
+                  onChange={e => setFondoCancionModo(e.target.value as "estatico" | "ninguno" | "preset" | "movimiento")}
+                  style={{
+                    padding: "9px 10px", borderRadius: 10,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "#0a1525", color: "white", fontSize: 13, outline: "none"
                   }}
                 >
-                  ❌ Quitar
-                </button>
+                  <option value="preset">Fondo predeterminado</option>
+                  <option value="ninguno">Sin fondo</option>
+                  <option value="estatico">Imagen estática</option>
+                  <option value="movimiento">Imagen con movimiento</option>
+                </select>
+
+                <label style={{
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  padding: "9px 12px", borderRadius: 10,
+                  border: "1px dashed rgba(255,255,255,0.15)",
+                  background: "rgba(255,255,255,0.03)",
+                  cursor: "pointer", fontSize: 13, fontWeight: 600
+                }}>
+                  🖼️ Subir fondo
+                  <input type="file" accept="image/*" style={{ display: "none" }}
+                    onChange={async e => {
+                      const inputFile = e.target as HTMLInputElement
+                      const file = inputFile.files?.[0]
+                      if (!file) return
+                      const resultado = await subirImagen(file)
+                      if (resultado?.url) {
+                        setFondoCancionUrl(resultado.url)
+                        setFondoCancionNombre(resultado.nombre || "Fondo")
+                        setFondoCancionModo("estatico")
+                      }
+                      inputFile.value = ""
+                    }}
+                  />
+                </label>
+              </div>
+
+              {/* Presets de fondo */}
+              {fondoCancionModo === "preset" && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 10 }}>
+                  {fondosCancionPreset.map(fondo => (
+                    <button
+                      key={fondo.id}
+                      onClick={() => { setFondoCancionPreset(fondo.id); setFondoCancionModo("preset") }}
+                      style={{
+                        minHeight: 56, borderRadius: 10,
+                        border: fondoCancionPreset === fondo.id
+                          ? "2px solid rgba(255,255,255,0.85)"
+                          : "1px solid rgba(255,255,255,0.12)",
+                        background: fondo.fondo, color: "white",
+                        cursor: "pointer", fontWeight: 800, fontSize: 11,
+                        textShadow: "0 2px 8px rgba(0,0,0,0.75)",
+                        boxShadow: fondoCancionPreset === fondo.id ? "0 0 0 2px rgba(37,99,235,0.6)" : "none"
+                      }}
+                    >{fondo.nombre}</button>
+                  ))}
+                </div>
+              )}
+
+              {/* Ajuste imagen + oscuridad */}
+              {fondoCancionModo !== "preset" && (
+                <select
+                  value={fondoCancionAjuste}
+                  onChange={e => setFondoCancionAjuste(e.target.value as "cover" | "contain")}
+                  style={{
+                    width: "100%", padding: "9px 10px", borderRadius: 10,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "#0a1525", color: "white", fontSize: 13,
+                    outline: "none", marginBottom: 8
+                  }}
+                >
+                  <option value="cover">Cubrir pantalla</option>
+                  <option value="contain">Mostrar imagen completa</option>
+                </select>
+              )}
+
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 12, opacity: 0.5, marginBottom: 6 }}>
+                  Oscuridad del fondo: {fondoCancionOscuridad}%
+                </div>
+                <input
+                  type="range" min="20" max="80"
+                  value={fondoCancionOscuridad}
+                  onChange={e => setFondoCancionOscuridad(Number(e.target.value))}
+                  style={{ width: "100%" }}
+                />
+              </div>
+
+              {/* Preview fondo actual */}
+              {fondoCancionModo !== "preset" && fondoCancionUrl && (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  padding: "10px 12px", borderRadius: 10,
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.07)"
+                }}>
+                  <img src={fondoCancionUrl} alt="Fondo"
+                    style={{ width: 72, height: 46, objectFit: "cover", borderRadius: 7, background: "#000", flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {fondoCancionNombre || "Fondo cargado"}
+                    </div>
+                    <div style={{ fontSize: 11, opacity: 0.5 }}>Se aplica a las canciones proyectadas</div>
+                  </div>
+                  <button className="ctrl-btn"
+                    onClick={() => { setFondoCancionUrl(""); setFondoCancionNombre(""); setFondoCancionModo("preset") }}
+                    style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.15)", color: "#fca5a5", fontWeight: 700, fontSize: 12, cursor: "pointer", flexShrink: 0 }}>
+                    ✕
+                  </button>
+                </div>
               )}
             </div>
 
-            {logoEsperaUrl && (
-              <div
-                style={{
-                  padding: 12,
-                  borderRadius: 12,
-                  background: "#0f172a",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12
-                }}
-              >
-                <img
-                  src={logoEsperaUrl}
-                  alt="Vista previa logo"
-                  style={{
-                    width: 64,
-                    height: 64,
-                    objectFit: "contain",
-                    borderRadius: 8,
-                    background: "#000",
-                    flexShrink: 0
-                  }}
-                />
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontWeight: 700,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis"
-                    }}
-                  >
-                    {logoEsperaNombre || "Logo cargado"}
+            {/* Items especiales para agregar a lista */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
+                Agregar a lista
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                {[
+                  { titulo: "⚫ Pantalla negra", onPlay: proyectarPantallaNegra, onAdd: agregarNegroALista },
+                  { titulo: "⏳ Pantalla de espera", onPlay: proyectarPantallaEspera, onAdd: agregarEsperaALista },
+                  { titulo: `✍️ ${mensajeRapido || "Mensaje rápido"}`, onPlay: proyectarMensajeRapido, onAdd: agregarMensajeALista },
+                  {
+                    titulo: logoEsperaNombre ? `🖼️ ${logoEsperaNombre}` : "🖼️ Logo de espera",
+                    onPlay: proyectarPantallaLogo, onAdd: agregarLogoALista,
+                    disabled: !logoEsperaUrl
+                  }
+                ].map((item, i) => (
+                  <div key={i} style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.07)",
+                    borderRadius: 10, padding: "9px 12px"
+                  }}>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{item.titulo}</span>
+                    <button className="ctrl-btn" disabled={!socket || item.disabled} onClick={item.onPlay}
+                      style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>▶</button>
+                    <button className="ctrl-btn" disabled={item.disabled} onClick={item.onAdd}
+                      style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>+</button>
                   </div>
-                  <div style={{ fontSize: 12, opacity: 0.7 }}>
-                    Logo listo para proyectar o agregar a la lista
-                  </div>
-                </div>
+                ))}
               </div>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-
-    <div style={seccion}>
-      <div
-        onClick={() => setMostrarPalabra(v => !v)}
-        style={{
-          ...titulo,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          cursor: "pointer",
-          marginBottom: "12px"
-        }}
-      >
-        <span>📖 Palabra</span>
-        <span>{mostrarPalabra ? "▾" : "▸"}</span>
-      </div>
-
-      {mostrarPalabra && (
-        <>
-          <div style={subtitulo}>
-            Ejemplos: Juan 3:16, 1 Corintios 13:4-7, Salmo 23
-          </div>
-
-          <input
-            list="libros-biblia"
-            placeholder="Escribe una cita bíblica..."
-            value={inputBiblia}
-            onChange={(e) => setInputBiblia(e.target.value)}
-            onKeyDown={async (e) => {
-              if (e.key === "Enter") {
-                if (!inputBiblia.trim()) return
-                await proyectarBiblia(inputBiblia)
-                setInputBiblia("")
-              }
-            }}
-            style={input}
-          />
-
-          <datalist id="libros-biblia">
-            {sugerenciasBiblia.map((item) => (
-              <option key={item} value={item} />
-            ))}
-          </datalist>
-
-          <div style={fila}>
-            <button
-              disabled={!socket}
-              style={btn}
-              onClick={async () => {
-                if (!inputBiblia.trim()) return
-                await proyectarBiblia(inputBiblia)
-                setInputBiblia("")
-              }}
-            >
-              Proyectar
-            </button>
-
-            <button
-              disabled={!socket}
-              style={btnSecundario}
-              onClick={async () => {
-                if (!inputBiblia.trim()) return
-                await agregarBibliaALista(inputBiblia)
-                setInputBiblia("")
-              }}
-            >
-              ➕ Agregar a lista
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-
-    <div style={seccion}>
-      <div
-        onClick={() => setMostrarCultos(v => !v)}
-        style={{
-          ...titulo,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          cursor: "pointer",
-          marginBottom: "12px"
-        }}
-      >
-        <span>💾 Cultos Guardados</span>
-        <span>{mostrarCultos ? "▾" : "▸"}</span>
-      </div>
-
-      {mostrarCultos && (
-        <>
-          {cultos.map((c) => (
-            <div key={c.id} style={card}>
-              <div style={textoCardPrincipal}>
-                <span
-                  style={tituloCardResponsive(isMobile)}
-                  title={c.nombre || "Sin nombre"}
-                >
-                  {resumirTexto(c.nombre || "Sin nombre", 24)}
-                </span>
-              </div>
-
-              <div
-  style={{
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-end",
-    gap: "6px",
-    flexShrink: 0
-  }}
->
-  <div style={{ display: "flex", gap: "6px" }}>
-    <button
-      disabled={!socket}
-      style={btnListaPlay}
-      onClick={() => {
-        setMenuCultoAbierto(null)
-        cargarListaDesdeBD(c.id)
-      }}
-    >
-      📂
-    </button>
-
-    <button
-      style={btnListaMenu}
-      onClick={() =>
-        setMenuCultoAbierto(prev => (prev === c.id ? null : c.id))
-      }
-    >
-      ⋮
-    </button>
-  </div>
-
-  {menuCultoAbierto === c.id && (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(3, 42px)",
-        gap: "6px"
-      }}
-    >
-      <button
-        disabled={!socket}
-        style={btnListaMini}
-        onClick={() => {
-          setMenuCultoAbierto(null)
-          renombrarCulto(c)
-        }}
-      >
-        ✏️
-      </button>
-
-      <button
-        disabled={!socket}
-        style={btnListaMini}
-        onClick={() => {
-          setMenuCultoAbierto(null)
-          duplicarCulto(c)
-        }}
-      >
-        📄
-      </button>
-
-      <button
-        disabled={!socket}
-        style={btnListaDelete}
-        onClick={async () => {
-          const ok = confirm("¿Eliminar este culto completo?")
-          if (!ok) return
-
-          await supabase
-            .from("items_lista")
-            .delete()
-            .eq("lista_id", c.id)
-
-          await supabase
-            .from("listas_culto")
-            .delete()
-            .eq("id", c.id)
-
-          setMenuCultoAbierto(null)
-          cargarCultos()
-        }}
-      >
-        🗑️
-      </button>
-    </div>
-  )}
-</div>
-            </div>
-          ))}
-        </>
-      )}
-    </div>
-{/* 🖥️ =============================================================== COMIENZA ESCRITORIO =============================================================== */}
-{/* 🖥️ =============================================================== COMIENZA ESCRITORIO =============================================================== */}
-{/* 🖥️ =============================================================== COMIENZA ESCRITORIO =============================================================== */}
-  </div>
-
-) : (
-    <>
-      <div style={columna}>
-        <div style={seccion}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "10px",
-              marginBottom: "12px"
-            }}
-          >
-            <h2 style={{ ...titulo, marginBottom: 0 }}>🎵 Canciones</h2>
-
-            <button
-              style={{
-                ...btnSecundario,
-                padding: isMobile ? "7px 10px" : "8px 12px",
-                fontSize: isMobile ? "12px" : "13px"
-              }}
-              onClick={cargarCanciones}
-            >
-              🔄 Actualizar
-            </button>
-          </div>
-
-          <input
-            placeholder="Buscar por número, título o letra..."
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            style={input}
-          />
-
-          <select
-            value={filtroTono}
-            onChange={(e) => setFiltroTono(e.target.value)}
-            style={input}
-          >
-            <option value="">Todos los tonos</option>
-            <option value="Do">Do</option>
-            <option value="Dom">Do menor</option>
-            <option value="Do#">Do#</option>
-            <option value="Re">Re</option>
-            <option value="Rem">Re menor</option>
-            <option value="Re#">Re#</option>
-            <option value="Mi">Mi</option>
-            <option value="Mim">Mi menor</option>
-            <option value="Fa">Fa</option>
-            <option value="Fam">Fa menor</option>
-            <option value="Fa#">Fa#</option>
-            <option value="Sol">Sol</option>
-            <option value="Solm">Sol menor</option>
-            <option value="Sol#">Sol#</option>
-            <option value="La">La</option>
-            <option value="Lam">La menor</option>
-            <option value="La#">La#</option>
-            <option value="Si">Si</option>
-            <option value="Sim">Si menor</option>
-          </select>
-          <select
-            value={filtroCategoria}
-            onChange={(e) => setFiltroCategoria(e.target.value)}
-            style={input}
-          >
-            <option value="">Todas las categorías</option>
-            {categoriasDisponibles.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
-          <div
-  id="scroll-canciones"
-  ref={scrollCancionesRef}
-  onScroll={(e) => {
-    setScrollTopCanciones(e.currentTarget.scrollTop)
-  }}
-  style={{
-    height: "620px",
-    maxHeight: "620px",
-    minHeight: 0,
-    overflowY: "auto",
-    overflowX: "hidden",
-    scrollbarGutter: "stable",
-    paddingRight: "10px",
-    marginTop: "6px",
-    boxSizing: "border-box",
-    overscrollBehavior: "contain"
-  }}
->
-  <div
-    style={{
-      height: cancionesFiltradas.length * ALTURA_ITEM_CANCION,
-      position: "relative"
-    }}
-  >
-    <div
-      style={{
-        transform: `translateY(${inicioVirtualCanciones * ALTURA_ITEM_CANCION}px)`
-      }}
-    >
-      {cancionesVirtuales.map((c) => (
-        <div
-          key={c.id}
-          style={{
-            height: ALTURA_ITEM_CANCION,
-            paddingBottom: "10px",
-            boxSizing: "border-box"
-          }}
-        >
-          <div
-            style={{
-              ...card,
-              marginTop: 0,
-              height: "100%",
-              background: c.id === activaId ? "#16a34a" : "#243449"
-            }}
-          >
-            <div style={textoCardPrincipal}>
-              <span
-                style={tituloCardResponsive(isMobile)}
-                title={tituloCancionVisible(c)}
-              >
-                {tituloCancionVisible(c)}
-              </span>
-
-              <div style={subtituloCardResponsive(isMobile)}>
-  {subtituloCancionVisible(c)}
-</div>
-
-{busqueda && (() => {
-  const fragmento = obtenerFragmentoBusqueda(
-    c.texto_busqueda || "",
-    busqueda
-  )
-
-  if (!fragmento) return null
-
-  return (
-    <div
-      style={{
-        marginTop: "6px",
-        fontSize: isMobile ? "0.72rem" : "0.78rem",
-        opacity: 0.72,
-        lineHeight: 1.35,
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        display: "-webkit-box",
-        WebkitLineClamp: 2,
-        WebkitBoxOrient: "vertical"
-      }}
-    >
-      {fragmento}
-    </div>
-  )
-})()}
-              
             </div>
 
-            <div style={acciones}>
-              <button
-                disabled={!socket}
-                style={btn}
-                onClick={() => proyectar(c.id)}
-              >
-                ▶️
-              </button>
-
-              <button
-                disabled={!socket}
-                style={btnSecundario}
-                onClick={() => agregarALista(c)}
-              >
-                ➕
-              </button>
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  </div>
-</div>
-              </div>
-        <div style={seccion}>
-          <h2 style={titulo}>🛠️ Acciones</h2>
-            <div style={{ ...fila, marginBottom: 16 }}>
-              <button
-                type="button"
-                style={btnSecundario}
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-
-                  window.open(
-                    `${window.location.origin}/proyectar`,
-                    "_blank",
-                    "noopener,noreferrer"
-                  )
-                }}
-              >
+            {/* Links abrir proyector / músicos */}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="ctrl-btn"
+                onClick={() => window.open(`${window.location.origin}/proyectar`, "_blank", "noopener,noreferrer")}
+                style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 🖥️ Abrir Proyector
               </button>
-
-              <button
-                type="button"
-                style={btnSecundario}
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-
-                  window.open(
-                    `${window.location.origin}/musicos`,
-                    "_blank",
-                    "noopener,noreferrer"
-                  )
-                }}
-              >
+              <button className="ctrl-btn"
+                onClick={() => window.open(`${window.location.origin}/musicos`, "_blank", "noopener,noreferrer")}
+                style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 🎹 Abrir Músicos
               </button>
             </div>
-          <div style={{ ...fila, marginBottom: 16 }}>
-            <button disabled={!socket} style={btn} onClick={guardarCulto}>
-              💾 Guardar Culto
-            </button>
 
-            <button
-              disabled={!socket}
-              style={btnVerde}
-              onClick={() => {
-                const hayAlgoEnCurso =
-                lista.length > 0 ||
-                partes.length > 0 ||
-                paginasBiblia.length > 0 ||
-                !!nombreCulto
-
-              if (hayAlgoEnCurso) {
-                const ok = confirm(
-                  "¿Crear un nuevo culto?\n\nSe limpiará la lista actual del Control. Esto no borra los cultos guardados."
-                )
-
-                if (!ok) return
-              }
-
-              limpiarCultoActual()
-              }}
-            >
-              🆕 Nueva Lista de Culto
-            </button>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, minmax(0, 1fr))",
-              gap: "10px",
-              marginBottom: 18
-            }}
-          >
-            <label
-              style={{
-                ...btnSecundario,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-                cursor: "pointer",
-                textAlign: "center"
-              }}
-            >
-              🖼️ Subir imagen
-              <input
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={async (e) => {
-                  const inputFile = e.target as HTMLInputElement
-                  const file = inputFile.files?.[0]
-                  if (!file) return
-
-                  const resultado = await subirImagen(file)
-
-                  if (resultado?.url) {
-                    agregarItemAListaConFeedback(
-                      {
-                        tipo: "imagen",
-                        url: resultado.url,
-                        titulo: resultado.nombre
-                      },
-                      `✅ Imagen agregada: ${resultado.nombre || "Imagen"}`
-                    )
-                  }
-
-                  inputFile.value = ""
-                }}
-              />
-            </label>
-
-            <button
-              disabled={!socket}
-              style={btnSecundario}
-              onClick={proyectarPantallaNegra}
-            >
-              ⚫ Pantalla negra
-            </button>
-
-            <button
-              disabled={!socket}
-              style={btnSecundario}
-              onClick={proyectarPantallaEspera}
-            >
-              ⏳ Pantalla de espera
-            </button>
-
-            <button
-              disabled={!socket || !logoEsperaUrl}
-              style={btnSecundario}
-              onClick={proyectarPantallaLogo}
-            >
-              🖼️ Proyectar logo
-            </button>
-          </div>
-
-          <div style={{ marginBottom: 18 }}>
-            <div style={subtitulo}>Agregar a lista de culto</div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr",
-                gap: "10px"
-              }}
-            >
-              {[
-                {
-                  titulo: "⚫ Pantalla negra",
-                  onPlay: proyectarPantallaNegra,
-                  onAdd: agregarNegroALista
-                },
-                {
-                  titulo: "⏳ Pantalla de espera",
-                  onPlay: proyectarPantallaEspera,
-                  onAdd: agregarEsperaALista
-                },
-                {
-                  titulo: `✍️ ${mensajeRapido || "Mensaje rápido"}`,
-                  onPlay: proyectarMensajeRapido,
-                  onAdd: agregarMensajeALista
-                },
-                {
-                  titulo: logoEsperaNombre
-                    ? `🖼️ ${logoEsperaNombre}`
-                    : "🖼️ Logo de espera",
-                  onPlay: proyectarPantallaLogo,
-                  onAdd: agregarLogoALista,
-                  disabledPlay: !logoEsperaUrl,
-                  disabledAdd: !logoEsperaUrl
-                }
-              ].map((item, i) => (
-                <div
-                  key={i}
-                  style={{
-                    ...card,
-                    marginBottom: 0
+            {/* Gestión culto */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
+                Lista de culto
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  className="ctrl-btn"
+                  disabled={!socket}
+                  onClick={() => {
+                    setNombreModal(nombreCulto || "")
+                    setModalGuardar(true)
                   }}
-                >
-                  <div style={textoCardPrincipal}>
-                    <span
-                      style={tituloCardResponsive(isMobile)}
-                      title={item.titulo}
-                    >
-                      {item.titulo}
-                    </span>
-                  </div>
+                  style={{
+                    flex: 1, padding: "10px 12px", borderRadius: 10, border: "none",
+                    background: "#2563eb", color: "white", fontWeight: 700,
+                    fontSize: 13, cursor: "pointer"
+                  }}
+                >💾 Guardar lista</button>
 
-                  <div style={acciones}>
-                    <button
-                      disabled={!socket || item.disabledPlay}
-                      style={btn}
-                      onClick={item.onPlay}
-                    >
-                      ▶️
-                    </button>
+                <button
+                  className="ctrl-btn"
+                  onClick={() => {
+                    const hayAlgo = lista.length > 0 || partes.length > 0 || !!nombreCulto
+                    if (hayAlgo) {
+                      if (!window.confirm("¿Limpiar el control y crear nueva lista?")) return
+                    }
+                    limpiarCultoActual()
+                  }}
+                  style={{
+                    flex: 1, padding: "10px 12px", borderRadius: 10,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "rgba(255,255,255,0.06)", color: "white",
+                    fontWeight: 700, fontSize: 13, cursor: "pointer"
+                  }}
+                >🆕 Nueva lista</button>
+              </div>
+            </div>
 
-                    <button
-                      disabled={item.disabledAdd}
-                      style={btnSecundario}
-                      onClick={item.onAdd}
-                    >
-                      ➕
-                    </button>
+            {/* Logo */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
+                Logo de iglesia
+              </div>
+              {logoEsperaUrl ? (
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  padding: "10px 12px", borderRadius: 10,
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.07)"
+                }}>
+                  <img src={logoEsperaUrl} alt="Logo" style={{ width: 48, height: 48, objectFit: "contain", borderRadius: 8, background: "#000", flexShrink: 0 }} />
+                  <div style={{ flex: 1, fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {logoEsperaNombre || "Logo cargado"}
                   </div>
+                  <button
+                    className="ctrl-btn"
+                    onClick={async () => {
+                      const igId = await getIglesiaId()
+                      if (!igId) return
+                      await supabase.from("iglesias").update({ logo_url: null, logo_nombre: null }).eq("id", igId)
+                      setLogoEsperaUrl("")
+                      setLogoEsperaNombre("")
+                    }}
+                    style={{
+                      padding: "6px 10px", borderRadius: 8, border: "none",
+                      background: "rgba(239,68,68,0.15)", color: "#fca5a5",
+                      fontWeight: 700, fontSize: 12, cursor: "pointer", flexShrink: 0
+                    }}
+                  >✕</button>
                 </div>
-              ))}
+              ) : (
+                <label style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "10px 14px", borderRadius: 10,
+                  border: "1px dashed rgba(255,255,255,0.15)",
+                  background: "rgba(255,255,255,0.03)",
+                  cursor: "pointer", fontSize: 13, fontWeight: 600, opacity: 0.7
+                }}>
+                  📁 Subir logo de iglesia
+                  <input type="file" accept="image/*" style={{ display: "none" }}
+                    onChange={async e => {
+                      const file = (e.target as HTMLInputElement).files?.[0]
+                      if (!file) return
+                      await subirLogoEspera(file)
+                      ;(e.target as HTMLInputElement).value = ""
+                    }}
+                  />
+                </label>
+              )}
             </div>
           </div>
+        )}
+      </div>
 
-          <div style={{ marginBottom: 18 }}>
-            <div style={subtitulo}>Mensaje rápido</div>
+      {/* ── Palabra / Biblia ──────────────────────────────────────────── */}
+      <div style={{
+        background: "rgba(17,27,46,0.95)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 16, overflow: "hidden"
+      }}>
+        <div
+          onClick={() => setMostrarPalabra(v => !v)}
+          style={{
+            padding: isMobile ? "12px 14px" : "14px 18px",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            cursor: "pointer",
+            borderBottom: mostrarPalabra ? "1px solid rgba(255,255,255,0.06)" : "none"
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: isMobile ? 14 : 15 }}>📖 Palabra</div>
+          <span style={{ opacity: 0.5, fontSize: 18 }}>{mostrarPalabra ? "▾" : "▸"}</span>
+        </div>
 
+        {mostrarPalabra && (
+          <div style={{ padding: isMobile ? "12px 14px" : "16px 18px" }}>
+            <div style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>
+              Ejemplos: Juan 3:16 • Salmos 23 • 1 Corintios 13:4-7
+            </div>
             <input
-              value={mensajeRapido}
-              onChange={(e) => setMensajeRapido(e.target.value)}
-              placeholder="Ej: Oremos, Bienvenidos, Santa Cena"
-              style={input}
+              list="libros-biblia"
+              placeholder="Escribe una cita bíblica..."
+              value={inputBiblia}
+              onChange={e => setInputBiblia(e.target.value)}
+              onKeyDown={async e => {
+                if (e.key === "Enter" && inputBiblia.trim()) {
+                  await proyectarBiblia(inputBiblia)
+                  setInputBiblia("")
+                }
+              }}
+              style={{
+                width: "100%", padding: "11px 13px", borderRadius: 10,
+                border: "1px solid rgba(255,255,255,0.08)",
+                background: "#0a1525", color: "white",
+                fontSize: 16, outline: "none", boxSizing: "border-box", marginBottom: 10
+              }}
             />
-
-            <div style={fila}>
+            <datalist id="libros-biblia">
+              {sugerenciasBiblia.map(s => <option key={s} value={s} />)}
+            </datalist>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <button
+                className="ctrl-btn"
                 disabled={!socket}
-                style={btnSecundario}
-                onClick={proyectarMensajeRapido}
-              >
-                ✍️ Proyectar mensaje
+                onClick={async () => {
+                  if (!inputBiblia.trim()) return
+                  await proyectarBiblia(inputBiblia)
+                  setInputBiblia("")
+                }}
+                style={{
+                  padding: "11px", borderRadius: 10, border: "none",
+                  background: "#2563eb", color: "white", fontWeight: 700,
+                  fontSize: 14, cursor: "pointer"
+                }}
+              >📖 Proyectar</button>
+              <button
+                className="ctrl-btn"
+                disabled={!socket}
+                onClick={async () => {
+                  if (!inputBiblia.trim()) return
+                  await agregarBibliaALista(inputBiblia)
+                  setInputBiblia("")
+                }}
+                style={{
+                  padding: "11px", borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(255,255,255,0.06)", color: "white",
+                  fontWeight: 700, fontSize: 14, cursor: "pointer"
+                }}
+              >+ Lista</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Cultos guardados ──────────────────────────────────────────── */}
+      <div style={{
+        background: "rgba(17,27,46,0.95)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 16, overflow: "hidden"
+      }}>
+        <div
+          onClick={() => setMostrarCultos(v => !v)}
+          style={{
+            padding: isMobile ? "12px 14px" : "14px 18px",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            cursor: "pointer",
+            borderBottom: mostrarCultos ? "1px solid rgba(255,255,255,0.06)" : "none"
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: isMobile ? 14 : 15 }}>
+            💾 Cultos guardados
+            {cultos.length > 0 && (
+              <span style={{
+                marginLeft: 8, fontSize: 11, fontWeight: 600,
+                background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)",
+                borderRadius: 6, padding: "2px 7px"
+              }}>{cultos.length}</span>
+            )}
+          </div>
+          <span style={{ opacity: 0.5, fontSize: 18 }}>{mostrarCultos ? "▾" : "▸"}</span>
+        </div>
+
+        {mostrarCultos && (
+          <div style={{ padding: isMobile ? "10px 14px" : "12px 18px", display: "flex", flexDirection: "column", gap: 8 }}>
+            {cultos.length === 0 && (
+              <div style={{ opacity: 0.45, fontSize: 13, padding: "8px 0" }}>
+                No hay cultos guardados aún.
+              </div>
+            )}
+            {cultos.map(c => (
+              <div key={c.id} style={{
+                background: c.id === listaIdActual ? "rgba(37,99,235,0.15)" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${c.id === listaIdActual ? "rgba(59,130,246,0.35)" : "rgba(255,255,255,0.07)"}`,
+                borderRadius: 11, padding: "10px 12px",
+                display: "flex", alignItems: "center", gap: 10
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontWeight: 700, fontSize: 14,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+                  }}>
+                    {c.nombre || "Sin nombre"}
+                  </div>
+                  {c.fecha && (
+                    <div style={{ fontSize: 11, opacity: 0.45, marginTop: 2 }}>
+                      {new Date(c.fecha).toLocaleDateString("es-CL")}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                  <button
+                    className="ctrl-btn"
+                    onClick={() => { setMenuCultoAbierto(null); cargarListaDesdeBD(c.id) }}
+                    style={{
+                      padding: "7px 10px", borderRadius: 9, border: "none",
+                      background: "#2563eb", color: "white", fontWeight: 700,
+                      fontSize: 13, cursor: "pointer"
+                    }}
+                  >📂</button>
+                  <button
+                    className="ctrl-btn"
+                    onClick={() => setMenuCultoAbierto(prev => prev === c.id ? null : c.id)}
+                    style={{
+                      padding: "7px 10px", borderRadius: 9,
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      background: "rgba(255,255,255,0.06)", color: "white",
+                      fontWeight: 700, fontSize: 13, cursor: "pointer"
+                    }}
+                  >⋮</button>
+                </div>
+                {menuCultoAbierto === c.id && (
+                  <div style={{ width: "100%", display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                    <button className="ctrl-btn" onClick={() => { setMenuCultoAbierto(null); renombrarCulto(c) }}
+                      style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "#334155", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                      ✏️ Renombrar
+                    </button>
+                    <button className="ctrl-btn" onClick={() => { setMenuCultoAbierto(null); duplicarCulto(c) }}
+                      style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "#334155", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                      📄 Duplicar
+                    </button>
+                    <button className="ctrl-btn"
+                      onClick={async () => {
+                        if (!window.confirm("¿Eliminar este culto completo?")) return
+                        setMenuCultoAbierto(null)
+                        await supabase.from("items_lista").delete().eq("lista_id", c.id)
+                        await supabase.from("listas_culto").delete().eq("id", c.id)
+                        cargarCultos()
+                      }}
+                      style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.15)", color: "#fca5a5", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                      🗑️ Eliminar
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+
+    {/* ══ COLUMNA DERECHA: Lista de culto activa ════════════════════════ */}
+    <div style={{
+      display: "flex", flexDirection: "column", gap: 0,
+      minWidth: 0, width: "100%"
+    }}>
+      <div
+        id="scroll-lista"
+        style={{
+          background: "rgba(17,27,46,0.95)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: 16, overflow: "hidden",
+          maxHeight: isMobile ? "50vh" : "calc(100vh - 160px)",
+          overflowY: "auto",
+          position: isMobile ? "static" : "sticky",
+          top: isMobile ? "auto" : 96,
+          // ✅ No se desborda en móvil
+          minWidth: 0, width: "100%"
+        }}
+      >
+        {/* Header lista */}
+        <div style={{
+          padding: isMobile ? "12px 14px" : "14px 18px",
+          borderBottom: "1px solid rgba(255,255,255,0.06)",
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10
+        }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: isMobile ? 14 : 15 }}>
+              📋 Lista de Culto
+            </div>
+            {nombreCulto && (
+              <div style={{ fontSize: 11, opacity: 0.5, marginTop: 2 }}>
+                {resumirTexto(nombreCulto, 30)}
+              </div>
+            )}
+          </div>
+          {lista.length > 0 && (
+            <span style={{
+              fontSize: 11, fontWeight: 600,
+              background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)",
+              borderRadius: 6, padding: "3px 9px"
+            }}>{lista.length} items</span>
+          )}
+        </div>
+
+        {/* Banner culto guardado activo */}
+        {listaIdActual && (
+          <div style={{
+            margin: "10px 12px 0",
+            padding: "10px 12px", borderRadius: 10,
+            background: "rgba(37,99,235,0.12)",
+            border: "1px solid rgba(59,130,246,0.25)",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap"
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.85 }}>
+              ✏️ Editando culto guardado
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button className="ctrl-btn" onClick={guardarCulto}
+                style={{ padding: "5px 10px", borderRadius: 8, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                💾
+              </button>
+              <button className="ctrl-btn" onClick={guardarCultoComoCopia}
+                style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                📄
+              </button>
+              <button className="ctrl-btn"
+                onClick={() => { if (window.confirm("¿Salir del modo edición?")) limpiarCultoActual() }}
+                style={{ padding: "5px 10px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.15)", color: "#fca5a5", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                ✕
               </button>
             </div>
           </div>
-              <div style={{ marginBottom: 18 }}>
-                <div style={subtitulo}>Fondo para canciones</div>
+        )}
 
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "10px",
-                    marginBottom: "10px"
-                  }}
-                >
-                  <select
-                    value={fondoCancionModo}
-                    onChange={(e) =>
-                      setFondoCancionModo(e.target.value as "estatico" | "ninguno" | "preset" |  "movimiento")
-                    }
-                    style={input}
-                  >
-                    <option value="preset">Fondo predeterminado</option>
-                    <option value="ninguno">Sin fondo</option>
-                    <option value="estatico">Imagen estática subida</option>
-                    <option value="movimiento">Imagen subida con movimiento</option>
-                  </select>
-
-                  <label
-                    style={{
-                      ...btnSecundario,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "8px",
-                      cursor: "pointer"
-                    }}
-                  >
-                    🖼️ Subir fondo
-                    <input
-                      type="file"
-                      accept="image/*"
-                      style={{ display: "none" }}
-                      onChange={async (e) => {
-                        const inputFile = e.target as HTMLInputElement
-                        const file = inputFile.files?.[0]
-                        if (!file) return
-
-                        const resultado = await subirImagen(file)
-
-                        if (resultado?.url) {
-                          setFondoCancionUrl(resultado.url)
-                          setFondoCancionNombre(resultado.nombre || "Fondo")
-                          setFondoCancionModo("estatico")
-                        }
-
-                        inputFile.value = ""
-                      }}
-                    />
-                  </label>
-                </div>
-
-                {fondoCancionModo === "preset" && (
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                      gap: "8px",
-                      marginBottom: "12px"
-                    }}
-                  >
-                    {fondosCancionPreset.map((fondo) => (
-                      <button
-                        key={fondo.id}
-                        type="button"
-                        onClick={() => {
-                          setFondoCancionPreset(fondo.id)
-                          setFondoCancionModo("preset")
-                        }}
-                        style={{
-                          minHeight: "62px",
-                          borderRadius: "12px",
-                          border:
-                            fondoCancionPreset === fondo.id
-                              ? "2px solid rgba(255,255,255,0.85)"
-                              : "1px solid rgba(255,255,255,0.14)",
-                          background: fondo.fondo,
-                          color: "white",
-                          cursor: "pointer",
-                          padding: "8px",
-                          fontWeight: 800,
-                          textShadow: "0 2px 8px rgba(0,0,0,0.75)",
-                          boxShadow:
-                            fondoCancionPreset === fondo.id
-                              ? "0 0 0 2px rgba(37,99,235,0.65)"
-                              : "none"
-                        }}
-                      >
-                        {fondo.nombre}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {fondoCancionModo !== "preset" && (
-                <div style={{ marginBottom: "10px" }}>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      opacity: 0.75,
-                      marginBottom: "6px"
-                    }}
-                  >
-                    Ajuste de imagen
-                  </div>
-
-                  <select
-                    value={fondoCancionAjuste}
-                    onChange={(e) =>
-                      setFondoCancionAjuste(e.target.value as "cover" | "contain")
-                    }
-                    style={input}
-                  >
-                    <option value="cover">Cubrir pantalla</option>
-                    <option value="contain">Mostrar imagen completa</option>
-                  </select>
-                </div>
-              )}
-                <div style={{ marginBottom: "10px" }}>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      opacity: 0.75,
-                      marginBottom: "6px"
-                    }}
-                  >
-                    Oscuridad del fondo: {fondoCancionOscuridad}%
-                  </div>
-
-                  <input
-                    type="range"
-                    min="20"
-                    max="80"
-                    value={fondoCancionOscuridad}
-                    onChange={(e) => setFondoCancionOscuridad(Number(e.target.value))}
-                    style={{ width: "100%" }}
-                  />
-                </div>
-
-                {fondoCancionModo !== "preset" && fondoCancionUrl && (
-                  <div
-                    style={{
-                      padding: 12,
-                      borderRadius: 12,
-                      background: "#0f172a",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12
-                    }}
-                  >
-                    <img
-                      src={fondoCancionUrl}
-                      alt="Vista previa fondo canciones"
-                      style={{
-                        width: 82,
-                        height: 52,
-                        objectFit: "cover",
-                        borderRadius: 8,
-                        background: "#000",
-                        flexShrink: 0
-                      }}
-                    />
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis"
-                        }}
-                      >
-                        {fondoCancionNombre || "Fondo cargado"}
-                      </div>
-
-                      <div style={{ fontSize: 12, opacity: 0.7 }}>
-                        Se aplicará a las canciones proyectadas
-                      </div>
-                    </div>
-
-                    <button
-                      style={btnRojo}
-                      onClick={() => {
-                        setFondoCancionUrl("")
-                        setFondoCancionNombre("")
-                        setFondoCancionModo("preset")
-                      }}
-                    >
-                      ❌
-                    </button>
-                  </div>
-                )}
-              </div>
-          <div>
-            <div style={subtitulo}>Fondo con logo / imagen</div>
-
-            <div style={{ ...fila, marginBottom: logoEsperaUrl ? 12 : 0 }}>
-              <label
-                style={{
-                  ...btnSecundario,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  cursor: "pointer"
-                }}
-              >
-                🖼️ Subir logo
-                <input
-                  type="file"
-                  accept="image/*"
-                  style={{ display: "none" }}
-                  onChange={async (e) => {
-                    const inputFile = e.target as HTMLInputElement
-                    const file = inputFile.files?.[0]
-                    if (!file) return
-
-                    await subirLogoEspera(file)
-                    inputFile.value = ""
-                  }}
-                />
-              </label>
-
-              {logoEsperaUrl && (
-                <button
-                  style={btnRojo}
-                  onClick={async () => {
-                    const iglesiaId = await getIglesiaId()
-                    if (!iglesiaId) return
-
-                    const { error } = await supabase
-                      .from("iglesias")
-                      .update({
-                        logo_url: null,
-                        logo_nombre: null
-                      })
-                      .eq("id", iglesiaId)
-
-                    if (error) {
-                      console.error("Error quitando logo:", error)
-                      alert("No se pudo quitar el logo guardado")
-                      return
-                    }
-
-                    setLogoEsperaUrl("")
-                    setLogoEsperaNombre("")
-                  }}
-                >
-                  ❌ Quitar
-                </button>
-              )}
-            </div>
-
-            {logoEsperaUrl && (
-              <div
-                style={{
-                  padding: 12,
-                  borderRadius: 12,
-                  background: "#0f172a",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12
-                }}
-              >
-                <img
-                  src={logoEsperaUrl}
-                  alt="Vista previa logo"
-                  style={{
-                    width: 64,
-                    height: 64,
-                    objectFit: "contain",
-                    borderRadius: 8,
-                    background: "#000",
-                    flexShrink: 0
-                  }}
-                />
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontWeight: 700,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis"
-                    }}
-                  >
-                    {logoEsperaNombre || "Logo cargado"}
-                  </div>
-                  <div style={{ fontSize: 12, opacity: 0.7 }}>
-                    Logo listo para proyectar o agregar a la lista
-                  </div>
-                </div>
-              </div>
-            )}
+        {/* Flash mensaje */}
+        {mensajeFlash && (
+          <div style={{
+            margin: "8px 12px 0",
+            padding: "8px 12px", borderRadius: 10,
+            background: "rgba(34,197,94,0.12)",
+            border: "1px solid rgba(34,197,94,0.25)",
+            fontSize: 13, fontWeight: 600
+          }}>
+            {mensajeFlash}
           </div>
-        </div>
+        )}
 
-        <div style={seccion}>
-          <h2 style={titulo}>📖 Palabra</h2>
-          <div style={subtitulo}>
-            Ejemplos: Juan 3:16, 1 Corintios 13:4-7, Salmo 23
-          </div>
-
-          <input
-            list="libros-biblia"
-            placeholder="Escribe una cita bíblica..."
-            value={inputBiblia}
-            onChange={(e) => setInputBiblia(e.target.value)}
-            onKeyDown={async (e) => {
-              if (e.key === "Enter") {
-                if (!inputBiblia.trim()) return
-                await proyectarBiblia(inputBiblia)
-                setInputBiblia("")
-              }
-            }}
-            style={input}
-          />
-
-          <datalist id="libros-biblia">
-            {sugerenciasBiblia.map((item) => (
-              <option key={item} value={item} />
-            ))}
-          </datalist>
-
-          <div style={fila}>
-            <button
-              disabled={!socket}
-              style={btn}
-              onClick={async () => {
-                if (!inputBiblia.trim()) return
-                await proyectarBiblia(inputBiblia)
-                setInputBiblia("")
-              }}
-            >
-              Proyectar
-            </button>
-
-            <button
-              disabled={!socket}
-              style={btnSecundario}
-              onClick={async () => {
-                if (!inputBiblia.trim()) return
-                await agregarBibliaALista(inputBiblia)
-                setInputBiblia("")
-              }}
-            >
-              ➕ Agregar a lista
-            </button>
-          </div>
-        </div>
-
-        <div style={seccion}>
-          <h2 style={titulo}>💾 Cultos Guardados</h2>
-
-          {cultos.map((c) => (
-            <div key={c.id} style={card}>
-              <div style={textoCardPrincipal}>
-                <span
-                  style={tituloCardResponsive(isMobile)}
-                  title={c.nombre || "Sin nombre"}
-                >
-                  {resumirTexto(c.nombre || "Sin nombre", 24)}
-                </span>
-              </div>
-
-              <div style={acciones}>
-                <button
-                  disabled={!socket}
-                  style={btn}
-                  onClick={() => cargarListaDesdeBD(c.id)}
-                >
-                  📂
-                </button>
-
-                <button
-                  disabled={!socket}
-                  style={btnSecundario}
-                  onClick={() => renombrarCulto(c)}
-                >
-                  ✏️
-                </button>
-
-                <button
-                  disabled={!socket}
-                  style={btnSecundario}
-                  onClick={() => duplicarCulto(c)}
-                >
-                  📄
-                </button>
-
-                <button
-                  disabled={!socket}
-                  style={btnRojo}
-                  onClick={async () => {
-                    const ok = confirm("¿Eliminar este culto completo?")
-                    if (!ok) return
-
-                    await supabase
-                      .from("items_lista")
-                      .delete()
-                      .eq("lista_id", c.id)
-
-                    await supabase
-                      .from("listas_culto")
-                      .delete()
-                      .eq("id", c.id)
-
-                    cargarCultos()
-                  }}
-                >
-                  🗑️
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div
-        style={{
-          ...columna,
-          alignSelf: "start",
-          position: "sticky",
-          top: "96px",
-          borderLeft: "1px solid rgba(255,255,255,0.08)",
-          paddingLeft: "18px",
-          minWidth: 0
-        }}
-      >
-        <div
-          id="scroll-lista"
-          style={{
-            ...seccion,
-            maxHeight: "calc(100vh - 140px)",
-            overflowY: "auto",
-            overflowX: "hidden",
-            paddingRight: "10px",
-            scrollbarGutter: "stable",
-            overscrollBehavior: "contain"
-          }}
-        >
-          <h2
-            style={{
-              ...titulo,
-              lineHeight: 1.2,
-              whiteSpace: "normal",
-              marginBottom: "12px"
-            }}
-            title={nombreCulto || ""}
-          >
-            📋 Lista de Culto
-            {nombreCulto && (
-              <span style={{ opacity: 0.9 }}>
-                {" "} - {resumirTexto(nombreCulto, isMobile ? 28 : 45)}
-              </span>
-            )}
-          </h2>
-          {listaIdActual && (
-            <div
-              style={{
-                marginBottom: "12px",
-                padding: "10px",
-                borderRadius: "12px",
-                background: "rgba(37, 99, 235, 0.13)",
-                border: "1px solid rgba(37, 99, 235, 0.28)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "10px",
-                flexWrap: "wrap"
-              }}
-            >
-              <div style={{ minWidth: 0 }}>
-                <div
-                  style={{
-                    fontWeight: 800,
-                    fontSize: "14px",
-                    lineHeight: 1.2
-                  }}
-                >
-                  ✏️ Editando culto guardado
-                </div>
-
-                <div
-                  style={{
-                    marginTop: "2px",
-                    fontSize: "12px",
-                    opacity: 0.75,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    maxWidth: "260px"
-                  }}
-                  title={nombreCulto || ""}
-                >
-                  {nombreCulto || "Sin nombre"}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: "6px",
-                  flexShrink: 0
-                }}
-              >
-                <button
-                  style={{
-                    ...btn,
-                    padding: "8px 10px",
-                    fontSize: "12px",
-                    borderRadius: "9px"
-                  }}
-                  onClick={guardarCulto}
-                >
-                  💾
-                </button>
-
-                <button
-                  style={{
-                    ...btnSecundario,
-                    padding: "8px 10px",
-                    fontSize: "12px",
-                    borderRadius: "9px"
-                  }}
-                  onClick={guardarCultoComoCopia}
-                >
-                  📄
-                </button>
-
-                <button
-                  style={{
-                    ...btnRojo,
-                    padding: "8px 10px",
-                    fontSize: "12px",
-                    borderRadius: "9px"
-                  }}
-                  onClick={() => {
-                    const ok = confirm(
-                      "¿Salir del modo edición?\n\nLos cambios no guardados se perderán, pero el culto guardado no se borrará."
-                    )
-
-                    if (!ok) return
-
-                    limpiarCultoActual()
-
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          )}
-          {mensajeFlash && (
-            <div
-              style={{
-                marginBottom: "10px",
-                padding: "8px 10px",
-                borderRadius: "10px",
-                background: "rgba(34,197,94,0.14)",
-                border: "1px solid rgba(34,197,94,0.30)",
-                fontSize: isMobile ? "12px" : "13px",
-                opacity: 0.95
-              }}
-            >
-              {mensajeFlash}
-            </div>
-          )}
+        {/* Items de la lista */}
+        <div style={{ padding: isMobile ? "10px 12px" : "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
           {lista.length === 0 && (
-            <p style={{ opacity: 0.65, margin: 0 }}>
-              Aún no hay elementos en la lista. Puedes agregar canciones, palabra, imágenes o estados.
-            </p>
+            <div style={{ opacity: 0.4, fontSize: 13, padding: "16px 0", textAlign: "center" }}>
+              Agrega canciones, palabra o imágenes desde la izquierda
+            </div>
           )}
 
-          {lista.map((c, i) => (
-            <div
-              key={i}
-              ref={(el: HTMLDivElement | null) => {
-                itemListaRefs.current[i] = el
-              }}
-              draggable={!isMobile}
-              onDragStart={() => setDragIndex(i)}
-              onDragOver={(e) => {
-                if (!isMobile) e.preventDefault()
-              }}
-              onDrop={() => {
-                if (!isMobile && dragIndex !== null) {
-                  moverItemLista(dragIndex, i)
-                }
-                setDragIndex(null)
-              }}
-              onDragEnd={() => setDragIndex(null)}
-              style={{
-                ...card,
-                background: i === indiceActivoLista ? "rgba(22, 163, 74, 0.92)" : "#243449",
-                border:
-                  i === indiceActivoLista
-                    ? "1px solid rgba(255,255,255,0.18)"
-                    : "1px solid rgba(255,255,255,0.08)",
-                opacity: dragIndex === i ? 0.55 : 1
-              }}
-            >
-              <div style={textoCardPrincipal}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    minWidth: 0
-                  }}
-                >
-                  <span style={{ opacity: 0.8, flexShrink: 0 }}>
-                    {i + 1}.
-                  </span>
-
-                  <span style={{ flexShrink: 0 }}>
-                    {iconoItemLista(c)}
-                  </span>
-
-                  <span
-                    style={tituloCardResponsive(isMobile)}
-                    title={limpiarTituloLista(c?.titulo || "Sin título")}
-                  >
-                    {limpiarTituloLista(c?.titulo || "Sin título")}
-                  </span>
+          {lista.map((c, i) => {
+            const esActivo = i === indiceActivoLista
+            const esAgregado = i === indiceItemAgregado
+            return (
+              <div
+                key={i}
+                ref={el => { itemListaRefs.current[i] = el }}
+                draggable={!isMobile}
+                onDragStart={() => setDragIndex(i)}
+                onDragOver={e => { if (!isMobile) e.preventDefault() }}
+                onDrop={() => { if (!isMobile && dragIndex !== null) moverItemLista(dragIndex, i); setDragIndex(null) }}
+                onDragEnd={() => setDragIndex(null)}
+                style={{
+                  background: esActivo ? "rgba(22,163,74,0.85)" : esAgregado ? "rgba(59,130,246,0.12)" : "rgba(255,255,255,0.04)",
+                  border: `1px solid ${esActivo ? "rgba(34,197,94,0.5)" : esAgregado ? "rgba(59,130,246,0.35)" : "rgba(255,255,255,0.07)"}`,
+                  borderRadius: 11, padding: "10px 12px",
+                  display: "flex", alignItems: "center", gap: 10,
+                  flexWrap: "wrap",
+                  opacity: dragIndex === i ? 0.5 : 1,
+                  transition: "background 0.2s, border-color 0.2s"
+                }}
+              >
+                {/* Info */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+                  <span style={{ opacity: 0.6, fontSize: 12, flexShrink: 0 }}>{i + 1}.</span>
+                  <span style={{ flexShrink: 0 }}>{iconoItemLista(c)}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontWeight: 700, fontSize: 14, lineHeight: 1.25,
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+                    }}>
+                      {limpiarTituloLista(c?.titulo || "Sin título")}
+                    </div>
+                    <div style={{ fontSize: 11, opacity: 0.55, marginTop: 1 }}>
+                      {subtituloItemLista(c)}
+                    </div>
+                  </div>
                 </div>
 
-                {(!isMobile || c?.tipo === "estado" || c?.tipo === "biblia") && (
-                  <div
-                    style={{
-                      fontSize: isMobile ? "11px" : "12px",
-                      opacity: 0.68,
-                      marginTop: "2px",
-                      marginLeft: "30px"
-                    }}
-                  >
-                    {subtituloItemLista(c)}
+                {/* Acciones */}
+                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                  <button className="ctrl-btn" disabled={!socket} onClick={() => proyectarDesdeLista(i)}
+                    style={{ width: 38, height: 38, borderRadius: 9, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    ▶
+                  </button>
+                  <button className="ctrl-btn"
+                    onClick={() => setMenuItemAbierto(prev => prev === i ? null : i)}
+                    style={{ width: 38, height: 38, borderRadius: 9, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    ⋮
+                  </button>
+                </div>
+
+                {/* Menú expandido */}
+                {menuItemAbierto === i && (
+                  <div style={{ width: "100%", display: "flex", gap: 6 }}>
+                    <button className="ctrl-btn" onClick={() => subirItemLista(i)} disabled={i === 0}
+                      style={{ flex: 1, padding: "7px", borderRadius: 8, border: "none", background: "#334155", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: i === 0 ? 0.4 : 1 }}>⬆️</button>
+                    <button className="ctrl-btn" onClick={() => bajarItemLista(i)} disabled={i === lista.length - 1}
+                      style={{ flex: 1, padding: "7px", borderRadius: 8, border: "none", background: "#334155", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: i === lista.length - 1 ? 0.4 : 1 }}>⬇️</button>
+                    <button className="ctrl-btn"
+                      onClick={() => { if (window.confirm("¿Eliminar este elemento?")) { eliminarDeLista(i); setMenuItemAbierto(null) } }}
+                      style={{ flex: 1, padding: "7px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.15)", color: "#fca5a5", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>🗑️</button>
                   </div>
                 )}
               </div>
-
-              <div style={acciones}>
-                {isMobile ? (
-                  <>
-                    <button
-                      style={btnListaMini}
-                      onClick={() => subirItemLista(i)}
-                      disabled={i === 0}
-                    >
-                      ⬆️
-                    </button>
-
-                    <button
-                      style={btnListaMini}
-                      onClick={() => bajarItemLista(i)}
-                      disabled={i === lista.length - 1}
-                    >
-                      ⬇️
-                    </button>
-
-                    <button
-                      style={btnListaPlay}
-                      disabled={!socket}
-                      onClick={() => proyectarDesdeLista(i)}
-                    >
-                      ▶️
-                    </button>
-
-                    <button
-                      disabled={!socket}
-                      style={btnListaDelete}
-                      onClick={() => {
-                        const ok = confirm("¿Eliminar este elemento de la lista?")
-                        if (ok) eliminarDeLista(i)
-                      }}
-                    >
-                      ❌
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button style={btn} disabled={!socket} onClick={() => proyectarDesdeLista(i)}>
-                      ▶️
-                    </button>
-
-                    <button
-                      disabled={!socket}
-                      style={btnRojo}
-                      onClick={() => {
-                        const ok = confirm("¿Eliminar este elemento de la lista?")
-                        if (ok) eliminarDeLista(i)
-                      }}
-                    >
-                      ❌
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
-    </>
-  )}
-</div>
+    </div>
   </div>
-  </>
+</div>
+</>
 )
 }
-
