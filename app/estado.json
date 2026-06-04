@@ -4,79 +4,39 @@
     "data": {
       "partes": [
         {
-          "id": "a4ec96a3-94cb-49c6-93cd-9889da2ddf2b",
-          "cancion_id": "ab977c7d-271b-499a-84c7-f5fd1f4b9e35",
+          "id": "f6cec2f2-28d8-4a78-b9c6-fb514addc4ad",
+          "cancion_id": "033f94b6-26fb-4b7a-aa14-b6d1426ab3ce",
           "tipo": "Verso",
-          "texto": "¡CUÁN FIRME CIMIENTO SE HA DADO A LA FE,\nDE DIOS EN SU ETERNA PALABRA DE AMOR!\n¿QUÉ MÁS EL PUDIERA EN SU LIBRO AÑADIR\nSI TODO A SUS HIJOS LO HA DICHO EL SEÑOR?",
+          "texto": "LUZ DE VIDA CELESTIAL,\nFUEGO DE DIVINO AMOR,\nBRILLA EN MI CORAZÓN,\nVEN, INSPÍRAME FERVOR.\nA CANTAR AYÚDAME\nDIGNAMENTE EN HONOR\nDEL CORDERO QUE MURIÓ\nPOR SALVAR AL PECADOR",
           "orden": 0,
-          "texto_letra": "¡CUÁN FIRME CIMIENTO SE HA DADO A LA FE,\nDE DIOS EN SU ETERNA PALABRA DE AMOR!\n¿QUÉ MÁS EL PUDIERA EN SU LIBRO AÑADIR\nSI TODO A SUS HIJOS LO HA DICHO EL SEÑOR?",
-          "texto_acordes": "C    F       C               Dm G7     C\n¡Cuán firme cimiento se ha dado a la fe\n        F            C            G C  D7      G\nde Dios en su eterna Palabra de amor!\nG7      C    F      C              Dm G7    C\n¿Qué más Él pudiera en su libro añadir,\n      F              C       Am C G7          C\nsi todo a sus hijos lo ha dicho el Señor?\n     C     F      C       D7   C     G7        C\nsi todo a sus hijos lo ha dicho el Señor?",
-          "tiene_acordes": true
+          "texto_letra": "LUZ DE VIDA CELESTIAL,\nFUEGO DE DIVINO AMOR,\nBRILLA EN MI CORAZÓN,\nVEN, INSPÍRAME FERVOR.\nA CANTAR AYÚDAME\nDIGNAMENTE EN HONOR\nDEL CORDERO QUE MURIÓ\nPOR SALVAR AL PECADOR",
+          "texto_acordes": null,
+          "tiene_acordes": false
         },
         {
-          "id": "4c1bef71-a0b3-4cb6-85c2-0a07bfc6c74a",
-          "cancion_id": "ab977c7d-271b-499a-84c7-f5fd1f4b9e35",
+          "id": "7be8c05c-ad03-4519-871f-dcc03dfe56a4",
+          "cancion_id": "033f94b6-26fb-4b7a-aa14-b6d1426ab3ce",
           "tipo": "Verso",
-          "texto": "YA TE HALLES ENFERMO O EN PLENA SALUD,\nYA RICO, YA POBRE SE ENCUENTRE TU SER,\nEN CASA, O VIAJANDO POR TIERRA, O POR MAR,\nCONFORME A TUS AÑOS SERÁ TU PODER.",
+          "texto": "DIGNO, DIGNO DE HONOR\nES MI REDENTO JESÚS,\nQUIEN AL MUNDO REDIMIÓ\nPOR SU MUERTE EN LA CRUZ.\nGLORIA SEA A JESÚS,\nGLORIA SEA Y LOOR,\nY DOMINIO ETERNAL\nA JESÚS, MI REDENTOR.",
           "orden": 1,
-          "texto_letra": "YA TE HALLES ENFERMO O EN PLENA SALUD,\nYA RICO, YA POBRE SE ENCUENTRE TU SER,\nEN CASA, O VIAJANDO POR TIERRA, O POR MAR,\nCONFORME A TUS AÑOS SERÁ TU PODER.",
-          "texto_acordes": "C      F       C               Dm G7     C\n“Ya te halles enfermo o en plena salud,\n        F            C            G C  D7      G\nya rico, ya pobre se encuentre tu ser,\nG7  C    F       C              Dm G7    C\nen casa o viajando por tierra o por mar,\n      F              Am C G7          C\nconforme a tu día será tu poder”\n      C     F       C   D7 C  G7   C\nconforme a tu día será tu poder”",
-          "tiene_acordes": true
-        },
-        {
-          "id": "1d8d167d-74fe-4eac-9f51-7a485ade36f8",
-          "cancion_id": "ab977c7d-271b-499a-84c7-f5fd1f4b9e35",
-          "tipo": "Verso",
-          "texto": "NO TEMAS POR NADA, CONTIGO YO SOY;\nTU DIOS YO SOY SOLO, TU AYUDA SERÉ\nTU FUERZA Y FIRMEZA EN MI DIESTRA ESTARÁN,\nY EN ELLA SOSTÉN Y PODER TE DARÉ.",
-          "orden": 2,
-          "texto_letra": "NO TEMAS POR NADA, CONTIGO YO SOY;\nTU DIOS YO SOY SOLO, TU AYUDA SERÉ\nTU FUERZA Y FIRMEZA EN MI DIESTRA ESTARÁN,\nY EN ELLA SOSTÉN Y PODER TE DARÉ.",
-          "texto_acordes": "C    F       C           Dm G7     C\n“No temas por nada, contigo Yo soy,\n        F                C          G C  D7  G\nTu Dios Yo soy solo, tu ayuda seré;\nG7     C          F      C         Dm G7     C\nTu fuerza y firmeza en mi diestra estarán,\n       F             C.  Am C G7    C\ny en ella sostén y poder te daré.\n     C     F      C   D7   C   G   C\ny en ella sostén y poder te daré.",
-          "tiene_acordes": true
-        },
-        {
-          "id": "5336f8f6-3d13-4edd-a197-081c757c82b3",
-          "cancion_id": "ab977c7d-271b-499a-84c7-f5fd1f4b9e35",
-          "tipo": "Verso",
-          "texto": "NO HABRÁN DE ANEGARTE LAS ONDAS DEL MAR\nSI EN AGUAS PROFUNDAS TE ORDENO SALIR;\nYO SIEMPRE CONTIGO EN TU ANGUSTIA SERÉ\nY TODAS TUS PENAS PODRÉ BENDECIR.",
-          "orden": 3,
-          "texto_letra": "NO HABRÁN DE ANEGARTE LAS ONDAS DEL MAR\nSI EN AGUAS PROFUNDAS TE ORDENO SALIR;\nYO SIEMPRE CONTIGO EN TU ANGUSTIA SERÉ\nY TODAS TUS PENAS PODRÉ BENDECIR.",
-          "texto_acordes": "C  F       C          Dm G7     C\n“No habrán de anegarte las ondas del mar,\n          F            C         G   C      D7  G\nsi en aguas profundas te ordeno salir;\nG7      C    F      C              Dm G7    C\nPues siempre contigo en angustias seré\n      F          C       Am C G7     C\ny todas tus penas podré bendecir.\n    C     F     C      D7   C   G7  C\ny todas tus penas podré bendecir.",
-          "tiene_acordes": true
-        },
-        {
-          "id": "be703157-d038-4bc2-b555-77131483aba8",
-          "cancion_id": "ab977c7d-271b-499a-84c7-f5fd1f4b9e35",
-          "tipo": "Verso",
-          "texto": "LA LLAMA NO PUEDE DAÑARTE JAMÁS\nSI EN MEDIO DEL FUEGO TE ORDENO PASAR,\nEL ORO DE TU ALMA MÁS PURO SERÁ,\nPUES SÓLO LA ESCORIA SE HABRÁ DE QUEMAR.",
-          "orden": 4,
-          "texto_letra": "LA LLAMA NO PUEDE DAÑARTE JAMÁS\nSI EN MEDIO DEL FUEGO TE ORDENO PASAR,\nEL ORO DE TU ALMA MÁS PURO SERÁ,\nPUES SÓLO LA ESCORIA SE HABRÁ DE QUEMAR.",
-          "texto_acordes": "C F       C          Dm G7    C\n“La llama no puede dañarte jamás,\n        F              C                 G C D7 G\nsi en medio del fuego te ordeno pasar;\n      G7         C    F  C   Dm G7  C\nEl oro de tu alma más puro será,\n          F        C       Am C G7        C\npues sólo la escoria se habrá de quemar”.\n          C      F      C           D7   C G7   C\npues sólo la escoria se habrá de quemar”.",
-          "tiene_acordes": true
-        },
-        {
-          "id": "38cfbd47-ba6d-47a3-bf25-24c5b7ee1f6d",
-          "cancion_id": "ab977c7d-271b-499a-84c7-f5fd1f4b9e35",
-          "tipo": "Verso",
-          "texto": "MI AMOR SIEMPRE TIERNO, INVARIABLE, ETERNAL\nCONSTANTE A MI PUEBLO MOSTRARLE PODRÉ;\nSI NÍVEA CORONA YA CIÑE SU SIEN,\nCUAL TIERNOS CORDEROS AÚN CUIDARÉ.",
-          "orden": 5,
-          "texto_letra": "MI AMOR SIEMPRE TIERNO, INVARIABLE, ETERNAL\nCONSTANTE A MI PUEBLO MOSTRARLE PODRÉ;\nSI NÍVEA CORONA YA CIÑE SU SIEN,\nCUAL TIERNOS CORDEROS AÚN CUIDARÉ.",
-          "texto_acordes": "C    F       C                   Dm G7     C\n“Mi amor siempre tierno, invariable, eternal,\n        F            C                  G C  D7  G\nconstante a mi pueblo mostrarle podré,\nG7   C    F       C    Dm G7    C\nsi nívea corona ya ciñe su sien,\n      F              C       Am C G7   C\ncual tiernos corderos aún cuidaré”.\n     C     F           C   D7   C G7   C\ncual tiernos corderos aún cuidaré”.",
-          "tiene_acordes": true
-        },
-        {
-          "id": "592692d7-e20e-4a14-a60a-178a5b17493f",
-          "cancion_id": "ab977c7d-271b-499a-84c7-f5fd1f4b9e35",
-          "tipo": "Verso",
-          "texto": "AL ALMA QUE ANHELE LA PAZ QUE HAY EN MI\nJAMÁS EN SUS LUCHAS LE HABRÉ DE DEJAR;\nSI TODO EL INFIERNO LA QUIERE PERDER,\n¡YO NUNCA, NO, NUNCA LA PUEDO OLVIDAR!",
-          "orden": 6,
-          "texto_letra": "AL ALMA QUE ANHELE LA PAZ QUE HAY EN MI\nJAMÁS EN SUS LUCHAS LE HABRÉ DE DEJAR;\nSI TODO EL INFIERNO LA QUIERE PERDER,\n¡YO NUNCA, NO, NUNCA LA PUEDO OLVIDAR!",
-          "texto_acordes": "C    F       C               Dm G7     C\n“Al alma que anhele la paz que hay en mí,\n        F            C            G C  D7      G\njamás en sus luchas la habré de dejar;\nG7      C    F      C              Dm G7    C\nSi todo el infierno la quiere perder,\n      F              C     Am     C G7       C\n¡Yo nunca, no nunca, la puedo olvidar!”\n     C     F      C          D7  C    G7     C\n¡Yo nunca, no nunca, la puedo olvidar!”",
-          "tiene_acordes": true
+          "texto_letra": "DIGNO, DIGNO DE HONOR\nES MI REDENTO JESÚS,\nQUIEN AL MUNDO REDIMIÓ\nPOR SU MUERTE EN LA CRUZ.\nGLORIA SEA A JESÚS,\nGLORIA SEA Y LOOR,\nY DOMINIO ETERNAL\nA JESÚS, MI REDENTOR.",
+          "texto_acordes": null,
+          "tiene_acordes": false
         }
       ],
       "index": 0,
-      "titulo": "CUÁN FIRME CIMIENTO ",
-      "tono": "Do"
+      "titulo": "LUZ DE VIDA",
+      "tono": "Re",
+      "iglesia": "IEP Moradora de Sion La Ligua",
+      "logo_marca_url": "https://dkufqtrfvduonsubmwka.supabase.co/storage/v1/object/public/imagenes-culto/logos/c76bc168-da61-4a86-8881-9dc3c17391fe/1778514807728-hc7u8bqcy5o.png",
+      "fondo": {
+        "tipo": "preset",
+        "preset": "cielo-dorado",
+        "fondoCss": "radial-gradient(circle at 50% 20%, rgba(251,191,36,0.45), transparent 34%), linear-gradient(135deg, #1e1b4b 0%, #7c2d12 48%, #0f172a 100%)",
+        "nombre": "Cielo dorado",
+        "oscuridad": 55,
+        "ajuste": "cover"
+      }
     }
   },
   "9c6246da-b5bb-449a-b283-13dd465b46d2": {
@@ -123,39 +83,39 @@
     "data": {
       "partes": [
         {
-          "id": "c2c44c4a-b8b3-48e1-a709-d0d6223a24f6",
-          "cancion_id": "cfa232a0-ac72-4dcb-94ab-ee26483acb41",
+          "id": "09fb3d3f-5953-4307-913f-0ee6611a5f75",
+          "cancion_id": "e5a414bd-f427-4525-9e9d-00c471fe5be6",
           "tipo": "Verso",
-          "texto": "TENEBROSO MAR, UNDOSO\nVAS SURCANDO, PECADOR,\nY EL PRESAGIO DEL NAUFRAGIO\nACRECIENTA TU TEMOR.\n¿VES NO LEJOS LOS REFLEJOS\nDE LA PURA Y BLANCA LUZ?\nESE BELLO, FIEL DESTELLO\nES EL FARO DE LA CRUZ.",
+          "texto": "VEN, ¡OH, TODOPODEROSO,\nADORABLE CREADOR!\nPADRE SANTO, CARIÑOSO,\nMANIFIESTA TU AMOR.\nA TU TRONO DE CLEMENCIA\nLEVANTAMOS NUESTRA VOZ.\nTU PRESENCIA TE PEDIMOS,\nNUESTRO PADRE, NUESTRO DIOS.",
           "orden": 0,
-          "texto_letra": "TENEBROSO MAR, UNDOSO\nVAS SURCANDO, PECADOR,\nY EL PRESAGIO DEL NAUFRAGIO\nACRECIENTA TU TEMOR.\n¿VES NO LEJOS LOS REFLEJOS\nDE LA PURA Y BLANCA LUZ?\nESE BELLO, FIEL DESTELLO\nES EL FARO DE LA CRUZ.",
+          "texto_letra": "VEN, ¡OH, TODOPODEROSO,\nADORABLE CREADOR!\nPADRE SANTO, CARIÑOSO,\nMANIFIESTA TU AMOR.\nA TU TRONO DE CLEMENCIA\nLEVANTAMOS NUESTRA VOZ.\nTU PRESENCIA TE PEDIMOS,\nNUESTRO PADRE, NUESTRO DIOS.",
           "texto_acordes": null,
           "tiene_acordes": false
         },
         {
-          "id": "ccf4cd1a-9d36-45df-9d93-71174e343c3c",
-          "cancion_id": "cfa232a0-ac72-4dcb-94ab-ee26483acb41",
+          "id": "10c26dca-a27f-49d3-a877-eef2b22589b6",
+          "cancion_id": "e5a414bd-f427-4525-9e9d-00c471fe5be6",
           "tipo": "Verso",
-          "texto": "ANHELANDO PUERTO AMADO,\nFUENTE VIVA DE SALUD;\nEN TI ALMA, DULCE CALMA\nGOZARÁ SIN INQUIETUD.\n¿QUÉ ES EL MUNDO? FOCO INMUNDO;\nDE ÉL ME QUIERO RETIRAR,\nY EL TRANQUILO GRATO ASILO\nDE LOS JUSTOS DISFRUTAR.",
+          "texto": "VEN, ¡OH SALVADOR DIVINO,\nDIOS DE NUESTRA SALVACIÓN!\nEN NOSOTROS HAZ MORADA,\nVIVE EN NUESTRO CORAZÓN.\nERES TÚ, JESÚS, BENIGNO,\nERES INFINITO AMOR:\nÓYENOS, TE SUPLICAMOS.\nVEN, BENDÍCENOS, SEÑOR.",
           "orden": 1,
-          "texto_letra": "ANHELANDO PUERTO AMADO,\nFUENTE VIVA DE SALUD;\nEN TI ALMA, DULCE CALMA\nGOZARÁ SIN INQUIETUD.\n¿QUÉ ES EL MUNDO? FOCO INMUNDO;\nDE ÉL ME QUIERO RETIRAR,\nY EL TRANQUILO GRATO ASILO\nDE LOS JUSTOS DISFRUTAR.",
+          "texto_letra": "VEN, ¡OH SALVADOR DIVINO,\nDIOS DE NUESTRA SALVACIÓN!\nEN NOSOTROS HAZ MORADA,\nVIVE EN NUESTRO CORAZÓN.\nERES TÚ, JESÚS, BENIGNO,\nERES INFINITO AMOR:\nÓYENOS, TE SUPLICAMOS.\nVEN, BENDÍCENOS, SEÑOR.",
           "texto_acordes": null,
           "tiene_acordes": false
         },
         {
-          "id": "19717c18-d138-484c-a642-a1f5dba0643e",
-          "cancion_id": "cfa232a0-ac72-4dcb-94ab-ee26483acb41",
+          "id": "f83130fb-8fb4-4fdf-b59e-d63b48fa083e",
+          "cancion_id": "e5a414bd-f427-4525-9e9d-00c471fe5be6",
           "tipo": "Verso",
-          "texto": "YO ANSÍO, JESÚS MÍO,\nREVESTIRME DE TU AMOR;\nA TI SÓLO ACATARTE\nCUAL HUMILDE SERVIDOR.\nROCA FUERTE, QUE LA MUERTE\nNI LOS SIGLOS DESTRUIRÁN;\nDE LOS FIELES LOS LAURELES\nEN TU CUMBRE LUCIRÁN.",
+          "texto": "VEN, ¡ESPÍRITU DIVINO!\nDANOS TU PRECIOSO DON;\nDIOS CONSOLADOR, INSPIRA\nPAZ EN TODO CORAZÓN.\nDE LOS SANTOS LA HERENCIA\nDÉJANOS HALLAR EN TI.\nY LA VIDA DE LOS CIELOS\nGOZAREMOS YA AQUÍ.",
           "orden": 2,
-          "texto_letra": "YO ANSÍO, JESÚS MÍO,\nREVESTIRME DE TU AMOR;\nA TI SÓLO ACATARTE\nCUAL HUMILDE SERVIDOR.\nROCA FUERTE, QUE LA MUERTE\nNI LOS SIGLOS DESTRUIRÁN;\nDE LOS FIELES LOS LAURELES\nEN TU CUMBRE LUCIRÁN.",
+          "texto_letra": "VEN, ¡ESPÍRITU DIVINO!\nDANOS TU PRECIOSO DON;\nDIOS CONSOLADOR, INSPIRA\nPAZ EN TODO CORAZÓN.\nDE LOS SANTOS LA HERENCIA\nDÉJANOS HALLAR EN TI.\nY LA VIDA DE LOS CIELOS\nGOZAREMOS YA AQUÍ.",
           "texto_acordes": null,
           "tiene_acordes": false
         }
       ],
-      "index": 2,
-      "titulo": "TENEBROSO MAR, UNDOSO",
-      "tono": "Rem",
+      "index": 0,
+      "titulo": "VEN, ¡OH, TODOPODEROSO",
+      "tono": "Sol",
       "iglesia": "IEP Moradora de Sion Renca",
       "logo_marca_url": "https://dkufqtrfvduonsubmwka.supabase.co/storage/v1/object/public/imagenes-culto/logos/cb7db0f2-7e9a-4cb7-bdfb-2bdd57ca1630/1778516783046-kbg9fygymg.png",
       "fondo": {
@@ -172,77 +132,57 @@
     "data": {
       "partes": [
         {
-          "id": "cae0f3b7-8f9e-4223-af82-c782b1879ca7",
-          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
+          "id": "3ee9747c-8e4e-42b5-8f58-c780074e1f6b",
+          "cancion_id": "2242b75a-ed3d-438c-820a-dc6516ab9cd6",
           "tipo": "Verso",
-          "texto": "Hijo, no temas, Yo soy el que habla contigo\nVi tus lágrimas y escuché tu gemido\nEn las madrugadas me buscas sin importarte el sueño\nHijo, tus oraciones han llegado a mi Trono",
+          "texto": "YO POR CRISTO DEFENDIDO,\nA TU NOMBRE DOY LOOR;\nYO, CON BIENES PROVEÍDO\nQUE NO TUVO MI SEÑOR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
           "orden": 0,
-          "texto_letra": null,
+          "texto_letra": "YO POR CRISTO DEFENDIDO,\nA TU NOMBRE DOY LOOR;\nYO, CON BIENES PROVEÍDO\nQUE NO TUVO MI SEÑOR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
           "texto_acordes": null,
           "tiene_acordes": false
         },
         {
-          "id": "877da6b8-678f-4bea-8a4a-1a7759ea7cfc",
-          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
+          "id": "9070b137-23c5-4d55-bf54-28dcacb072fc",
+          "cancion_id": "2242b75a-ed3d-438c-820a-dc6516ab9cd6",
           "tipo": "Verso",
-          "texto": "Yo he visto las luchas que estás pasando\nY en tus ojos la cruz pesada que estás cargando\nSon momentos tan difíciles que hasta piensas así:\nCiertamente el Dios que sirvo se olvidó de mí",
+          "texto": "LA POBREZA Y LOS DOLORES\nESTE SE DIGNÓ PASAR;\nY MI DIOS CON PECADORES\nNO HALLABA DO POSAR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
           "orden": 1,
-          "texto_letra": null,
+          "texto_letra": "LA POBREZA Y LOS DOLORES\nESTE SE DIGNÓ PASAR;\nY MI DIOS CON PECADORES\nNO HALLABA DO POSAR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
           "texto_acordes": null,
           "tiene_acordes": false
         },
         {
-          "id": "db25064d-9ba7-4210-88f5-8d1856df61da",
-          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
-          "tipo": "Coro",
-          "texto": "Hijo, Yo no te olvide ni jamás te abandoné\nSepas que cuando llorabas, Yo contigo lloré\nHijo, Yo estoy aquí, siempre al lado de ti\nY hoy una gran victoria tengo para ti",
+          "id": "e47c96a0-cbf7-48d7-b77d-5d6b09ac4524",
+          "cancion_id": "2242b75a-ed3d-438c-820a-dc6516ab9cd6",
+          "tipo": "Verso",
+          "texto": "A TU SOMBRA, DIOS CLEMENTE,\nYO TRANQUILO DORMIRÉ;\nY A TI, OMNIPOTENTE,\nYO MI ALMA FIARÉ.\nALABANZAS\nDOY A TI, MI SALVADOR.",
           "orden": 2,
-          "texto_letra": null,
+          "texto_letra": "A TU SOMBRA, DIOS CLEMENTE,\nYO TRANQUILO DORMIRÉ;\nY A TI, OMNIPOTENTE,\nYO MI ALMA FIARÉ.\nALABANZAS\nDOY A TI, MI SALVADOR.",
           "texto_acordes": null,
           "tiene_acordes": false
         },
         {
-          "id": "4e26fa27-fa92-4bd2-b6a5-5568cf739686",
-          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
+          "id": "90e58bdf-3715-4b87-8180-cd17abf3a6ff",
+          "cancion_id": "2242b75a-ed3d-438c-820a-dc6516ab9cd6",
           "tipo": "Verso",
-          "texto": "En las horas de angustia yo estaba a tu lado\nY te cargué en mis Brazos cuando estabas cansado\nEn los momentos más difíciles Yo fui tu Abrigo\nY tu hermano, tu Dios, tu Padre, tu Amigo",
+          "texto": "YO INDIGNO, TÚ PIADOSO,\nSÉ NO QUIERES DESECHAR\nAL QUE VIENE PRESUROSO\nTU PIEDAD A IMPETRAR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
           "orden": 3,
-          "texto_letra": null,
-          "texto_acordes": null,
-          "tiene_acordes": false
-        },
-        {
-          "id": "8f524a04-d663-453e-9bfb-25a4a0ce22a2",
-          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
-          "tipo": "Verso",
-          "texto": "Recuerda cuando del mundo con amor te llamé\nAntes que tú me amaras, Yo primero te amé\nNi por un segundo siquiera Yo jamás te olvidé\nEntre los muchos que llamé, a ti te escogí",
-          "orden": 4,
-          "texto_letra": null,
-          "texto_acordes": null,
-          "tiene_acordes": false
-        },
-        {
-          "id": "1a683bf9-d4bf-43ea-b587-229c0115101a",
-          "cancion_id": "30ba4b5c-2597-42a9-94fe-c15750c15445",
-          "tipo": "Coro",
-          "texto": "Hijo, Yo no te olvide ni jamás te abandoné\nSepas que cuando llorabas, Yo contigo lloré\nHijo, Yo estoy aquí, siempre al lado de ti\nY hoy una gran victoria tengo para ti\n\nHijo, Yo no te olvide ni jamás te abandoné\nSepas que cuando llorabas, Yo contigo lloré\nHijo, Yo estoy aquí, siempre al lado de ti\nY hoy una gran victoria tengo para ti",
-          "orden": 5,
-          "texto_letra": null,
+          "texto_letra": "YO INDIGNO, TÚ PIADOSO,\nSÉ NO QUIERES DESECHAR\nAL QUE VIENE PRESUROSO\nTU PIEDAD A IMPETRAR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
           "texto_acordes": null,
           "tiene_acordes": false
         }
       ],
-      "index": 0,
-      "titulo": "LA GRAN VICTORIA",
+      "index": 3,
+      "titulo": "YO POR CRISTO ",
       "tono": "",
       "iglesia": "IEP Moradora de Sion La Ligua",
       "logo_marca_url": "https://dkufqtrfvduonsubmwka.supabase.co/storage/v1/object/public/imagenes-culto/logos/c76bc168-da61-4a86-8881-9dc3c17391fe/1778514807728-hc7u8bqcy5o.png",
       "fondo": {
         "tipo": "preset",
-        "preset": "cielo-dorado",
-        "fondoCss": "radial-gradient(circle at 50% 20%, rgba(251,191,36,0.45), transparent 34%), linear-gradient(135deg, #1e1b4b 0%, #7c2d12 48%, #0f172a 100%)",
-        "nombre": "Cielo dorado",
-        "oscuridad": 55,
+        "preset": "purpura-noche",
+        "fondoCss": "radial-gradient(circle at 20% 30%, rgba(168,85,247,0.38), transparent 32%), radial-gradient(circle at 85% 65%, rgba(236,72,153,0.28), transparent 32%), linear-gradient(135deg, #020617 0%, #312e81 52%, #581c87 100%)",
+        "nombre": "Púrpura noche",
+        "oscuridad": 63,
         "ajuste": "cover"
       }
     }

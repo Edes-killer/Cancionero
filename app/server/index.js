@@ -40,6 +40,12 @@ const guardarEstadoSala = (sala, estado) => {
 }
 
 const server = http.createServer((req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*")
+  if (req.url === "/ping") {
+    res.writeHead(200, { "Content-Type": "application/json" })
+    res.end(JSON.stringify({ ok: true, app: "selah-live" }))
+    return
+  }
   res.writeHead(200)
   res.end("Servidor activo")
 })
@@ -211,20 +217,19 @@ io.on("connection", (socket) => {
 
   socket.on("get-estado", () => {
     const sala = salaDe(socket)
-    const estadoActual = estadosPorSala[sala]
+    console.log("📡 proyectar pidió estado:", sala)
 
-    console.log("📡 cliente pidió estado actual:", sala)
+    // ✅ Preguntar al control de esa sala qué tiene activo ahora
+    // Si control no está abierto, proyectar quedará en negro (sin respuesta)
+    socket.broadcast.to(sala).emit("proyectar-solicita-estado")
+  })
 
-    if (estadoActual) {
-      console.log("📤 enviando estado actual:", {
-        sala,
-        tipo: estadoActual.tipo
-      })
-
-      socket.emit("estado-actual", estadoActual)
-    } else {
-      console.log("⚪ no hay estado guardado para sala:", sala)
-    }
+  // ✅ Control responde con su estado actual → lo reenviamos solo a proyectar
+  socket.on("reenviar-estado-a-proyectar", (data) => {
+    const sala = salaDe(socket)
+    console.log("📤 reenviando estado de control a proyectar:", sala)
+    // Emitir como cargar-cancion para que proyectar lo maneje normal
+    socket.broadcast.to(sala).emit("cargar-cancion", data)
   })
 
   socket.on("disconnect", () => {

@@ -9,75 +9,35 @@ export default function CallbackPage() {
   const [estado, setEstado] = useState<"procesando" | "error">("procesando")
   const [mensajeError, setMensajeError] = useState("")
 
-  useEffect(() => {
-    const completarLogin = async () => {
-      try {
-        const hash = window.location.hash
-        const searchParams = new URLSearchParams(window.location.search)
+  
+useEffect(() => {
+  const completarLogin = async (hash: string) => {
+    try {
+      if (!hash.includes('access_token')) return
+      const params = new URLSearchParams(hash.replace('#', ''))
+      const access_token = params.get('access_token')
+      const refresh_token = params.get('refresh_token')
+      if (!access_token || !refresh_token) { setEstado('error'); setMensajeError('Link inválido.'); return }
+      const { error } = await supabase.auth.setSession({ access_token, refresh_token })
+      if (error) { setEstado('error'); setMensajeError('No se pudo iniciar sesión.'); return }
+      router.replace('/')
+    } catch { setEstado('error'); setMensajeError('Error inesperado.') }
+  }
 
-        // ── Caso 1: implicit flow — token viene en el hash ──────────────────
-        if (hash.includes("access_token")) {
-          const params = new URLSearchParams(hash.replace("#", ""))
-          const access_token = params.get("access_token")
-          const refresh_token = params.get("refresh_token")
+  // Web normal
+  if (window.location.hash.includes('access_token')) {
+    completarLogin(window.location.hash)
+    return
+  }
 
-          if (!access_token || !refresh_token) {
-            setMensajeError("El link no contiene los tokens necesarios. Intenta iniciar sesión nuevamente.")
-            setEstado("error")
-            return
-          }
-
-          const { error } = await supabase.auth.setSession({ access_token, refresh_token })
-
-          if (error) {
-            console.error("Error setSession:", error)
-            setMensajeError("No se pudo iniciar sesión. El link puede haber expirado.")
-            setEstado("error")
-            return
-          }
-
-          router.replace("/")
-          return
-        }
-
-        // ── Caso 2: PKCE — no soportado, redirigir a login ─────────────────
-        const code = searchParams.get("code")
-        if (code) {
-          // Con flowType: "implicit" en supabase.ts no se usa PKCE
-          // Si llega un code, significa que Supabase cambió el flow
-          // Redirigir al login para reintentar
-          router.replace("/login?error=session")
-          return
-        }
-
-        // ── Caso 3: error explícito de Supabase en la URL ───────────────────
-        const errorDesc = searchParams.get("error_description") || hash
-        if (errorDesc) {
-          setMensajeError(decodeURIComponent(errorDesc.replace(/\+/g, " ")))
-          setEstado("error")
-          return
-        }
-
-        // ── Caso 4: puede que la sesión ya esté guardada (recarga) ──────────
-        const { data } = await supabase.auth.getSession()
-        if (data.session) {
-          router.replace("/")
-          return
-        }
-
-        // No hay nada útil en la URL
-        setMensajeError("No se encontró información de sesión en este link.")
-        setEstado("error")
-
-      } catch (err) {
-        console.error("Error inesperado en callback:", err)
-        setMensajeError("Ocurrió un error inesperado. Por favor intenta de nuevo.")
-        setEstado("error")
-      }
-    }
-
-    completarLogin()
-  }, [router])
+  // APK — leer URL guardada por DeepLinkHandler
+  const deepLinkUrl = sessionStorage.getItem('deepLinkUrl')
+  if (deepLinkUrl) {
+    sessionStorage.removeItem('deepLinkUrl')
+    const hash = deepLinkUrl.includes('#') ? '#' + deepLinkUrl.split('#')[1] : ''
+    completarLogin(hash)
+  }
+}, [router])
 
   // ── UI procesando ─────────────────────────────────────────────────────────
   if (estado === "procesando") {

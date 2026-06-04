@@ -30,7 +30,7 @@ export default function Navbar() {
 
   useEffect(() => { setMenuAbierto(false) }, [pathname])
 
-  if (RUTAS_SIN_NAVBAR.includes(pathname)) return null
+  if (RUTAS_SIN_NAVBAR.some(r => pathname.startsWith(r))) return null
 
   const cerrarSesion = async () => {
     setCerrando(true)
@@ -175,8 +175,8 @@ export default function Navbar() {
         )}
       </nav>
 
-      {/* Breadcrumb mínimo */}
-      {pathname !== "/" && (
+      {/* Breadcrumb mínimo — oculto en /control (usa su propio header) */}
+      {pathname !== "/" && !pathname.startsWith("/control") && (
         <div style={{
           background: "rgba(6,13,26,0.6)",
           borderBottom: "1px solid rgba(255,255,255,0.04)",
