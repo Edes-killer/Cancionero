@@ -235,6 +235,10 @@ export default function CancionesPage() {
   // ── Socket ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     const s = io("http://" + window.location.hostname + ":4000")
+    s.on("connect", async () => {
+      const sala = (await getIglesiaId()) || "global"
+      s.emit("unirse-sala", { sala, pantalla: "canciones" })
+    })
     s.on("cancion-activa", (data: any) => setActivaId(data.id))
     setSocket(s)
     return () => { s.disconnect() }
@@ -253,8 +257,13 @@ export default function CancionesPage() {
 
   const cargarCanciones = async (id?: string | null) => {
     const igId = id ?? iglesiaId
+    // ✅ Siempre incluir himnario global (iglesia_id IS NULL) + propias de la iglesia
     let query = supabase.from("canciones").select("*")
-    if (igId) query = query.eq("iglesia_id", igId)
+    if (igId) {
+      query = query.or(`iglesia_id.eq.${igId},iglesia_id.is.null`)
+    } else {
+      query = query.is("iglesia_id", null)
+    }
 
     const { data } = await query
     setCanciones(data || [])
@@ -275,6 +284,23 @@ export default function CancionesPage() {
   const flash = (msg: string) => {
     setFlashMsg(msg)
     setTimeout(() => setFlashMsg(""), 2800)
+  }
+
+
+  // ── Color por categoría (igual que en control) ──────────────────────────────
+  const colorCategoria = (cat?: string): { bg: string; border: string; text: string } => {
+    switch ((cat || "").toLowerCase()) {
+      case "alabanza":    return { bg: "rgba(251,191,36,0.10)",  border: "rgba(251,191,36,0.30)",  text: "#fcd34d" }
+      case "adoración":   return { bg: "rgba(167,139,250,0.10)", border: "rgba(167,139,250,0.30)", text: "#c4b5fd" }
+      case "avivamiento": return { bg: "rgba(239,68,68,0.10)",   border: "rgba(239,68,68,0.30)",   text: "#fca5a5" }
+      case "comunión":    return { bg: "rgba(52,211,153,0.10)",  border: "rgba(52,211,153,0.30)",  text: "#6ee7b7" }
+      case "evangelismo": return { bg: "rgba(251,146,60,0.10)",  border: "rgba(251,146,60,0.30)",  text: "#fdba74" }
+      case "gratitud":    return { bg: "rgba(34,197,94,0.10)",   border: "rgba(34,197,94,0.30)",   text: "#86efac" }
+      case "ofrenda":     return { bg: "rgba(14,165,233,0.10)",  border: "rgba(14,165,233,0.30)",  text: "#7dd3fc" }
+      case "bienvenida":  return { bg: "rgba(99,179,237,0.10)",  border: "rgba(99,179,237,0.30)",  text: "#93c5fd" }
+      case "cierre":      return { bg: "rgba(156,163,175,0.10)", border: "rgba(156,163,175,0.30)", text: "#d1d5db" }
+      default:            return { bg: "rgba(99,179,237,0.10)",  border: "rgba(99,179,237,0.25)",  text: "#93c5fd" }
+    }
   }
 
   const resetEditor = () => {
@@ -1042,11 +1068,11 @@ export default function CancionesPage() {
                         {c.titulo}
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                        {c.categoria && (
-                          <span style={{ background: "rgba(99,179,237,0.1)", color: "#93c5fd", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>
+                        {c.categoria && (() => { const col = colorCategoria(c.categoria); return (
+                          <span style={{ background: col.bg, color: col.text, border: `1px solid ${col.border}`, borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>
                             {c.categoria}
                           </span>
-                        )}
+                        )})()}
                         {c.tono && (
                           <span style={{ background: "rgba(167,139,250,0.1)", color: "#c4b5fd", borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>
                             {c.tono}
@@ -1073,6 +1099,7 @@ export default function CancionesPage() {
                   <div key={c.id} style={{
                     background: c.id === activaId ? "rgba(34,197,94,0.1)" : colors.card,
                     border: `1px solid ${c.id === activaId ? "rgba(34,197,94,0.35)" : colors.border}`,
+                    borderLeft: c.id === activaId ? "3px solid #22c55e" : `3px solid ${colorCategoria(c.categoria).border}`,
                     borderRadius: 10, padding: "13px 16px",
                     display: "flex", alignItems: "center", gap: 12,
                     transition: "background 0.15s"
@@ -1102,18 +1129,18 @@ export default function CancionesPage() {
                         )}
                       </div>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        {c.categoria && (
-                          <span style={{ background: "rgba(99,179,237,0.1)", color: "#93c5fd", borderRadius: 5, padding: "1px 7px", fontSize: 11, fontWeight: 600 }}>
+                        {c.categoria && (() => { const col = colorCategoria(c.categoria); return (
+                          <span style={{ background: col.bg, color: col.text, border: `1px solid ${col.border}`, borderRadius: 5, padding: "1px 7px", fontSize: 11, fontWeight: 600 }}>
                             {c.categoria}
                           </span>
-                        )}
+                        )})()}
                         {c.tono && (
-                          <span style={{ background: "rgba(167,139,250,0.1)", color: "#c4b5fd", borderRadius: 5, padding: "1px 7px", fontSize: 11, fontWeight: 600 }}>
+                          <span style={{ background: "rgba(167,139,250,0.1)", color: "#c4b5fd", border: "1px solid rgba(167,139,250,0.25)", borderRadius: 5, padding: "1px 7px", fontSize: 11, fontWeight: 600 }}>
                             {c.tono}
                           </span>
                         )}
                         {idsConAcordes.includes(c.id) && (
-                          <span style={{ background: "rgba(251,191,36,0.1)", color: "#fcd34d", borderRadius: 5, padding: "1px 7px", fontSize: 11, fontWeight: 600 }}>
+                          <span style={{ background: "rgba(251,191,36,0.1)", color: "#fcd34d", border: "1px solid rgba(251,191,36,0.25)", borderRadius: 5, padding: "1px 7px", fontSize: 11, fontWeight: 600 }}>
                             🎸 Acordes
                           </span>
                         )}

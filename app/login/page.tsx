@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
-
 import { Suspense } from "react"
 
 function LoginContent() {
@@ -12,29 +11,37 @@ function LoginContent() {
   const [enviado, setEnviado] = useState(false)
   const [cargando, setCargando] = useState(false)
   const [error, setError] = useState("")
+  const [isApk, setIsApk] = useState(false)
 
-  // Mostrar error si viene redirigido desde callback con error
   useEffect(() => {
+    // Detectar si corre en APK
+    setIsApk(!!(window as any).Capacitor)
+
     const err = searchParams.get("error")
     if (err === "no_token")   setError("El link de acceso no es válido.")
     if (err === "no_session") setError("No se pudo leer la sesión del link.")
     if (err === "session")    setError("El link expiró o ya fue usado. Solicita uno nuevo.")
   }, [searchParams])
 
-  // ✅ Nunca hardcodear IPs — funciona en local, red local y producción
   const getRedirectUrl = () => {
     if (typeof window === "undefined") return "/auth/callback"
+    if (!!(window as any).Capacitor) return "com.tuiglesia.cancionero://auth/callback"
     return `${window.location.origin}/auth/callback`
   }
 
   const loginGoogle = async () => {
     setError("")
     setCargando(true)
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: getRedirectUrl() }
-    })
-    if (error) { setError(error.message); setCargando(false) }
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: getRedirectUrl() }
+      })
+      if (error) { setError(error.message); setCargando(false) }
+    } catch (e: any) {
+      setError(e.message)
+      setCargando(false)
+    }
   }
 
   const loginEmail = async () => {
@@ -51,22 +58,35 @@ function LoginContent() {
     setEnviado(true)
   }
 
-  // ── Pantalla de confirmación ──────────────────────────────────────────────
+  // ── Pantalla enviado ──────────────────────────────────────────────────────
   if (enviado) {
     return (
       <div style={s.root}>
         <Glow />
-        <div style={{ ...s.card, maxWidth: 400, textAlign: "center", padding: "36px 28px" }}>
-          <div style={s.iconWrap}>📬</div>
-          <h2 style={{ margin: "20px 0 10px", fontSize: 22, fontWeight: 800 }}>
+        <div style={{ ...s.card, maxWidth: 400, textAlign: "center", padding: "40px 28px" }}>
+          {/* Logo Selah Live */}
+          <div style={s.logoIcon}>
+            <div style={s.logoBarra} />
+            <div style={s.logoBarra} />
+            <div style={s.logoPoint} />
+          </div>
+          <div style={{ fontSize: 40, margin: "24px 0 12px" }}>📬</div>
+          <h2 style={{ margin: "0 0 10px", fontSize: 22, fontWeight: 800 }}>
             Revisa tu correo
           </h2>
-          <p style={{ opacity: 0.6, lineHeight: 1.65, fontSize: 14, margin: "0 0 28px" }}>
+          <p style={{ opacity: 0.6, lineHeight: 1.65, fontSize: 14, margin: "0 0 10px" }}>
             Enviamos un link mágico a{" "}
             <strong style={{ color: "#93c5fd" }}>{email}</strong>.
-            <br />Haz clic en él para ingresar.
           </p>
-          <p style={{ opacity: 0.4, fontSize: 12, margin: "0 0 20px", lineHeight: 1.5 }}>
+          <p style={{ opacity: 0.5, fontSize: 13, margin: "0 0 8px", lineHeight: 1.6 }}>
+            Haz clic en el link para ingresar.
+          </p>
+          {isApk && (
+            <p style={{ opacity: 0.4, fontSize: 12, margin: "0 0 24px", lineHeight: 1.5, padding: "10px 14px", background: "rgba(59,130,246,0.08)", borderRadius: 10, border: "1px solid rgba(59,130,246,0.15)" }}>
+              💡 Al hacer clic en el link del correo, la app se abrirá automáticamente
+            </p>
+          )}
+          <p style={{ opacity: 0.4, fontSize: 12, margin: "0 0 20px" }}>
             ¿No llegó? Revisa spam o espera unos segundos.
           </p>
           <button
@@ -84,20 +104,26 @@ function LoginContent() {
   return (
     <div style={s.root}>
       <Glow />
-
       <div style={s.wrapper}>
-        {/* Marca */}
+
+        {/* ── Logo Selah Live ── */}
         <div style={{ textAlign: "center" }}>
-          <div style={s.iconWrap}>🎵</div>
-          <h1 style={{ margin: "14px 0 5px", fontSize: "clamp(22px,5vw,30px)", fontWeight: 900, letterSpacing: "-0.02em" }}>
-            Cancionero
+          <div style={s.logoWrap}>
+            <div style={s.logoIcon}>
+              <div style={s.logoBarra} />
+              <div style={s.logoBarra} />
+              <div style={s.logoPoint} />
+            </div>
+          </div>
+          <h1 style={{ margin: "16px 0 4px", fontSize: "clamp(26px,5vw,34px)", fontWeight: 900, letterSpacing: "-0.03em" }}>
+            Selah <span style={{ fontWeight: 300, color: "#3b82f6", letterSpacing: "0.05em", fontSize: "0.75em" }}>LIVE</span>
           </h1>
-          <p style={{ opacity: 0.45, fontSize: 13, margin: 0 }}>
-            Plataforma de culto para iglesias
+          <p style={{ opacity: 0.4, fontSize: 13, margin: 0 }}>
+            Proyección para iglesias
           </p>
         </div>
 
-        {/* Card */}
+        {/* ── Card ── */}
         <div style={{ ...s.card, width: "100%" }}>
           <h2 style={{ margin: "0 0 3px", fontSize: 18, fontWeight: 800 }}>
             Iniciar sesión
@@ -106,22 +132,24 @@ function LoginContent() {
             Bienvenido de vuelta
           </p>
 
-          {/* Google */}
-          <button
-            onClick={loginGoogle}
-            disabled={cargando}
-            style={{ ...s.btnGoogle, opacity: cargando ? 0.6 : 1 }}
-          >
-            <GoogleIcon />
-            Continuar con Google
-          </button>
-
-          {/* Divisor */}
-          <div style={s.divider}>
-            <div style={s.dividerLine} />
-            <span style={s.dividerText}>o</span>
-            <div style={s.dividerLine} />
-          </div>
+          {/* Google — solo en web */}
+          {(
+            <>
+              <button
+                onClick={loginGoogle}
+                disabled={cargando}
+                style={{ ...s.btnGoogle, opacity: cargando ? 0.6 : 1 }}
+              >
+                <GoogleIcon />
+                Continuar con Google
+              </button>
+              <div style={s.divider}>
+                <div style={s.dividerLine} />
+                <span style={s.dividerText}>o</span>
+                <div style={s.dividerLine} />
+              </div>
+            </>
+          )}
 
           {/* Email */}
           <div style={{ marginBottom: 12 }}>
@@ -139,14 +167,10 @@ function LoginContent() {
             />
           </div>
 
-          {/* Error */}
           {error && (
-            <div style={s.errorBox}>
-              ⚠️ {error}
-            </div>
+            <div style={s.errorBox}>⚠️ {error}</div>
           )}
 
-          {/* Submit */}
           <button
             onClick={loginEmail}
             disabled={cargando || !email.trim()}
@@ -160,12 +184,15 @@ function LoginContent() {
           </button>
 
           <p style={{ margin: "14px 0 0", fontSize: 12, opacity: 0.38, textAlign: "center", lineHeight: 1.5 }}>
-            Te enviaremos un link sin contraseña. Solo haz clic para entrar.
+            {isApk
+              ? "Recibirás un link en tu correo. Al hacer clic, la app se abrirá automáticamente."
+              : "Te enviaremos un link sin contraseña. Solo haz clic para entrar."
+            }
           </p>
         </div>
 
-        <p style={{ fontSize: 11, opacity: 0.25, textAlign: "center", margin: 0 }}>
-          Al continuar aceptas los términos de uso.
+        <p style={{ fontSize: 11, opacity: 0.2, textAlign: "center", margin: 0 }}>
+          Selah Live · Proyección para iglesias
         </p>
       </div>
     </div>
@@ -176,18 +203,8 @@ function LoginContent() {
 
 const Glow = () => (
   <>
-    <div style={{
-      position: "absolute", top: -150, left: -150,
-      width: 500, height: 500, borderRadius: "50%",
-      background: "radial-gradient(circle, rgba(59,130,246,0.13) 0%, transparent 70%)",
-      pointerEvents: "none"
-    }} />
-    <div style={{
-      position: "absolute", bottom: -100, right: -100,
-      width: 400, height: 400, borderRadius: "50%",
-      background: "radial-gradient(circle, rgba(99,102,241,0.10) 0%, transparent 70%)",
-      pointerEvents: "none"
-    }} />
+    <div style={{ position: "absolute", top: -150, left: -150, width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(59,130,246,0.13) 0%, transparent 70%)", pointerEvents: "none" }} />
+    <div style={{ position: "absolute", bottom: -100, right: -100, width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(99,102,241,0.10) 0%, transparent 70%)", pointerEvents: "none" }} />
   </>
 )
 
@@ -205,127 +222,91 @@ const GoogleIcon = () => (
 const s: Record<string, React.CSSProperties> = {
   root: {
     minHeight: "100dvh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "#060d1a",
-    color: "white",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    background: "#060d1a", color: "white",
     fontFamily: "'Segoe UI', system-ui, sans-serif",
-    position: "relative",
-    overflow: "hidden",
-    padding: "20px 16px",
-    boxSizing: "border-box"
+    position: "relative", overflow: "hidden",
+    padding: "20px 16px", boxSizing: "border-box"
   },
   wrapper: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 24,
-    width: "100%",
-    maxWidth: 400,
-    position: "relative",
-    zIndex: 1
+    display: "flex", flexDirection: "column", alignItems: "center",
+    gap: 24, width: "100%", maxWidth: 400,
+    position: "relative", zIndex: 1
+  },
+  logoWrap: {
+    display: "flex", justifyContent: "center"
+  },
+  logoIcon: {
+    width: 72, height: 72,
+    borderRadius: 20,
+    background: "linear-gradient(135deg, #3b82f6, #6366f1)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    gap: 10, position: "relative"
+  },
+  logoBarra: {
+    width: 12, height: 36,
+    borderRadius: 6,
+    background: "white"
+  },
+  logoPoint: {
+    position: "absolute",
+    top: 10, right: 10,
+    width: 14, height: 14,
+    borderRadius: "50%",
+    background: "#22c55e",
+    border: "3px solid white"
   },
   card: {
     background: "rgba(17,27,46,0.96)",
     border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 20,
-    padding: "26px 24px 22px",
+    borderRadius: 20, padding: "26px 24px 22px",
     backdropFilter: "blur(12px)",
     boxShadow: "0 24px 60px rgba(0,0,0,0.4)"
   },
-  iconWrap: {
-    width: 64, height: 64,
-    borderRadius: 18,
-    background: "rgba(59,130,246,0.12)",
-    border: "1px solid rgba(59,130,246,0.22)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    margin: "0 auto",
-    fontSize: 30
-  },
   label: {
-    display: "block",
-    fontSize: 11,
-    fontWeight: 700,
-    letterSpacing: "0.08em",
-    textTransform: "uppercase" as const,
-    color: "rgba(240,244,255,0.45)",
-    marginBottom: 7
+    display: "block", fontSize: 11, fontWeight: 700,
+    letterSpacing: "0.08em", textTransform: "uppercase" as const,
+    color: "rgba(240,244,255,0.45)", marginBottom: 7
   },
   input: {
-    width: "100%",
-    padding: "13px 14px",
-    background: "#0a1525",
-    color: "white",
+    width: "100%", padding: "13px 14px",
+    background: "#0a1525", color: "white",
     border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 12,
-    fontSize: 16, // ✅ 16px evita zoom automático en iOS Safari
-    outline: "none",
+    borderRadius: 12, fontSize: 16, outline: "none",
     boxSizing: "border-box" as const
   },
   errorBox: {
     background: "rgba(239,68,68,0.10)",
     border: "1px solid rgba(239,68,68,0.25)",
-    borderRadius: 10,
-    padding: "10px 14px",
-    fontSize: 13,
-    color: "#fca5a5",
-    marginBottom: 12,
-    lineHeight: 1.5
+    borderRadius: 10, padding: "10px 14px",
+    fontSize: 13, color: "#fca5a5",
+    marginBottom: 12, lineHeight: 1.5
   },
   btnGoogle: {
-    width: "100%",
-    padding: "13px 16px",
-    background: "white",
-    color: "#1a1a2e",
-    border: "none",
-    borderRadius: 12,
-    fontSize: 15,
-    fontWeight: 700,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10
+    width: "100%", padding: "13px 16px",
+    background: "white", color: "#1a1a2e",
+    border: "none", borderRadius: 12,
+    fontSize: 15, fontWeight: 700, cursor: "pointer",
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 10
   },
   btnPrimary: {
-    width: "100%",
-    padding: "13px 16px",
+    width: "100%", padding: "13px 16px",
     background: "linear-gradient(135deg, #3b82f6, #6366f1)",
-    color: "white",
-    border: "none",
-    borderRadius: 12,
-    fontSize: 15,
-    fontWeight: 700,
+    color: "white", border: "none", borderRadius: 12,
+    fontSize: 15, fontWeight: 700,
     boxShadow: "0 8px 24px rgba(59,130,246,0.22)"
   },
   btnSecondary: {
     padding: "11px 22px",
-    background: "rgba(255,255,255,0.07)",
-    color: "white",
+    background: "rgba(255,255,255,0.07)", color: "white",
     border: "1px solid rgba(255,255,255,0.10)",
-    borderRadius: 12,
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: "pointer"
+    borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: "pointer"
   },
   divider: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    margin: "18px 0"
+    display: "flex", alignItems: "center", gap: 12, margin: "18px 0"
   },
-  dividerLine: {
-    flex: 1, height: 1,
-    background: "rgba(255,255,255,0.07)"
-  },
-  dividerText: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.28)",
-    fontWeight: 600
-  }
+  dividerLine: { flex: 1, height: 1, background: "rgba(255,255,255,0.07)" },
+  dividerText: { fontSize: 12, color: "rgba(255,255,255,0.28)", fontWeight: 600 }
 }
 
 export default function LoginPage() {

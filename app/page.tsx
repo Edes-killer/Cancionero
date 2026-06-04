@@ -13,6 +13,8 @@ const VERSICULOS = [
   { texto: "Jehová es mi fortaleza y mi cántico, y ha sido mi salvación.", cita: "Éxodo 15:2" },
 ]
 
+
+
 export default function InicioPage() {
   const router = useRouter()
 
@@ -23,7 +25,7 @@ export default function InicioPage() {
   const [logoUrl, setLogoUrl] = useState("")
   const [iglesiaActivaId, setIglesiaActivaIdState] = useState("")
   const [iglesiasUsuario, setIglesiasUsuario] = useState<any[]>([])
-
+  
   // Stats
   const [totalCanciones, setTotalCanciones] = useState(0)
   const [totalConAcordes, setTotalConAcordes] = useState(0)
@@ -32,9 +34,14 @@ export default function InicioPage() {
   const [ultimoCulto, setUltimoCulto] = useState<any>(null)
   const [topCancionesMes, setTopCancionesMes] = useState<any[]>([])
   const [totalProyeccionesMes, setTotalProyeccionesMes] = useState(0)
-
   const versiculo = VERSICULOS[new Date().getDate() % VERSICULOS.length]
 
+  useEffect(() => {
+  const ip = localStorage.getItem("servidor_ip")
+  if (!ip && window.navigator.userAgent.includes("CapacitorWebView")) {
+    router.push("/configurar-servidor")
+  }
+}, [])
   useEffect(() => {
     const cargar = async () => {
       try {

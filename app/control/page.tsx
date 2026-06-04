@@ -3,11 +3,11 @@
 "use client"
 
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react"
-
+import { getSocketUrl } from "@/lib/servidor"
 import { supabase } from "@/lib/supabase"
 import { io } from "socket.io-client"
 import { getIglesiaId } from "../../lib/getIglesia"
-import { get } from "http"
+import { useRouter } from "next/navigation"
 
 export default function ControlPage() {
   const [socket, setSocket] = useState<any>(null)
@@ -31,6 +31,23 @@ export default function ControlPage() {
   const [paginasBiblia, setPaginasBiblia] = useState<string[]>([])
   const [paginaBibliaActual, setPaginaBibliaActual] = useState(0)
   const [nombreIglesia, setNombreIglesia] = useState("")
+  // ✅ FIX: iglesiaId cacheado en ref para evitar múltiples llamadas
+  // concurrentes a supabase.auth.getUser() que causan lock conflicts
+  const iglesiaIdRef = useRef<string | null | undefined>(undefined)
+  const getIglesiaIdCached = async (): Promise<string | null> => {
+    if (iglesiaIdRef.current !== undefined) return iglesiaIdRef.current
+    const id = await getIglesiaId()
+    iglesiaIdRef.current = id
+    return id
+  }
+
+  // ✅ Cache de partes: Map<cancion_id, partes[]>
+  // Evita fetch a Supabase cada vez que se proyecta una canción
+  const partesCacheRef = useRef<Map<string, any[]>>(new Map())
+
+  const nombreIglesiaRef = useRef("")
+  const logoEsperaUrlRef = useRef("")
+
   const listaRef = useRef(lista)
   const indiceListaRef = useRef(indiceLista)
   const indexRef = useRef(index)
@@ -64,7 +81,23 @@ export default function ControlPage() {
   const [iglesiaIdActual, setIglesiaIdActual] = useState<string | null>(null)
   const [fondoCancionConfigLista, setFondoCancionConfigLista] = useState(false)
   const [modalGuardar, setModalGuardar] = useState(false)
+// ── Preview panel ─────────────────────────────────────────────────
+const [previewCancion, setPreviewCancion] = useState<any>(null)
+const [previewPartes, setPreviewPartes] = useState<any[]>([])
+const [previewIndex, setPreviewIndex] = useState(0)
+const [previewModoMusico, setPreviewModoMusico] = useState(false)
+const [tabDerechaMobile, setTabDerechaMobile] = useState<"lista"|"preview">("lista")
+// ── Visor Mobile Fullscreen ──────────────────────────────────────────
+const [visorAbierto, setVisorAbierto] = useState(false)
+const [visorPartes, setVisorPartes] = useState<any[]>([])
+const [visorIndex, setVisorIndex] = useState(0)
+const [visorModoMusico, setVisorModoMusico] = useState(false)
+const [visorTitulo, setVisorTitulo] = useState("")
+const [visorTono, setVisorTono] = useState("")
+const [visorSemitonos, setVisorSemitonos] = useState(0)
+const [visorFormatoAmericano, setVisorFormatoAmericano] = useState(false)
 const [nombreModal, setNombreModal] = useState("")
+const router = useRouter()
 const fondosCancionPreset = [
   {
     id: "cielo-dorado",
@@ -99,10 +132,23 @@ const fondosCancionPreset = [
 ]
   
 useEffect(() => {
-  const s = io("http://" + window.location.hostname + ":4000")
+  document.body.style.overflow = "hidden"
+  return () => { document.body.style.overflow = "" }
+}, [])
 
+useEffect(() => {
+  // Si es APK y no tiene IP configurada, ir a configuración
+if ((window as any).Capacitor) {
+  const ip = localStorage.getItem("servidor_ip")
+  if (!ip) {
+    router.replace("/configurar-servidor")
+    return
+  }
+}
+// ...
+const s = io(getSocketUrl())
   s.on("connect", async () => {
-  const sala = (await getIglesiaId()) || "global"
+  const sala = (await getIglesiaIdCached()) || "global"
 
   console.log("🔥 SOCKET CONECTADO A SALA:", sala)
 
@@ -115,6 +161,19 @@ useEffect(() => {
 
   s.on("cancion-activa", (data: any) => {
     setActivaId(data.id)
+  })
+
+  // ✅ Cuando proyectar se abre, responde con el estado activo en control
+  s.on("proyectar-solicita-estado", () => {
+    const partes = partesRef.current
+    const index = indexRef.current
+    if (partes.length === 0) return // nada activo, proyectar queda en negro
+    s.emit("reenviar-estado-a-proyectar", {
+      partes,
+      index,
+      iglesia: nombreIglesiaRef.current || "",
+      logo_marca_url: logoEsperaUrlRef.current || "",
+    })
   })
 
   const onSiguiente = async () => {
@@ -137,6 +196,7 @@ useEffect(() => {
   }
 }, [])
 
+
  useEffect(() => {
   if (listaIdActual) {
     cargarLista()
@@ -151,7 +211,9 @@ useEffect(() => {
   paginasBibliaRef.current = paginasBiblia
   paginaBibliaActualRef.current = paginaBibliaActual
   loopCoroRef.current = loopCoro
-}, [lista, indiceLista, index, partes, paginasBiblia, paginaBibliaActual, loopCoro])
+  nombreIglesiaRef.current = nombreIglesia
+  logoEsperaUrlRef.current = logoEsperaUrl
+}, [lista, indiceLista, index, partes, paginasBiblia, paginaBibliaActual, loopCoro, nombreIglesia, logoEsperaUrl])
 
 useEffect(() => {
   let activo = true
@@ -160,6 +222,10 @@ useEffect(() => {
     try {
       setCargandoControl(true)
       setMensajeCargaControl("Cargando canciones y cultos...")
+
+      // ✅ FIX: obtener iglesiaId UNA sola vez antes de las llamadas paralelas
+      // para evitar que múltiples getUser() compitan por el auth lock de Supabase
+      await getIglesiaIdCached()
 
       await Promise.all([
         cargarCanciones(),
@@ -245,7 +311,7 @@ const cargarLista = async () => {
 }
 
 const cargarCanciones = async () => {
-  const igId = await getIglesiaId()
+  const igId = await getIglesiaIdCached()
   const { data, error } = await supabase.from("canciones").select("*").or(`iglesia_id.eq.${igId},iglesia_id.is.null`)
   if (error) {
     console.error("Error cargando canciones:", error)
@@ -274,7 +340,7 @@ const cargarCanciones = async () => {
 
 
   const cargarNombreIglesia = async () => {
-  const iglesiaId = await getIglesiaId()
+  const iglesiaId = await getIglesiaIdCached()
 
   if (!iglesiaId) {
     setFondoCancionConfigLista(true)
@@ -349,7 +415,7 @@ const registrarProyeccionCancion = async (cancion: any) => {
   if (!cancion?.id) return
 
   try {
-    const iglesiaId = await getIglesiaId()
+    const iglesiaId = await getIglesiaIdCached()
 
     await supabase.from("historial_proyecciones").insert({
       iglesia_id: iglesiaId,
@@ -363,6 +429,37 @@ const registrarProyeccionCancion = async (cancion: any) => {
   } catch (error) {
     console.error("Error registrando historial:", error)
   }
+}
+
+// ✅ Helper: obtiene partes desde cache o Supabase
+const getPartesCancion = async (cancionId: string): Promise<any[]> => {
+  if (partesCacheRef.current.has(cancionId)) {
+    return partesCacheRef.current.get(cancionId)!
+  }
+  const { data, error } = await supabase
+    .from("partes_cancion")
+    .select("*")
+    .eq("cancion_id", cancionId)
+    .order("orden")
+  if (error) { console.error(error); return [] }
+  const partes = data || []
+  partesCacheRef.current.set(cancionId, partes)
+  return partes
+}
+
+// ✅ Precarga partes de todas las canciones de la lista en segundo plano
+const precargarPartesLista = (items: any[]) => {
+  const ids = items.filter(i => i.tipo === "cancion" && i.id).map(i => i.id)
+  if (ids.length === 0) return
+  // Precarga secuencial para no saturar Supabase
+  const precargar = async () => {
+    for (const id of ids) {
+      if (!partesCacheRef.current.has(id)) {
+        await getPartesCancion(id)
+      }
+    }
+  }
+  precargar()
 }
 
 const proyectar = async (id: string) => {
@@ -379,14 +476,11 @@ const proyectar = async (id: string) => {
 
   const cancion = canciones.find(c => c.id === id)
 
-  const { data, error } = await supabase
-    .from("partes_cancion")
-    .select("*")
-    .eq("cancion_id", id)
-    .order("orden")
+  // ✅ Desde cache — sin esperar red
+  const data = await getPartesCancion(id)
 
-  if (error) {
-    console.error(error)
+  if (!data.length && !cancion) {
+    console.error("No se encontraron partes para la canción")
     return
   }
 
@@ -400,7 +494,7 @@ const proyectar = async (id: string) => {
 
   setPartes(data || [])
   setIndex(0)
-  await registrarProyeccionCancion(cancion)
+  registrarProyeccionCancion(cancion) // ✅ fire & forget — no bloquea el socket
   socket.emit("cargar-cancion", {
   partes: data,
   index: 0,
@@ -412,6 +506,82 @@ const proyectar = async (id: string) => {
 })
 
   socket.emit("cancion-activa", { id })
+}
+
+// ── Helpers transposición ───────────────────────────────────────────
+const ESCALA_LATINA  = ["Do","Do#","Re","Re#","Mi","Fa","Fa#","Sol","Sol#","La","La#","Si"]
+const ESCALA_AMERICANA = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
+const BEMOLES_LAT = ["Do","Reb","Re","Mib","Mi","Fa","Solb","Sol","Lab","La","Sib","Si"]
+const BEMOLES_AME = ["C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B"]
+
+const transponerAcorde = (acorde: string, semitonos: number, americano: boolean): string => {
+  const mapaIdx: Record<string,number> = {}
+  ESCALA_LATINA.forEach((n,i) => { mapaIdx[n]=i; mapaIdx[n.toLowerCase()]=i })
+  BEMOLES_LAT.forEach((n,i) => { if(n!==ESCALA_LATINA[i]) mapaIdx[n]=i })
+  ESCALA_AMERICANA.forEach((n,i) => { mapaIdx[n]=i; mapaIdx[n.toLowerCase()]=i })
+  BEMOLES_AME.forEach((n,i) => { if(n!==ESCALA_AMERICANA[i]) mapaIdx[n]=i })
+  
+  // Extraer base del acorde (ej: "Solm7" → base="Sol", sufijo="m7")
+  const match = acorde.match(/^(Do#|Do|Re#|Reb|Re|Mib|Mi|Fa#|Solb|Sol#|Sol|Lab|La#|La|Sib|Si|C#|Cb|Db|D#|D|Eb|E|Fb|F#|Gb|G#|Ab|A#|Bb|B|[A-G])(.*)/i)
+  if (!match) return acorde
+  const base = match[1]
+  const sufijo = match[2] || ""
+  const idx = mapaIdx[base] ?? mapaIdx[base.charAt(0).toUpperCase() + base.slice(1).toLowerCase()]
+  if (idx === undefined) return acorde
+  const newIdx = ((idx + semitonos) % 12 + 12) % 12
+  const escala = americano ? ESCALA_AMERICANA : ESCALA_LATINA
+  return escala[newIdx] + sufijo
+}
+
+const transponerTexto = (texto: string, semitonos: number, americano: boolean): string => {
+  if (semitonos === 0 && !americano && !texto.match(/\[[A-G][^a-z]/)) return texto
+  // Reemplazar acordes en corchetes [Do] → [Re]
+  let result = texto.replace(/\[([^\]]+)\]/g, (_,a) => "[" + transponerAcorde(a, semitonos, americano) + "]")
+  // Reemplazar acordes en líneas separadas (formato linea)
+  result = result.split("\n").map(linea => {
+    const tokens = linea.trim().split(/\s+/)
+    const soloAcordes = tokens.length > 0 && tokens.every((t:string) => 
+      t.match(/^(Do#?|Reb?|Re#?|Mib?|Mi|Fa#?|Solb?|Sol#?|Lab?|La#?|Sib?|Si|[A-G])(b|#)?(m|maj|min|sus|dim|aug)?\d*(\/[A-G])?$/)
+    )
+    if (soloAcordes && linea.trim()) {
+      return linea.split(/\s+/).map((t:string) => 
+        t ? transponerAcorde(t, semitonos, americano) : t
+      ).join(" ")
+    }
+    return linea
+  }).join("\n")
+  return result
+}
+
+const cargarPreview = async (c: any) => {
+  setPreviewCancion(c)
+  setPreviewIndex(0)
+  if (isMobile) setTabDerechaMobile("preview")
+  // Si ya está en caché → mostrar instantáneamente
+  if (partesCacheRef.current.has(c.id)) {
+    setPreviewPartes(partesCacheRef.current.get(c.id)!)
+    return
+  }
+  setPreviewPartes([]) // Mostrar "Cargando..." mientras llega
+  const data = await getPartesCancion(c.id)
+  setPreviewPartes(data || [])
+}
+
+const abrirVisor = async (c: any) => {
+  setVisorTitulo(c.titulo || "")
+  setVisorTono(c.tono || "")
+  setVisorIndex(0)
+  setVisorSemitonos(0)
+  setVisorFormatoAmericano(false)
+  setVisorAbierto(true)
+  // Si ya está en caché → mostrar instantáneamente
+  if (partesCacheRef.current.has(c.id)) {
+    setVisorPartes(partesCacheRef.current.get(c.id)!)
+    return
+  }
+  setVisorPartes([])
+  const data = await getPartesCancion(c.id)
+  setVisorPartes(data || [])
 }
 
 const partirEnPaginasCliente = (texto: string, maxChars = 650) => {
@@ -652,6 +822,22 @@ const eliminarDeLista = async (index: number) => {
     .eq("id", itemBD.id)
 }
 
+// ✅ Helper: convierte un item de lista en fila para items_lista
+const itemAFila = (item: any, i: number, listaId: string) => ({
+  lista_id: listaId,
+  orden: i,
+  cancion_id: item.tipo === "cancion" ? item.id : null,
+  tipo: item.tipo,
+  imagen_url: item.tipo === "imagen" ? item.url : null,
+  referencia_biblica: item.tipo === "biblia" ? item.referencia : null,
+  texto_biblico: item.tipo === "biblia" ? item.texto : null,
+  estado_modo: item.tipo === "estado" ? item.modo : null,
+  estado_titulo: item.tipo === "estado" ? item.titulo : null,
+  estado_subtitulo: item.tipo === "estado" ? item.subtitulo : null,
+  estado_url: item.tipo === "estado" ? item.url : null
+})
+
+
 const guardarCulto = async () => {
   if (lista.length === 0) {
     alert("No hay elementos en la lista de culto para guardar.")
@@ -680,27 +866,13 @@ const guardarCulto = async () => {
       return
     }
 
-    const inserts = lista.map((item, i) =>
-      supabase.from("items_lista").insert({
-        lista_id: listaIdActual,
-        orden: i,
-        cancion_id: item.tipo === "cancion" ? item.id : null,
-        tipo: item.tipo,
-        imagen_url: item.tipo === "imagen" ? item.url : null,
-        referencia_biblica: item.tipo === "biblia" ? item.referencia : null,
-        texto_biblico: item.tipo === "biblia" ? item.texto : null,
-        estado_modo: item.tipo === "estado" ? item.modo : null,
-        estado_titulo: item.tipo === "estado" ? item.titulo : null,
-        estado_subtitulo: item.tipo === "estado" ? item.subtitulo : null,
-        estado_url: item.tipo === "estado" ? item.url : null
-      })
-    )
+    // ✅ Batch insert: una sola llamada en vez de N paralelas
+    const { error: errorInsert } = await supabase
+      .from("items_lista")
+      .insert(lista.map((item, i) => itemAFila(item, i, listaIdActual!)))
 
-    const resultados = await Promise.all(inserts)
-    const errorInsert = resultados.find(r => r.error)
-
-    if (errorInsert?.error) {
-      console.error("Error insertando items:", errorInsert.error)
+    if (errorInsert) {
+      console.error("Error insertando items:", errorInsert)
       alert("No se pudieron guardar todos los elementos del culto")
       return
     }
@@ -709,7 +881,7 @@ const guardarCulto = async () => {
     alert("✅ Lista de culto actualizada correctamente")
   } else {
     // CREAR CULTO NUEVO
-    const iglesiaId = await getIglesiaId()
+    const iglesiaId = await getIglesiaIdCached()
 
     const { data, error } = await supabase
       .from("listas_culto")
@@ -729,27 +901,13 @@ const guardarCulto = async () => {
     const nuevaId = data.id
     listaIdFinal = nuevaId
 
-    const inserts = lista.map((item, i) =>
-      supabase.from("items_lista").insert({
-        lista_id: nuevaId,
-        orden: i,
-        cancion_id: item.tipo === "cancion" ? item.id : null,
-        tipo: item.tipo,
-        imagen_url: item.tipo === "imagen" ? item.url : null,
-        referencia_biblica: item.tipo === "biblia" ? item.referencia : null,
-        texto_biblico: item.tipo === "biblia" ? item.texto : null,
-        estado_modo: item.tipo === "estado" ? item.modo : null,
-        estado_titulo: item.tipo === "estado" ? item.titulo : null,
-        estado_subtitulo: item.tipo === "estado" ? item.subtitulo : null,
-        estado_url: item.tipo === "estado" ? item.url : null
-      })
-    )
+    // ✅ Batch insert
+    const { error: errorInsert } = await supabase
+      .from("items_lista")
+      .insert(lista.map((item, i) => itemAFila(item, i, nuevaId)))
 
-    const resultados = await Promise.all(inserts)
-    const errorInsert = resultados.find(r => r.error)
-
-    if (errorInsert?.error) {
-      console.error("Error insertando items:", errorInsert.error)
+    if (errorInsert) {
+      console.error("Error insertando items:", errorInsert)
       alert("El culto se creó, pero falló el guardado de elementos")
       return
     }
@@ -771,7 +929,7 @@ const guardarCultoComoCopia = async () => {
   const nombre = prompt("Nombre de la copia", `${nombreBase} (copia)`)
   if (!nombre) return
 
-  const iglesiaId = await getIglesiaId()
+  const iglesiaId = await getIglesiaIdCached()
 
   const { data, error } = await supabase
     .from("listas_culto")
@@ -790,27 +948,13 @@ const guardarCultoComoCopia = async () => {
 
   const nuevaId = data.id
 
-  const inserts = lista.map((item, i) =>
-    supabase.from("items_lista").insert({
-      lista_id: nuevaId,
-      orden: i,
-      cancion_id: item.tipo === "cancion" ? item.id : null,
-      tipo: item.tipo,
-      imagen_url: item.tipo === "imagen" ? item.url : null,
-      referencia_biblica: item.tipo === "biblia" ? item.referencia : null,
-      texto_biblico: item.tipo === "biblia" ? item.texto : null,
-      estado_modo: item.tipo === "estado" ? item.modo : null,
-      estado_titulo: item.tipo === "estado" ? item.titulo : null,
-      estado_subtitulo: item.tipo === "estado" ? item.subtitulo : null,
-      estado_url: item.tipo === "estado" ? item.url : null
-    })
-  )
+  // ✅ Batch insert
+  const { error: errorInsert } = await supabase
+    .from("items_lista")
+    .insert(lista.map((item, i) => itemAFila(item, i, nuevaId)))
 
-  const resultados = await Promise.all(inserts)
-  const errorInsert = resultados.find(r => r.error)
-
-  if (errorInsert?.error) {
-    console.error("Error copiando items:", errorInsert.error)
+  if (errorInsert) {
+    console.error("Error copiando items:", errorInsert)
     alert("La copia se creó, pero falló el guardado de elementos")
     return
   }
@@ -851,7 +995,7 @@ const duplicarCulto = async (culto: any) => {
   )
   if (!nuevoNombre || !nuevoNombre.trim()) return
 
-  const iglesiaId = await getIglesiaId()
+  const iglesiaId = await getIglesiaIdCached()
 
   const { data: nuevoCulto, error: errorCulto } = await supabase
     .from("listas_culto")
@@ -911,10 +1055,16 @@ const duplicarCulto = async (culto: any) => {
 }
 
 const cargarCultos = async () => {
-  const { data, error } = await supabase
+  const igId = await getIglesiaIdCached()
+  const query = supabase
     .from("listas_culto")
     .select("*")
     .order("fecha", { ascending: false })
+
+  // ✅ Filtrar por iglesia si hay sesión activa
+  if (igId) query.eq("iglesia_id", igId)
+
+  const { data, error } = await query
 
   if (data) setCultos(data)
 }
@@ -1010,6 +1160,7 @@ const cargarListaDesdeBD = async (id: string) => {
   })
 
   setLista(listaOrdenada)
+  precargarPartesLista(listaOrdenada) // ✅ precarga partes en segundo plano
   setIndiceLista(null)
   setIndiceActivoLista(null)
   setActivaId(null)
@@ -1078,18 +1229,8 @@ const irAItemLista = async (i: number, alFinal = false) => {
   return
 }
 
-  const { data, error } = await supabase
-    .from("partes_cancion")
-    .select("*")
-    .eq("cancion_id", item.id)
-    .order("orden")
-
-  if (error) {
-    console.error(error)
-    return
-  }
-
-  const partesCancion = data || []
+  // ✅ Desde cache — sin esperar red
+  const partesCancion = await getPartesCancion(item.id)
   const parteInicial = alFinal ? Math.max(0, partesCancion.length - 1) : 0
 
   setActivaId(item.id)
@@ -1098,7 +1239,7 @@ const irAItemLista = async (i: number, alFinal = false) => {
   setIndex(parteInicial)
 
   const cancion = canciones.find(c => c.id === item.id)
-  await registrarProyeccionCancion(cancion || item)
+  registrarProyeccionCancion(cancion || item) // ✅ fire & forget
   socket.emit("cargar-cancion", {
   partes: partesCancion,
   index: parteInicial,
@@ -1274,7 +1415,7 @@ const subirLogoEspera = async (file: File) => {
   const resultado = await subirImagen(file)
   if (!resultado?.url) return
 
-  const iglesiaId = await getIglesiaId()
+  const iglesiaId = await getIglesiaIdCached()
   if (!iglesiaId) {
     alert("No se encontró la iglesia actual")
     return
@@ -1643,20 +1784,37 @@ const cancionesFiltradas = useMemo(() => {
 const scrollCancionesRef = useRef<HTMLDivElement | null>(null)
 const [scrollTopCanciones, setScrollTopCanciones] = useState(0)
 
-const ALTURA_ITEM_CANCION = 78
-const OVERSCAN_CANCIONES = 8
+const ALTURA_ITEM_CANCION = 64
+const OVERSCAN_CANCIONES = 5
 
 const inicioVirtualCanciones = Math.max(
   0,
   Math.floor(scrollTopCanciones / ALTURA_ITEM_CANCION) - OVERSCAN_CANCIONES
 )
 
-const cantidadVisibleCanciones = 12
+const cantidadVisibleCanciones = 15
 
 const finVirtualCanciones = Math.min(
   cancionesFiltradas.length,
   inicioVirtualCanciones + cantidadVisibleCanciones + OVERSCAN_CANCIONES * 2
 )
+
+// ── Precarga en background las primeras 50 canciones visibles ──────
+useEffect(() => {
+  let cancelado = false
+  const precargar = async () => {
+    const primeras = cancionesFiltradas.slice(0, 50)
+    for (const c of primeras) {
+      if (cancelado) break
+      if (!partesCacheRef.current.has(c.id)) {
+        await getPartesCancion(c.id)
+        await new Promise(r => setTimeout(r, 30)) // 30ms entre requests
+      }
+    }
+  }
+  precargar()
+  return () => { cancelado = true }
+}, [cancionesFiltradas.length])
 
 const cancionesVirtuales = cancionesFiltradas.slice(
   inicioVirtualCanciones,
@@ -1746,29 +1904,10 @@ const agregarItemAListaConFeedback = (item: any, mensaje: string) => {
 
 useEffect(() => {
   const indice = indicePendienteScrollRef.current
-
   if (indice === null) return
-
   indicePendienteScrollRef.current = null
   setIndiceItemAgregado(indice)
-
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      const el = itemListaRefs.current[indice]
-
-      if (el) {
-        el.scrollIntoView({
-          behavior: "smooth",
-          block: "center"
-        })
-      }
-    })
-  })
-
-  const timeout = setTimeout(() => {
-    setIndiceItemAgregado(null)
-  }, 1400)
-
+  const timeout = setTimeout(() => setIndiceItemAgregado(null), 1400)
   return () => clearTimeout(timeout)
 }, [lista.length])
 
@@ -1964,11 +2103,11 @@ const container: CSSProperties = {
   minHeight: "100vh",
   background: "linear-gradient(180deg, #081120 0%, #0f172a 100%)",
   color: "white",
-  padding: isMobile ? "10px" : "18px",
-  paddingTop: isMobile ? "10px" : "18px",
+  padding: isMobile ? "0px" : "18px",
+  paddingTop: isMobile ? "6px" : "18px",
   display: "flex",
   flexDirection: "column",
-  gap: "16px",
+  gap: isMobile ? "8px" : "16px",
   boxSizing: "border-box"
 }
 
@@ -2183,11 +2322,45 @@ const subtituloCardResponsive = (isMobile: boolean): CSSProperties => ({
   wordBreak: "break-word",
   lineHeight: 1.2
 })
+
+const colorCategoria = (cat?: string): { bg: string; border: string; text: string } => {
+  switch ((cat || "").toLowerCase()) {
+    case "alabanza":    return { bg: "rgba(251,191,36,0.12)",  border: "rgba(251,191,36,0.35)",  text: "#fcd34d" }
+    case "adoración":   return { bg: "rgba(167,139,250,0.12)", border: "rgba(167,139,250,0.35)", text: "#c4b5fd" }
+    case "avivamiento": return { bg: "rgba(239,68,68,0.12)",   border: "rgba(239,68,68,0.35)",   text: "#fca5a5" }
+    case "comunión":    return { bg: "rgba(52,211,153,0.12)",  border: "rgba(52,211,153,0.35)",  text: "#6ee7b7" }
+    case "evangelismo": return { bg: "rgba(251,146,60,0.12)",  border: "rgba(251,146,60,0.35)",  text: "#fdba74" }
+    case "gratitud":    return { bg: "rgba(34,197,94,0.12)",   border: "rgba(34,197,94,0.35)",   text: "#86efac" }
+    case "ofrenda":     return { bg: "rgba(14,165,233,0.12)",  border: "rgba(14,165,233,0.35)",  text: "#7dd3fc" }
+    case "bienvenida":  return { bg: "rgba(99,179,237,0.12)",  border: "rgba(99,179,237,0.35)",  text: "#93c5fd" }
+    case "cierre":      return { bg: "rgba(156,163,175,0.12)", border: "rgba(156,163,175,0.35)", text: "#d1d5db" }
+    default:            return { bg: "rgba(255,255,255,0.05)", border: "rgba(255,255,255,0.12)", text: "rgba(255,255,255,0.55)" }
+  }
+}
+
 return (
 <>
 <style>{`
   @keyframes spinCtrl { to { transform: rotate(360deg) } }
-  #scroll-canciones::-webkit-scrollbar { width: 6px }
+  /* Fallback height para browsers sin svh */
+  html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; }
+  @keyframes toastIn  { from { opacity:0; transform:translateY(-10px) } to { opacity:1; transform:translateY(0) } }
+  /* Scrollbar global desktop */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.22);
+}
+
+#scroll-canciones::-webkit-scrollbar { width: 6px }
   #scroll-canciones::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); border-radius: 999px }
   #scroll-canciones::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 999px }
   #scroll-lista::-webkit-scrollbar { width: 6px }
@@ -2197,6 +2370,228 @@ return (
   .ctrl-btn:active { transform: scale(0.95) }
   .ctrl-btn:disabled { opacity: 0.4 !important; cursor: not-allowed }
 `}</style>
+
+
+{/* ── VISOR FULLSCREEN MOBILE ──────────────────────────────────── */}
+{visorAbierto && (
+  <div style={{
+    position: "fixed", inset: 0, zIndex: 9999,
+    background: "#000", color: "white",
+    display: "flex", flexDirection: "column",
+    fontFamily: "'Segoe UI', system-ui, sans-serif"
+  }}>
+    {/* Header */}
+    <div style={{
+      flexShrink: 0, display: "flex", alignItems: "center",
+      justifyContent: "space-between",
+      padding: "12px 16px",
+      background: "rgba(255,255,255,0.05)",
+      borderBottom: "1px solid rgba(255,255,255,0.08)"
+    }}>
+      <div>
+        <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.2 }}>{visorTitulo}</div>
+        {visorTono && <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2 }}>{visorTono}</div>}
+      </div>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        {/* Toggle Letra / Músico */}
+        <div style={{ display: "flex", background: "rgba(255,255,255,0.08)", borderRadius: 8, padding: 2 }}>
+          <button onClick={() => setVisorModoMusico(false)} style={{
+            padding: "5px 9px", borderRadius: 6, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer",
+            background: !visorModoMusico ? "#2563eb" : "transparent", color: "white"
+          }}>Letra</button>
+          <button onClick={() => setVisorModoMusico(true)} style={{
+            padding: "5px 9px", borderRadius: 6, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer",
+            background: visorModoMusico ? "#f59e0b" : "transparent", color: "white"
+          }}>🎸</button>
+        </div>
+        {/* Toggle Do / C */}
+        <div style={{ display: "flex", background: "rgba(255,255,255,0.08)", borderRadius: 8, padding: 2 }}>
+          <button onClick={() => setVisorFormatoAmericano(false)} style={{
+            padding: "5px 9px", borderRadius: 6, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer",
+            background: !visorFormatoAmericano ? "rgba(255,255,255,0.18)" : "transparent", color: "white"
+          }}>Do</button>
+          <button onClick={() => setVisorFormatoAmericano(true)} style={{
+            padding: "5px 9px", borderRadius: 6, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer",
+            background: visorFormatoAmericano ? "rgba(255,255,255,0.18)" : "transparent", color: "white"
+          }}>C</button>
+        </div>
+        <button onClick={() => setVisorAbierto(false)} style={{
+          width: 34, height: 34, borderRadius: 8, border: "none",
+          background: "rgba(239,68,68,0.15)", color: "#fca5a5",
+          fontWeight: 800, fontSize: 16, cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center"
+        }}>✕</button>
+      </div>
+    </div>
+
+    {/* Indicador parte */}
+    <div style={{
+      flexShrink: 0, textAlign: "center", padding: "6px 16px",
+      fontSize: 12, fontWeight: 700, opacity: 0.5,
+      background: "rgba(255,255,255,0.03)"
+    }}>
+      {visorPartes[visorIndex]?.tipo || "Parte"} {visorIndex + 1}/{visorPartes.length}
+    </div>
+
+    {/* Contenido letra */}
+    <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
+      {visorPartes[visorIndex] && (() => {
+        const textoOriginal = visorPartes[visorIndex].texto_acordes || visorPartes[visorIndex].texto || ""
+        const texto = transponerTexto(textoOriginal, visorSemitonos, visorFormatoAmericano)
+        // Detectar si una línea es solo acordes (sin letra)
+        const esSoloAcordes = (l: string) => {
+          if (!l.trim()) return false
+          const tokens = l.trim().split(/\s+/)
+          return tokens.every((t: string) =>
+            t.match(/^(Do#?|Reb?|Re#?|Mib?|Mi|Fa#?|Solb?|Sol#?|Lab?|La#?|Sib?|Si|[A-G])(b|#)?(m|maj|min|sus|dim|aug|add)?\d*(\/[A-G])?$/)
+          )
+        }
+
+        if (!visorModoMusico) {
+          // Modo Letra: quitar acordes en corchetes Y líneas de solo acordes
+          const limpio = texto.split("\n")
+            .filter((l: string) => !esSoloAcordes(l))
+            .map((l: string) => l.replace(/\[[A-Za-z#b0-9m7dimsus/]+\]/g, "").trim())
+            .filter((l: string, i: number, arr: string[]) => !(l === "" && arr[i-1] === ""))
+            .join("\n")
+          return <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", margin: 0, lineHeight: 1.85, fontSize: "clamp(20px, 4.5vw, 30px)", fontWeight: 600 }}>{limpio.trim()}</pre>
+        }
+
+        // Modo Músico: renderizar acordes de forma limpia
+        return (
+          <div style={{ fontFamily: "'Courier New', monospace", lineHeight: 1.85 }}>
+            {texto.split("\n").map((linea: string, i: number) => {
+              // Línea con acordes en corchetes [Do]
+              if (linea.includes("[")) {
+                const parts: React.ReactNode[] = []
+                let last = 0
+                const re = /\[([A-Za-z#b0-9m7dimsus/]+)\]/g
+                let m: RegExpExecArray | null
+                while ((m = re.exec(linea)) !== null) {
+                  if (m.index > last) parts.push(<span key={"t"+last}>{linea.slice(last, m.index)}</span>)
+                  parts.push(
+                    <span key={"a"+m.index} style={{
+                      color: "#fbbf24", fontWeight: 800,
+                      fontSize: "0.75em", verticalAlign: "super",
+                      letterSpacing: "0.02em", margin: "0 1px"
+                    }}>{m[1]}</span>
+                  )
+                  last = m.index + m[0].length
+                }
+                if (last < linea.length) parts.push(<span key={"t"+last}>{linea.slice(last)}</span>)
+                return <div key={i} style={{ fontSize: "clamp(16px, 3.8vw, 26px)", fontWeight: 600, marginBottom: 2 }}>{parts}</div>
+              }
+              // Línea de solo acordes
+              if (esSoloAcordes(linea)) {
+                return (
+                  <div key={i} style={{ fontSize: "clamp(14px, 3vw, 20px)", fontWeight: 800, color: "#fbbf24", letterSpacing: 3, marginTop: 6, marginBottom: 0 }}>
+                    {linea}
+                  </div>
+                )
+              }
+              if (!linea.trim()) return <div key={i} style={{ height: 6 }} />
+              return <div key={i} style={{ fontSize: "clamp(16px, 3.8vw, 26px)", fontWeight: 600 }}>{linea}</div>
+            })}
+          </div>
+        )
+      })()}
+    </div>
+
+    {/* Transposición */}
+    <div style={{
+      flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+      gap: 8, padding: "8px 16px",
+      background: "rgba(255,255,255,0.02)",
+      borderTop: "1px solid rgba(255,255,255,0.04)"
+    }}>
+      <span style={{ fontSize: 11, opacity: 0.5, fontWeight: 700 }}>TONO</span>
+      <button onClick={() => setVisorSemitonos(s => s - 1)} style={{
+        width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)",
+        background: "rgba(255,255,255,0.07)", color: "white", fontSize: 16, cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800
+      }}>−</button>
+      <div style={{
+        minWidth: 70, textAlign: "center", fontSize: 14, fontWeight: 800,
+        color: visorSemitonos === 0 ? "rgba(255,255,255,0.6)" : "#fbbf24"
+      }}>
+        {visorSemitonos === 0 ? "Original" : (visorSemitonos > 0 ? `+${visorSemitonos}` : visorSemitonos) + " st"}
+      </div>
+      <button onClick={() => setVisorSemitonos(s => s + 1)} style={{
+        width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)",
+        background: "rgba(255,255,255,0.07)", color: "white", fontSize: 16, cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800
+      }}>+</button>
+      {visorSemitonos !== 0 && (
+        <button onClick={() => setVisorSemitonos(0)} style={{
+          padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(251,191,36,0.3)",
+          background: "rgba(251,191,36,0.08)", color: "#fbbf24", fontSize: 11, fontWeight: 700, cursor: "pointer"
+        }}>reset</button>
+      )}
+    </div>
+
+    {/* Navegación */}
+    <div style={{
+      flexShrink: 0, display: "flex", gap: 10,
+      padding: "12px 16px", justifyContent: "center", alignItems: "center",
+      background: "rgba(255,255,255,0.03)",
+      borderTop: "1px solid rgba(255,255,255,0.06)"
+    }}>
+      <button onClick={() => setVisorIndex(i => Math.max(0, i - 1))} disabled={visorIndex === 0}
+        style={{
+          flex: 1, maxWidth: 100, padding: "12px", borderRadius: 12, border: "none",
+          background: visorIndex === 0 ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.12)",
+          color: "white", fontSize: 20, cursor: visorIndex === 0 ? "not-allowed" : "pointer", opacity: visorIndex === 0 ? 0.3 : 1
+        }}>⬅️</button>
+      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+        {visorPartes.map((_, i) => (
+          <div key={i} onClick={() => setVisorIndex(i)} style={{
+            width: i === visorIndex ? 18 : 7, height: 7, borderRadius: 4, cursor: "pointer",
+            transition: "all 0.2s", background: i === visorIndex ? "#2563eb" : "rgba(255,255,255,0.2)"
+          }} />
+        ))}
+      </div>
+      <button onClick={() => setVisorIndex(i => Math.min(visorPartes.length - 1, i + 1))} disabled={visorIndex === visorPartes.length - 1}
+        style={{
+          flex: 1, maxWidth: 100, padding: "12px", borderRadius: 12, border: "none",
+          background: visorIndex === visorPartes.length - 1 ? "rgba(255,255,255,0.05)" : "#2563eb",
+          color: "white", fontSize: 20, cursor: visorIndex === visorPartes.length - 1 ? "not-allowed" : "pointer",
+          opacity: visorIndex === visorPartes.length - 1 ? 0.3 : 1
+        }}>➡️</button>
+    </div>
+
+    {/* Proyectar al PC */}
+    <div style={{ flexShrink: 0, padding: "10px 16px", paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
+      <button
+        onClick={() => {
+          if (!socket) { alert("Sin conexión al servidor"); return }
+          const cancionId = visorPartes[0]?.cancion_id
+          if (cancionId) proyectar(cancionId)
+          setVisorAbierto(false)
+        }}
+        style={{
+          width: "100%", padding: "13px", borderRadius: 12, border: "none",
+          background: socket ? "linear-gradient(135deg, #2563eb, #6366f1)" : "rgba(255,255,255,0.06)",
+          color: "white", fontWeight: 800, fontSize: 15, cursor: socket ? "pointer" : "not-allowed",
+          opacity: socket ? 1 : 0.5
+        }}
+      >{socket ? "🖥️ Proyectar en PC" : "Sin conexión al servidor"}</button>
+    </div>
+  </div>
+)}
+
+{/* Toast fijo */}
+{mensajeFlash && (
+  <div style={{
+    position: "fixed", top: isMobile ? 68 : 68, left: "50%",
+    transform: "translateX(-50%)", zIndex: 999,
+    background: mensajeFlash.startsWith("⚠️") ? "rgba(202,138,4,0.97)" : "rgba(22,163,74,0.97)",
+    color: "white", fontWeight: 700, fontSize: 13,
+    padding: "8px 18px", borderRadius: 20,
+    boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+    whiteSpace: "nowrap", animation: "toastIn 0.2s ease",
+    pointerEvents: "none"
+  }}>{mensajeFlash}</div>
+)}
 
 {/* ── Modal guardar culto ─────────────────────────────────────────────────── */}
 {modalGuardar && (
@@ -2262,21 +2657,23 @@ return (
 )}
 
 <div style={{
-  minHeight: "100dvh",
+  height: "calc(100dvh - 52px)",
+  width: "100%",
   background: "linear-gradient(180deg, #060d1a 0%, #0f172a 100%)",
   color: "white",
   fontFamily: "'Segoe UI', system-ui, sans-serif",
   display: "flex", flexDirection: "column",
-  boxSizing: "border-box"
+  boxSizing: "border-box",
 }}>
 
   {/* ── BARRA DE NAVEGACIÓN SUPERIOR ─────────────────────────────────────── */}
   <div style={{
-    position: "sticky", top: 0, zIndex: 80,
+    flexShrink: 0, zIndex: 80,
     background: "rgba(6,13,26,0.97)",
     borderBottom: "1px solid rgba(255,255,255,0.07)",
     backdropFilter: "blur(12px)",
-    padding: isMobile ? "10px 14px" : "10px 20px",
+    WebkitBackdropFilter: "blur(12px)",
+    padding: isMobile ? "8px 12px" : "10px 20px",
     display: "flex", alignItems: "center", gap: 12
   }}>
     {/* Título / culto activo */}
@@ -2300,10 +2697,10 @@ return (
       disabled={!socket}
       onClick={anterior}
       style={{
-        width: isMobile ? 48 : 56, height: isMobile ? 48 : 56,
-        borderRadius: 14, border: "none",
+        width: isMobile ? 34 : 56, height: isMobile ? 34 : 56,
+        borderRadius: 10, border: "none",
         background: "rgba(255,255,255,0.08)",
-        color: "white", fontSize: isMobile ? 20 : 22,
+        color: "white", fontSize: isMobile ? 15 : 22,
         cursor: "pointer", fontWeight: 700,
         display: "flex", alignItems: "center", justifyContent: "center"
       }}
@@ -2314,10 +2711,10 @@ return (
       disabled={!socket}
       onClick={siguiente}
       style={{
-        width: isMobile ? 48 : 56, height: isMobile ? 48 : 56,
-        borderRadius: 14, border: "none",
+        width: isMobile ? 34 : 56, height: isMobile ? 34 : 56,
+        borderRadius: 10, border: "none",
         background: "#2563eb",
-        color: "white", fontSize: isMobile ? 20 : 22,
+        color: "white", fontSize: isMobile ? 15 : 22,
         cursor: "pointer", fontWeight: 700,
         display: "flex", alignItems: "center", justifyContent: "center"
       }}
@@ -2330,7 +2727,7 @@ return (
       onClick={proyectarPantallaNegra}
       title="Pantalla negra"
       style={{
-        width: isMobile ? 44 : 52, height: isMobile ? 44 : 52,
+        width: isMobile ? 30 : 52, height: isMobile ? 30 : 52,
         borderRadius: 14, border: "1px solid rgba(255,255,255,0.1)",
         background: "#111", color: "white", fontSize: 16,
         cursor: "pointer",
@@ -2341,7 +2738,8 @@ return (
 
   {/* ── INDICADOR PARTE ACTUAL ──────────────────────────────────────────── */}
   <div style={{
-    background: "rgba(15,23,42,0.9)",
+    flexShrink: 0,
+    background: "rgba(15,23,42,0.97)",
     borderBottom: "1px solid rgba(255,255,255,0.06)",
     padding: isMobile ? "7px 14px" : "8px 20px",
     fontSize: isMobile ? 12 : 13,
@@ -2352,22 +2750,19 @@ return (
   </div>
 
   {/* ── CONTENIDO PRINCIPAL ────────────────────────────────────────────── */}
-  <div style={{
-    flex: 1,
-    display: "grid",
-    gridTemplateColumns: isMobile ? "1fr" : "1.3fr 1fr",
-    alignItems: "start",
-    padding: isMobile ? "10px" : "20px",
-    gap: isMobile ? 10 : 20,
-    boxSizing: "border-box",
-    // ✅ Evita scroll horizontal en móvil
-    overflowX: "hidden",
-    minWidth: 0,
-    width: "100%"
-  }}>
+<div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+<div style={{
+  display: "grid",
+  gridTemplateColumns: isMobile ? "1fr" : "1.3fr 1fr",
+  alignItems: "start",
+  padding: isMobile ? "4px 0px" : "20px",
+  gap: isMobile ? 10 : 20,
+  boxSizing: "border-box",
+  width: "100%"
+}}>
 
     {/* ══ COLUMNA IZQUIERDA: Canciones + Herramientas ═══════════════════ */}
-    <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 12 : 16 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 6 : 16 }}>
 
       {/* ── Canciones ─────────────────────────────────────────────────── */}
       <div style={{
@@ -2379,7 +2774,7 @@ return (
         <div
           onClick={() => setMostrarCanciones(v => !v)}
           style={{
-            padding: isMobile ? "12px 14px" : "14px 18px",
+            padding: isMobile ? "10px 10px" : "14px 18px",
             display: "flex", alignItems: "center", justifyContent: "space-between",
             cursor: "pointer",
             borderBottom: mostrarCanciones ? "1px solid rgba(255,255,255,0.06)" : "none"
@@ -2399,7 +2794,7 @@ return (
         </div>
 
         {mostrarCanciones && (
-          <div style={{ padding: isMobile ? "12px 14px" : "14px 18px" }}>
+          <div style={{ padding: isMobile ? "8px 10px" : "14px 18px" }}>
             {/* Búsqueda */}
             <input
               placeholder="🔍 Buscar por número, título o letra..."
@@ -2454,7 +2849,13 @@ return (
               id="scroll-canciones"
               ref={scrollCancionesRef}
               onScroll={e => setScrollTopCanciones((e.target as HTMLDivElement).scrollTop)}
-              style={{ maxHeight: isMobile ? 360 : "calc(100vh - 420px)", overflowY: "auto", overflowX: "hidden" }}
+              style={{
+                height: "620px",
+                maxHeight: "620px",
+                overflowY: "auto",
+                overflowX: "hidden",
+                // ✅ Sin paddingRight — el overflow:hidden en cada item evita el desborde
+              }}
             >
               <div style={{ height: cancionesFiltradas.length * ALTURA_ITEM_CANCION, position: "relative" }}>
                 <div style={{ transform: `translateY(${inicioVirtualCanciones * ALTURA_ITEM_CANCION}px)` }}>
@@ -2467,27 +2868,43 @@ return (
                         ref={el => { cancionRefs.current[c.id] = el }}
                         style={{
                           height: ALTURA_ITEM_CANCION,
-                          paddingBottom: 8, boxSizing: "border-box"
+                          overflow: "hidden",
+                          boxSizing: "border-box"
                         }}
                       >
-                        <div style={{
+                        <div
+                          onClick={() => cargarPreview(c)}
+                          style={{
                           height: "100%",
-                          background: activa ? "rgba(22,163,74,0.85)" : "rgba(255,255,255,0.04)",
-                          border: `1px solid ${activa ? "rgba(34,197,94,0.5)" : "rgba(255,255,255,0.07)"}`,
+                          background: previewCancion?.id === c.id && !activa ? "rgba(59,130,246,0.12)" : activa ? "rgba(22,163,74,0.85)" : colorCategoria(c.categoria).bg,
+                          border: `1px solid ${previewCancion?.id === c.id && !activa ? "rgba(59,130,246,0.35)" : activa ? "rgba(34,197,94,0.5)" : colorCategoria(c.categoria).border}`,
+                          borderLeft: activa ? "3px solid #22c55e" : previewCancion?.id === c.id ? "3px solid #3b82f6" : `3px solid ${colorCategoria(c.categoria).border}`,
                           borderRadius: 11,
                           display: "flex", alignItems: "center",
-                          gap: 10, padding: "0 12px",
-                          transition: "background 0.15s"
+                          gap: 8, padding: "0 10px",
+                          transition: "background 0.15s",
+                          overflow: "hidden",
+                          boxSizing: "border-box",
+                          cursor: "pointer"
                         }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ flex: 1, minWidth: 0, overflow: "hidden", width: 0 }}>
                             <div style={{
                               fontWeight: 700, fontSize: 14, lineHeight: 1.25,
-                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                              color: activa ? "white" : undefined
                             }}>
                               {tituloCancionVisible(c)}
                             </div>
-                            <div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>
-                              {subtituloCancionVisible(c)}
+                            <div style={{ display: "flex", gap: 4, marginTop: 2, flexWrap: "nowrap", overflow: "hidden", maxWidth: "100%" }}>
+                              {c.categoria && !activa && (() => { const col = colorCategoria(c.categoria); return (
+                                <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: col.bg, color: col.text, border: `1px solid ${col.border}` }}>{c.categoria}</span>
+                              )})()}
+                              {c.tono && (
+                                <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "rgba(167,139,250,0.12)", color: activa ? "white" : "#c4b5fd", border: "1px solid rgba(167,139,250,0.3)" }}>{nombreTono(c.tono)}</span>
+                              )}
+                              {idsCancionesConAcordes.includes(c?.id) && (
+                                <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "rgba(251,191,36,0.1)", color: activa ? "white" : "#fcd34d", border: "1px solid rgba(251,191,36,0.25)" }}>🎸 Acordes</span>
+                              )}
                             </div>
                             {fragmento && busqueda && (
                               <div style={{
@@ -2501,10 +2918,19 @@ return (
                           <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                             <button
                               className="ctrl-btn"
+                              onClick={() => abrirVisor(c)}
+                              style={{
+                                padding: "5px 7px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)",
+                                background: "rgba(255,255,255,0.06)", color: "white",
+                                fontWeight: 700, fontSize: 13, cursor: "pointer"
+                              }}
+                            >📱</button>
+                            <button
+                              className="ctrl-btn"
                               disabled={!socket}
                               onClick={() => proyectar(c.id)}
                               style={{
-                                padding: isMobile ? "7px 10px" : "8px 12px",
+                                padding: "6px 10px",
                                 borderRadius: 9, border: "none",
                                 background: "#2563eb", color: "white",
                                 fontWeight: 700, fontSize: 13, cursor: "pointer"
@@ -2515,7 +2941,7 @@ return (
                               disabled={!socket}
                               onClick={() => agregarALista(c)}
                               style={{
-                                padding: isMobile ? "7px 10px" : "8px 12px",
+                                padding: "6px 10px",
                                 borderRadius: 9, border: "none",
                                 background: "rgba(255,255,255,0.08)", color: "white",
                                 fontWeight: 700, fontSize: 13, cursor: "pointer"
@@ -2529,10 +2955,11 @@ return (
                 </div>
               </div>
             </div>
+            
           </div>
-        )}
+          )}
       </div>
-
+      
       {/* ── Acciones rápidas ──────────────────────────────────────────── */}
       <div style={{
         background: "rgba(17,27,46,0.95)",
@@ -2552,7 +2979,11 @@ return (
           <span style={{ opacity: 0.5, fontSize: 18 }}>{mostrarAcciones ? "▾" : "▸"}</span>
         </div>
 
-        {mostrarAcciones && (
+        <div style={{
+          maxHeight: mostrarAcciones ? 1200 : 0,
+          overflow: "hidden",
+          transition: "max-height 0.25s ease"
+        }}>
           <div style={{ padding: isMobile ? "12px 14px" : "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
 
             {/* Pantallas rápidas */}
@@ -2787,9 +3218,9 @@ return (
                   }}>
                     <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{item.titulo}</span>
                     <button className="ctrl-btn" disabled={!socket || item.disabled} onClick={item.onPlay}
-                      style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>▶</button>
+                      style={{ padding: "5px 8px", borderRadius: 7, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>▶</button>
                     <button className="ctrl-btn" disabled={item.disabled} onClick={item.onAdd}
-                      style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>+</button>
+                      style={{ padding: "5px 8px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>+</button>
                   </div>
                 ))}
               </div>
@@ -2867,7 +3298,7 @@ return (
                   <button
                     className="ctrl-btn"
                     onClick={async () => {
-                      const igId = await getIglesiaId()
+                      const igId = await getIglesiaIdCached()
                       if (!igId) return
                       await supabase.from("iglesias").update({ logo_url: null, logo_nombre: null }).eq("id", igId)
                       setLogoEsperaUrl("")
@@ -2901,7 +3332,7 @@ return (
               )}
             </div>
           </div>
-        )}
+        </div>
       </div>
 
       {/* ── Palabra / Biblia ──────────────────────────────────────────── */}
@@ -3090,22 +3521,168 @@ return (
       </div>
     </div>
 
-    {/* ══ COLUMNA DERECHA: Lista de culto activa ════════════════════════ */}
+    {/* ══ COLUMNA DERECHA ════════════════════════════════════════════════ */}
     <div style={{
-      display: "flex", flexDirection: "column", gap: 0,
+      display: "flex", flexDirection: "column", gap: isMobile ? 8 : 12,
       minWidth: 0, width: "100%"
     }}>
+
+      {/* Tabs mobile: Preview | Lista */}
+      {isMobile && (
+        <div style={{ display: "flex", background: "rgba(255,255,255,0.06)", borderRadius: 10, padding: 3, gap: 3 }}>
+          <button onClick={() => setTabDerechaMobile("preview")} style={{
+            flex: 1, padding: "8px", borderRadius: 8, border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer",
+            background: tabDerechaMobile === "preview" ? "rgba(59,130,246,0.25)" : "transparent",
+            color: tabDerechaMobile === "preview" ? "#93c5fd" : "rgba(255,255,255,0.5)"
+          }}>👁 Vista Previa</button>
+          <button onClick={() => setTabDerechaMobile("lista")} style={{
+            flex: 1, padding: "8px", borderRadius: 8, border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer",
+            background: tabDerechaMobile === "lista" ? "rgba(255,255,255,0.1)" : "transparent",
+            color: tabDerechaMobile === "lista" ? "white" : "rgba(255,255,255,0.5)"
+          }}>📋 Lista{lista.length > 0 ? ` (${lista.length})` : ""}</button>
+        </div>
+      )}
+
+      {/* ── PANEL VISTA PREVIA ─────────────────────────────────────────── */}
+      {(!isMobile || tabDerechaMobile === "preview") && (
+        <div style={{
+          background: "rgba(17,27,46,0.95)", border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: 16, overflow: "hidden", minWidth: 0, width: "100%"
+        }}>
+          {/* Header preview */}
+          <div style={{
+            padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,0.06)",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8
+          }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 13, opacity: previewCancion ? 1 : 0.4 }}>
+                {previewCancion ? previewCancion.titulo : "Selecciona una canción"}
+              </div>
+              {previewCancion?.tono && (
+                <div style={{ fontSize: 11, opacity: 0.5, marginTop: 1 }}>{previewCancion.tono}</div>
+              )}
+            </div>
+            {previewCancion && (
+              <div style={{ display: "flex", gap: 4 }}>
+                {/* Toggle Letra / Músico */}
+                <div style={{ display: "flex", background: "rgba(255,255,255,0.07)", borderRadius: 7, padding: 2 }}>
+                  <button onClick={() => setPreviewModoMusico(false)} style={{
+                    padding: "3px 8px", borderRadius: 5, border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer",
+                    background: !previewModoMusico ? "#2563eb" : "transparent", color: "white"
+                  }}>A</button>
+                  <button onClick={() => setPreviewModoMusico(true)} style={{
+                    padding: "3px 8px", borderRadius: 5, border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer",
+                    background: previewModoMusico ? "#f59e0b" : "transparent", color: "white"
+                  }}>🎸</button>
+                </div>
+                {/* Botón abrir visor */}
+                <button onClick={() => abrirVisor(previewCancion)} style={{
+                  padding: "3px 8px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)",
+                  background: "rgba(255,255,255,0.06)", color: "white", fontSize: 11, fontWeight: 700, cursor: "pointer"
+                }}>⛶</button>
+              </div>
+            )}
+          </div>
+
+          {/* Navegación partes */}
+          {previewPartes.length > 0 && (
+            <div style={{
+              display: "flex", gap: 4, padding: "8px 12px", overflowX: "auto",
+              borderBottom: "1px solid rgba(255,255,255,0.04)"
+            }}>
+              {previewPartes.map((p, i) => (
+                <button key={i} onClick={() => setPreviewIndex(i)} style={{
+                  padding: "4px 10px", borderRadius: 6, border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+                  background: previewIndex === i ? "#2563eb" : "rgba(255,255,255,0.07)",
+                  color: previewIndex === i ? "white" : "rgba(255,255,255,0.5)"
+                }}>{p.tipo || `Parte ${i+1}`}</button>
+              ))}
+            </div>
+          )}
+
+          {/* Contenido preview */}
+          <div style={{ padding: "12px 14px", minHeight: isMobile ? 120 : 180, maxHeight: isMobile ? 220 : 320, overflowY: "auto" }}>
+            {!previewCancion ? (
+              <div style={{ opacity: 0.3, fontSize: 13, textAlign: "center", paddingTop: 32 }}>
+                Haz clic en una canción para ver la letra
+              </div>
+            ) : previewPartes.length === 0 ? (
+              <div style={{ opacity: 0.4, fontSize: 12 }}>Cargando...</div>
+            ) : (() => {
+              const parte = previewPartes[previewIndex]
+              if (!parte) return null
+              const texto = parte.texto_acordes || parte.texto || ""
+              if (!previewModoMusico) {
+                const limpio = texto.split("\n")
+                  .filter((l: string) => {
+                    const tokens = l.trim().split(/\s+/)
+                    return !(tokens.length > 0 && tokens.every((t: string) =>
+                      t.match(/^(Do#?|Reb?|Re#?|Mib?|Mi|Fa#?|Solb?|Sol#?|Lab?|La#?|Sib?|Si|[A-G])(b|#)?(m|maj|min|sus|dim|aug|add)?\d*(\/[A-G])?$/)
+                    ))
+                  })
+                  .map((l: string) => l.replace(/\[[A-Za-z#b0-9m7dimsus/]+\]/g, "").trim())
+                  .join("\n")
+                return <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", margin: 0, fontSize: 14, lineHeight: 1.75, fontWeight: 500 }}>{limpio.trim()}</pre>
+              }
+              return (
+                <div style={{ fontFamily: "'Courier New', monospace", fontSize: 13, lineHeight: 1.75 }}>
+                  {texto.split("\n").map((linea: string, i: number) => {
+                    if (linea.includes("[")) {
+                      const parts: React.ReactNode[] = []
+                      let last = 0
+                      const re = /\[([A-Za-z#b0-9m7dimsus/]+)\]/g
+                      let m: RegExpExecArray | null
+                      while ((m = re.exec(linea)) !== null) {
+                        if (m.index > last) parts.push(<span key={"t"+last}>{linea.slice(last, m.index)}</span>)
+                        parts.push(<span key={"a"+m.index} style={{ color: "#fbbf24", fontWeight: 800, fontSize: "0.75em", verticalAlign: "super" }}>{m[1]}</span>)
+                        last = m.index + m[0].length
+                      }
+                      if (last < linea.length) parts.push(<span key={"t"+last}>{linea.slice(last)}</span>)
+                      return <div key={i}>{parts}</div>
+                    }
+                    const tokens = linea.trim().split(/\s+/)
+                    const esSoloAcord = tokens.length > 0 && tokens.every((t: string) =>
+                      t.match(/^(Do#?|Reb?|Re#?|Mib?|Mi|Fa#?|Solb?|Sol#?|Lab?|La#?|Sib?|Si|[A-G])(b|#)?(m|maj|min|sus|dim|aug|add)?\d*(\/[A-G])?$/)
+                    )
+                    if (esSoloAcord && linea.trim()) return <div key={i} style={{ color: "#fbbf24", fontWeight: 800, letterSpacing: 2 }}>{linea}</div>
+                    if (!linea.trim()) return <div key={i} style={{ height: 4 }} />
+                    return <div key={i}>{linea}</div>
+                  })}
+                </div>
+              )
+            })()}
+          </div>
+
+          {/* Acciones rápidas */}
+          {previewCancion && (
+            <div style={{
+              padding: "8px 12px", borderTop: "1px solid rgba(255,255,255,0.04)",
+              display: "flex", gap: 6
+            }}>
+              <button disabled={!socket} onClick={() => proyectar(previewCancion.id)} style={{
+                flex: 1, padding: "8px", borderRadius: 9, border: "none",
+                background: socket ? "#2563eb" : "rgba(255,255,255,0.07)",
+                color: "white", fontWeight: 700, fontSize: 13, cursor: socket ? "pointer" : "not-allowed",
+                opacity: socket ? 1 : 0.5
+              }}>▶ Proyectar</button>
+              <button onClick={() => agregarALista(previewCancion)} style={{
+                padding: "8px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.1)",
+                background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer"
+              }}>+</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── LISTA DE CULTO ─────────────────────────────────────────────── */}
+      {(!isMobile || tabDerechaMobile === "lista") && (
       <div
         id="scroll-lista"
         style={{
           background: "rgba(17,27,46,0.95)",
           border: "1px solid rgba(255,255,255,0.08)",
           borderRadius: 16, overflow: "hidden",
-          maxHeight: isMobile ? "50vh" : "calc(100vh - 160px)",
           overflowY: "auto",
-          position: isMobile ? "static" : "sticky",
-          top: isMobile ? "auto" : 96,
-          // ✅ No se desborda en móvil
           minWidth: 0, width: "100%"
         }}
       >
@@ -3164,18 +3741,7 @@ return (
           </div>
         )}
 
-        {/* Flash mensaje */}
-        {mensajeFlash && (
-          <div style={{
-            margin: "8px 12px 0",
-            padding: "8px 12px", borderRadius: 10,
-            background: "rgba(34,197,94,0.12)",
-            border: "1px solid rgba(34,197,94,0.25)",
-            fontSize: 13, fontWeight: 600
-          }}>
-            {mensajeFlash}
-          </div>
-        )}
+        {/* Flash → toast fijo arriba */}
 
         {/* Items de la lista */}
         <div style={{ padding: isMobile ? "10px 12px" : "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -3253,10 +3819,24 @@ return (
             )
           })}
         </div>
+
+        {lista.length > 0 && (
+          <div style={{ padding: isMobile ? "10px 12px 14px" : "10px 14px 16px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <button className="ctrl-btn" onClick={guardarCulto} style={{
+              width: "100%", padding: "12px", borderRadius: 12, border: "none",
+              background: listaIdActual ? "#2563eb" : "rgba(37,99,235,0.85)",
+              color: "white", fontWeight: 800, fontSize: 14, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8
+            }}>
+              💾 {listaIdActual ? "Actualizar culto" : "Guardar lista de culto"}
+            </button>
+          </div>
+        )}
       </div>
+      )}
     </div>
   </div>
-</div>
+</div></div>
 </>
 )
 }
