@@ -24,7 +24,7 @@
           "tiene_acordes": false
         }
       ],
-      "index": 0,
+      "index": 1,
       "titulo": "LUZ DE VIDA",
       "tono": "Re",
       "iglesia": "IEP Moradora de Sion La Ligua",
@@ -132,57 +132,57 @@
     "data": {
       "partes": [
         {
-          "id": "3ee9747c-8e4e-42b5-8f58-c780074e1f6b",
-          "cancion_id": "2242b75a-ed3d-438c-820a-dc6516ab9cd6",
+          "id": "9830c4c1-6970-47b9-9346-cc54cd6a36b1",
+          "cancion_id": "be2562af-7831-4ff5-aa32-9a9a1a4eee1c",
           "tipo": "Verso",
-          "texto": "YO POR CRISTO DEFENDIDO,\nA TU NOMBRE DOY LOOR;\nYO, CON BIENES PROVEÍDO\nQUE NO TUVO MI SEÑOR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
+          "texto": "VOY AL CIELO -SOY PEREGRINO-\nA VIVIR ETERNAMENTE CON JESÚS,\nEL NOS ABRIÓ, YA, VERAZ CAMINO,\nCUANDO MURIÓ POR NOSOTROS EN LA CRUZ.",
           "orden": 0,
-          "texto_letra": "YO POR CRISTO DEFENDIDO,\nA TU NOMBRE DOY LOOR;\nYO, CON BIENES PROVEÍDO\nQUE NO TUVO MI SEÑOR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
-          "texto_acordes": null,
-          "tiene_acordes": false
+          "texto_letra": "VOY AL CIELO -SOY PEREGRINO-\nA VIVIR ETERNAMENTE CON JESÚS,\nEL NOS ABRIÓ, YA, VERAZ CAMINO,\nCUANDO MURIÓ POR NOSOTROS EN LA CRUZ.",
+          "texto_acordes": "2 Timoteo 1.12 2 Corintios 5.1 Salmo 17.15",
+          "tiene_acordes": true
         },
         {
-          "id": "9070b137-23c5-4d55-bf54-28dcacb072fc",
-          "cancion_id": "2242b75a-ed3d-438c-820a-dc6516ab9cd6",
-          "tipo": "Verso",
-          "texto": "LA POBREZA Y LOS DOLORES\nESTE SE DIGNÓ PASAR;\nY MI DIOS CON PECADORES\nNO HALLABA DO POSAR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
+          "id": "d4750c7c-dab1-4edf-8f2a-36ff09495486",
+          "cancion_id": "be2562af-7831-4ff5-aa32-9a9a1a4eee1c",
+          "tipo": "Coro",
+          "texto": "VOY AL CIELO -SOY PEREGRINO-\nA VIVIR ETERNAMENTE CON JESÚS.",
           "orden": 1,
-          "texto_letra": "LA POBREZA Y LOS DOLORES\nESTE SE DIGNÓ PASAR;\nY MI DIOS CON PECADORES\nNO HALLABA DO POSAR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
-          "texto_acordes": null,
-          "tiene_acordes": false
+          "texto_letra": "VOY AL CIELO -SOY PEREGRINO-\nA VIVIR ETERNAMENTE CON JESÚS.",
+          "texto_acordes": "E\nAl cielo voy, al cielo voy,",
+          "tiene_acordes": true
         },
         {
-          "id": "e47c96a0-cbf7-48d7-b77d-5d6b09ac4524",
-          "cancion_id": "2242b75a-ed3d-438c-820a-dc6516ab9cd6",
+          "id": "dd2f346b-07a8-4c6f-a20f-59cb1bc4024e",
+          "cancion_id": "be2562af-7831-4ff5-aa32-9a9a1a4eee1c",
           "tipo": "Verso",
-          "texto": "A TU SOMBRA, DIOS CLEMENTE,\nYO TRANQUILO DORMIRÉ;\nY A TI, OMNIPOTENTE,\nYO MI ALMA FIARÉ.\nALABANZAS\nDOY A TI, MI SALVADOR.",
+          "texto": "MUERTE, DUELOS, AMARGA PENA,\nNUNCA, NUNCA SE PODRÁN SENTIR MÁS ALLÁ,\nPRECIOSA VIDA DE GOZO LLENA,\nEL ALMA MÍA SIN FIN DISFRUTARÁ.",
           "orden": 2,
-          "texto_letra": "A TU SOMBRA, DIOS CLEMENTE,\nYO TRANQUILO DORMIRÉ;\nY A TI, OMNIPOTENTE,\nYO MI ALMA FIARÉ.\nALABANZAS\nDOY A TI, MI SALVADOR.",
-          "texto_acordes": null,
-          "tiene_acordes": false
+          "texto_letra": "MUERTE, DUELOS, AMARGA PENA,\nNUNCA, NUNCA SE PODRÁN SENTIR MÁS ALLÁ,\nPRECIOSA VIDA DE GOZO LLENA,\nEL ALMA MÍA SIN FIN DISFRUTARÁ.",
+          "texto_acordes": "B              E\nyo confío en Jesús.",
+          "tiene_acordes": true
         },
         {
-          "id": "90e58bdf-3715-4b87-8180-cd17abf3a6ff",
-          "cancion_id": "2242b75a-ed3d-438c-820a-dc6516ab9cd6",
+          "id": "9450104d-8980-4c6e-ac5b-ae716caf7fee",
+          "cancion_id": "be2562af-7831-4ff5-aa32-9a9a1a4eee1c",
           "tipo": "Verso",
-          "texto": "YO INDIGNO, TÚ PIADOSO,\nSÉ NO QUIERES DESECHAR\nAL QUE VIENE PRESUROSO\nTU PIEDAD A IMPETRAR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
+          "texto": "TIERRA SANTA, HERMOSA Y PURA,\nENTRARÉ A TI, SALVADO POR JESÚS;\nY GOZARÉ CÉLICA VENTURA\nVIVIENDO SIEMPRE EN LA DIVINA LUZ.",
           "orden": 3,
-          "texto_letra": "YO INDIGNO, TÚ PIADOSO,\nSÉ NO QUIERES DESECHAR\nAL QUE VIENE PRESUROSO\nTU PIEDAD A IMPETRAR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
-          "texto_acordes": null,
-          "tiene_acordes": false
+          "texto_letra": "TIERRA SANTA, HERMOSA Y PURA,\nENTRARÉ A TI, SALVADO POR JESÚS;\nY GOZARÉ CÉLICA VENTURA\nVIVIENDO SIEMPRE EN LA DIVINA LUZ.",
+          "texto_acordes": "E\nÉl me salvó, Él me salvó;",
+          "tiene_acordes": true
         }
       ],
       "index": 3,
-      "titulo": "YO POR CRISTO ",
-      "tono": "",
+      "titulo": "VOY AL CIELO",
+      "tono": "Re",
       "iglesia": "IEP Moradora de Sion La Ligua",
       "logo_marca_url": "https://dkufqtrfvduonsubmwka.supabase.co/storage/v1/object/public/imagenes-culto/logos/c76bc168-da61-4a86-8881-9dc3c17391fe/1778514807728-hc7u8bqcy5o.png",
       "fondo": {
         "tipo": "preset",
-        "preset": "purpura-noche",
-        "fondoCss": "radial-gradient(circle at 20% 30%, rgba(168,85,247,0.38), transparent 32%), radial-gradient(circle at 85% 65%, rgba(236,72,153,0.28), transparent 32%), linear-gradient(135deg, #020617 0%, #312e81 52%, #581c87 100%)",
-        "nombre": "Púrpura noche",
-        "oscuridad": 63,
+        "preset": "cielo-dorado",
+        "fondoCss": "radial-gradient(circle at 50% 20%, rgba(251,191,36,0.45), transparent 34%), linear-gradient(135deg, #1e1b4b 0%, #7c2d12 48%, #0f172a 100%)",
+        "nombre": "Cielo dorado",
+        "oscuridad": 55,
         "ajuste": "cover"
       }
     }

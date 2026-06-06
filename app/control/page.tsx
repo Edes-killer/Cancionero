@@ -8,8 +8,11 @@ import { supabase } from "@/lib/supabase"
 import { io } from "socket.io-client"
 import { getIglesiaId } from "../../lib/getIglesia"
 import { useRouter } from "next/navigation"
+import { useApp } from "@/context/AppContext"
 
 export default function ControlPage() {
+  const { iglesiaId: iglesiaIdCtx, nombreIglesia: nombreIglesiaCtx,
+          logoUrl: logoUrlCtx, canciones: cancionesCtx } = useApp()
   const [socket, setSocket] = useState<any>(null)
   const [canciones, setCanciones] = useState<any[]>([])
   const [index, setIndex] = useState(0)
@@ -22,6 +25,7 @@ export default function ControlPage() {
   const [busqueda, setBusqueda] = useState("")
   const [nombreCulto, setNombreCulto] = useState("")
   const [partes, setPartes] = useState<any[]>([])
+  const [tituloActual, setTituloActual] = useState("")
   const [indiceLista, setIndiceLista] = useState<number | null>(null)
   const [autoPlay, setAutoPlay] = useState(false)
   const esCoro = partes[index]?.tipo === "Coro"
@@ -36,10 +40,29 @@ export default function ControlPage() {
   const iglesiaIdRef = useRef<string | null | undefined>(undefined)
   const getIglesiaIdCached = async (): Promise<string | null> => {
     if (iglesiaIdRef.current !== undefined) return iglesiaIdRef.current
-    const id = await getIglesiaId()
+    const id = iglesiaIdCtx || await getIglesiaId()
     iglesiaIdRef.current = id
     return id
   }
+
+  // ✅ Sincronizar contexto → estados locales (sin queries adicionales)
+  useEffect(() => {
+    if (iglesiaIdCtx) iglesiaIdRef.current = iglesiaIdCtx
+  }, [iglesiaIdCtx])
+
+  useEffect(() => {
+    if (nombreIglesiaCtx) { setNombreIglesia(nombreIglesiaCtx); nombreIglesiaRef.current = nombreIglesiaCtx }
+  }, [nombreIglesiaCtx])
+
+  useEffect(() => {
+    if (logoUrlCtx) { setLogoEsperaUrl(logoUrlCtx); logoEsperaUrlRef.current = logoUrlCtx }
+  }, [logoUrlCtx])
+
+  useEffect(() => {
+    if (cancionesCtx.length > 0 && canciones.length === 0) {
+      setCanciones(cancionesCtx)
+    }
+  }, [cancionesCtx])
 
   // ✅ Cache de partes: Map<cancion_id, partes[]>
   // Evita fetch a Supabase cada vez que se proyecta una canción
@@ -57,6 +80,7 @@ export default function ControlPage() {
   const loopCoroRef = useRef(loopCoro)
   const siguienteRef = useRef<() => Promise<void>>(async () => {})
   const anteriorRef = useRef<() => Promise<void>>(async () => {})
+  const audioSilenciosoRef = useRef<HTMLAudioElement | null>(null)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [mensajeRapido, setMensajeRapido] = useState("Oremos")
   const [logoEsperaUrl, setLogoEsperaUrl] = useState("")
@@ -135,6 +159,13 @@ useEffect(() => {
   document.body.style.overflow = "hidden"
   return () => { document.body.style.overflow = "" }
 }, [])
+
+// Audio silencioso para activar Media Session en Android
+const audioRef = useRef<HTMLAudioElement | null>(null)
+// Solicitar permiso de notificaciones (Android 13+)
+if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+  Notification.requestPermission()
+}
 
 useEffect(() => {
   // Si es APK y no tiene IP configurada, ir a configuración
@@ -312,49 +343,45 @@ const cargarLista = async () => {
 
 const cargarCanciones = async () => {
   const igId = await getIglesiaIdCached()
-  const { data, error } = await supabase.from("canciones").select("*").or(`iglesia_id.eq.${igId},iglesia_id.is.null`)
-  if (error) {
-    console.error("Error cargando canciones:", error)
-    return
+
+  // ✅ Usar canciones del contexto si ya están cargadas
+  if (cancionesCtx.length > 0) {
+    setCanciones(cancionesCtx)
+  } else {
+    const { data, error } = await supabase
+      .from("canciones")
+      .select("id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda")
+      .or(`iglesia_id.eq.${igId},iglesia_id.is.null`)
+    if (error) { console.error("Error cargando canciones:", error); return }
+    if (data) setCanciones(data)
   }
-  if (data) setCanciones(data)
 
   const { data: partesConAcordes, error: errorAcordes } = await supabase
     .from("partes_cancion")
     .select("cancion_id")
     .eq("tiene_acordes", true)
 
-  if (errorAcordes) {
-    console.error("Error cargando canciones con acordes:", errorAcordes)
-    setIdsCancionesConAcordes([])
-    return
-  }
+  if (errorAcordes) { setIdsCancionesConAcordes([]); return }
 
   const idsUnicos = Array.from(
     new Set((partesConAcordes || []).map((p: any) => p.cancion_id).filter(Boolean))
   )
-
   setIdsCancionesConAcordes(idsUnicos)
 }
 
 
 
   const cargarNombreIglesia = async () => {
-  const iglesiaId = await getIglesiaIdCached()
+  const iglesiaId = iglesiaIdCtx || await getIglesiaIdCached()
 
-  if (!iglesiaId) {
-    setFondoCancionConfigLista(true)
-    return
-  }
+  if (!iglesiaId) { setFondoCancionConfigLista(true); return }
 
   setIglesiaIdActual(iglesiaId)
 
   try {
     const guardado = localStorage.getItem(`fondo-cancion-${iglesiaId}`)
-
     if (guardado) {
       const config = JSON.parse(guardado)
-
       setFondoCancionUrl(config.url || "")
       setFondoCancionNombre(config.nombre || "")
       setFondoCancionModo(config.modo || "preset")
@@ -368,17 +395,22 @@ const cargarCanciones = async () => {
     setFondoCancionConfigLista(true)
   }
 
-  const { data, error } = await supabase
-    .from("iglesias")
-    .select("nombre, logo_url, logo_nombre")
-    .eq("id", iglesiaId)
-    .single()
-
-  if (error) {
-    console.error("Error cargando iglesia:", error)
+  // ✅ Usar datos del contexto si ya están disponibles (sin query adicional)
+  if (nombreIglesiaCtx) {
+    setNombreIglesia(nombreIglesiaCtx)
+    setLogoEsperaUrl(logoUrlCtx || "")
+    nombreIglesiaRef.current = nombreIglesiaCtx
+    logoEsperaUrlRef.current = logoUrlCtx || ""
+    // Aún necesitamos logo_nombre — query mínima
+    const { data } = await supabase.from("iglesias").select("logo_nombre").eq("id", iglesiaId).single()
+    if (data) setLogoEsperaNombre(data.logo_nombre || "")
     return
   }
 
+  const { data, error } = await supabase
+    .from("iglesias").select("nombre, logo_url, logo_nombre")
+    .eq("id", iglesiaId).single()
+  if (error) { console.error("Error cargando iglesia:", error); return }
   setNombreIglesia(data?.nombre || "")
   setLogoEsperaUrl(data?.logo_url || "")
   setLogoEsperaNombre(data?.logo_nombre || "")
@@ -447,19 +479,67 @@ const getPartesCancion = async (cancionId: string): Promise<any[]> => {
   return partes
 }
 
-// ✅ Precarga partes de todas las canciones de la lista en segundo plano
+// ✅ Precarga partes en batch — una sola query para múltiples canciones
+const precargarPartesBatch = async (ids: string[]) => {
+  const sinCache = ids.filter(id => !partesCacheRef.current.has(id))
+  if (sinCache.length === 0) return
+
+  // Dividir en lotes de 100 para no superar límites de Supabase
+  const LOTE = 100
+  for (let i = 0; i < sinCache.length; i += LOTE) {
+    const lote = sinCache.slice(i, i + LOTE)
+    const { data, error } = await supabase
+      .from("partes_cancion")
+      .select("*")
+      .in("cancion_id", lote)
+      .order("cancion_id")
+      .order("orden")
+    if (error) { console.error("Error precarga batch:", error); continue }
+
+    // Agrupar por cancion_id y guardar en caché
+    const agrupado: Record<string, any[]> = {}
+    for (const parte of data || []) {
+      if (!agrupado[parte.cancion_id]) agrupado[parte.cancion_id] = []
+      agrupado[parte.cancion_id].push(parte)
+    }
+    for (const id of lote) {
+      partesCacheRef.current.set(id, agrupado[id] || [])
+    }
+  }
+}
+
+// ✅ Precarga partes de lista de culto en batch
 const precargarPartesLista = (items: any[]) => {
   const ids = items.filter(i => i.tipo === "cancion" && i.id).map(i => i.id)
   if (ids.length === 0) return
-  // Precarga secuencial para no saturar Supabase
-  const precargar = async () => {
-    for (const id of ids) {
-      if (!partesCacheRef.current.has(id)) {
-        await getPartesCancion(id)
-      }
-    }
+  precargarPartesBatch(ids)
+}
+
+const activarMediaSession = (titulo: string, partesList: any[], idx: number) => {
+  if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return
+  if (!audioSilenciosoRef.current) {
+    audioSilenciosoRef.current = new Audio(
+  "data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV6urq6urq6urq6urq6urq6urq6urq6urq6v////////////////////////////////8AAAAATGF2YzU4LjU0AAAAAAAAAAAAAAAAJAAAAAAAAAAAASDs90hvAAAAAAAAAAAAAAAAAAAA//MUZAAAAAGkAAAAAAAAA0gAAAAATEFN//MUZAMAAAGkAAAAAAAAA0gAAAAARTMu//MUZAYAAAGkAAAAAAAAA0gAAAAAOTku//MUZAkAAAGkAAAAAAAAA0gAAAAAMTAw"
+)
+    audioSilenciosoRef.current.loop = true
+    audioSilenciosoRef.current.volume = 0.001
   }
-  precargar()
+  audioSilenciosoRef.current.play().catch(() => {})
+  if (!titulo || partesList.length === 0) {
+    navigator.mediaSession.metadata = null
+    return
+  }
+  const parteNombre = partesList[idx]?.tipo || `Parte ${idx + 1}`
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: titulo,
+    artist: `${parteNombre} · ${idx + 1}/${partesList.length}`,
+    album: nombreIglesiaRef.current || "Selah Live",
+    artwork: logoEsperaUrlRef.current
+      ? [{ src: logoEsperaUrlRef.current, sizes: "512x512", type: "image/jpeg" }]
+      : [{ src: "/icon-512.png", sizes: "512x512", type: "image/png" }]
+  })
+  navigator.mediaSession.setActionHandler("previoustrack", () => anteriorRef.current())
+  navigator.mediaSession.setActionHandler("nexttrack", () => siguienteRef.current())
 }
 
 const proyectar = async (id: string) => {
@@ -492,8 +572,11 @@ const proyectar = async (id: string) => {
   setIndiceActivoLista(null)
   limpiarModoBiblia()
 
+  setTituloActual(cancion?.titulo || "")
   setPartes(data || [])
   setIndex(0)
+  // Activar audio desde gesto del usuario (requisito Android)
+  activarMediaSession(cancion?.titulo || "", data || [], 0)
   registrarProyeccionCancion(cancion) // ✅ fire & forget — no bloquea el socket
   socket.emit("cargar-cancion", {
   partes: data,
@@ -719,6 +802,8 @@ const anterior = async () => {
 useEffect(() => {
   siguienteRef.current = siguiente
   anteriorRef.current = anterior
+
+  // Media Session se actualiza desde activarMediaSession() llamado en cada acción
 }, [siguiente, anterior])
 
 const agregarALista = (cancion: any) => {
@@ -1164,6 +1249,7 @@ const cargarListaDesdeBD = async (id: string) => {
   setIndiceLista(null)
   setIndiceActivoLista(null)
   setActivaId(null)
+  setTituloActual("")
   setPartes([])
   setIndex(0)
   limpiarModoBiblia()
@@ -1799,21 +1885,10 @@ const finVirtualCanciones = Math.min(
   inicioVirtualCanciones + cantidadVisibleCanciones + OVERSCAN_CANCIONES * 2
 )
 
-// ── Precarga en background las primeras 50 canciones visibles ──────
+// ── Precarga en background las primeras 100 canciones visibles (batch) ──
 useEffect(() => {
-  let cancelado = false
-  const precargar = async () => {
-    const primeras = cancionesFiltradas.slice(0, 50)
-    for (const c of primeras) {
-      if (cancelado) break
-      if (!partesCacheRef.current.has(c.id)) {
-        await getPartesCancion(c.id)
-        await new Promise(r => setTimeout(r, 30)) // 30ms entre requests
-      }
-    }
-  }
-  precargar()
-  return () => { cancelado = true }
+  const ids = cancionesFiltradas.slice(0, 100).map(c => c.id)
+  precargarPartesBatch(ids)
 }, [cancionesFiltradas.length])
 
 const cancionesVirtuales = cancionesFiltradas.slice(

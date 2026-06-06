@@ -6,13 +6,33 @@ import { supabase } from "@/lib/supabase"
 import { useEffect, useState } from "react"
 
 const LINKS = [
-  { href: "/",            label: "Inicio",    icon: "⌂"  },
-  { href: "/canciones",   label: "Canciones", icon: "🎵"  },
-  { href: "/control",     label: "Control",   icon: "🎛️"  },
-  { href: "/configuracion", label: "Config",  icon: "⚙️"  },
+  { href: "/",              label: "Inicio",    icon: "⌂"  },
+  { href: "/canciones",     label: "Canciones", icon: "🎵"  },
+  { href: "/control",       label: "Control",   icon: "🎛️"  },
+  { href: "/configuracion", label: "Config",    icon: "⚙️"  },
 ]
 
 const RUTAS_SIN_NAVBAR = ["/proyectar", "/musicos"]
+
+// ── Logo Selah Live ──────────────────────────────────────────────────────────
+const SelahLogo = ({ size = 30 }: { size?: number }) => (
+  <div style={{
+    width: size, height: size,
+    borderRadius: size * 0.27,
+    background: "linear-gradient(135deg, #3b82f6, #6366f1)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    gap: size * 0.13, position: "relative", flexShrink: 0
+  }}>
+    <div style={{ width: size * 0.16, height: size * 0.48, borderRadius: size * 0.08, background: "white" }} />
+    <div style={{ width: size * 0.16, height: size * 0.48, borderRadius: size * 0.08, background: "white" }} />
+    <div style={{
+      position: "absolute", top: size * 0.1, right: size * 0.1,
+      width: size * 0.26, height: size * 0.26,
+      borderRadius: "50%", background: "#22c55e",
+      border: `${size * 0.07}px solid white`
+    }} />
+  </div>
+)
 
 export default function Navbar() {
   const pathname = usePathname()
@@ -41,6 +61,8 @@ export default function Navbar() {
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href)
 
+  const isCapacitor = typeof window !== "undefined" && (window as any).Capacitor
+
   return (
     <>
       <nav style={{
@@ -49,32 +71,28 @@ export default function Navbar() {
         backdropFilter: "blur(12px)",
         position: "sticky", top: 0, zIndex: 100,
         fontFamily: "'Segoe UI', system-ui, sans-serif",
-        // ✅ Evita que la navbar se desborde en pantallas pequeñas
         overflow: "hidden"
       }}>
         <div style={{
           padding: "0 12px",
           display: "flex", alignItems: "center",
           height: 52, gap: 6,
-          // ✅ Contenido no se desborda
           minWidth: 0, overflow: "hidden"
         }}>
 
-          {/* Logo */}
-          <Link href="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
-            <div style={{
-              width: 30, height: 30, borderRadius: 8, flexShrink: 0,
-              background: "linear-gradient(135deg,#3b82f6,#6366f1)",
-              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15
-            }}>🎵</div>
+          {/* ── Logo Selah Live ── */}
+          <Link href="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <SelahLogo size={30} />
             {!isMobile && (
-              <span style={{ color: "white", fontWeight: 800, fontSize: 14, whiteSpace: "nowrap" }}>
-                Cancionero
-              </span>
+              <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
+                <span style={{ color: "white", fontWeight: 900, fontSize: 13, letterSpacing: "-0.02em" }}>
+                  Selah <span style={{ color: "#3b82f6", fontWeight: 300, letterSpacing: "0.05em" }}>LIVE</span>
+                </span>
+              </div>
             )}
           </Link>
 
-          {/* Links desktop */}
+          {/* ── Links desktop ── */}
           {!isMobile && (
             <div style={{ display: "flex", alignItems: "center", gap: 2, flex: 1, overflow: "hidden" }}>
               {LINKS.map(({ href, label, icon }) => {
@@ -94,26 +112,45 @@ export default function Navbar() {
                   </Link>
                 )
               })}
+              {/* Músicos — visible en desktop también */}
+              <Link href="/musicos" target={isCapacitor ? "_self" : "_blank"} style={{
+                display: "flex", alignItems: "center", gap: 5,
+                padding: "5px 10px", borderRadius: 8,
+                textDecoration: "none", fontSize: 13, fontWeight: 500,
+                color: "rgba(255,255,255,0.5)",
+                background: "transparent",
+                border: "1px solid transparent",
+                whiteSpace: "nowrap"
+              }}>
+                <span style={{ fontSize: 13 }}>🎸</span>Músicos
+              </Link>
             </div>
           )}
 
           {isMobile && <div style={{ flex: 1 }} />}
 
-          {/* Proyector siempre visible — compacto en móvil */}
-          <Link href="/proyectar" target="_blank" style={{
-            padding: isMobile ? "5px 8px" : "5px 10px",
-            borderRadius: 7,
-            background: "rgba(255,255,255,0.05)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            color: "rgba(255,255,255,0.5)",
-            textDecoration: "none",
-            fontSize: isMobile ? 10 : 11,
-            fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0
-          }}>
-            {isMobile ? "🖥️" : "🖥️ Proyector"}
-          </Link>
+          {/* ── Músicos (mobile) / Proyector (desktop) ── */}
+          {isMobile ? (
+            <Link href="/musicos" target={isCapacitor ? "_self" : "_blank"} style={{
+              padding: "5px 8px", borderRadius: 7,
+              background: "rgba(251,191,36,0.08)",
+              border: "1px solid rgba(251,191,36,0.2)",
+              color: "#fbbf24",
+              textDecoration: "none",
+              fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0
+            }}>🎸</Link>
+          ) : (
+            <Link href="/proyectar" target={isCapacitor ? "_self" : "_blank"} style={{
+              padding: "5px 10px", borderRadius: 7,
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              color: "rgba(255,255,255,0.5)",
+              textDecoration: "none",
+              fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0
+            }}>🖥️ Proyector</Link>
+          )}
 
-          {/* Cerrar sesión */}
+          {/* ── Cerrar sesión ── */}
           <button onClick={cerrarSesion} disabled={cerrando} style={{
             background: "rgba(239,68,68,0.12)",
             color: "#fca5a5",
@@ -127,7 +164,7 @@ export default function Navbar() {
             {cerrando ? "..." : "Salir"}
           </button>
 
-          {/* Hamburger mobile */}
+          {/* ── Hamburger mobile ── */}
           {isMobile && (
             <button onClick={() => setMenuAbierto(v => !v)} style={{
               background: "rgba(255,255,255,0.06)",
@@ -140,7 +177,7 @@ export default function Navbar() {
           )}
         </div>
 
-        {/* Menú mobile */}
+        {/* ── Menú mobile ── */}
         {isMobile && menuAbierto && (
           <div style={{
             borderTop: "1px solid rgba(255,255,255,0.06)",
@@ -163,7 +200,7 @@ export default function Navbar() {
                 </Link>
               )
             })}
-            <Link href="/musicos" target="_blank" style={{
+            <Link href="/musicos" target={isCapacitor ? "_self" : "_blank"} style={{
               display: "flex", alignItems: "center", gap: 10,
               padding: "12px 14px", borderRadius: 10,
               textDecoration: "none", fontSize: 15,
@@ -175,7 +212,7 @@ export default function Navbar() {
         )}
       </nav>
 
-      {/* Breadcrumb mínimo — oculto en /control (usa su propio header) */}
+      {/* ── Breadcrumb ── */}
       {pathname !== "/" && !pathname.startsWith("/control") && (
         <div style={{
           background: "rgba(6,13,26,0.6)",
