@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
-import { getIglesiaId, setIglesiaActivaId } from "@/lib/getIglesia"
+import { setIglesiaActivaId } from "@/lib/getIglesia"
+import { useApp } from "@/context/AppContext"
 
 const VERSICULOS = [
   { texto: "Cantad alegres a Dios, habitantes de toda la tierra.", cita: "Salmos 100:1" },
@@ -17,16 +18,13 @@ const VERSICULOS = [
 
 export default function InicioPage() {
   const router = useRouter()
+  const { session, iglesiaId, nombreIglesia, logoUrl, localidad, listo } = useApp()
 
-  const [cargando, setCargando] = useState(true)
   const [sinIglesia, setSinIglesia] = useState(false)
-  const [nombreIglesia, setNombreIglesia] = useState("")
-  const [localidad, setLocalidad] = useState("")
-  const [logoUrl, setLogoUrl] = useState("")
   const [iglesiaActivaId, setIglesiaActivaIdState] = useState("")
   const [iglesiasUsuario, setIglesiasUsuario] = useState<any[]>([])
-  
-  // Stats
+
+  // Stats (se cargan en background)
   const [totalCanciones, setTotalCanciones] = useState(0)
   const [totalConAcordes, setTotalConAcordes] = useState(0)
   const [totalListas, setTotalListas] = useState(0)
@@ -36,71 +34,58 @@ export default function InicioPage() {
   const [totalProyeccionesMes, setTotalProyeccionesMes] = useState(0)
   const versiculo = VERSICULOS[new Date().getDate() % VERSICULOS.length]
 
+  // APK: redirigir si no hay IP configurada
   useEffect(() => {
-  const ip = localStorage.getItem("servidor_ip")
-  if (!ip && window.navigator.userAgent.includes("CapacitorWebView")) {
-    router.push("/configurar-servidor")
-  }
-}, [])
+    const ip = localStorage.getItem("servidor_ip")
+    if (!ip && window.navigator.userAgent.includes("CapacitorWebView")) {
+      router.push("/configurar-servidor")
+    }
+  }, [])
+
+  // Cuando el contexto esté listo, verificar auth y cargar stats
   useEffect(() => {
-    const cargar = async () => {
+    if (!listo) return
+
+    if (!session) { router.replace("/login"); return }
+    if (!iglesiaId) { setSinIglesia(true); return }
+
+    setIglesiaActivaIdState(iglesiaId)
+
+    // Cargar stats en background
+    const cargarStats = async () => {
       try {
-        const { data: userData } = await supabase.auth.getUser()
-        if (!userData.user) { router.replace("/login"); return }
-
-        const iglesiaId = await getIglesiaId()
-        if (!iglesiaId) { setSinIglesia(true); setCargando(false); return }
-
-        setIglesiaActivaIdState(iglesiaId)
-
-        // ✅ TODAS LAS QUERIES EN PARALELO — de 8 secuenciales a 1 ronda
         const inicioMes = new Date()
         inicioMes.setDate(1)
         inicioMes.setHours(0, 0, 0, 0)
 
         const [
-          iglesiaRes,
           relacionesRes,
           cancionesCountRes,
           sinTonoRes,
-          acordesRes,
+          acordesCountRes,
           listasRes,
           ultimoRes,
           historialRes,
         ] = await Promise.all([
-          supabase.from("iglesias").select("nombre, logo_url, localidad").eq("id", iglesiaId).single(),
-          supabase.from("usuarios_iglesia").select("iglesia_id, iglesias(nombre)").eq("user_id", userData.user.id),
+          supabase.from("usuarios_iglesia").select("iglesia_id, iglesias(nombre)").eq("user_id", session.user.id),
           supabase.from("canciones").select("*", { count: "exact", head: true }).or(`iglesia_id.eq.${iglesiaId},iglesia_id.is.null`),
-          supabase.from("canciones").select("*", { count: "exact", head: true }).or(`iglesia_id.eq.${iglesiaId},iglesia_id.is.null`).or("tono.is.null,tono.eq."),
-          supabase.from("partes_cancion").select("cancion_id").eq("tiene_acordes", true),
+          supabase.from("canciones").select("*", { count: "exact", head: true }).or(`iglesia_id.eq.${iglesiaId},iglesia_id.is.null`).is("tono", null),
+          supabase.from("partes_cancion").select("cancion_id").eq("tiene_acordes", true).limit(5000),
           supabase.from("listas_culto").select("*", { count: "exact", head: true }).eq("iglesia_id", iglesiaId),
-          supabase.from("listas_culto").select("*").eq("iglesia_id", iglesiaId).order("fecha", { ascending: false }).limit(1).maybeSingle(),
-          supabase.from("historial_proyecciones").select("cancion_id, titulo, tono, categoria").eq("iglesia_id", iglesiaId).eq("tipo", "cancion").gte("proyectado_en", inicioMes.toISOString()),
+          supabase.from("listas_culto").select("id, nombre, fecha").eq("iglesia_id", iglesiaId).order("fecha", { ascending: false }).limit(1).maybeSingle(),
+          supabase.from("historial_proyecciones").select("cancion_id, titulo, tono, categoria").eq("iglesia_id", iglesiaId).eq("tipo", "cancion").gte("proyectado_en", inicioMes.toISOString()).limit(200),
         ])
 
-        // Iglesia
-        setNombreIglesia(iglesiaRes.data?.nombre || "Iglesia")
-        setLogoUrl(iglesiaRes.data?.logo_url || "")
-        setLocalidad(iglesiaRes.data?.localidad || "")
-
-        // Iglesias del usuario (sin duplicar)
         const iglesiasSinDup = Array.from(
           new Map((relacionesRes.data || []).filter((r: any) => r.iglesia_id).map((r: any) => [r.iglesia_id, r])).values()
         )
         setIglesiasUsuario(iglesiasSinDup)
-
-        // Stats canciones
         setTotalCanciones(cancionesCountRes.count || 0)
         setTotalSinTono(sinTonoRes.count || 0)
-
-        const idsUnicos = Array.from(new Set((acordesRes.data || []).map((p: any) => p.cancion_id).filter(Boolean)))
+        const idsUnicos = Array.from(new Set((acordesCountRes.data || []).map((p: any) => p.cancion_id).filter(Boolean)))
         setTotalConAcordes(idsUnicos.length)
-
-        // Listas
         setTotalListas(listasRes.count || 0)
         setUltimoCulto(ultimoRes.data || null)
-
-        // Top canciones mes
         setTotalProyeccionesMes(historialRes.data?.length || 0)
         const conteo = new Map<string, any>()
         ;(historialRes.data || []).forEach((item: any) => {
@@ -109,22 +94,19 @@ export default function InicioPage() {
           conteo.get(key).total += 1
         })
         setTopCancionesMes(Array.from(conteo.values()).sort((a, b) => b.total - a.total).slice(0, 5))
-
       } catch (e) {
-        console.error("Error cargando dashboard:", e)
-      } finally {
-        setCargando(false)
+        console.error("Error cargando stats:", e)
       }
     }
-    cargar()
-  }, [router])
+    cargarStats()
+  }, [listo, session, iglesiaId, router])
 
   const totalSinAcordes = Math.max(totalCanciones - totalConAcordes, 0)
   const totalConTono = Math.max(totalCanciones - totalSinTono, 0)
   const pct = (v: number) => totalCanciones > 0 ? Math.round((v / totalCanciones) * 100) : 0
 
   // ── Sin iglesia ───────────────────────────────────────────────────────────
-  if (!cargando && sinIglesia) {
+  if (listo && sinIglesia) {
     return (
       <div style={{ minHeight: "100dvh", background: "#060d1a", color: "white", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
         <div style={{ textAlign: "center", maxWidth: 400 }}>
@@ -140,7 +122,7 @@ export default function InicioPage() {
   }
 
   // ── Loading ───────────────────────────────────────────────────────────────
-  if (cargando) {
+  if (!listo) {
     return (
       <div style={{ minHeight: "100dvh", background: "#060d1a", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
         <div style={{ textAlign: "center" }}>

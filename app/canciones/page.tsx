@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { io } from "socket.io-client"
 import { supabase } from "../../lib/supabase"
 import { getIglesiaId } from "../../lib/getIglesia"
+import { getSocketUrl } from "@/lib/servidor"
+import { useApp } from "@/context/AppContext"
 
 // ─── TIPOS ───────────────────────────────────────────────────────────────────
 
@@ -201,6 +203,8 @@ const VistaPrevia = ({ texto, formato }: { texto: string; formato: string }) => 
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 
 export default function CancionesPage() {
+  const { iglesiaId: iglesiaIdCtx, canciones: cancionesCtx,
+        actualizarCancion: actualizarCtx, eliminarCancionDelCache } = useApp()
   const [socket, setSocket] = useState<any>(null)
   const [canciones, setCanciones] = useState<Cancion[]>([])
   const [idsConAcordes, setIdsConAcordes] = useState<string[]>([])
@@ -231,12 +235,14 @@ export default function CancionesPage() {
   const [panelAbierto, setPanelAbierto] = useState<"editor" | "canciones">("canciones")
 
   const editorRef = useRef<HTMLDivElement>(null)
+  // ✅ Cache local de partes para no repetir queries al editor
+  const partesCacheRef = useRef<Map<string, any[]>>(new Map())
 
   // ── Socket ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const s = io("http://" + window.location.hostname + ":4000")
+    const s = io(getSocketUrl())
     s.on("connect", async () => {
-      const sala = (await getIglesiaId()) || "global"
+      const sala = iglesiaIdCtx || (await getIglesiaId()) || "global"
       s.emit("unirse-sala", { sala, pantalla: "canciones" })
     })
     s.on("cancion-activa", (data: any) => setActivaId(data.id))
@@ -247,18 +253,32 @@ export default function CancionesPage() {
   // ── Carga inicial ────────────────────────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
-      const id = await getIglesiaId()
+      const id = iglesiaIdCtx || await getIglesiaId()
       setIglesiaId(id)
+
+      // ✅ Usar canciones del contexto si ya están cargadas (sin query)
+      if (cancionesCtx.length > 0) {
+        setCanciones(cancionesCtx as Cancion[])
+        // Solo cargar acordes en background
+        supabase.from("partes_cancion").select("cancion_id").eq("tiene_acordes", true)
+          .then(({ data }) => {
+            const ids = Array.from(new Set((data || []).map((p: any) => p.cancion_id).filter(Boolean)))
+            setIdsConAcordes(ids)
+          })
+        setCargando(false)
+        return
+      }
+
       await cargarCanciones(id)
       setCargando(false)
     }
     init()
-  }, [])
+  }, [iglesiaIdCtx, cancionesCtx.length])
 
   const cargarCanciones = async (id?: string | null) => {
     const igId = id ?? iglesiaId
     // ✅ Siempre incluir himnario global (iglesia_id IS NULL) + propias de la iglesia
-    let query = supabase.from("canciones").select("*")
+    let query = supabase.from("canciones").select("id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda")
     if (igId) {
       query = query.or(`iglesia_id.eq.${igId},iglesia_id.is.null`)
     } else {
@@ -346,6 +366,7 @@ export default function CancionesPage() {
       return n
     })
 
+    
   const detectarTonoDesdePartes = () => {
     const texto = partes.map(p => p.texto).join(" ")
     const t = detectarTono(texto)
@@ -395,12 +416,18 @@ export default function CancionesPage() {
       orden: i
     }))
 
+    
+
     const { error: errorPartes } = await supabase.from("partes_cancion").insert(partesInsert)
     if (errorPartes) { flash("❌ Error guardando partes"); setGuardando(false); return }
 
     flash(editandoId ? "✅ Canción actualizada" : "✅ Canción guardada")
     resetEditor()
     await cargarCanciones()
+    if (cancionId) {
+      partesCacheRef.current.delete(cancionId) // ✅ Invalidar cache de partes
+      await actualizarCtx(cancionId)
+    }
     setGuardando(false)
     setPanelAbierto("canciones")
   }
@@ -408,8 +435,16 @@ export default function CancionesPage() {
   // ── Editar / Eliminar ────────────────────────────────────────────────────────
 
   const editarCancion = async (c: Cancion) => {
-    const { data } = await supabase
-      .from("partes_cancion").select("*").eq("cancion_id", c.id).order("orden")
+    // ✅ Usar cache si existe
+    let data: any[]
+    if (partesCacheRef.current.has(c.id)) {
+      data = partesCacheRef.current.get(c.id)!
+    } else {
+      const { data: fetched } = await supabase
+        .from("partes_cancion").select("*").eq("cancion_id", c.id).order("orden")
+      data = fetched || []
+      partesCacheRef.current.set(c.id, data)
+    }
 
     setEditandoId(c.id)
     setTitulo(c.titulo || "")
@@ -444,12 +479,18 @@ export default function CancionesPage() {
     if (editandoId === id) resetEditor()
     flash("🗑️ Canción eliminada")
     await cargarCanciones()
+    partesCacheRef.current.delete(id) // ✅ Invalidar cache de partes
+    eliminarCancionDelCache(id)
   }
 
   const proyectar = async (c: Cancion) => {
     if (!socket) return
-    const { data } = await supabase.from("partes_cancion").select("*").eq("cancion_id", c.id).order("orden")
-    socket.emit("cargar-cancion", { partes: data, index: 0, titulo: c.titulo, tono: c.tono || "" })
+    const { data: partes } = await supabase.from("partes_cancion").select("*").eq("cancion_id", c.id).order("orden")
+    const partesConAcordes = (partes || []).map((p: any) => ({
+      ...p,
+      texto: p.texto_acordes ?? p.texto ?? ""
+    }))
+    socket.emit("cargar-cancion", { partes: partesConAcordes, index: 0, titulo: c.titulo, tono: c.tono || "" })
     socket.emit("cancion-activa", { id: c.id })
     flash(`▶ Proyectando: ${c.titulo}`)
   }
