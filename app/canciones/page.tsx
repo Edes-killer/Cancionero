@@ -1,6 +1,9 @@
 "use client"
+import OnboardingTour from "@/components/OnboardingTour"
+import { getTourCanciones } from "@/lib/tours"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { io } from "socket.io-client"
 import { supabase } from "../../lib/supabase"
 import { getIglesiaId } from "../../lib/getIglesia"
@@ -28,6 +31,7 @@ interface Cancion {
   categoria?: string
   numero?: number
   iglesia_id?: string
+  fecha_creacion?: string
 }
 
 // ─── CONSTANTES ──────────────────────────────────────────────────────────────
@@ -223,27 +227,103 @@ export default function CancionesPage() {
     { tipo: "Verso", texto: "", formato: "solo" }
   ])
   const [vistaPrevia, setVistaPrevia] = useState<number | null>(null)
+  const [modoAcordes, setModoAcordes] = useState<number | null>(null)
+
+  const NOTAS_ACORDES = ["Do","Do#","Reb","Re","Re#","Mib","Mi","Fa","Fa#","Solb","Sol","Sol#","Lab","La","La#","Sib","Si"]
+  const SUFIJOS_ACORDES = ["m","7","m7","maj7","dim","sus2","sus4","add9"]
+
+  const insertarAcorde = (parteIdx: number, acorde: string) => {
+    const ta = document.getElementById(`ta-parte-${parteIdx}`) as HTMLTextAreaElement
+    if (!ta) return
+    const start = ta.selectionStart
+    const end = ta.selectionEnd
+    const texto = ta.value
+    const nuevo = texto.slice(0, start) + `[${acorde}]` + texto.slice(end)
+    actualizarParte(parteIdx, "texto", nuevo)
+    setTimeout(() => {
+      ta.selectionStart = ta.selectionEnd = start + acorde.length + 2
+      ta.focus()
+    }, 0)
+  }
+
+  const agregarSufijo = (parteIdx: number, sufijo: string) => {
+    const ta = document.getElementById(`ta-parte-${parteIdx}`) as HTMLTextAreaElement
+    if (!ta) return
+    const start = ta.selectionStart
+    const before = ta.value.slice(0, start)
+    const match = before.match(/\[([A-Za-zÁáÉéÍíÓóÚú#b]+)\]$/)
+    if (match) {
+      const newBefore = before.slice(0, before.length - match[0].length) + `[${match[1]}${sufijo}]`
+      actualizarParte(parteIdx, "texto", newBefore + ta.value.slice(start))
+    }
+    setTimeout(() => ta.focus(), 0)
+  }
   const [guardando, setGuardando] = useState(false)
   const [flashMsg, setFlashMsg] = useState("")
 
+  // ✅ Detectar mobile para ocultar funciones de escritorio (importar PPT)
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener("resize", check)
+    return () => window.removeEventListener("resize", check)
+  }, [])
+
   // Lista
   const [busqueda, setBusqueda] = useState("")
+  const [busquedaDebounced, setBusquedaDebounced] = useState("")
+  const busqTimerRef = useRef<any>(null)
+  const handleBusqueda = (v: string) => {
+    setBusqueda(v)
+    clearTimeout(busqTimerRef.current)
+    if (!v) {
+      setBusquedaDebounced("")
+    } else {
+      busqTimerRef.current = setTimeout(() => setBusquedaDebounced(v), 200)
+    }
+  }
   const [filtroTono, setFiltroTono] = useState("")
   const [filtroCategoria, setFiltroCategoria] = useState("")
+  const [filtroConAcordes, setFiltroConAcordes] = useState(false)
+  const [ordenar, setOrdenar] = useState<"numero" | "az" | "za" | "reciente" | "antigua">(() =>
+    (typeof window !== "undefined" ? localStorage.getItem("canciones-orden") || "numero" : "numero") as any
+  )
+  const cambiarOrden = (v: "numero" | "az" | "za" | "reciente" | "antigua") => {
+    setOrdenar(v); localStorage.setItem("canciones-orden", v)
+  }
+  const [filtroSinTono,    setFiltroSinTono]    = useState(false)
+
+  useEffect(() => {
+    const f = new URLSearchParams(window.location.search).get("filtro") || ""
+    if (f === "con-acordes") setFiltroConAcordes(true)
+    if (f === "sin-tono")    setFiltroSinTono(true)
+  }, [])
   const [activaId, setActivaId] = useState<string | null>(null)
   const [vistaLista, setVistaLista] = useState<"lista" | "grid">("lista")
-  const [panelAbierto, setPanelAbierto] = useState<"editor" | "canciones">("canciones")
+  const [panelAbierto, setPanelAbierto] = useState<"editor" | "canciones" | "importar">("canciones")
+  // ── Importador PPT ───────────────────────────────────────────────────────
+  const [pptParsed, setPptParsed] = useState<any[]>([])
+  const [convirtiendoPpt, setConvirtiendoPpt] = useState<string | null>(null)  // nombre del archivo que se está convirtiendo
+  const [importando, setImportando] = useState(false)
+  const [importProgreso, setImportProgreso] = useState(0)
 
   const editorRef = useRef<HTMLDivElement>(null)
   // ✅ Cache local de partes para no repetir queries al editor
   const partesCacheRef = useRef<Map<string, any[]>>(new Map())
+  // ✅ Cache de sala para evitar múltiples getIglesiaId() en reconexiones
+  const salaRef = useRef<string | null>(null)
 
   // ── Socket ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     const s = io(getSocketUrl())
     s.on("connect", async () => {
-      const sala = iglesiaIdCtx || (await getIglesiaId()) || "global"
-      s.emit("unirse-sala", { sala, pantalla: "canciones" })
+      try {
+        if (!salaRef.current) salaRef.current = iglesiaIdCtx || (await getIglesiaId()) || "global"
+        s.emit("unirse-sala", { sala: salaRef.current, pantalla: "canciones" })
+      } catch (err) {
+        if (process.env.NODE_ENV === "development") console.error("❌ canciones socket connect:", err)
+      }
     })
     s.on("cancion-activa", (data: any) => setActivaId(data.id))
     setSocket(s)
@@ -252,33 +332,40 @@ export default function CancionesPage() {
 
   // ── Carga inicial ────────────────────────────────────────────────────────────
   useEffect(() => {
+    // ✅ activo flag: evita setState post-unmount en el await de getIglesiaId()
+    let activo = true
     const init = async () => {
       const id = iglesiaIdCtx || await getIglesiaId()
+      if (!activo) return
       setIglesiaId(id)
 
       // ✅ Usar canciones del contexto si ya están cargadas (sin query)
       if (cancionesCtx.length > 0) {
         setCanciones(cancionesCtx as Cancion[])
-        // Solo cargar acordes en background
-        supabase.from("partes_cancion").select("cancion_id").eq("tiene_acordes", true)
+        // Cargar acordes — si hay filtro "con-acordes" activo, esperar antes de mostrar
+        // la lista (evita flash de "0 canciones" mientras acordes cargan)
+        const acordesPromise = supabase.from("partes_cancion").select("cancion_id").eq("tiene_acordes", true)
           .then(({ data }) => {
+            if (!activo) return
             const ids = Array.from(new Set((data || []).map((p: any) => p.cancion_id).filter(Boolean)))
             setIdsConAcordes(ids)
           })
-        setCargando(false)
+        if (filtroConAcordes) await acordesPromise
+        if (activo) setCargando(false)
         return
       }
 
       await cargarCanciones(id)
-      setCargando(false)
+      if (activo) setCargando(false)
     }
     init()
+    return () => { activo = false }
   }, [iglesiaIdCtx, cancionesCtx.length])
 
   const cargarCanciones = async (id?: string | null) => {
     const igId = id ?? iglesiaId
     // ✅ Siempre incluir himnario global (iglesia_id IS NULL) + propias de la iglesia
-    let query = supabase.from("canciones").select("id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda")
+    let query = supabase.from("canciones").select("id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda, fecha_creacion")
     if (igId) {
       query = query.or(`iglesia_id.eq.${igId},iglesia_id.is.null`)
     } else {
@@ -286,7 +373,10 @@ export default function CancionesPage() {
     }
 
     const { data } = await query
+      .order("numero", { ascending: true, nullsFirst: false })
+      .limit(5000)  // ✅ Supabase default es 1000
     setCanciones(data || [])
+    console.log(`✅ Canciones cargadas: ${data?.length}`)
 
     const { data: conAcordes } = await supabase
       .from("partes_cancion")
@@ -300,6 +390,262 @@ export default function CancionesPage() {
   }
 
   // ── Editor helpers ───────────────────────────────────────────────────────────
+
+  // ── Conversión automática .ppt → .pptx (solo Electron) ──────────────────
+  // Envía el archivo al servidor local embebido (main.js), que usa el
+  // PowerPoint instalado del usuario vía PowerShell/COM Automation.
+  // Devuelve un File .pptx listo para parsearPPTX, o null si falló.
+  const convertirPptAutomatico = async (file: File): Promise<File | null> => {
+    try {
+      const formData = new FormData()
+      formData.append("file", file, file.name)
+
+      const res = await fetch("http://localhost:4000/api/ppt/convertir", {
+        method: "POST",
+        body: formData
+      })
+
+      if (!res.ok) return null
+
+      const blob = await res.blob()
+      const nombrePptx = file.name.replace(/\.ppt$/i, ".pptx")
+      return new File([blob], nombrePptx, { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" })
+    } catch (e) {
+      console.warn("Conversión automática ppt→pptx falló:", e)
+      return null
+    }
+  }
+
+  // ── Parsear PPTX ────────────────────────────────────────────────────────
+  const parsearPPTX = async (file: File): Promise<any | null> => {
+    try {
+      // ✅ Detectar formato .ppt antiguo (binario, no ZIP)
+      const header = await file.slice(0, 8).arrayBuffer()
+      const bytes = new Uint8Array(header)
+      const isPPT = bytes[0] === 0xD0 && bytes[1] === 0xCF  // Signature OLE
+      if (isPPT) {
+        const isElectron = typeof navigator !== "undefined" && navigator.userAgent.includes("Electron")
+
+        // ✅ En Electron: intentar conversión automática usando el PowerPoint
+        //    que el usuario ya tiene instalado, sin que tenga que hacer nada
+        if (isElectron) {
+          setConvirtiendoPpt(file.name)
+          const convertido = await convertirPptAutomatico(file)
+          setConvirtiendoPpt(null)
+          if (convertido) {
+            file = convertido  // continuar el flujo normal con el .pptx ya convertido
+          } else {
+            alert(`No se pudo convertir "${file.name}" automáticamente (¿PowerPoint no está instalado?).\n\nAbre el archivo en PowerPoint y usa "Guardar como" → PowerPoint Presentation (*.pptx), luego impórtalo de nuevo.`)
+            return null
+          }
+        } else {
+          // Web/APK: no hay forma de convertir desde el navegador
+          alert(`El archivo "${file.name}" está en formato .ppt antiguo (PowerPoint 97-2003).\n\nAbre el archivo en PowerPoint y usa "Guardar como" → PowerPoint Presentation (*.pptx), luego impórtalo de nuevo.`)
+          return null
+        }
+      }
+
+      const JSZip = (await import("jszip")).default
+      const zip = await JSZip.loadAsync(file)
+      const slides: string[] = []
+
+      const slideFiles = Object.keys(zip.files)
+        .filter(f => f.match(/^ppt\/slides\/slide(\d+)\.xml$/))
+        .sort((a, b) => {
+          const na = parseInt(a.match(/slide(\d+)/)?.[1] || "0")
+          const nb = parseInt(b.match(/slide(\d+)/)?.[1] || "0")
+          return na - nb
+        })
+
+      for (const slidePath of slideFiles) {
+        const xml = await zip.files[slidePath].async("text")
+        const parser = new DOMParser()
+        const doc = parser.parseFromString(xml, "text/xml")
+        const textNodes = doc.querySelectorAll("t")
+        const lines: string[] = []
+        let lastP = ""
+        textNodes.forEach(t => {
+          const parentP = t.closest("a\\:p") || t.parentElement?.closest("[nodeName='a:p']")
+          const pKey = parentP?.getAttribute("id") || parentP?.textContent?.slice(0, 20) || ""
+          if (pKey !== lastP && lines.length > 0) lines.push("")
+          lastP = pKey
+          const txt = t.textContent?.trim()
+          if (txt) lines.push(txt)
+        })
+        const texto = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim()
+        if (texto) slides.push(texto)
+      }
+
+      if (!slides.length) return null
+
+      // ── Detectar formato automáticamente ────────────────────────────────
+      // Formato 1: filename = título, todas las slides son partes
+      // Formato 2: primera slide = título, el resto son partes
+      const norm = (s: string) => s.toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[-_\s]+/g, " ").trim()
+
+      const filenameSinExt = norm(file.name.replace(/\.pptx?$/i, ""))
+      const primeraSlide   = slides[0]
+      const lineasPrimera  = primeraSlide.split("\n").filter(Boolean).length
+
+      // Calcular promedio de líneas de las demás slides
+      const avgLineasResto = slides.length > 1
+        ? slides.slice(1).reduce((sum, s) => sum + s.split("\n").filter(Boolean).length, 0) / (slides.length - 1)
+        : 0
+
+      // Primera slide es título si:
+      // a) Su texto ≈ nombre del archivo (misma canción, slide decorativa)
+      // b) Tiene pocas líneas (<= 2) y el resto tiene muchas más (>= 3)
+      // c) Es muy corta (< 80 chars) y las demás son mucho más largas
+      const textoNorm = norm(primeraSlide.replace(/\n/g, " "))
+      const esTituloSlide =
+        textoNorm === filenameSinExt ||
+        filenameSinExt.includes(textoNorm) ||
+        textoNorm.includes(filenameSinExt) ||
+        (lineasPrimera <= 2 && avgLineasResto >= 3 && primeraSlide.length < 80)
+
+      let titulo: string
+      let slidesContenido: string[]
+
+      if (esTituloSlide && slides.length > 1) {
+        // Formato 2: extraer título de la primera slide
+        titulo = primeraSlide.replace(/\n/g, " ").trim()
+        slidesContenido = slides.slice(1)
+      } else {
+        // Formato 1: título desde el nombre del archivo
+        titulo = file.name.replace(/\.pptx?$/i, "").replace(/[-_]/g, " ").trim()
+        slidesContenido = slides
+      }
+
+      // ── Detectar tipo de cada parte ────────────────────────────────────
+      const TIPOS: Record<string, string> = {
+        coro: "Coro", estribillo: "Coro", chorus: "Coro", refran: "Coro",
+        puente: "Puente", bridge: "Puente",
+        "pre-coro": "Pre-coro", pre: "Pre-coro",
+        intro: "Intro", final: "Final", tag: "Tag", outro: "Outro"
+      }
+      let versoN = 1
+      const partes = slidesContenido.map(texto => {
+        const primerLinea = texto.split("\n")[0].toLowerCase().trim()
+        let tipo = "Verso"
+        for (const [key, val] of Object.entries(TIPOS)) {
+          if (primerLinea === key || primerLinea.startsWith(key + " ") || primerLinea.startsWith(key + ":")) {
+            tipo = val; break
+          }
+        }
+        if (tipo === "Verso") tipo = `Verso ${versoN++}`
+        return {
+          tipo,
+          texto: texto.replace(/^(coro|estribillo|puente|bridge|chorus|intro|final|tag|outro|pre-coro|pre)[:\s]*/i, "").trim()
+        }
+      })
+
+      return {
+        titulo, partes, archivo: file.name,
+        formatoDetectado: esTituloSlide ? "con-titulo" : "sin-titulo",
+        _slides: slides  // ✅ guardar slides crudos para poder cambiar formato
+      }
+    } catch (e) {
+      console.error("Error parseando PPTX:", e)
+      return null
+    }
+  }
+
+  const procesarArchivos = async (files: FileList, agregar = false) => {
+    const resultados: any[] = []
+    for (const file of Array.from(files)) {
+      if (!file.name.match(/\.pptx?$/i)) continue
+      const cancion = await parsearPPTX(file)
+      if (!cancion) continue
+      // ✅ Detectar duplicado en canciones existentes
+      const duplicado = canciones.some(c =>
+        c.titulo?.toLowerCase().trim() === cancion.titulo?.toLowerCase().trim()
+      )
+      resultados.push({
+        ...cancion, tono: "", categoria: "himnario",
+        seleccionado: true,
+        duplicado, // marcar si ya existe
+        expandido: false // para edición de partes
+      })
+    }
+    if (resultados.length) {
+      // ✅ Agregar a los existentes en vez de reemplazar
+      setPptParsed(prev => agregar ? [...prev, ...resultados] : resultados)
+      setPanelAbierto("importar")
+    }
+  }
+
+  const cambiarFormato = (ci: number, nuevoFormato: "con-titulo" | "sin-titulo") => {
+    setPptParsed(prev => prev.map((c, i) => {
+      if (i !== ci) return c
+      const slides: string[] = c._slides || []
+      if (!slides.length) return c
+
+      const TIPOS: Record<string, string> = {
+        coro: "Coro", estribillo: "Coro", chorus: "Coro", refran: "Coro",
+        puente: "Puente", bridge: "Puente", "pre-coro": "Pre-coro", pre: "Pre-coro",
+        intro: "Intro", final: "Final", tag: "Tag", outro: "Outro"
+      }
+      let titulo: string, slidesContenido: string[]
+
+      if (nuevoFormato === "con-titulo") {
+        titulo = slides[0].replace(/\n/g, " ").trim()
+        slidesContenido = slides.slice(1)
+      } else {
+        titulo = c.archivo.replace(/\.pptx?$/i, "").replace(/[-_]/g, " ").trim()
+        slidesContenido = slides
+      }
+
+      let versoN = 1
+      const partes = slidesContenido.map(texto => {
+        const primerLinea = texto.split("\n")[0].toLowerCase().trim()
+        let tipo = "Verso"
+        for (const [key, val] of Object.entries(TIPOS)) {
+          if (primerLinea === key || primerLinea.startsWith(key + " ") || primerLinea.startsWith(key + ":")) {
+            tipo = val; break
+          }
+        }
+        if (tipo === "Verso") tipo = `Verso ${versoN++}`
+        return {
+          tipo,
+          texto: texto.replace(/^(coro|estribillo|puente|bridge|chorus|intro|final|tag|outro|pre-coro|pre)[:\s]*/i, "").trim()
+        }
+      })
+
+      return { ...c, titulo, partes, formatoDetectado: nuevoFormato }
+    }))
+  }
+
+  const importarTodo = async () => {
+    if (!iglesiaId) return
+    setImportando(true)
+    const seleccionadas = pptParsed.filter(c => c.seleccionado)
+    let ok = 0
+    for (let i = 0; i < seleccionadas.length; i++) {
+      const c = seleccionadas[i]
+      setImportProgreso(Math.round((i / seleccionadas.length) * 100))
+      try {
+        const { data, error } = await supabase.from("canciones").insert({
+          titulo: c.titulo, tono: c.tono || null, categoria: c.categoria || "himnario",
+          iglesia_id: iglesiaId
+        }).select().single()
+        if (error || !data) continue
+        const partesInsert = c.partes.map((p: any, idx: number) => ({
+          cancion_id: data.id, tipo: p.tipo, texto: p.texto,
+          texto_acordes: null, tiene_acordes: false, orden: idx
+        }))
+        await supabase.from("partes_cancion").insert(partesInsert)
+        ok++
+      } catch {}
+    }
+    setImportProgreso(100)
+    setImportando(false)
+    setPptParsed([])
+    setPanelAbierto("canciones")
+    await cargarCanciones(iglesiaId) // ✅ pasar iglesiaId explícito
+    flash(`✅ ${ok} canciones importadas exitosamente`)
+  }
 
   const flash = (msg: string) => {
     setFlashMsg(msg)
@@ -503,25 +849,60 @@ export default function CancionesPage() {
   )
 
   const cancionesFiltradas = useMemo(() => {
-    const q = busqueda.toLowerCase().trim()
-    return canciones
-      .filter(c => {
-        if (!q) return true
-        return (
-          (c.titulo || "").toLowerCase().includes(q) ||
-          (c.categoria || "").toLowerCase().includes(q) ||
-          (c.tono || "").toLowerCase().includes(q) ||
-          String(c.numero || "").includes(q)
-        )
-      })
-      .filter(c => !filtroTono || c.tono === filtroTono)
-      .filter(c => !filtroCategoria || c.categoria === filtroCategoria)
-      .sort((a, b) => {
-        const na = a.numero ?? 999999, nb = b.numero ?? 999999
-        if (na !== nb) return na - nb
-        return (a.titulo || "").localeCompare(b.titulo || "")
-      })
-  }, [canciones, busqueda, filtroTono, filtroCategoria])
+    const norm = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    const q = norm(busquedaDebounced.trim())
+    const esNumero      = /^\d+$/.test(q)
+    const matchNumTexto = q.match(/^(\d+)\s+(.+)$/)
+    const numParte      = matchNumTexto?.[1] || ""
+    const textoParte    = matchNumTexto?.[2] || ""
+
+    const scored = canciones.map(c => {
+      if (!q) return { c, score: 0, pass: true }
+      const titulo   = norm(c.titulo)
+      const numero   = String(c.numero || "")
+      const categoria = norm(c.categoria || "")
+
+      if (matchNumTexto) {
+        const numOk    = numero === numParte || numero.startsWith(numParte)
+        const tituloOk = titulo.includes(textoParte)
+        if (numOk && tituloOk) return { c, score: 100, pass: true }
+        if (numOk)             return { c, score: 80,  pass: true }
+        if (tituloOk)          return { c, score: 60,  pass: true }
+        return { c, score: 0, pass: false }
+      }
+      if (esNumero) {
+        if (numero === q)         return { c, score: 100, pass: true }
+        if (numero.startsWith(q)) return { c, score: 80,  pass: true }
+        return { c, score: 0, pass: false }
+      }
+      if (titulo === q)           return { c, score: 100, pass: true }
+      if (titulo.startsWith(q))   return { c, score: 90,  pass: true }
+      if (titulo.includes(q))     return { c, score: 70,  pass: true }
+      if (categoria.includes(q))  return { c, score: 30,  pass: true }
+      return { c, score: 0, pass: false }
+    })
+    .filter(x => x.pass)
+    .filter(x => !filtroTono      || x.c.tono === filtroTono)
+    .filter(x => !filtroCategoria || x.c.categoria === filtroCategoria)
+    .filter(x => !filtroConAcordes || idsConAcordes.includes(x.c.id))
+    .filter(x => !filtroSinTono   || !x.c.tono)
+
+    if (q) {
+      return scored
+        .sort((a, b) => b.score - a.score || (a.c.numero ?? 999999) - (b.c.numero ?? 999999))
+        .map(x => x.c)
+    }
+
+    return scored.map(x => x.c).sort((a, b) => {
+      if (ordenar === "az")       return (a.titulo || "").localeCompare(b.titulo || "")
+      if (ordenar === "za")       return (b.titulo || "").localeCompare(a.titulo || "")
+      if (ordenar === "reciente") return new Date(b.fecha_creacion || 0).getTime() - new Date(a.fecha_creacion || 0).getTime()
+      if (ordenar === "antigua")  return new Date(a.fecha_creacion || 0).getTime() - new Date(b.fecha_creacion || 0).getTime()
+      const na = a.numero ?? 999999, nb = b.numero ?? 999999
+      if (na !== nb) return na - nb
+      return (a.titulo || "").localeCompare(b.titulo || "")
+    })
+  }, [canciones, busquedaDebounced, filtroTono, filtroCategoria, filtroConAcordes, filtroSinTono, idsConAcordes, ordenar])
 
   // ── ESTILOS BASE ─────────────────────────────────────────────────────────────
 
@@ -652,6 +1033,7 @@ export default function CancionesPage() {
   // ── RENDER ────────────────────────────────────────────────────────────────────
 
   return (
+    <>
     <div style={{
       minHeight: "100dvh",
       background: colors.bg,
@@ -696,9 +1078,13 @@ export default function CancionesPage() {
             background: "rgba(255,255,255,0.05)",
             borderRadius: 10, padding: 4
           }}>
-            {(["canciones", "editor"] as const).map(tab => (
+            {(["canciones", "editor", "importar"] as const)
+              // ✅ "Importar PPT" solo en escritorio — requiere sistema de archivos
+              .filter(tab => !(tab === "importar" && isMobile))
+              .map(tab => (
               <button
                 key={tab}
+                {...(tab === "editor" ? { "data-tour": "btn-nueva-cancion" } : tab === "importar" ? { "data-tour": "btn-importar-ppt" } : {})}
                 onClick={() => {
                   setPanelAbierto(tab)
                   if (tab === "editor" && !editandoId) resetEditor()
@@ -711,7 +1097,7 @@ export default function CancionesPage() {
                   fontSize: "13px"
                 }}
               >
-                {tab === "canciones" ? `📋 Canciones (${canciones.length})` : editandoId ? "✏️ Editando" : "➕ Nueva"}
+                {tab === "canciones" ? `📋 Canciones (${canciones.length})` : tab === "importar" ? "📤 Importar PPT" : editandoId ? "✏️ Editando" : "➕ Nueva"}
               </button>
             ))}
           </div>
@@ -752,7 +1138,181 @@ export default function CancionesPage() {
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 20px" }}>
 
-        {/* ═══════════════ PANEL EDITOR ═══════════════ */}
+        {/* ═══════════════ PANEL IMPORTAR PPT ═══════════════ */}
+        {/* ✅ Solo se renderiza en escritorio — en mobile no existe el tab */}
+        {panelAbierto === "importar" && !isMobile && (
+          <div>
+            <div style={{ marginBottom: 24, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 700 }}>📤 Importar desde PowerPoint</div>
+                <div style={{ fontSize: 13, color: colors.textMuted, marginTop: 4 }}>
+                  {pptParsed.length > 0 ? `${pptParsed.length} canción(es) detectadas — revisa y confirma` : "Selecciona uno o varios archivos .pptx"}
+                </div>
+              </div>
+              <button onClick={() => { setPptParsed([]); setPanelAbierto("canciones") }} style={btnSecondary}>
+                ✕ Cancelar
+              </button>
+            </div>
+
+            {/* Banner de conversión automática .ppt → .pptx en progreso */}
+            {convirtiendoPpt && (
+              <div style={{
+                display:"flex", alignItems:"center", gap:10, marginBottom:14,
+                padding:"12px 16px", borderRadius:12,
+                background:"rgba(251,191,36,0.08)", border:"1px solid rgba(251,191,36,0.25)"
+              }}>
+                <span style={{ fontSize:18 }}>⏳</span>
+                <div style={{ fontSize:13, fontWeight:600 }}>
+                  Convirtiendo "{convirtiendoPpt}" con PowerPoint... esto puede tardar unos segundos
+                </div>
+              </div>
+            )}
+
+            {/* Dropzone */}
+            {pptParsed.length === 0 && (
+              <label
+                onDragOver={e => { e.preventDefault(); e.stopPropagation(); (e.currentTarget as HTMLElement).style.borderColor = "#3b82f6"; (e.currentTarget as HTMLElement).style.background = "rgba(59,130,246,0.1)" }}
+                onDragLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(59,130,246,0.4)"; (e.currentTarget as HTMLElement).style.background = "rgba(59,130,246,0.04)" }}
+                onDrop={e => {
+                  e.preventDefault(); e.stopPropagation()
+                  const el = e.currentTarget as HTMLElement
+                  el.style.borderColor = "rgba(59,130,246,0.4)"; el.style.background = "rgba(59,130,246,0.04)"
+                  if (e.dataTransfer.files.length) procesarArchivos(e.dataTransfer.files)
+                }}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  border: "2px dashed rgba(59,130,246,0.4)", borderRadius: 16,
+                  padding: "60px 20px", cursor: "pointer", gap: 12,
+                  background: "rgba(59,130,246,0.04)", transition: "all 0.2s"
+                }}>
+                <div style={{ fontSize: 48 }}>📊</div>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>Arrastra tus archivos .pptx aquí</div>
+                <div style={{ fontSize: 13, color: colors.textMuted }}>O haz clic para seleccionar — puedes subir varios a la vez</div>
+                <div style={{ fontSize: 12, color: colors.textMuted, opacity: 0.6 }}>Cada archivo = una canción · Cada diapositiva = una parte</div>
+                <input type="file" accept=".pptx,.ppt" multiple style={{ display: "none" }}
+                  onChange={e => e.target.files && procesarArchivos(e.target.files)} />
+              </label>
+            )}
+
+            {/* Preview de canciones parseadas */}
+            {pptParsed.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {pptParsed.map((c, ci) => (
+                  <div key={ci} style={{
+                    background: colors.surface, borderRadius: 12,
+                    border: `1px solid ${c.seleccionado ? "rgba(59,130,246,0.4)" : "rgba(255,255,255,0.06)"}`,
+                    overflow: "hidden", opacity: c.seleccionado ? 1 : 0.5
+                  }}>
+                    {/* Header canción */}
+                    <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                      <input type="checkbox" checked={c.seleccionado}
+                        onChange={() => setPptParsed(prev => prev.map((x,i) => i===ci ? {...x, seleccionado: !x.seleccionado} : x))}
+                        style={{ width: 16, height: 16, cursor: "pointer", flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 200, display: "flex", flexDirection: "column", gap: 4 }}>
+                        <input value={c.titulo}
+                          onChange={e => setPptParsed(prev => prev.map((x,i) => i===ci ? {...x, titulo: e.target.value} : x))}
+                          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "6px 12px", color: "white", fontSize: 15, fontWeight: 700, width: "100%" }} />
+                        {c.duplicado && (
+                          <div style={{ fontSize: 11, color: "#fbbf24", background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.25)", borderRadius: 6, padding: "3px 8px", display: "inline-flex", gap: 4, alignItems: "center" }}>
+                            ⚠️ Ya existe una canción con este nombre — se importará de todas formas si está marcada
+                          </div>
+                        )}
+                        {/* ✅ Toggle de formato */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 11, opacity: 0.4 }}>Formato detectado:</span>
+                          <button
+                            onClick={() => cambiarFormato(ci, c.formatoDetectado === "con-titulo" ? "sin-titulo" : "con-titulo")}
+                            style={{ fontSize: 11, padding: "2px 8px", borderRadius: 6, border: "1px solid rgba(99,102,241,0.4)", background: "rgba(99,102,241,0.1)", color: "#a5b4fc", cursor: "pointer" }}
+                            title="Cambiar formato de importación">
+                            {c.formatoDetectado === "con-titulo"
+                              ? "📋 1ª diapositiva = título"
+                              : "📄 Nombre de archivo = título"}
+                            {" "}↺
+                          </button>
+                        </div>
+                      </div>
+                      <select value={c.tono}
+                        onChange={e => setPptParsed(prev => prev.map((x,i) => i===ci ? {...x, tono: e.target.value} : x))}
+                        style={{ ...selectStyle, width: 100 }}>
+                        <option value="">Sin tono</option>
+                        {TONOS.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                      <select value={c.categoria}
+                        onChange={e => setPptParsed(prev => prev.map((x,i) => i===ci ? {...x, categoria: e.target.value} : x))}
+                        style={{ ...selectStyle, width: 130 }}>
+                        <option value="himnario">Himnario</option>
+                        {["Alabanza","Adoración","Avivamiento","Comunión","Evangelismo","Gratitud","Ofrenda"].map(cat => <option key={cat} value={cat.toLowerCase()}>{cat}</option>)}
+                      </select>
+                      <button onClick={() => setPptParsed(prev => prev.map((x,i) => i===ci ? {...x, expandido: !x.expandido} : x))}
+                        style={{ ...btnSecondary, fontSize: 12, padding: "5px 10px" }}>
+                        {c.expandido ? "▲ Ocultar" : "✏️ Editar partes"}
+                      </button>
+                      <button onClick={() => setPptParsed(prev => prev.filter((_,i) => i !== ci))}
+                        style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#fca5a5", borderRadius: 8, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}>
+                        🗑
+                      </button>
+                    </div>
+
+                    {/* Partes — modo chips o edición expandida */}
+                    {!c.expandido ? (
+                      <div style={{ padding: "10px 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {c.partes.map((p: any, pi: number) => (
+                          <div key={pi} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "6px 10px", fontSize: 12 }}>
+                            <div style={{ fontWeight: 700, color: "#93c5fd", marginBottom: 2 }}>{p.tipo}</div>
+                            <div style={{ color: colors.textMuted, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.texto.split("\n")[0]}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+                        {c.partes.map((p: any, pi: number) => (
+                          <div key={pi} style={{ background: "rgba(255,255,255,0.03)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.07)", padding: "10px 12px" }}>
+                            <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+                              <select value={p.tipo}
+                                onChange={e => setPptParsed(prev => prev.map((x,i) => i===ci ? {...x, partes: x.partes.map((pp: any, pj: number) => pj===pi ? {...pp, tipo: e.target.value} : pp)} : x))}
+                                style={{ ...selectStyle, width: 130, fontSize: 12 }}>
+                                {["Verso 1","Verso 2","Verso 3","Verso 4","Coro","Puente","Estribillo","Intro","Final","Observación"].map(t => <option key={t} value={t}>{t}</option>)}
+                              </select>
+                              <button onClick={() => setPptParsed(prev => prev.map((x,i) => i===ci ? {...x, partes: x.partes.filter((_: any, pj: number) => pj !== pi)} : x))}
+                                style={{ marginLeft: "auto", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#fca5a5", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer" }}>
+                                Eliminar
+                              </button>
+                            </div>
+                            <textarea value={p.texto} rows={4}
+                              onChange={e => setPptParsed(prev => prev.map((x,i) => i===ci ? {...x, partes: x.partes.map((pp: any, pj: number) => pj===pi ? {...pp, texto: e.target.value} : pp)} : x))}
+                              style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "8px 10px", color: "white", fontSize: 13, fontFamily: "monospace", resize: "vertical", boxSizing: "border-box" }} />
+                          </div>
+                        ))}
+                        <button onClick={() => setPptParsed(prev => prev.map((x,i) => i===ci ? {...x, partes: [...x.partes, { tipo: "Verso", texto: "" }]} : x))}
+                          style={{ ...btnSecondary, fontSize: 12, alignSelf: "flex-start" }}>
+                          + Agregar parte
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* Botones acción */}
+                <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+                  <button onClick={importarTodo} disabled={importando || !pptParsed.some(c => c.seleccionado)}
+                    style={{ ...btnPrimary, flex: 1, justifyContent: "center", opacity: importando ? 0.7 : 1 }}>
+                    {importando ? `⏳ Importando... ${importProgreso}%` : `✅ Importar ${pptParsed.filter(c=>c.seleccionado).length} canciones`}
+                  </button>
+                  <label style={{ ...btnSecondary, cursor: "pointer" }}>
+                    + Agregar más archivos
+                    <input type="file" accept=".pptx,.ppt" multiple style={{ display: "none" }}
+                      onChange={e => {
+                        if (!e.target.files) return
+                        procesarArchivos(e.target.files, true) // ✅ agregar=true
+                      }} />
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+      {/* ═══════════════ PANEL EDITOR ═══════════════ */}
         {panelAbierto === "editor" && (
           <div ref={editorRef}>
 
@@ -943,6 +1503,18 @@ export default function CancionesPage() {
                     {/* Acciones */}
                     <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
                       <button
+                        onClick={() => setModoAcordes(modoAcordes === i ? null : i)}
+                        title="Editor de acordes"
+                        style={{
+                          ...btnBase, padding: "5px 10px", fontSize: 12,
+                          background: modoAcordes === i ? "rgba(251,191,36,0.15)" : "rgba(255,255,255,0.05)",
+                          color: modoAcordes === i ? "#fbbf24" : colors.textMuted,
+                          border: `1px solid ${modoAcordes === i ? "rgba(251,191,36,0.3)" : "transparent"}`
+                        }}
+                      >
+                        🎸 Acordes
+                      </button>
+                      <button
                         onClick={() => setVistaPrevia(vistaPrevia === i ? null : i)}
                         title="Vista previa para músicos"
                         style={{
@@ -961,9 +1533,43 @@ export default function CancionesPage() {
                     </div>
                   </div>
 
+                  {/* Teclado de acordes */}
+                  {modoAcordes === i && (
+                    <div style={{ padding: "10px 16px", borderBottom: `1px solid ${colors.border}`, background: "rgba(251,191,36,0.03)" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#fbbf24", marginBottom: 8, letterSpacing: "0.05em" }}>NOTAS</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
+                        {NOTAS_ACORDES.map(nota => (
+                          <button key={nota} type="button"
+                            onMouseDown={e => { e.preventDefault(); insertarAcorde(i, nota) }}
+                            style={{
+                              padding: "5px 10px", borderRadius: 7, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                              background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.25)",
+                              color: "#fbbf24"
+                            }}>{nota}</button>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#a5b4fc", marginBottom: 6, letterSpacing: "0.05em" }}>MODIFICADORES (aplica al último acorde antes del cursor)</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        {SUFIJOS_ACORDES.map(suf => (
+                          <button key={suf} type="button"
+                            onMouseDown={e => { e.preventDefault(); agregarSufijo(i, suf) }}
+                            style={{
+                              padding: "5px 10px", borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                              background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.25)",
+                              color: "#a5b4fc"
+                            }}>{suf}</button>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 8, opacity: 0.7 }}>
+                        💡 Haz clic en el texto para posicionar el cursor, luego selecciona una nota
+                      </div>
+                    </div>
+                  )}
+
                   {/* Body parte */}
                   <div style={{ padding: 16, display: vistaPrevia === i ? "grid" : "block", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                     <textarea
+                      id={`ta-parte-${i}`}
                       value={p.texto}
                       onChange={e => actualizarParte(i, "texto", e.target.value)}
                       placeholder={
@@ -1049,13 +1655,31 @@ export default function CancionesPage() {
               borderRadius: 14, padding: 16, marginBottom: 20
             }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {/* Filtros rápidos */}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {[
+                    { id: "con-acordes", label: "🎸 Con acordes", color: "#a855f7", bg: "rgba(168,85,247,0.12)", border: "rgba(168,85,247,0.35)", activo: filtroConAcordes, toggle: () => setFiltroConAcordes(v => !v) },
+                    { id: "sin-tono",    label: "⚠️ Sin tono",    color: "#f59e0b", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.35)", activo: filtroSinTono,    toggle: () => setFiltroSinTono(v => !v) },
+                  ].map(({ id, label, color, bg, border, activo, toggle }) => (
+                    <button key={id} onClick={toggle} style={{
+                      padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+                      cursor: "pointer", border: `1px solid ${activo ? border : colors.border}`,
+                      background: activo ? bg : "transparent",
+                      color: activo ? color : colors.textMuted, transition: "all .15s"
+                    }}>
+                      {label}
+                      {activo && <span style={{ marginLeft: 5, opacity: .7 }}>×</span>}
+                    </button>
+                  ))}
+                </div>
                 <input
+                  data-tour="buscador-canciones"
                   placeholder="🔍  Buscar por título, categoría, tono o número..."
                   value={busqueda}
-                  onChange={e => setBusqueda(e.target.value)}
+                  onChange={e => handleBusqueda(e.target.value)}
                   style={{ ...inputStyle, fontSize: 16 }}
                 />
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div data-tour="filtros-rapidos" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <select value={filtroTono} onChange={e => setFiltroTono(e.target.value)} style={selectStyle}>
                     <option value="">Todos los tonos</option>
                     {TONOS.map(t => <option key={t} value={t}>{t}</option>)}
@@ -1065,9 +1689,28 @@ export default function CancionesPage() {
                     {categoriasDisponibles.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                   </select>
                 </div>
-                {(busqueda || filtroTono || filtroCategoria) && (
-                  <button onClick={() => { setBusqueda(""); setFiltroTono(""); setFiltroCategoria("") }} style={btnSecondary}>
-                    ✕ Limpiar filtros
+
+                {/* ── Ordenar ── */}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 11, opacity: 0.4, flexShrink: 0 }}>Ordenar:</span>
+                  {([
+                    { v: "numero",   l: "# Número" },
+                    { v: "az",       l: "A → Z" },
+                    { v: "za",       l: "Z → A" },
+                    { v: "reciente", l: "Más reciente" },
+                    { v: "antigua",  l: "Más antigua" },
+                  ] as const).map(({ v, l }) => (
+                    <button key={v} onClick={() => cambiarOrden(v)} style={{
+                      padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600,
+                      cursor: "pointer", border: `1px solid ${ordenar === v ? "rgba(59,130,246,0.5)" : "rgba(255,255,255,0.08)"}`,
+                      background: ordenar === v ? "rgba(59,130,246,0.15)" : "transparent",
+                      color: ordenar === v ? "#93c5fd" : colors.textMuted, transition: "all .15s"
+                    }}>{l}</button>
+                  ))}
+                </div>
+                {(busqueda || filtroTono || filtroCategoria || filtroConAcordes || filtroSinTono) && (
+                  <button onClick={() => { setBusqueda(""); setBusquedaDebounced(""); setFiltroTono(""); setFiltroCategoria(""); setFiltroConAcordes(false); setFiltroSinTono(false) }} style={btnSecondary}>
+                    ✕ Limpiar todos los filtros
                   </button>
                 )}
               </div>
@@ -1208,5 +1851,7 @@ export default function CancionesPage() {
 
       </div>
     </div>
+    <OnboardingTour id="tour-canciones" pasos={getTourCanciones(isMobile)} nombrePagina="Canciones" />
+  </>
   )
 }
