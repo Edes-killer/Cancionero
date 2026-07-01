@@ -5,6 +5,111 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId } from "@/lib/getIglesia"
 
+// ── Estilos compartidos ──────────────────────────────────────────────────────
+const cardStyle: CSSProperties = {
+  background: "rgba(15,23,42,0.94)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  borderRadius: "24px",
+  boxShadow: "0 24px 60px rgba(0,0,0,0.30)",
+  padding: "20px 24px",
+  marginBottom: 16
+}
+
+// ── Componente de log de errores ─────────────────────────────────────────────
+function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
+  const [errores, setErrores] = useState<any[]>([])
+  const [abierto, setAbierto] = useState(false)
+  const [cargando, setCargando] = useState(false)
+  const [filtroTipo, setFiltroTipo] = useState("")
+
+  const cargar = async () => {
+    setCargando(true)
+    let q = supabase
+      .from("errores_log")
+      .select("id, tipo, mensaje, pagina, plataforma, version, creado_en, detalle")
+      .eq("iglesia_id", iglesiaId)
+      .order("creado_en", { ascending: false })
+      .limit(50)
+    if (filtroTipo) q = q.eq("tipo", filtroTipo)
+    const { data } = await q
+    setErrores(data || [])
+    setCargando(false)
+  }
+
+  useEffect(() => { if (abierto) cargar() }, [abierto, filtroTipo])
+
+  const borrarTodos = async () => {
+    if (!confirm("¿Borrar todos los errores registrados?")) return
+    await supabase.from("errores_log").delete().eq("iglesia_id", iglesiaId)
+    setErrores([])
+  }
+
+  const colorTipo: Record<string, string> = {
+    socket: "#f59e0b", supabase: "#ef4444", proyeccion: "#a855f7",
+    biblia: "#3b82f6", imagen: "#14b8a6", ppt: "#f97316",
+    audio: "#22c55e", autenticacion: "#ec4899", general: "rgba(255,255,255,0.3)"
+  }
+
+  return (
+    <div style={cardStyle}>
+      <div onClick={() => setAbierto(v => !v)} style={{ cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: abierto ? 14 : 0 }}>
+        <h2 style={{ margin:0, fontSize:18, fontWeight:800 }}>🪵 Log de errores</h2>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          {errores.length > 0 && <span style={{ fontSize:11, background:"rgba(239,68,68,0.2)", color:"#fca5a5", padding:"2px 8px", borderRadius:6, fontWeight:700 }}>{errores.length}</span>}
+          <span style={{ opacity:0.4, fontSize:14 }}>{abierto ? "▲" : "▼"}</span>
+        </div>
+      </div>
+
+      {abierto && (
+        <div>
+          {/* Filtros */}
+          <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
+            {["", "socket", "supabase", "proyeccion", "biblia", "imagen", "general"].map(t => (
+              <button key={t} onClick={() => setFiltroTipo(t)} style={{
+                padding:"3px 10px", borderRadius:6, fontSize:11, fontWeight:700, cursor:"pointer",
+                border:`1px solid ${filtroTipo === t ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.1)"}`,
+                background: filtroTipo === t ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.04)",
+                color: t ? (colorTipo[t] || "white") : "white"
+              }}>
+                {t || "Todos"}
+              </button>
+            ))}
+            <button onClick={borrarTodos} style={{ marginLeft:"auto", padding:"3px 10px", borderRadius:6, fontSize:11, fontWeight:700, cursor:"pointer", border:"1px solid rgba(239,68,68,0.3)", background:"rgba(239,68,68,0.08)", color:"#fca5a5" }}>
+              🗑 Borrar todo
+            </button>
+          </div>
+
+          {cargando ? (
+            <div style={{ opacity:0.4, fontSize:13, padding:"12px 0" }}>Cargando...</div>
+          ) : errores.length === 0 ? (
+            <div style={{ opacity:0.3, fontSize:13, padding:"12px 0", textAlign:"center" }}>✅ Sin errores registrados</div>
+          ) : (
+            <div style={{ display:"flex", flexDirection:"column", gap:6, maxHeight:400, overflowY:"auto" }}>
+              {errores.map(e => (
+                <div key={e.id} style={{ padding:"10px 12px", borderRadius:10, background:"rgba(255,255,255,0.03)", border:`1px solid ${colorTipo[e.tipo] || "rgba(255,255,255,0.06)"}20` }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                    <span style={{ fontSize:10, fontWeight:800, padding:"2px 6px", borderRadius:4, background:`${colorTipo[e.tipo] || "rgba(255,255,255,0.1)"}25`, color: colorTipo[e.tipo] || "rgba(255,255,255,0.5)" }}>
+                      {e.tipo}
+                    </span>
+                    <span style={{ fontSize:10, opacity:0.35 }}>{e.pagina}</span>
+                    <span style={{ fontSize:10, opacity:0.25, marginLeft:"auto" }}>
+                      {new Date(e.creado_en).toLocaleString("es-CL", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" })}
+                    </span>
+                  </div>
+                  <div style={{ fontSize:12, fontWeight:600, marginBottom:2 }}>{e.mensaje}</div>
+                  <div style={{ fontSize:10, opacity:0.3 }}>
+                    {e.plataforma} {e.version && `· v${e.version}`}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ConfiguracionPage() {
   const router = useRouter()
 
@@ -21,6 +126,251 @@ export default function ConfiguracionPage() {
 
   const [flash, setFlash] = useState<{ msg: string; tipo: "ok" | "error" | "info" } | null>(null)
 
+  // ── PIN de sala ──────────────────────────────────────────────────────────
+  const [pinSala, setPinSala] = useState("")
+  const [pinGuardado, setPinGuardado] = useState(false)
+
+  // ── Invitaciones ──────────────────────────────────────────────────────────
+  const [invitaciones, setInvitaciones] = useState<any[]>([])
+  const [rolInvitacion, setRolInvitacion] = useState("musico")
+  const [generandoInv, setGenerandoInv] = useState(false)
+  const [linkCopiado, setLinkCopiado] = useState("")
+
+  const cargarInvitaciones = async (igId: string) => {
+    const { data } = await supabase.from("invitaciones").select("*")
+      .eq("iglesia_id", igId).eq("activa", true).order("created_at", { ascending: false })
+    setInvitaciones(data || [])
+  }
+
+  const generarInvitacion = async () => {
+    setGenerandoInv(true)
+    const codigo = Math.random().toString(36).slice(2, 8).toUpperCase()
+    const { data, error } = await supabase.from("invitaciones").insert({
+      iglesia_id: iglesiaId, rol: rolInvitacion, codigo,
+      usos_max: 20, expira_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    }).select().single()
+    if (!error && data) {
+      setInvitaciones(prev => [data, ...prev])
+      copiarLink(data.codigo)
+    }
+    setGenerandoInv(false)
+  }
+
+  const desactivarInvitacion = async (id: string) => {
+    await supabase.from("invitaciones").update({ activa: false }).eq("id", id)
+    setInvitaciones(prev => prev.filter(i => i.id !== id))
+  }
+
+  const copiarLink = (codigo: string) => {
+    const link = `${window.location.origin}/unirse?codigo=${codigo}`
+    navigator.clipboard.writeText(link).then(() => {
+      setLinkCopiado(codigo)
+      setTimeout(() => setLinkCopiado(""), 2500)
+    })
+  }
+
+  const ROLES_INV: Record<string, { icon: string; label: string }> = {
+    musico: { icon: "🎸", label: "Músico" },
+    lider:  { icon: "🎛️", label: "Líder de alabanza" },
+    admin:  { icon: "👑", label: "Administrador" },
+  }
+
+  // ── IP del servidor ───────────────────────────────────────────────────────
+  const [servidorIp, setServidorIp] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("servidor_ip") || "" : ""
+  )
+  const [servidorPing, setServidorPing] = useState<"idle" | "testing" | "ok" | "error">("idle")
+  const [servidorOk, setServidorOk] = useState(false)
+  const [buscandoServidor, setBuscandoServidor] = useState(false)
+  const [qrUrl, setQrUrl] = useState("")
+  const [escaneandoQR, setEscaneandoQR] = useState(false)
+  const isCapacitor = typeof window !== "undefined" && !!(window as any).Capacitor
+  const isElectron  = typeof navigator !== "undefined" && navigator.userAgent.includes("Electron")
+  const getLocalIPDisplay = () => servidorIp || "localhost"
+
+  // Mostrar QR en Electron al cargar + obtener IP local
+  useEffect(() => {
+    if (!isElectron) return
+    setQrUrl(`http://localhost:4000/qr?t=${Date.now()}`)
+    // Obtener IP real del servidor para mostrarla al usuario
+    fetch("http://localhost:4000/info")
+      .then(r => r.json())
+      .then(d => { if (d?.ip) setServidorIp(d.ip) })
+      .catch(() => {})
+  }, [isElectron])
+
+  const testearServidor = async (ip?: string) => {
+    const host = (ip ?? servidorIp).trim() || "localhost"
+    setServidorPing("testing")
+    setServidorOk(false)
+    try {
+      const r = await fetch(`http://${host}:4000/ping`, { signal: AbortSignal.timeout(3000) })
+      const d = await r.json()
+      const ok = d?.ok === true
+      setServidorPing(ok ? "ok" : "error")
+      setServidorOk(ok)
+    } catch { setServidorPing("error") }
+  }
+
+  const guardarServidorIp = async () => {
+    const ip = servidorIp.trim()
+    if (ip) localStorage.setItem("servidor_ip", ip)
+    else localStorage.removeItem("servidor_ip")
+    mostrarFlash(ip ? `✅ IP guardada: ${ip}` : "IP eliminada", "ok")
+    await testearServidor(ip)
+  }
+
+  // ✅ Auto-discovery: escanea la red local buscando el servidor Selah Live
+  const buscarServidorAuto = async () => {
+    setBuscandoServidor(true)
+    mostrarFlash("🔍 Buscando servidor en la red...", "ok")
+    try {
+      // Obtener IP del dispositivo para determinar la subred
+      const respInfo = await fetch("https://api.ipify.org?format=json").catch(() => null)
+      // Intentar subredes comunes en paralelo
+      const subredes = ["192.168.1", "192.168.0", "192.168.100", "10.0.0", "10.0.1", "172.16.0"]
+      const ips: string[] = []
+      subredes.forEach(sub => { for (let i = 1; i <= 254; i++) ips.push(`${sub}.${i}`) })
+
+      // Buscar en lotes de 30 en paralelo
+      const BATCH = 30
+      for (let i = 0; i < ips.length; i += BATCH) {
+        const lote = ips.slice(i, i + BATCH)
+        const resultados = await Promise.allSettled(
+          lote.map(ip => fetch(`http://${ip}:4000/info`, { signal: AbortSignal.timeout(400) })
+            .then(r => r.json()).then(d => d?.app === "selah-live" ? ip : null))
+        )
+        for (const r of resultados) {
+          if (r.status === "fulfilled" && r.value) {
+            const ipEncontrada = r.value
+            setServidorIp(ipEncontrada)
+            localStorage.setItem("servidor_ip", ipEncontrada)
+            await testearServidor(ipEncontrada)
+            mostrarFlash(`✅ Servidor encontrado en ${ipEncontrada}`, "ok")
+            setBuscandoServidor(false)
+            return
+          }
+        }
+      }
+      mostrarFlash("❌ No se encontró el servidor. ¿Está abierto Selah Live en el PC?", "error")
+    } catch(e) {
+      mostrarFlash("❌ Error buscando servidor", "error")
+    }
+    setBuscandoServidor(false)
+  }
+
+  // ✅ Escanear QR con cámara nativa (sin librería externa)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const escaneandoRef = useRef(false)  // ✅ ref en vez de state — siempre actual dentro del loop recursivo
+
+  const escanearQR = async () => {
+    escaneandoRef.current = true
+    setEscaneandoQR(true)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      streamRef.current = stream
+      // El video se monta en el DOM después del render
+      setTimeout(async () => {
+        if (!videoRef.current) return
+        videoRef.current.srcObject = stream
+        videoRef.current.play()
+
+        // Usar BarcodeDetector si está disponible (Android Chrome)
+        const BarcodeDetector = (window as any).BarcodeDetector
+        if (BarcodeDetector) {
+          const detector = new BarcodeDetector({ formats: ["qr_code"] })
+          const scan = async () => {
+            // ✅ ref siempre tiene el valor actual, no el del momento en que se creó la función
+            if (!videoRef.current || !escaneandoRef.current) return
+            try {
+              const barcodes = await detector.detect(videoRef.current)
+              for (const b of barcodes) {
+                const match = b.rawValue.match(/selah:\/\/([0-9.]+):(\d+)/)
+                if (match) {
+                  const ip = match[1]
+                  streamRef.current?.getTracks().forEach(t => t.stop())
+                  escaneandoRef.current = false
+                  setEscaneandoQR(false)
+                  setServidorIp(ip)
+                  localStorage.setItem("servidor_ip", ip)
+                  await testearServidor(ip)
+                  mostrarFlash(`✅ Conectado a ${ip}`, "ok")
+                  return
+                }
+              }
+            } catch(e) {}
+            requestAnimationFrame(scan)
+          }
+          scan()
+        } else {
+          mostrarFlash("Tu dispositivo no soporta escaneo QR. Usa 'Buscar automáticamente'.", "error")
+          streamRef.current?.getTracks().forEach(t => t.stop())
+          escaneandoRef.current = false
+          setEscaneandoQR(false)
+        }
+      }, 300)
+    } catch(e) {
+      escaneandoRef.current = false
+      setEscaneandoQR(false)
+      mostrarFlash("❌ No se pudo acceder a la cámara", "error")
+    }
+  }
+
+  const detenerEscaneo = () => {
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    escaneandoRef.current = false
+    setEscaneandoQR(false)
+  }
+
+  // ── Cerrar sesión ─────────────────────────────────────────────────────────
+  // ✅ Helper: corre una promesa con límite de tiempo — si no responde a
+  // tiempo, seguimos igual. Ningún paso del logout puede colgar la app.
+  const conTimeout = <T,>(promesa: Promise<T>, ms: number): Promise<T | null> =>
+    Promise.race([
+      promesa,
+      new Promise<null>(resolve => setTimeout(() => resolve(null), ms))
+    ])
+
+  const cerrarSesion = async () => {
+    const isElectron = typeof navigator !== "undefined" && navigator.userAgent.includes("Electron")
+
+    // ✅ Marcar que el cierre fue INTENCIONAL — evita el auto-reconectar
+    localStorage.setItem("selah-logout-manual", "1")
+
+    // Limpiar sesión de Supabase (máx 2s — si la red está lenta no bloqueamos)
+    await conTimeout(supabase.auth.signOut(), 2000)
+
+    // Limpiar storage local — síncrono, instantáneo
+    localStorage.clear()
+    sessionStorage.clear()
+
+    // ✅ IndexedDB: NO usar deleteDatabase — se cuelga indefinidamente si
+    // hay una conexión abierta (como la del caché de canciones en
+    // AppContext), que es justo lo que causaba la demora de minutos.
+    // Solo son títulos de canciones cacheados, no datos sensibles —
+    // sobreescribir al próximo login es suficiente, no hace falta borrar.
+
+    // En Electron: limpiar cookies del WebView (máx 2s)
+    if (isElectron) {
+      await conTimeout(
+        (window as any).electron?.ipcRenderer?.invoke("clear-session") ?? Promise.resolve(),
+        2000
+      )
+    }
+
+    // Redirigir al login
+    window.location.href = "/login"
+  }
+
+  // ── Fuentes del proyector ────────────────────────────────────────────────
+  const [escalaFuente, setEscalaFuente] = useState(() =>
+    typeof window !== "undefined" ? Number(localStorage.getItem("proyector-escala-fuente") || "100") : 100
+  )
+  const [familiaFuente, setFamiliaFuente] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("proyector-font-family") || "system" : "system"
+  )
+
   const mostrarFlash = (msg: string, tipo: "ok" | "error" | "info" = "ok") => {
     setFlash({ msg, tipo })
     setTimeout(() => setFlash(null), 3000)
@@ -29,19 +379,23 @@ export default function ConfiguracionPage() {
   // ── Carga inicial ────────────────────────────────────────────────────────────
   useEffect(() => {
     const cargar = async () => {
-      const { data: userData } = await supabase.auth.getUser()
-      if (!userData.user) { router.replace("/login"); return }
+      // ✅ getSession() no adquiere el auth lock (lee de memoria/localStorage)
+      // getUser() sí lo adquiere y choca con proyectar/músicos/control
+      const { data: sessionData } = await supabase.auth.getSession()
+      if (!sessionData.session?.user) { router.replace("/login"); return }
 
       const id = await getIglesiaId()
       if (!id) { router.replace("/crear-iglesia"); return }
 
       setIglesiaId(id)
 
-      const { data, error } = await supabase
+      const { data: rows, error } = await supabase
         .from("iglesias")
-        .select("nombre, localidad, logo_url, logo_nombre")
+        .select("nombre, localidad, logo_url, logo_nombre, pin_sala")
         .eq("id", id)
-        .single()
+        .limit(1)
+
+      const data = (rows as any[])?.[0]
 
       if (error) {
         mostrarFlash("No se pudo cargar la configuración", "error")
@@ -53,6 +407,8 @@ export default function ConfiguracionPage() {
       setLocalidad(data?.localidad || "")
       setLogoUrl(data?.logo_url || "")
       setLogoNombre(data?.logo_nombre || "")
+      setPinSala(data?.pin_sala || "")
+      cargarInvitaciones(id)
       setCargando(false)
     }
 
@@ -548,28 +904,400 @@ export default function ConfiguracionPage() {
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {[
-              { href: "/control", label: "🎛️ Control", desc: "Operar el culto" },
+              { href: "/control",   label: "🎛️ Control",   desc: "Operar el culto" },
               { href: "/canciones", label: "🎵 Canciones", desc: "Gestionar repertorio" },
-              { href: "/", label: "⌂ Dashboard", desc: "Estadísticas" },
+              { href: "/",          label: "⌂ Dashboard",  desc: "Estadísticas" },
             ].map(({ href, label, desc }) => (
-              <button
-                key={href}
-                onClick={() => router.push(href)}
-                style={{
-                  ...btnSecundario,
-                  flexDirection: "column",
-                  alignItems: "flex-start",
-                  gap: 2,
-                  padding: "12px 16px",
-                  minWidth: 130
-                }}
-              >
+              <button key={href} onClick={() => router.push(href)}
+                style={{ ...btnSecundario, flexDirection: "column", alignItems: "flex-start", gap: 2, padding: "12px 16px", minWidth: 130 }}>
                 <span style={{ fontWeight: 800, fontSize: 14 }}>{label}</span>
                 <span style={{ fontSize: 11, opacity: 0.5, fontWeight: 400 }}>{desc}</span>
               </button>
             ))}
           </div>
         </div>
+
+        {/* ── SERVIDOR DE PROYECCIÓN ─────────────────────────────────────── */}
+        <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>🖥️ Computador del proyector</div>
+            <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2 }}>¿En qué equipo está corriendo el programa Selah?</div>
+          </div>
+          <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+
+            {/* Opción 1: mismo equipo */}
+            <button
+              onClick={() => { setServidorIp(""); localStorage.removeItem("servidor_ip"); setServidorPing("idle"); mostrarFlash("✅ Configurado: este mismo equipo", "ok") }}
+              style={{ padding: "14px 16px", borderRadius: 12, border: `1px solid ${!servidorIp ? "rgba(59,130,246,0.5)" : "rgba(255,255,255,0.08)"}`,
+                background: !servidorIp ? "rgba(59,130,246,0.1)" : "rgba(255,255,255,0.03)", color: "white", cursor: "pointer", textAlign: "left" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 24 }}>💻</span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>Este mismo computador</div>
+                  <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2 }}>El proyector y el control están en el mismo equipo</div>
+                </div>
+                {!servidorIp && <div style={{ marginLeft: "auto", color: "#60a5fa", fontSize: 18 }}>✓</div>}
+              </div>
+            </button>
+
+            {/* Opción 2: otro equipo */}
+            <div style={{ padding: "14px 16px", borderRadius: 12, border: `1px solid ${servidorIp ? "rgba(59,130,246,0.5)" : "rgba(255,255,255,0.08)"}`,
+              background: servidorIp ? "rgba(59,130,246,0.08)" : "rgba(255,255,255,0.03)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: servidorIp ? 12 : 0, cursor: !servidorIp ? "pointer" : "default" }}
+                onClick={() => !servidorIp && setServidorIp(" ")}>
+                <span style={{ fontSize: 24 }}>🔗</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>Otro computador de la red</div>
+                  <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2 }}>El programa corre en un PC diferente al que usas para controlar</div>
+                </div>
+                {servidorIp && <div style={{ color: "#60a5fa", fontSize: 18 }}>✓</div>}
+              </div>
+
+              {servidorIp.trim() !== "" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ fontSize: 12, opacity: 0.6, lineHeight: 1.6, padding: "10px 12px", background: "rgba(255,255,255,0.04)", borderRadius: 8 }}>
+                    📋 <b>¿Cómo encontrar la dirección?</b><br/>
+                    En el computador del proyector, abre el programa y anota el número que aparece (Ej: <span style={{ fontFamily: "monospace", color: "#93c5fd" }}>192.168.1.5</span>).
+                    O busca "CMD" y escribe <span style={{ fontFamily: "monospace", color: "#93c5fd" }}>ipconfig</span>.
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      value={servidorIp.trim()}
+                      onChange={e => { setServidorIp(e.target.value); setServidorPing("idle") }}
+                      placeholder="Ej: 192.168.1.5"
+                      style={{ ...inputStyle, flex: 1, fontFamily: "monospace" }}
+                      onKeyDown={e => e.key === "Enter" && guardarServidorIp()}
+                    />
+                    <button onClick={guardarServidorIp} style={{ ...btnPrincipal, flexShrink: 0 }}>Guardar</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Test de conexión */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button onClick={() => testearServidor()} disabled={servidorPing === "testing"}
+                style={{ ...btnSecundario, opacity: servidorPing === "testing" ? 0.5 : 1, flex: 1 }}>
+                🔌 Verificar conexión
+              </button>
+              {servidorPing !== "idle" && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, flexShrink: 0,
+                  color: servidorPing === "ok" ? "#4ade80" : servidorPing === "testing" ? "#93c5fd" : "#fca5a5" }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                    background: servidorPing === "ok" ? "#22c55e" : servidorPing === "testing" ? "#3b82f6" : "#ef4444",
+                    boxShadow: servidorPing === "ok" ? "0 0 6px rgba(34,197,94,0.7)" : "none" }} />
+                  {servidorPing === "ok" ? "¡Conectado!" : servidorPing === "testing" ? "Probando..." : "No responde"}
+                </div>
+              )}
+            </div>
+
+            {/* ✅ Auto-discovery + QR scanner para APK */}
+            {isCapacitor && (
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={buscarServidorAuto} disabled={buscandoServidor}
+                  style={{ ...btnSecundario, flex: 1, opacity: buscandoServidor ? 0.6 : 1 }}>
+                  {buscandoServidor ? "🔍 Buscando..." : "🔍 Buscar automáticamente"}
+                </button>
+                <button onClick={escanearQR}
+                  style={{ ...btnSecundario, flexShrink: 0 }}>
+                  📷 Escanear QR
+                </button>
+              </div>
+            )}
+
+            {/* ✅ QR Code en Electron para que el APK escanee */}
+            {isElectron && (
+              <div style={{ textAlign: "center", padding: "12px 0" }}>
+                <div style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>
+                  Escanea este QR con el celular para conectar automáticamente
+                </div>
+                {qrUrl ? (
+                  <img
+                    src={qrUrl}
+                    alt="QR Conexión"
+                    style={{ width: 180, height: 180, borderRadius: 12, background: "white", padding: 8 }}
+                    onError={async e => {
+                      // ✅ Fallback: generar QR client-side si el servidor falla
+                      const target = e.currentTarget
+                      try {
+                        const res = await fetch("http://localhost:4000/info")
+                        const { ip } = await res.json()
+                        const url = `selah://${ip}:4000`
+                        // Usar una API pública de QR como último recurso
+                        target.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(url)}`
+                      } catch { target.style.display = "none" }
+                    }}
+                  />
+                ) : (
+                  <div style={{ width: 180, height: 180, margin: "0 auto", borderRadius: 12,
+                    background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center",
+                    justifyContent: "center", fontSize: 12, opacity: 0.4 }}>
+                    Cargando QR...
+                  </div>
+                )}
+                {/* Siempre mostrar la URL/IP para que el usuario la pueda ingresar manualmente */}
+                <div style={{ marginTop: 10, fontSize: 12, opacity: 0.6 }}>
+                  IP: <span style={{ fontFamily: "monospace", fontWeight: 700, color: "#60a5fa" }}>
+                    {servidorIp || "cargando..."}
+                  </span>
+                </div>
+                <button
+                  onClick={() => { navigator.clipboard?.writeText(`selah://${servidorIp}:4000`); mostrarFlash("✅ URL copiada", "ok") }}
+                  style={{ marginTop: 6, fontSize: 11, padding: "3px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)",
+                    background: "transparent", color: "rgba(255,255,255,0.5)", cursor: "pointer" }}>
+                  📋 Copiar URL
+                </button>
+              </div>
+            )}
+
+            {/* Visor cámara QR */}
+            {escaneandoQR && (
+              <div style={{ borderRadius: 12, overflow: "hidden", position: "relative", background: "#000" }}>
+                <video ref={videoRef} style={{ width: "100%", display: "block" }} playsInline muted />
+                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+                  <div style={{ width: 200, height: 200, border: "3px solid #3b82f6", borderRadius: 12, opacity: 0.8 }} />
+                </div>
+                <button onClick={detenerEscaneo}
+                  style={{ position: "absolute", top: 8, right: 8, padding: "4px 10px", borderRadius: 8,
+                    background: "rgba(0,0,0,0.7)", color: "white", border: "none", cursor: "pointer", fontSize: 12 }}>
+                  ✕ Cancelar
+                </button>
+                <div style={{ position: "absolute", bottom: 8, left: 0, right: 0, textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.6)" }}>
+                  Apunta al QR del PC
+                </div>
+              </div>
+            )}
+
+            {/* ✅ Botón ir al control cuando conecta OK */}
+            {servidorOk && (
+              <button onClick={() => router.push("/control")}
+                style={{ ...btnPrincipal, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                🎛️ Ir al Control de Culto →
+              </button>
+            )}
+
+          </div>
+        </div>
+
+        {/* ── PIN DE SALA ────────────────────────────────────────────────── */}
+        <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>🔐 PIN de sala</div>
+            <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2 }}>Protege el control del proyector en la red local</div>
+          </div>
+          <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ fontSize: 13, opacity: 0.6, lineHeight: 1.5 }}>
+              Solo dispositivos con este PIN podrán controlar el proyector. Déjalo vacío para no usar PIN.
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <input type="number" placeholder="Ej: 1234" value={pinSala}
+                onChange={e => { setPinSala(e.target.value.slice(0, 6)); setPinGuardado(false) }}
+                style={{ ...inputStyle, flex: 1, fontSize: 18, fontWeight: 700, letterSpacing: 8 }}
+              />
+              <button onClick={async () => {
+                  await supabase.from("iglesias").update({ pin_sala: pinSala || null }).eq("id", iglesiaId)
+                  if (pinSala) localStorage.setItem("selah-sala-pin", pinSala)
+                  else localStorage.removeItem("selah-sala-pin")
+                  setPinGuardado(true)
+                }}
+                style={{ ...btnPrincipal, flexShrink: 0, background: pinGuardado ? "rgba(34,197,94,0.2)" : undefined, color: pinGuardado ? "#4ade80" : undefined }}>
+                {pinGuardado ? "✓ Guardado" : "Guardar"}
+              </button>
+            </div>
+            {pinSala && (
+              <button onClick={async () => {
+                  setPinSala(""); localStorage.removeItem("selah-sala-pin")
+                  await supabase.from("iglesias").update({ pin_sala: null }).eq("id", iglesiaId)
+                  setPinGuardado(false)
+                }}
+                style={{ alignSelf: "flex-start", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", color: "#fca5a5", fontSize: 12, cursor: "pointer" }}>
+                Quitar PIN
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* ── FUENTES DEL PROYECTOR ──────────────────────────────────────── */}
+        <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>🔤 Fuentes del proyector</div>
+            <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2 }}>Se aplica en tiempo real al abrir el proyector</div>
+          </div>
+          <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Tamaño de letra</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <input type="range" min="60" max="160" value={escalaFuente}
+                  onChange={e => { const v = Number(e.target.value); setEscalaFuente(v); localStorage.setItem("proyector-escala-fuente", String(v)) }}
+                  style={{ flex: 1 }} />
+                <span style={{ fontWeight: 800, fontSize: 16, minWidth: 48, textAlign: "right" }}>{escalaFuente}%</span>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                {[80, 100, 120, 140].map(v => (
+                  <button key={v} onClick={() => { setEscalaFuente(v); localStorage.setItem("proyector-escala-fuente", String(v)) }}
+                    style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${escalaFuente === v ? "#3b82f6" : "rgba(255,255,255,0.1)"}`,
+                      background: escalaFuente === v ? "rgba(59,130,246,0.15)" : "rgba(255,255,255,0.04)",
+                      color: escalaFuente === v ? "#93c5fd" : "rgba(255,255,255,0.5)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                    {v}%
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Tipo de letra</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {[
+                  { id: "system",  label: "Sistema",           css: "system-ui, sans-serif" },
+                  { id: "serif",   label: "Serif (tradicional)", css: "Georgia, 'Times New Roman', serif" },
+                  { id: "rounded", label: "Redondeada",        css: "'Trebuchet MS', Arial, sans-serif" },
+                  { id: "mono",    label: "Monospace",         css: "'Courier New', monospace" },
+                ].map(f => (
+                  <button key={f.id} onClick={() => { setFamiliaFuente(f.id); localStorage.setItem("proyector-font-family", f.id) }}
+                    style={{ padding: "12px 16px", borderRadius: 10, textAlign: "left",
+                      border: `1px solid ${familiaFuente === f.id ? "rgba(59,130,246,0.4)" : "rgba(255,255,255,0.08)"}`,
+                      background: familiaFuente === f.id ? "rgba(59,130,246,0.12)" : "rgba(255,255,255,0.03)",
+                      color: "white", cursor: "pointer" }}>
+                    <span style={{ fontFamily: f.css, fontSize: 18 }}>Dios es amor</span>
+                    <span style={{ fontSize: 11, opacity: 0.5, marginLeft: 12 }}>{f.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── INVITACIONES ──────────────────────────────────────────────── */}
+        <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>👥 Invitar personas</div>
+            <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2 }}>Genera un link para que otros se unan a tu iglesia</div>
+          </div>
+          <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+
+            {/* Generar nueva invitación */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <select value={rolInvitacion} onChange={e => setRolInvitacion(e.target.value)}
+                style={{ flex: 1, minWidth: 160, padding: "10px 14px", borderRadius: 10, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)", color: "white", fontSize: 14, outline: "none" }}>
+                <option value="musico" style={{ background: "#1e293b" }}>🎸 Músico</option>
+                <option value="lider"  style={{ background: "#1e293b" }}>🎛️ Líder de alabanza</option>
+                <option value="admin"  style={{ background: "#1e293b" }}>👑 Administrador</option>
+              </select>
+              <button onClick={generarInvitacion} disabled={generandoInv}
+                style={{ ...btnPrincipal, flexShrink: 0, opacity: generandoInv ? 0.6 : 1 }}>
+                {generandoInv ? "Generando..." : "✉️ Generar link"}
+              </button>
+            </div>
+
+            {/* Lista de invitaciones activas */}
+            {invitaciones.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.45, letterSpacing: "0.06em", textTransform: "uppercase" }}>Links activos</div>
+                {invitaciones.map(inv => {
+                  const r = ROLES_INV[inv.rol] || ROLES_INV.musico
+                  const link = `${typeof window !== "undefined" ? window.location.origin : ""}/unirse?codigo=${inv.codigo}`
+                  const expirado = inv.expira_at && new Date(inv.expira_at) < new Date()
+                  return (
+                    <div key={inv.id} style={{ padding: "12px 14px", borderRadius: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 20, flexShrink: 0 }}>{r.icon}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 13 }}>{r.label}</div>
+                        <div style={{ fontSize: 11, opacity: 0.4, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {inv.usos_actuales}/{inv.usos_max} usos · {expirado ? "Expirado" : `Expira ${new Date(inv.expira_at).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}`}
+                        </div>
+                      </div>
+                      <button onClick={() => copiarLink(inv.codigo)}
+                        style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: linkCopiado === inv.codigo ? "rgba(34,197,94,0.2)" : "rgba(37,99,235,0.2)", color: linkCopiado === inv.codigo ? "#4ade80" : "#93c5fd", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
+                        {linkCopiado === inv.codigo ? "✓ Copiado" : "📋 Copiar"}
+                      </button>
+                      <button onClick={() => desactivarInvitacion(inv.id)}
+                        style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.1)", color: "#fca5a5", fontSize: 13, cursor: "pointer", flexShrink: 0 }}>
+                        ✕
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            <div style={{ fontSize: 12, opacity: 0.4, lineHeight: 1.6 }}>
+              El link es válido por 7 días y hasta 20 usos. Compártelo por WhatsApp o correo.
+            </div>
+          </div>
+        </div>
+
+        {/* ── TUTORIALES ─────────────────────────────────────────────────── */}
+        <div style={card}>
+          <h2 style={{ margin: "0 0 16px", fontSize: "18px", fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}>
+            🎓 Tutoriales
+          </h2>
+          <div style={{ fontSize: 13, opacity: 0.5, marginBottom: 16, lineHeight: 1.6 }}>
+            ¿Necesitas repasar cómo funciona alguna pantalla? Reinicia el tour guiado de cualquier sección.
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[
+              { id: "tour-control",   label: "🎛️ Tour del Control de Culto",  desc: "Proyectar, navegar partes, auto-avance, lista de culto",  ruta: "/control"   },
+              { id: "tour-canciones", label: "🎵 Tour del Cancionero",        desc: "Buscar, filtrar, agregar canciones e importar PPT",       ruta: "/canciones" },
+            ].map(({ id, label, desc, ruta }) => {
+              // visto calculado en onClick
+              return (
+                <div key={id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                  padding: "14px 16px", borderRadius: 12, background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{label}</div>
+                    <div style={{ fontSize: 12, opacity: 0.4, marginTop: 2 }}>{desc}</div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem(id)
+                      sessionStorage.setItem(`${id}-forzar`, "1")
+                      router.push(ruta)
+                    }}
+                    style={{ padding: "8px 14px", borderRadius: 10, border: "1px solid rgba(59,130,246,0.3)",
+                      background: "rgba(59,130,246,0.1)", color: "#93c5fd",
+                      fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+                    {"▶ Ver tour"}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* ── LOG DE ERRORES ─────────────────────────────────────────────── */}
+        {iglesiaId && (
+          <ErrorLog iglesiaId={iglesiaId} />
+        )}
+
+        {/* ── ACTUALIZACIONES ────────────────────────────────────────────── */}
+        {typeof window !== "undefined" && !!(window as any).electron && (
+          <div style={card}>
+            <h2 style={{ margin: "0 0 12px", fontSize: "18px", fontWeight: 800 }}>🔄 Actualizaciones</h2>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div style={{ fontSize: 13, opacity: 0.5 }}>Verificar si hay una nueva versión disponible</div>
+              <button
+                onClick={() => (window as any).electron?.ipcRenderer?.send("check-for-updates")}
+                style={{ padding: "8px 16px", borderRadius: 10, border: "1px solid rgba(59,130,246,0.3)",
+                  background: "rgba(59,130,246,0.1)", color: "#93c5fd",
+                  fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
+                Buscar actualizaciones
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── CERRAR SESIÓN ──────────────────────────────────────────────── */}
+        <div style={{ ...card, padding: "20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>Sesión activa</div>
+            <div style={{ fontSize: 12, opacity: 0.45, marginTop: 2 }}>Cierra sesión en este dispositivo</div>
+          </div>
+          <button onClick={cerrarSesion}
+            style={{ padding: "10px 20px", borderRadius: 10, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", color: "#fca5a5", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+            🚪 Cerrar sesión
+          </button>
+        </div>
+
       </div>
     </div>
   )

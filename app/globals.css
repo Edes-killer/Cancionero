@@ -35,3 +35,24 @@ body {
     transform: translateY(0);
   }
 }
+:root {
+  --bg-primary:    #060d1a;
+  --bg-secondary:  rgba(255,255,255,0.03);
+  --bg-card:       rgba(17,27,46,0.96);
+  --border:        rgba(255,255,255,0.06);
+  --text-primary:  #ffffff;
+  --text-muted:    rgba(255,255,255,0.5);
+  --accent:        #2563eb;
+  --accent-light:  #93c5fd;
+}
+
+[data-theme="light"] {
+  --bg-primary:    #f1f5f9;
+  --bg-secondary:  rgba(0,0,0,0.03);
+  --bg-card:       #ffffff;
+  --border:        rgba(0,0,0,0.08);
+  --text-primary:  #0f172a;
+  --text-muted:    rgba(0,0,0,0.5);
+  --accent:        #2563eb;
+  --accent-light:  #1d4ed8;
+}

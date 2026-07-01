@@ -14,15 +14,60 @@ export const limpiarIglesiaActivaId = () => {
   localStorage.removeItem(KEY_IGLESIA_ACTIVA)
 }
 
+// ── Validación de UUID para evitar valores corruptos en localStorage ─────────
+// Previene que strings como "undefined", "null" o "" lleguen como iglesiaId
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+const esUUIDValido = (s: string | null): s is string => !!(s && UUID_REGEX.test(s))
+
+// ── Promise deduplication: evita llamadas concurrentes a getUser() ────────────
+let _fetchEnCurso: Promise<string | null> | null = null
+
 // ── Obtener iglesia_id del usuario autenticado ────────────────────────────────
 //
-//  Flujo:
-//  1. Obtiene el user_id del usuario logueado
-//  2. Busca todas las iglesias asociadas a ese usuario en usuarios_iglesia
-//  3. Si hay una iglesia guardada en localStorage y el usuario tiene acceso → la usa
-//  4. Si no → usa la primera iglesia asociada y la guarda en localStorage
+//  Flujo optimizado vs versión anterior:
+//
+//  1. FAST PATH: si localStorage ya tiene iglesia_id, hacer solo getSession()
+//     (no adquiere el auth lock) y retornar inmediatamente.
+//     → Elimina el 99% de los "Lock stolen by another request" que ocurren
+//       cuando músicos + proyectar + control reconectan simultáneamente.
+//     → getUser() solo se llama cuando no hay iglesia en localStorage (login inicial).
+//
+//  2. DEDUPLICATION: si hay un fetch en curso, esperar por él en vez de crear otro.
+//     → Evita el error cuando múltiples páginas inician al mismo tiempo sin cache.
 //
 export const getIglesiaId = async (): Promise<string | null> => {
+  const guardada = typeof window !== "undefined"
+    ? localStorage.getItem(KEY_IGLESIA_ACTIVA)
+    : null
+
+  // ✅ Validar UUID: descarta strings corruptos ("undefined", "null", "", etc.)
+  // que podrían causar queries fallidas con error {} vacío en Supabase
+  if (esUUIDValido(guardada)) {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session) return guardada
+    // Sesión inválida o expirada — limpiar cache y autenticar de nuevo
+    if (typeof window !== "undefined") localStorage.removeItem(KEY_IGLESIA_ACTIVA)
+  } else if (guardada) {
+    // Valor en localStorage pero no es UUID válido → limpiar silenciosamente
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(KEY_IGLESIA_ACTIVA)
+    }
+  }
+
+  // Sin caché: necesitamos ir a auth + BD
+  if (_fetchEnCurso) return _fetchEnCurso
+
+  _fetchEnCurso = _fetchIglesiaDesdeAuth()
+  try {
+    return await _fetchEnCurso
+  } finally {
+    _fetchEnCurso = null
+  }
+}
+
+// Fetch real desde auth + BD (solo cuando localStorage está vacío)
+const _fetchIglesiaDesdeAuth = async (): Promise<string | null> => {
   const { data: userData, error: userError } = await supabase.auth.getUser()
 
   if (userError || !userData.user) {
@@ -54,7 +99,6 @@ export const getIglesiaId = async (): Promise<string | null> => {
     .map((r: any) => r.iglesia_id)
     .filter(Boolean)
 
-  // ¿Hay una iglesia guardada localmente que el usuario pueda usar?
   const guardada = typeof window !== "undefined"
     ? localStorage.getItem(KEY_IGLESIA_ACTIVA)
     : null
@@ -63,7 +107,6 @@ export const getIglesiaId = async (): Promise<string | null> => {
     return guardada
   }
 
-  // Usar la primera y guardarla
   const primera = idsPermitidos[0]
   if (primera && typeof window !== "undefined") {
     localStorage.setItem(KEY_IGLESIA_ACTIVA, primera)
@@ -72,15 +115,16 @@ export const getIglesiaId = async (): Promise<string | null> => {
   return primera ?? null
 }
 
-// ── Cambiar iglesia activa (útil si el usuario pertenece a más de una) ────────
+// ── Cambiar iglesia activa ────────────────────────────────────────────────────
 export const cambiarIglesiaActiva = async (iglesiaId: string): Promise<boolean> => {
-  const { data: userData } = await supabase.auth.getUser()
-  if (!userData.user) return false
+  // getSession() en vez de getUser() — no adquiere el auth lock
+  const { data: sessionData } = await supabase.auth.getSession()
+  if (!sessionData.session?.user) return false
 
   const { data } = await supabase
     .from("usuarios_iglesia")
     .select("iglesia_id")
-    .eq("user_id", userData.user.id)
+    .eq("user_id", sessionData.session.user.id)
     .eq("iglesia_id", iglesiaId)
     .single()
 

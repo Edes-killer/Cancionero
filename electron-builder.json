@@ -1,0 +1,32 @@
+{
+  "appId": "com.tuiglesia.cancionero",
+  "productName": "Selah Live",
+  "directories": { "output": "dist-electron" },
+  "files": [
+    "out/**/*",
+    "electron/**/*",
+    "server/**/*",
+    "node_modules/**/*",
+    "package.json"
+  ],
+  "extraResources": [
+    { "from": "data/biblia", "to": "data/biblia" }
+  ],
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "installerIcon": "assets/icon.ico",
+    "uninstallerIcon": "assets/icon.ico",
+    "allowToChangeInstallationDirectory": false,
+    "deleteAppDataOnUninstall": false
+  },
+  "win": {
+    "target": "nsis",
+    "icon": "assets/icon.ico"
+  },
+  "publish": {
+    "provider": "github",
+    "owner": "Edes-killer",
+    "repo": "Cancionero"
+  }
+}

@@ -113,17 +113,16 @@ export default function Navbar() {
                 )
               })}
               {/* Músicos — visible en desktop también */}
-              <Link href="/musicos" target={isCapacitor ? "_self" : "_blank"} style={{
+              <button onClick={() => isCapacitor ? router.push("/musicos") : window.open(`${window.location.origin}/musicos`, "_blank", "noopener")} style={{
                 display: "flex", alignItems: "center", gap: 5,
                 padding: "5px 10px", borderRadius: 8,
-                textDecoration: "none", fontSize: 13, fontWeight: 500,
+                fontSize: 13, fontWeight: 500,
                 color: "rgba(255,255,255,0.5)",
-                background: "transparent",
-                border: "1px solid transparent",
-                whiteSpace: "nowrap"
+                background: "transparent", border: "1px solid transparent",
+                whiteSpace: "nowrap", cursor: "pointer"
               }}>
                 <span style={{ fontSize: 13 }}>🎸</span>Músicos
-              </Link>
+              </button>
             </div>
           )}
 
@@ -131,23 +130,23 @@ export default function Navbar() {
 
           {/* ── Músicos (mobile) / Proyector (desktop) ── */}
           {isMobile ? (
-            <Link href="/musicos" target={isCapacitor ? "_self" : "_blank"} style={{
+            <button onClick={() => isCapacitor ? router.push("/musicos") : window.open(`${window.location.origin}/musicos`, "_blank", "noopener")} style={{
               padding: "5px 8px", borderRadius: 7,
               background: "rgba(251,191,36,0.08)",
               border: "1px solid rgba(251,191,36,0.2)",
               color: "#fbbf24",
-              textDecoration: "none",
-              fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0
-            }}>🎸</Link>
+              fontSize: 10, fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0,
+              cursor: "pointer"
+            }}>🎸</button>
           ) : (
-            <Link href="/proyectar" target={isCapacitor ? "_self" : "_blank"} style={{
+            <button data-tour="btn-proyectar-nav" onClick={() => window.open(`${window.location.origin}/proyectar`, "_blank", "noopener")} style={{
               padding: "5px 10px", borderRadius: 7,
               background: "rgba(255,255,255,0.05)",
               border: "1px solid rgba(255,255,255,0.08)",
               color: "rgba(255,255,255,0.5)",
-              textDecoration: "none",
-              fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0
-            }}>🖥️ Proyector</Link>
+              fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0,
+              cursor: "pointer"
+            }}>🖥️ Proyector</button>
           )}
 
           {/* ── Cerrar sesión ── */}
@@ -200,14 +199,14 @@ export default function Navbar() {
                 </Link>
               )
             })}
-            <Link href="/musicos" target={isCapacitor ? "_self" : "_blank"} style={{
+            <button onClick={() => isCapacitor ? router.push("/musicos") : window.open(`${window.location.origin}/musicos`, "_blank", "noopener")} style={{
               display: "flex", alignItems: "center", gap: 10,
               padding: "12px 14px", borderRadius: 10,
-              textDecoration: "none", fontSize: 15,
-              color: "rgba(255,255,255,0.4)", fontWeight: 500
+              fontSize: 15, color: "rgba(255,255,255,0.4)", fontWeight: 500,
+              background: "transparent", border: "none", cursor: "pointer", width: "100%", textAlign: "left"
             }}>
               <span>🎸</span> Músicos
-            </Link>
+            </button>
           </div>
         )}
       </nav>
