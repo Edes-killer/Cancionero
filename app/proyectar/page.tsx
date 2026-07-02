@@ -430,12 +430,14 @@ export default function ProyectarPage() {
   useEffect(() => {
     const prevBodyOverflow = document.body.style.overflow
     const prevHtmlOverflow = document.documentElement.style.overflow
+    const prevBodyMargin = document.body.style.margin
     document.body.style.overflow = "hidden"
     document.documentElement.style.overflow = "hidden"
     document.body.style.margin = "0"
     return () => {
       document.body.style.overflow = prevBodyOverflow
       document.documentElement.style.overflow = prevHtmlOverflow
+      document.body.style.margin = prevBodyMargin
     }
   }, [])
 

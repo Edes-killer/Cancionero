@@ -6,6 +6,7 @@
     "out/**/*",
     "electron/**/*",
     "server/**/*",
+    "lib/**/*",
     "node_modules/**/*",
     "package.json"
   ],
