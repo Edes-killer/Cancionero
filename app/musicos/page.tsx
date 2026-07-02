@@ -18,7 +18,6 @@ export default function MusicosPage() {
   const [transposicion, setTransposicion] = useState(0)
   const [mostrarAcordes, setMostrarAcordes] = useState(true)
   const [usarAmericano, setUsarAmericano] = useState(false)
-  const [cargandoMusicos, setCargandoMusicos] = useState(false)
   const socketConectadoRef = useRef(false)
 
   // Cargar canciones al montar y forzar modo repertorio
@@ -502,43 +501,6 @@ export default function MusicosPage() {
   //    Renderizar solo tras montar elimina todos los hydration mismatch.
   if (!mounted) {
     return <div style={{ width: "100vw", height: "100dvh", background: "#03080f" }} />
-  }
-
-  // ── PANTALLA DE CARGA ─────────────────────────────────────────────────────
-  if (cargandoMusicos) {
-    return (
-      <div style={{
-        width: "100vw", height: "100dvh",
-        background: "linear-gradient(180deg, #020617 0%, #111827 100%)",
-        color: "white", fontFamily: "'Segoe UI', system-ui, sans-serif"
-      }}>
-        <style>{`
-          @keyframes spinM { to { transform: rotate(360deg) } }
-          @keyframes shimmer { 0%,100% { opacity:.4 } 50% { opacity:.8 } }
-        `}</style>
-        {/* Header skeleton */}
-        <div style={{ padding: "16px", borderBottom: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 80, height: 28, borderRadius: 8, background: "rgba(255,255,255,0.08)", animation: "shimmer 1.5s ease infinite" }} />
-          <div style={{ flex: 1, height: 20, borderRadius: 6, background: "rgba(255,255,255,0.05)", animation: "shimmer 1.5s ease infinite 0.2s" }} />
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(255,255,255,0.06)", animation: "shimmer 1.5s ease infinite 0.4s" }} />
-        </div>
-        {/* Search skeleton */}
-        <div style={{ padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          <div style={{ height: 40, borderRadius: 10, background: "rgba(255,255,255,0.06)", animation: "shimmer 1.5s ease infinite 0.1s" }} />
-        </div>
-        {/* Song rows skeleton */}
-        {[1,2,3,4,5].map(i => (
-          <div key={i} style={{ padding: "14px 16px", borderBottom: "1px solid rgba(255,255,255,0.04)", display: "flex", gap: 12, alignItems: "center" }}>
-            <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(255,255,255,0.06)", flexShrink: 0, animation: `shimmer 1.5s ease infinite ${i*0.1}s` }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ height: 14, borderRadius: 4, background: "rgba(255,255,255,0.08)", marginBottom: 6, animation: `shimmer 1.5s ease infinite ${i*0.1+0.1}s` }} />
-              <div style={{ height: 11, width: "60%", borderRadius: 4, background: "rgba(255,255,255,0.05)", animation: `shimmer 1.5s ease infinite ${i*0.1+0.2}s` }} />
-            </div>
-          </div>
-        ))}
-        <div style={{ textAlign: "center", padding: 24, opacity: 0.4, fontSize: 13 }}>Cargando canciones...</div>
-      </div>
-    )
   }
 
   // ── MODO REPERTORIO → ir directo, sin pasar por pantalla de espera ────────

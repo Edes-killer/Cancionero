@@ -1,5 +1,5 @@
 "use client"
-import { useRef, useState, useEffect } from "react"
+import { useMemo, useRef, useState, useEffect } from "react"
 
 const LIBROS = [
   "Génesis","Éxodo","Levítico","Números","Deuteronomio","Josué","Jueces","Rut",
@@ -61,7 +61,7 @@ export default function BibleAutocomplete({
   value, onChange, onSubmit, placeholder, style, inputStyle, autoFocus
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const sugerencia = buscarSugerencia(value)
+  const sugerencia = useMemo(() => buscarSugerencia(value), [value])
 
   // Sufijo ghost: lo que falta escribir del libro
   const ghostSuffix = sugerencia

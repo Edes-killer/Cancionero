@@ -6,8 +6,8 @@ import OnboardingTour from "@/components/OnboardingTour"
 import { TOUR_CONTROL } from "@/lib/tours"
 
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { logError, logCatch } from "@/lib/Errorlogger"
-import { getSocketUrl, getApiUrl } from "@/lib/servidor"
+import { logCatch } from "@/lib/Errorlogger"
+import { getSocketUrl } from "@/lib/servidor"
 import { supabase } from "@/lib/supabase"
 import { io } from "socket.io-client"
 import { getIglesiaId } from "../../lib/getIglesia"
@@ -499,18 +499,24 @@ useEffect(() => {
   document.addEventListener("visibilitychange", reconectar)
 
   // Capacitor APK: detecta cuando la app vuelve al frente
+  let capacitorListener: { remove: () => void } | null = null
+  let desmontado = false
   const setupCapacitorReconexion = async () => {
     if (!(window as any).Capacitor) return
     try {
       const { App } = await import("@capacitor/app")
-      App.addListener("appStateChange", ({ isActive }) => {
+      const handle = await App.addListener("appStateChange", ({ isActive }) => {
         if (isActive) reconectar()
       })
+      if (desmontado) { handle.remove(); return }
+      capacitorListener = handle
     } catch (e) {}
   }
   setupCapacitorReconexion()
 
   return () => {
+    desmontado = true
+    capacitorListener?.remove()
     document.removeEventListener("visibilitychange", reconectar)
     s.off("control-siguiente", onSiguiente)
     s.off("control-anterior", onAnterior)
