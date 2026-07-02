@@ -205,6 +205,7 @@ const upsertEstadoCulto = async (sala, tipo, data = {}) => {
 
 // ── Servidor Socket.IO ─────────────────────────────────────────────────────────
 let estadosPorSala = {}
+const pinesPorSala = {}
 
 function startSocketServer(port) {
   const estadoPath = path.join(app.getPath("userData"), "estado.json")
@@ -443,8 +444,18 @@ try {
   io.on("connection", (socket) => {
     console.log("📱 Cliente conectado:", socket.id)
 
-    socket.on("unirse-sala", ({ sala, pantalla }) => {
+    socket.on("unirse-sala", ({ sala, pantalla, pin }) => {
       const salaFinal = sala || "global"
+
+      if (pantalla === "control" || pantalla === "canciones") {
+        const pinG = pinesPorSala[salaFinal]
+        if (pinG && String(pin || "") !== String(pinG)) {
+          socket.emit("pin-invalido", { mensaje: "PIN incorrecto. Verifica en configuración." })
+          return
+        }
+        if (!pinG && pin) pinesPorSala[salaFinal] = String(pin)
+      }
+
       socket.data.sala = salaFinal
       socket.data.pantalla = pantalla || "desconocida"
       socket.join(salaFinal)
@@ -547,11 +558,6 @@ try {
       } catch(e) {
         if (typeof callback === "function") callback({ error: e.message })
       }
-    })
-
-    // ✅ Estado del proyector: notificar al control cuando conecta/desconecta
-    socket.on("unirse-sala", ({ sala, pantalla } = {}) => {
-      // Este handler es adicional al principal de arriba — solo maneja notificación proyector
     })
 
     socket.on("get-estado", () => {

@@ -224,7 +224,7 @@ io.on("connection", socket => {
 
     if (pantalla === "control" || pantalla === "canciones") {
       const pinG = pinesPorSala[salaF]
-      if (pinG && pin && String(pin) !== String(pinG)) {
+      if (pinG && String(pin || "") !== String(pinG)) {
         socket.emit("pin-invalido", { mensaje:"PIN incorrecto. Verifica en configuración." })
         return
       }

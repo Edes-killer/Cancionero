@@ -320,7 +320,8 @@ export default function CancionesPage() {
     s.on("connect", async () => {
       try {
         if (!salaRef.current) salaRef.current = iglesiaIdCtx || (await getIglesiaId()) || "global"
-        s.emit("unirse-sala", { sala: salaRef.current, pantalla: "canciones" })
+        const pin = localStorage.getItem("selah-sala-pin") || undefined
+        s.emit("unirse-sala", { sala: salaRef.current, pantalla: "canciones", pin })
       } catch (err) {
         if (process.env.NODE_ENV === "development") console.error("❌ canciones socket connect:", err)
       }
