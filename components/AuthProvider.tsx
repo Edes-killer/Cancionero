@@ -9,7 +9,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const router = useRouter()
   const [checking, setChecking] = useState(false)
 
-  const publicRoutes = ["/login", "/register", "/proyectar", "/musicos"]
+  const publicRoutes = ["/login", "/register", "/proyectar", "/musicos", "/unirse"]
   // ✅ next.config.ts usa trailingSlash: true → usePathname() devuelve "/login/"
   // con barra final, que no calzaba con las entradas de publicRoutes.
   const pathnameNormalizado = pathname.length > 1 ? pathname.replace(/\/$/, "") : pathname
