@@ -47,18 +47,23 @@ export default function CrearIglesiaPage() {
 
       const nombreFinal = nombreCorto.trim() || nombreIglesia.trim()
 
-      const { data: iglesia, error: errorIglesia } = await supabase
+      // ✅ Generar el id en el cliente — evita que Supabase tenga que
+      // releer la fila recién creada (.select().single()), lo cual fallaba
+      // porque la política RLS de SELECT exige que el usuario ya esté
+      // vinculado en usuarios_iglesia, y eso recién pasa en el paso siguiente.
+      const nuevoId = crypto.randomUUID()
+
+      const { error: errorIglesia } = await supabase
         .from("iglesias")
         .insert({
+          id: nuevoId,
           nombre: nombreFinal,
           localidad: localidad.trim() || null
         })
-        .select()
-        .single()
 
-      if (errorIglesia || !iglesia) {
+      if (errorIglesia) {
         console.error("Error creando iglesia:", errorIglesia)
-        alert("No se pudo crear la iglesia.")
+        alert("No se pudo crear la iglesia: " + (errorIglesia.message || "error desconocido"))
         return
       }
 
@@ -66,7 +71,7 @@ export default function CrearIglesiaPage() {
         .from("usuarios_iglesia")
         .insert({
           user_id: userId,
-          iglesia_id: iglesia.id
+          iglesia_id: nuevoId
         })
 
       if (errorRelacion) {
@@ -75,7 +80,7 @@ export default function CrearIglesiaPage() {
         return
       }
 
-      setIglesiaActivaId(iglesia.id)
+      setIglesiaActivaId(nuevoId)
 
       router.replace("/")
       router.refresh()
