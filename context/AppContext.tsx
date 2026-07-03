@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId } from "@/lib/getIglesia"
+import { getCancelacionesCache, setCancelacionesCache, cacheEsValido } from "@/lib/cache"
 
 interface AppContextType {
   session: any
@@ -16,6 +17,8 @@ interface AppContextType {
   recargarCanciones: () => Promise<void>
   actualizarCancion: (id: string) => Promise<void>
   eliminarCancionDelCache: (id: string) => void
+  desdeCache: boolean
+  pinSala: string | null
   listo: boolean
 }
 
@@ -26,6 +29,8 @@ const AppContext = createContext<AppContextType>({
   recargarCanciones: async () => {},
   actualizarCancion: async () => {},
   eliminarCancionDelCache: () => {},
+  desdeCache: false,
+  pinSala: null,
   listo: false,
 })
 
@@ -40,6 +45,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [cargandoCanciones, setCargandoCanciones] = useState(false)
   const [errorCanciones, setErrorCanciones] = useState<string | null>(null)
   const [listo, setListo] = useState(false)
+  const [desdeCache, setDesdeCache] = useState(false)
+  const [pinSala, setPinSala] = useState<string | null>(null)
 
   // ✅ Flags para evitar cargas duplicadas
   const yaCargadoRef = useRef(false)
@@ -48,20 +55,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const cargarCanciones = useCallback(async (igId: string, intento = 1) => {
     setCargandoCanciones(true)
     setErrorCanciones(null)
+
+    // ✅ Paso 1: Cargar desde cache inmediatamente si existe
+    if (intento === 1) {
+      const cached = await getCancelacionesCache(igId)
+      if (cached && cached.canciones.length > 0) {
+        setCanciones(cached.canciones)
+        setDesdeCache(true)
+        setCargandoCanciones(false)
+        // ✅ SIEMPRE refrescar desde Supabase en background para tener datos completos
+        // No retornar aunque el caché sea válido — puede tener datos incompletos
+      }
+    }
+
     try {
-      const { data, error } = await supabase
-        .from("canciones")
-        .select("id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda")
-        .or(`iglesia_id.eq.${igId},iglesia_id.is.null`)
-      if (error) throw error
-      setCanciones(data || [])
+      const PAGINA = 1000
+      let todas: any[] = []
+      let desde = 0
+      let continuar = true
+
+      while (continuar) {
+        const { data, error } = await supabase
+          .from("canciones")
+          .select("id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda, fecha_creacion")
+          .or(`iglesia_id.eq.${igId},iglesia_id.is.null`)
+          .order("numero", { ascending: true, nullsFirst: false })
+          .range(desde, desde + PAGINA - 1)
+
+        if (error) throw error
+        if (!data || data.length === 0) break
+        todas = todas.concat(data)
+        continuar = data.length === PAGINA
+        desde += PAGINA
+      }
+
+      console.log(`✅ AppContext canciones desde Supabase: ${todas.length}`)
+      setCanciones(todas)
+      setDesdeCache(false)
+      await setCancelacionesCache(igId, todas)
     } catch (e: any) {
       console.error("Error cargando canciones:", e)
       if (intento < 3) {
         await new Promise(r => setTimeout(r, intento * 1000))
         return cargarCanciones(igId, intento + 1)
       }
-      setErrorCanciones("No se pudieron cargar las canciones. Verifica tu conexión.")
+      // Si ya tenemos datos del cache, no mostrar error
+      if (!(await getCancelacionesCache(igId))) {
+        setErrorCanciones("Sin conexión. Verifica tu internet.")
+      }
     } finally {
       setCargandoCanciones(false)
     }
@@ -96,7 +137,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const cargarDatos = useCallback(async () => {
-    // ✅ Evitar cargas duplicadas si ya está corriendo o ya cargó
     if (cargandoRef.current || yaCargadoRef.current) return
     cargandoRef.current = true
 
@@ -105,23 +145,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!igId) { setListo(true); return }
       setIglesiaId(igId)
 
-      const { data, error } = await supabase
-        .from("iglesias")
-        .select("nombre, logo_url, localidad")
-        .eq("id", igId)
-        .single()
+      // ✅ Cargar canciones SIEMPRE, independiente de si iglesias falla
+      console.log("🚀 AppContext: iniciando carga de canciones para iglesia", igId)
+      cargarCanciones(igId)
 
-      if (!error && data) {
-        setNombreIglesia(data.nombre || "")
-        setLogoUrl(data.logo_url || "")
-        setLocalidad(data.localidad || "")
-      }
+      // Iglesia (nombre/logo) en paralelo — si falla no bloquea las canciones
+      Promise.resolve(
+        supabase.from("iglesias")
+          .select("nombre, logo_url, localidad, pin_sala")
+          .eq("id", igId).single()
+      ).then(({ data, error }) => {
+          if (!error && data) {
+            setNombreIglesia(data.nombre || "")
+            setLogoUrl(data.logo_url || "")
+            setLocalidad(data.localidad || "")
+            setPinSala(data.pin_sala || null)
+            if (data.pin_sala) localStorage.setItem("selah-sala-pin", data.pin_sala)
+            else localStorage.removeItem("selah-sala-pin")
+          }
+        }).catch(() => {})
 
       yaCargadoRef.current = true
       setListo(true)
-
-      // Canciones en background
-      cargarCanciones(igId)
     } catch (e) {
       console.error("AppContext error:", e)
       setListo(true)
@@ -138,6 +183,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setNombreIglesia("")
     setLogoUrl("")
     setLocalidad("")
+    setPinSala(null)
+    setDesdeCache(false)
     setCanciones([])
     setListo(false)
     setErrorCanciones(null)
@@ -152,6 +199,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // ✅ Si fue un logout manual, ignorar cualquier sesión residual
+      // (Electron puede detectar la cookie de Google OAuth y reautenticar solo)
+      if (localStorage.getItem("selah-logout-manual") === "1") {
+        if (event !== "SIGNED_OUT") return  // ignorar hasta que se limpie todo
+      }
+
       setSession(session)
       setUserId(session?.user?.id || null)
       if (event === "SIGNED_OUT") {
@@ -170,7 +223,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       iglesiaId, nombreIglesia, logoUrl, localidad,
       canciones, cargandoCanciones, errorCanciones,
       recargarCanciones, actualizarCancion, eliminarCancionDelCache,
-      listo,
+      desdeCache, pinSala, listo,
     }}>
       {children}
     </AppContext.Provider>

@@ -1,21 +1,205 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { io } from "socket.io-client"
 import { supabase } from "../../lib/supabase"
 import { getIglesiaId } from "../../lib/getIglesia"
+import { getSocketUrl } from "../../lib/servidor"
+import PitchDetector from "@/components/PitchDetector"
 
 export default function MusicosPage() {
   const [partes, setPartes] = useState<any[]>([])
   const [index, setIndex] = useState(0)
   const [titulo, setTitulo] = useState("")
   const [tono, setTono] = useState("")
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
   const [transposicion, setTransposicion] = useState(0)
   const [mostrarAcordes, setMostrarAcordes] = useState(true)
   const [usarAmericano, setUsarAmericano] = useState(false)
-  const [cargandoMusicos, setCargandoMusicos] = useState(true)
+  const socketConectadoRef = useRef(false)
+
+  // Cargar canciones al montar y forzar modo repertorio
+  useEffect(() => {
+    setModo("repertorio")  // ← forzar siempre, por si React reutiliza el componente
+    getIglesiaId().then(igId => {
+      if (igId) salaRef.current = igId
+    }).catch(() => {}).finally(() => {
+      cargarRepertorio()
+    })
+  }, [])
   const [esMovil, setEsMovil] = useState(false)
   const [panelAbierto, setPanelAbierto] = useState(false)
+  const salaRef = useRef<string | null>(null)
+
+  // ── Push Notifications ───────────────────────────────────────────────────
+  // ⚠️ Requiere Firebase configurado (google-services.json en android/app/)
+  // Para activar:
+  //   1. Crear proyecto en Firebase → Agregar app Android → Descargar google-services.json
+  //   2. Pegar google-services.json en android/app/
+  //   3. En server/.env agregar FIREBASE_SERVER_KEY=tu-key
+  //   4. Descomentar este bloque y rebuild APK
+  //
+  // useEffect(() => {
+  //   if (!(window as any).Capacitor) return
+  //   import("@capacitor/push-notifications").then(({ PushNotifications }) => {
+  //     PushNotifications.requestPermissions().then(perm => {
+  //       if (perm.receive !== "granted") return
+  //       PushNotifications.register()
+  //       PushNotifications.addListener("registration", async ({ value: token }) => {
+  //         const { data: { session } } = await supabase.auth.getSession()
+  //         if (!session) return
+  //         const igId = salaRef.current || await getIglesiaId()
+  //         await supabase.from("tokens_push").upsert(
+  //           { user_id: session.user.id, iglesia_id: igId, token, plataforma: "android", updated_at: new Date().toISOString() },
+  //           { onConflict: "user_id,iglesia_id" }
+  //         )
+  //       })
+  //       PushNotifications.addListener("pushNotificationReceived", notification => {
+  //         if (notification.data?.tipo === "cancion") setAlertaVivo(true)
+  //       })
+  //     })
+  //   }).catch(() => {})
+  // }, [])
+
+  // ── Modo: "repertorio" por defecto — funciona siempre sin servidor ────────
+  const router = useRouter()
+  const [modo, setModo] = useState<"vivo" | "repertorio">("repertorio")
+  const [tunerAbierto, setTunerAbierto] = useState(false)
+  const [cancionesRepo, setCancionesRepo] = useState<any[]>([])
+  const [cargandoRepo, setCargandoRepo] = useState(false)
+  const [busquedaRepo, setBusquedaRepo] = useState("")
+  const [cancionRepo, setCancionRepo] = useState<any>(null)
+  const [partesRepo, setPartesRepo] = useState<any[]>([])
+  const [transposicionRepo, setTransposicionRepo] = useState(0)
+  const [alertaVivo, setAlertaVivo] = useState(false)
+  // ✅ Caché en memoria: evita re-fetchar partes al cambiar entre canciones
+  const partesCacheRef = useRef<Map<string, any[]>>(new Map())  // nueva canción llegó mientras estaba en repertorio
+
+  const cargarRepertorio = async () => {
+    // ✅ Si el socket no conectó (músico fuera del WiFi de la iglesia),
+    // obtener el iglesiaId directamente de Supabase / localStorage
+    if (!salaRef.current) {
+      try {
+        const igId = await getIglesiaId()
+        if (igId) salaRef.current = igId
+      } catch {
+        // Sin conexión a Supabase — intentar con el último iglesiaId guardado
+        try {
+          const guardado = localStorage.getItem("selah-ultima-iglesia")
+          if (guardado) salaRef.current = guardado
+        } catch { }
+      }
+    }
+    // Guardar para uso offline futuro
+    if (salaRef.current) {
+      try { localStorage.setItem("selah-ultima-iglesia", salaRef.current) } catch { }
+    }
+
+    const igId = salaRef.current
+    const CACHE_KEY_V2 = `selah-repo-canciones-v2-${igId || "global"}`
+
+    // 1. Mostrar desde caché inmediatamente (funciona offline)
+    try {
+      const raw = localStorage.getItem(CACHE_KEY_V2)
+      if (raw) {
+        const cached = JSON.parse(raw)
+        if (Array.isArray(cached) && cached.length > 0) {
+          setCancionesRepo(cached)
+          if (!navigator.onLine) return
+        }
+      }
+    } catch { }
+
+    // 2. Si hay conexión → refrescar desde Supabase
+    if (!navigator.onLine) return
+    setCargandoRepo(cancionesRepo.length === 0)
+    try {
+      const filtro = igId
+        ? `iglesia_id.eq.${igId},iglesia_id.is.null`
+        : `iglesia_id.is.null`
+
+      // ✅ Paginación — Supabase corta en 1000 por defecto
+      const PAGINA = 1000
+      let todas: any[] = []
+      let desde = 0
+      let continuar = true
+      while (continuar) {
+        const { data } = await supabase
+          .from("canciones")
+          .select("id, titulo, tono, categoria, numero")
+          .or(filtro)
+          .order("numero", { ascending: true, nullsFirst: false })
+          .range(desde, desde + PAGINA - 1)
+        if (!data || data.length === 0) break
+        todas = todas.concat(data)
+        continuar = data.length === PAGINA
+        desde += PAGINA
+      }
+
+      if (todas.length > 0) {
+        // Invalidar caché viejo cambiando la clave
+        const CACHE_KEY_V2 = `selah-repo-canciones-v2-${igId || "global"}`
+        setCancionesRepo(todas)
+        try { localStorage.setItem(CACHE_KEY_V2, JSON.stringify(todas)) } catch { }
+      }
+    } catch { }
+    setCargandoRepo(false)
+  }
+
+  const verCancion = async (cancion: any) => {
+    setCancionRepo(cancion)
+    setTransposicionRepo(0)
+
+    // ✅ 1. Caché en memoria (instantáneo dentro de la sesión)
+    if (partesCacheRef.current.has(cancion.id)) {
+      setPartesRepo(partesCacheRef.current.get(cancion.id)!)
+      return
+    }
+
+    // ✅ 2. Caché en localStorage (funciona offline)
+    const CACHE_KEY = `selah-repo-partes-${cancion.id}`
+    try {
+      const raw = localStorage.getItem(CACHE_KEY)
+      if (raw) {
+        const cached = JSON.parse(raw)
+        if (Array.isArray(cached) && cached.length > 0) {
+          partesCacheRef.current.set(cancion.id, cached)
+          setPartesRepo(cached)
+          if (!navigator.onLine) return
+        }
+      }
+    } catch { /* ignorar */ }
+
+    // ✅ 3. Fetch desde Supabase y guardar en caché
+    if (!navigator.onLine) { setPartesRepo([]); return }
+    setPartesRepo([])
+    try {
+      const { data } = await supabase
+        .from("partes_cancion")
+        .select("tipo, texto, texto_acordes, tiene_acordes, orden")
+        .eq("cancion_id", cancion.id)
+        .order("orden")
+      const partes = data || []
+      partesCacheRef.current.set(cancion.id, partes)
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify(partes)) } catch { /* ignorar */ }
+      setPartesRepo(partes)
+    } catch { setPartesRepo([]) }
+  }
+
+  const abrirRepertorio = () => {
+    setModo("repertorio")
+    setAlertaVivo(false)
+    cargarRepertorio()
+  }
+
+  const volverVivo = () => {
+    setModo("vivo")
+    setAlertaVivo(false)
+    setCancionRepo(null)
+    setPartesRepo([])
+  }
 
   const notasLatinas = [
     "Do", "Do#", "Re", "Re#", "Mi", "Fa",
@@ -32,37 +216,98 @@ export default function MusicosPage() {
 
   // ── Socket ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const s = io("http://" + window.location.hostname + ":4000")
+    let activo = true
+    const dev = process.env.NODE_ENV === "development"
 
-    s.on("connect", async () => {
-      const sala = (await getIglesiaId()) || "global"
-      setCargandoMusicos(true)
-      s.emit("unirse-sala", { sala, pantalla: "musicos" })
-      s.emit("get-estado")
-      setTimeout(() => setCargandoMusicos(false), 1200)
-    })
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!activo) return
+      const s = io(getSocketUrl(), {
+        auth: { token: session?.access_token || "" }
+      })
+
+      s.on("connect", async () => {
+        try {
+          socketConectadoRef.current = true
+          if (!salaRef.current) salaRef.current = (await getIglesiaId()) || "global"
+          if (!activo) return
+          const sala = salaRef.current
+          // ✅ No cambiar a modo cargando — el repertorio ya está visible
+          s.emit("unirse-sala", { sala, pantalla: "musicos" })
+          s.emit("get-estado")
+        } catch (err) {
+          if (dev) console.error("❌ Error en connect músicos:", err)
+        }
+      })
 
     s.on("estado-actual", (estado: any) => {
-      setCargandoMusicos(false)
+      socketConectadoRef.current = true
       if (estado?.tipo !== "cancion") return
       const data = estado.data || {}
       setPartes(data.partes || [])
       setIndex(data.index || 0)
       setTitulo(data.titulo || "")
       setTono(data.tono || "")
+      // ✅ Notificar sin cambiar de modo — el músico decide si ver en vivo
+      setAlertaVivo(true)
     })
 
     s.on("cargar-cancion", (data: any) => {
-      setCargandoMusicos(false)
+      socketConectadoRef.current = true
       setPartes(data.partes || [])
       setIndex(0)
       setTitulo(data.titulo || "")
       setTono(data.tono || "")
+      setTransposicion(0)
+      setAlertaVivo(true)
     })
 
     s.on("cambiar-parte", (i: number) => setIndex(i))
 
-    return () => { s.disconnect() }
+      return () => { s.disconnect() }
+    })
+
+    return () => { activo = false }
+  }, [])
+
+  // ── Supabase Realtime — para músicos fuera del WiFi de la iglesia ─────────
+  useEffect(() => {
+    let channel: any = null
+    let activo = true
+
+    const suscribir = async () => {
+      const igId = await getIglesiaId()
+      if (!igId || !activo) return
+
+      // ✅ Nombre único por sesión para evitar reusar canal ya suscrito
+      const nombreCanal = `estado_culto_${igId}_${Date.now()}`
+
+      channel = supabase
+        .channel(nombreCanal)
+        .on("postgres_changes", {
+          event: "UPDATE",
+          schema: "public",
+          table: "estado_culto",
+          filter: `iglesia_id=eq.${igId}`
+        }, (payload: any) => {
+          if (!activo) return
+          const d = payload.new
+          if (!d || d.tipo !== "cancion") return
+          if (socketConectadoRef.current) return
+          setPartes(d.partes || [])
+          setIndex(d.index || 0)
+          setTitulo(d.titulo || "")
+          setTono(d.tono || "")
+          setTransposicion(0)
+          setAlertaVivo(true)
+        })
+        .subscribe()
+    }
+
+    suscribir()
+    return () => {
+      activo = false
+      if (channel) supabase.removeChannel(channel)
+    }
   }, [])
 
   // ── Transposición ─────────────────────────────────────────────────────────
@@ -215,9 +460,10 @@ export default function MusicosPage() {
   })()
 
   // ── Render acordes ────────────────────────────────────────────────────────
-  const renderAcordeChip = (acorde: string, key?: any, compacto = false) => {
+  const renderAcordeChip = (acorde: string, key?: any, compacto = false, transposicionOverride?: number) => {
     const limpio = limpiarTokenAcorde(acorde)
-    const texto = convertirEscala(transponerAcorde(limpio, transposicion), usarAmericano)
+    const pasos = transposicionOverride ?? transposicion
+    const texto = convertirEscala(transponerAcorde(limpio, pasos), usarAmericano)
     return (
       <span key={key} style={{
         display: "inline-block",
@@ -250,34 +496,20 @@ export default function MusicosPage() {
     )
   }
 
-  // ── PANTALLA DE CARGA ─────────────────────────────────────────────────────
-  if (cargandoMusicos) {
-    return (
-      <div style={{
-        width: "100vw", height: "100dvh",
-        background: "linear-gradient(180deg, #020617 0%, #111827 100%)",
-        color: "white", display: "flex", alignItems: "center",
-        justifyContent: "center", textAlign: "center",
-        padding: "24px", boxSizing: "border-box"
-      }}>
-        <div>
-          <div style={{
-            width: 58, height: 58, borderRadius: "50%",
-            border: "4px solid rgba(255,255,255,0.1)",
-            borderTopColor: "#22c55e",
-            margin: "0 auto 20px",
-            animation: "spinM 0.9s linear infinite"
-          }} />
-          <style>{`@keyframes spinM { to { transform: rotate(360deg) } }`}</style>
-          <div style={{ fontSize: "clamp(24px,3vw,42px)", fontWeight: 800, marginBottom: 8 }}>Músicos</div>
-          <div style={{ fontSize: "clamp(14px,1.5vw,20px)", opacity: 0.6 }}>Preparando acordes...</div>
-        </div>
-      </div>
-    )
+  // ── GUARD SSR ─────────────────────────────────────────────────────────────
+  // ✅ Esta página depende 100% del cliente (socket, localStorage, navigator).
+  //    Renderizar solo tras montar elimina todos los hydration mismatch.
+  if (!mounted) {
+    return <div style={{ width: "100vw", height: "100dvh", background: "#03080f" }} />
   }
 
-  // ── PANTALLA DE ESPERA ────────────────────────────────────────────────────
-  if (!partes.length) {
+  // ── MODO REPERTORIO → ir directo, sin pasar por pantalla de espera ────────
+  if (modo === "repertorio") {
+    // (el JSX del repertorio está abajo, se llega por el return principal)
+  }
+
+  // ── PANTALLA DE ESPERA (solo en modo vivo sin canción) ────────────────────
+  if (modo === "vivo" && !partes.length) {
     return (
       <div style={{
         width: "100vw", height: "100dvh",
@@ -293,7 +525,7 @@ export default function MusicosPage() {
             Pantalla de Músicos
           </div>
           <div style={{ fontSize: "clamp(14px,1.6vw,22px)", opacity: 0.55 }}>
-            Esperando canción desde el control...
+            Esperando canción [v2]...
           </div>
         </div>
       </div>
@@ -330,14 +562,24 @@ export default function MusicosPage() {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
             fontWeight: 900,
-            fontSize: esMovil ? "clamp(16px,4vw,22px)" : "clamp(20px,2.5vw,32px)",
+            fontSize: esMovil ? "clamp(14px,3.5vw,20px)" : "clamp(20px,2.5vw,32px)",
             lineHeight: 1.15,
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
-          }} title={titulo}>
-            {titulo || "Sin título"}
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            color: "white", minWidth: 0
+          }}>
+            {modo === "repertorio"
+              ? (cancionRepo ? cancionRepo.titulo : "Repertorio")
+              : (titulo || "Sin título")}
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
+            {modo === "repertorio" ? (
+              cancionRepo?.tono && (
+                <span style={{ padding: "3px 10px", borderRadius: 999, background: "rgba(99,102,241,0.14)", border: "1px solid rgba(99,102,241,0.28)", color: "#a5b4fc", fontSize: esMovil ? 11 : 13, fontWeight: 800 }}>
+                  🎵 {cancionRepo.tono}
+                </span>
+              )
+            ) : (<>
             {/* Etiqueta parte */}
             <span style={{
               padding: "3px 10px", borderRadius: 999,
@@ -364,8 +606,43 @@ export default function MusicosPage() {
                 )}
               </span>
             )}
+            </>)}
           </div>
         </div>
+
+        {/* Botón Repertorio */}
+        <button
+          className="ctrl-m"
+          onClick={() => modo === "repertorio" ? volverVivo() : abrirRepertorio()}
+          style={{
+            padding: "0 14px", height: esMovil ? 44 : 52,
+            borderRadius: 12, border: `1px solid ${modo === "repertorio" ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.12)"}`,
+            background: modo === "repertorio" ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.07)",
+            color: "white", fontSize: 13, fontWeight: 700, cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 6, flexShrink: 0, position: "relative"
+          }}
+        >
+          {modo === "repertorio"
+            ? (esMovil ? "← Vivo" : "← En vivo")
+            : (esMovil ? "📚" : "📚 Repertorio")}
+          {alertaVivo && modo === "repertorio" && (
+            <div style={{ position: "absolute", top: -4, right: -4, width: 10, height: 10, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 6px rgba(34,197,94,0.8)" }} />
+          )}
+        </button>
+
+        {/* ── Botón Afinador ── */}
+        <button
+          onClick={() => setTunerAbierto(v => !v)}
+          title="Afinador en tiempo real"
+          style={{
+            width: esMovil ? 44 : 52, height: esMovil ? 44 : 52,
+            borderRadius: 12, border: `1px solid ${tunerAbierto ? "rgba(251,191,36,0.5)" : "rgba(255,255,255,0.12)"}`,
+            background: tunerAbierto ? "rgba(251,191,36,0.15)" : "rgba(255,255,255,0.07)",
+            color: "white", fontSize: 20, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            flexShrink: 0
+          }}
+        >🎙️</button>
 
         {/* Botón abrir panel */}
         <button
@@ -381,6 +658,57 @@ export default function MusicosPage() {
           }}
         >⚙️</button>
       </div>
+
+      {/* ── MODAL AFINADOR ─────────────────────────────────────────────────── */}
+      {tunerAbierto && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 200,
+          background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)",
+          display: "flex", alignItems: "flex-end", justifyContent: "center",
+          padding: "0 0 20px"
+        }} onClick={() => setTunerAbierto(false)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            width: "100%", maxWidth: 420,
+            background: "rgba(10,18,38,0.98)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: "20px 20px 16px 16px",
+            padding: "6px 0 0",
+            fontFamily: "'Segoe UI',system-ui,sans-serif"
+          }}>
+            {/* Handle */}
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.15)", margin: "0 auto 16px" }}/>
+
+            {/* Tono de la canción actual */}
+            {(cancionRepo?.tono || tono) && (
+              <div style={{ textAlign: "center", marginBottom: 8, fontSize: 13, color: "rgba(255,255,255,0.5)" }}>
+                Canción en tono: <span style={{ color: "#a5b4fc", fontWeight: 800, fontSize: 15 }}>
+                  {cancionRepo?.tono || tono}
+                </span>
+              </div>
+            )}
+
+            {/* PitchDetector */}
+            <PitchDetector
+              onDetectar={(nota) => {
+                // Comparar con tono de la canción
+                const tonoCancion = cancionRepo?.tono || tono
+                if (tonoCancion && nota && tonoCancion.startsWith(nota)) {
+                  // Están en el mismo tono — feedback visual manejado por el componente
+                }
+              }}
+              style={{
+                borderRadius: "0 0 16px 16px",
+                border: "none",
+                background: "transparent"
+              }}
+            />
+
+            <div style={{ textAlign: "center", padding: "8px 16px 16px", fontSize: 11, color: "rgba(255,255,255,0.25)" }}>
+              Toca cualquier nota — la app detecta el tono en tiempo real
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── PANEL DE CONTROLES (overlay) ────────────────────────────────────── */}
       {panelAbierto && (
@@ -488,6 +816,244 @@ export default function MusicosPage() {
         </div>
       )}
 
+      {/* ── PANEL REPERTORIO ────────────────────────────────────────────────── */}
+      {modo === "repertorio" && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: "#03080f" }}>
+
+          {/* Alerta: nueva canción en vivo */}
+          {mounted && alertaVivo && partes.length > 0 && (
+            <button onClick={volverVivo} style={{ flexShrink: 0, padding: "12px 20px", background: "rgba(34,197,94,0.15)", border: "none", borderBottom: "1px solid rgba(34,197,94,0.3)", color: "#4ade80", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 8px rgba(34,197,94,0.8)", flexShrink: 0 }} />
+              Nueva canción en vivo: <b>{titulo}</b> — tap para verla
+            </button>
+          )}
+
+          {/* ✅ Aviso sin conexión con instrucciones claras */}
+          {mounted && !socketConectadoRef.current && (
+            <div style={{ flexShrink: 0, background: "rgba(245,158,11,0.08)", borderBottom: "1px solid rgba(245,158,11,0.15)" }}>
+              <div style={{ padding: "10px 16px", display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#f59e0b", flexShrink: 0 }} />
+                <span style={{ fontSize: 12, color: "#fbbf24", fontWeight: 600, flex: 1 }}>
+                  {!navigator.onLine
+                    ? "Sin internet · Mostrando canciones guardadas"
+                    : "Sin conexión al servidor"}
+                </span>
+                <button onClick={() => router.push("/configuracion")} style={{
+                  padding: "4px 10px", borderRadius: 8, border: "1px solid rgba(251,191,36,0.3)",
+                  background: "rgba(251,191,36,0.1)", color: "#fbbf24",
+                  fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0
+                }}>⚙️ Conectar</button>
+              </div>
+              {navigator.onLine && (
+                <div style={{ padding: "0 16px 10px", fontSize: 11, color: "rgba(251,191,36,0.6)", lineHeight: 1.5 }}>
+                  Ve a ⚙️ Configuración → escanea el QR del PC o usa "Buscar automáticamente"
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+            {/* ── Lista de canciones ── */}
+            <div style={{ width: cancionRepo && !esMovil ? 340 : "100%", display: cancionRepo && esMovil ? "none" : "flex", flexDirection: "column", borderRight: "1px solid rgba(255,255,255,0.06)", overflow: "hidden", background: "#060d1a" }}>
+              {/* Buscador */}
+              <div style={{ padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0, background: "rgba(0,0,0,0.3)" }}>
+                <input
+                  value={busquedaRepo}
+                  onChange={e => setBusquedaRepo(e.target.value)}
+                  placeholder="🔍  Buscar por título, número, tono..."
+                  style={{ width: "100%", padding: "10px 14px", borderRadius: 10, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.1)", color: "white", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+                  autoComplete="off" autoCorrect="off" autoCapitalize="off"
+                />
+                {busquedaRepo.length > 0 && (
+                  <div style={{ marginTop: 6, fontSize: 12, color: "rgba(255,255,255,0.35)" }}>
+                    {(() => {
+                      const norm = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                      const q = norm(busquedaRepo)
+                      const esNumero = /^\d+$/.test(q)
+                      const matchNum = q.match(/^(\d+)\s+(.+)$/)
+                      return cancionesRepo.filter(c => {
+                        const titulo = norm(c.titulo)
+                        const numero = String(c.numero || "")
+                        if (!q) return true
+                        if (matchNum) return numero === matchNum[1] || titulo.includes(matchNum[2])
+                        if (esNumero) return numero === q || numero.startsWith(q)
+                        return titulo.includes(q) || norm(c.categoria || "").includes(q)
+                      }).length
+                    })()} resultados
+                  </div>
+                )}
+              </div>
+
+              {/* Lista */}
+              <div className="scroll-musicos" style={{ flex: 1, overflowY: "auto" }}>
+                {cargandoRepo ? (
+                  <div style={{ padding: 40, textAlign: "center", opacity: 0.35, fontSize: 14 }}>Cargando repertorio...</div>
+                ) : (() => {
+                  const norm = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                  const q = norm(busquedaRepo)
+                  const esNumero      = /^\d+$/.test(q)
+                  const matchNumTexto = q.match(/^(\d+)\s+(.+)$/)
+                  const numParte      = matchNumTexto?.[1] || ""
+                  const textoParte    = matchNumTexto?.[2] || ""
+
+                  const filtradas = cancionesRepo
+                    .map(c => {
+                      if (!q) return { c, score: 0, pass: true }
+                      const titulo = norm(c.titulo)
+                      const numero = String(c.numero || "")
+
+                      if (matchNumTexto) {
+                        const numOk    = numero === numParte || numero.startsWith(numParte)
+                        const tituloOk = titulo.includes(textoParte)
+                        if (numOk && tituloOk) return { c, score: 100, pass: true }
+                        if (numOk)             return { c, score: 80,  pass: true }
+                        if (tituloOk)          return { c, score: 60,  pass: true }
+                        return { c, score: 0, pass: false }
+                      }
+                      if (esNumero) {
+                        if (numero === q)          return { c, score: 100, pass: true }
+                        if (numero.startsWith(q))  return { c, score: 80,  pass: true }
+                        return { c, score: 0, pass: false }
+                      }
+                      if (titulo === q)            return { c, score: 100, pass: true }
+                      if (titulo.startsWith(q))    return { c, score: 90,  pass: true }
+                      if (titulo.includes(q))      return { c, score: 70,  pass: true }
+                      if (norm(c.categoria || "").includes(q)) return { c, score: 30, pass: true }
+                      return { c, score: 0, pass: false }
+                    })
+                    .filter(x => x.pass)
+                    .sort((a, b) => q ? b.score - a.score || (a.c.numero ?? 999999) - (b.c.numero ?? 999999) : 0)
+                    .map(x => x.c)
+                  if (filtradas.length === 0) return (
+                    <div style={{ padding: 40, textAlign: "center", opacity: 0.3, fontSize: 14 }}>Sin resultados</div>
+                  )
+                  return filtradas.map(c => {
+                    const activa = cancionRepo?.id === c.id
+                    return (
+                      <button key={c.id} onClick={() => verCancion(c)} style={{ width: "100%", padding: "11px 16px", background: activa ? "rgba(37,99,235,0.18)" : "transparent", border: "none", borderBottom: "1px solid rgba(255,255,255,0.04)", borderLeft: `3px solid ${activa ? "#3b82f6" : "transparent"}`, color: "white", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 12 }}>
+                        {/* Número */}
+                        {c.numero && (
+                          <div style={{ width: 34, height: 34, borderRadius: 8, background: activa ? "rgba(37,99,235,0.3)" : "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: activa ? "#93c5fd" : "rgba(255,255,255,0.4)", flexShrink: 0 }}>
+                            {c.numero}
+                          </div>
+                        )}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: activa ? "#e2e8f0" : "white" }}>
+                            {c.titulo}
+                          </div>
+                          <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                            {c.tono && (
+                              <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 5, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.2)", color: "#86efac", fontWeight: 700 }}>
+                                {c.tono}
+                              </span>
+                            )}
+                            {c.categoria && (
+                              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", fontWeight: 500 }}>
+                                {c.categoria}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {activa && <div style={{ color: "#3b82f6", fontSize: 18, flexShrink: 0 }}>›</div>}
+                      </button>
+                    )
+                  })
+                })()}
+              </div>
+            </div>
+
+            {/* ── Detalle de canción ── */}
+            {cancionRepo && (
+              <div className="scroll-musicos" style={{ flex: 1, overflowY: "auto", padding: "20px 24px", background: "#060d1a" }}>
+                {/* Header */}
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 20 }}>
+                  {esMovil && (
+                    <button onClick={() => setCancionRepo(null)} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", fontSize: 20, cursor: "pointer", padding: "2px 0 0", flexShrink: 0 }}>←</button>
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 900, fontSize: esMovil ? 20 : 24, lineHeight: 1.2 }}>{cancionRepo.titulo}</div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                      {cancionRepo.numero && (
+                        <span style={{ fontSize: 12, padding: "3px 10px", borderRadius: 6, background: "rgba(37,99,235,0.15)", border: "1px solid rgba(37,99,235,0.3)", color: "#93c5fd", fontWeight: 700 }}>
+                          #{cancionRepo.numero}
+                        </span>
+                      )}
+                      {cancionRepo.tono && (
+                        <span style={{ fontSize: 12, padding: "3px 10px", borderRadius: 6, background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.25)", color: "#86efac", fontWeight: 700 }}>
+                          Tono {cancionRepo.tono}
+                        </span>
+                      )}
+                      {cancionRepo.categoria && (
+                        <span style={{ fontSize: 12, padding: "3px 10px", borderRadius: 6, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>
+                          {cancionRepo.categoria}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Transposición */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24, padding: "10px 16px", background: "rgba(255,255,255,0.03)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginRight: 4 }}>Transponer:</span>
+                  {[-2,-1,0,1,2].map(v => (
+                    <button key={v} onClick={() => setTransposicionRepo(v)} style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${transposicionRepo === v ? "rgba(37,99,235,0.5)" : "rgba(255,255,255,0.1)"}`, background: transposicionRepo === v ? "rgba(37,99,235,0.2)" : "transparent", color: transposicionRepo === v ? "#93c5fd" : "rgba(255,255,255,0.4)", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                      {v === 0 ? "0" : v > 0 ? `+${v}` : v}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Partes */}
+                {partesRepo.length === 0 ? (
+                  <div style={{ textAlign: "center", opacity: 0.3, paddingTop: 40 }}>Cargando partes...</div>
+                ) : partesRepo.map((parte: any, pi: number) => {
+                  const textoRender = (parte.tiene_acordes && parte.texto_acordes)
+                    ? parte.texto_acordes : parte.texto || ""
+                  const bloqueRepo = detectarFormato(textoRender)
+                  return (
+                    <div key={pi} style={{ marginBottom: 28 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.4, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
+                        {parte.tipo}
+                      </div>
+                      {bloqueRepo.map((linea: any, li: number) => (
+                        <div key={li} style={{ marginBottom: 8 }}>
+                          {linea.tipo === "corchete" && (
+                            <div style={{ position: "relative", minHeight: 24, marginBottom: 4 }}>
+                              {linea.acordes.map((a: any, ai: number) => (
+                                <span key={ai} style={{ position: "absolute", left: `${a.pos}ch` }}>
+                                  {renderAcordeChip(a.acorde, ai, true, transposicionRepo)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {linea.tipo === "linea" && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 4 }}>
+                              {linea.acordes.split(/\s+/).filter(Boolean).map((a: string, ai: number) =>
+                                renderAcordeChip(a, ai, true, transposicionRepo)
+                              )}
+                            </div>
+                          )}
+                          <div style={{ fontSize: 16, lineHeight: 1.7 }}>
+                            {linea.tipo === "corchete" ? linea.letra : linea.tipo === "linea" ? linea.letra : linea.letra}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Estado vacío: ninguna canción seleccionada en desktop */}
+            {!cancionRepo && !esMovil && cancionesRepo.length > 0 && (
+              <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.25, flexDirection: "column", gap: 12 }}>
+                <div style={{ fontSize: 48 }}>📖</div>
+                <div style={{ fontSize: 16 }}>Selecciona una canción</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── CONTENIDO PRINCIPAL ─────────────────────────────────────────────── */}
       <div
         className="scroll-musicos"
@@ -495,7 +1061,7 @@ export default function MusicosPage() {
           flex: 1,
           overflowY: "auto", overflowX: "hidden",
           scrollbarWidth: "none",
-          display: "flex",
+          display: modo === "vivo" ? "flex" : "none",
           justifyContent: "center",
           alignItems: totalLineasParte <= 6 ? "center" : "flex-start",
           padding: esMovil ? "16px 14px 100px" : "24px 40px 110px",
@@ -590,7 +1156,8 @@ export default function MusicosPage() {
         background: "rgba(3,8,15,0.95)",
         borderTop: "1px solid rgba(255,255,255,0.07)",
         backdropFilter: "blur(12px)",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
+        display: modo === "repertorio" ? "none" : "flex",
+        alignItems: "center", justifyContent: "space-between",
         gap: 10
       }}>
         {/* Transposición rápida */}

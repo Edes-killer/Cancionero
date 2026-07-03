@@ -1,8 +1,12 @@
 
 
 "use client"
+import BibleAutocomplete from "@/components/BibleAutocomplete"
+import OnboardingTour from "@/components/OnboardingTour"
+import { TOUR_CONTROL } from "@/lib/tours"
 
-import { CSSProperties, useEffect, useMemo, useRef, useState } from "react"
+import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { logCatch } from "@/lib/Errorlogger"
 import { getSocketUrl } from "@/lib/servidor"
 import { supabase } from "@/lib/supabase"
 import { io } from "socket.io-client"
@@ -10,31 +14,181 @@ import { getIglesiaId } from "../../lib/getIglesia"
 import { useRouter } from "next/navigation"
 import { useApp } from "@/context/AppContext"
 
+// ── Tipos ─────────────────────────────────────────────────────────────────────
+interface Cancion {
+  id: string
+  titulo: string
+  tono?: string
+  categoria?: string
+  iglesia_id?: string | null
+  numero?: number
+  texto_busqueda?: string
+  fecha_creacion?: string
+}
+
+interface Parte {
+  id?: string
+  tipo: string
+  texto: string          // campo legacy
+  texto_letra?: string   // nombre real en BD
+  texto_acordes?: string | null
+  tiene_acordes?: boolean
+  orden?: number
+}
+
+interface ItemLista {
+  id?: string
+  tipo?: "cancion" | "biblia" | "imagen" | "mensaje" | "espera" | string
+  cancion_id?: string
+  lista_id?: string
+  titulo?: string
+  subtitulo?: string
+  tono?: string
+  categoria?: string
+  partes?: Parte[]
+  orden?: number
+  url?: string
+  texto?: string
+  modo?: string
+  estado_subtitulo?: string
+  fondo?: FondoConfig | null
+  referencia?: string
+  referencia_biblica?: string
+  paginas?: string[]
+}
+
+interface CultoData {
+  id: string
+  nombre?: string
+  fecha?: string
+  iglesia_id?: string
+}
+
+interface DatosCargaCancion {
+  id?: string
+  titulo: string
+  tono?: string
+  partes: Parte[]
+  fondo?: FondoConfig | null
+  index?: number
+  iglesia?: string
+  album?: string
+}
+
+interface FondoConfig {
+  tipo: "url" | "preset" | "color"
+  url?: string
+  preset?: string
+  color?: string
+  oscuridad?: number
+  ajuste?: string
+}
+
 export default function ControlPage() {
   const { iglesiaId: iglesiaIdCtx, nombreIglesia: nombreIglesiaCtx,
-          logoUrl: logoUrlCtx, canciones: cancionesCtx } = useApp()
+          logoUrl: logoUrlCtx, canciones: cancionesCtx, pinSala } = useApp()
   const [socket, setSocket] = useState<any>(null)
-  const [canciones, setCanciones] = useState<any[]>([])
-  const [index, setIndex] = useState(0)
-  const [lista, setLista] = useState<any[]>([])
-  const [activaId, setActivaId] = useState<string | null>(null)
-  const [cultos, setCultos] = useState<any[]>([])
+  const [zoomActual, setZoomActual] = useState(() =>
+    typeof window !== "undefined" ? Number(localStorage.getItem("proyector-escala-fuente") || "100") : 100
+  )
+  const zoomActualRef = useRef(typeof window !== "undefined" ? Number(localStorage.getItem("proyector-escala-fuente") || "100") : 100)
+  const socketRef2    = useRef<any>(null)
+  const [modalServidor, setModalServidor] = useState(false)
+  const [socketConectado, setSocketConectado] = useState<boolean | null>(null)
+  const [proyectorConectado, setProyectorConectado] = useState(false)
+  const [modoLimpio, setModoLimpio] = useState(() =>
+    typeof window !== "undefined" && localStorage.getItem("proyector-modo-limpio") === "1"
+  )
+  const [familiaFuenteCtrl, setFamiliaFuenteCtrl] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("proyector-font-family") || "system" : "system"
+  )
+  const [galeriaImagenes, setGaleriaImagenes] = useState<{url:string,nombre:string,local:boolean}[]>([])
+  const [galeriaAbierta, setGaleriaAbierta] = useState(false)
+  const [cargandoGaleria, setCargandoGaleria] = useState(false)
+  const isElectronCtx = typeof navigator !== "undefined" && navigator.userAgent.includes("Electron")
+  const [modoGuardado, setModoGuardado] = useState<"local" | "nube">(() =>
+    typeof window !== "undefined"
+      ? (localStorage.getItem("selah-img-modo") as "local"|"nube") || (isElectronCtx ? "local" : "nube")
+      : "nube"
+  )
+  const [alturaVP, setAlturaVP] = useState<number | null>(null)
+  const [sesionExpirando, setSesionExpirando] = useState(false)
+  const [canciones, setCanciones] = useState<Cancion[]>([])
+  const STORAGE_KEY = "selah_control_estado"
+  const estadoGuardado = typeof window !== "undefined" ? (() => {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") } catch (e) { return null }
+  })() : null
+
+  const [index, setIndex] = useState(estadoGuardado?.index || 0)
+  const [lista, setLista] = useState<ItemLista[]>([])
+  const [activaId, setActivaId] = useState<string | null>(estadoGuardado?.activaId || null)
+  const [cultos, setCultos] = useState<CultoData[]>([])
   const [listaIdActual, setListaIdActual] = useState<string | null>(null)
   const [filtroTono, setFiltroTono] = useState("")
   const [filtroCategoria, setFiltroCategoria] = useState("")
   const [busqueda, setBusqueda] = useState("")
+  const [busquedaDebounced, setBusquedaDebounced] = useState("")
+  const busquedaTimerRef = useRef<any>(null)
+  const scrollThrottleRef = useRef<any>(null)
+
+  // Debounce búsqueda 200ms
+  const handleBusqueda = useCallback((v: string) => {
+    setBusqueda(v)
+    clearTimeout(busquedaTimerRef.current)
+    if (!v) {
+      setBusquedaDebounced("")   // ← vacío inmediato, sin esperar 200ms
+    } else {
+      busquedaTimerRef.current = setTimeout(() => setBusquedaDebounced(v), 200)
+    }
+  }, [])
+
+  // ✅ requestAnimationFrame: siempre usa la posición ACTUAL del scroll (nunca stale)
+  const handleScrollCanciones = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.target as HTMLDivElement
+    cancelAnimationFrame(scrollThrottleRef.current as any)
+    scrollThrottleRef.current = requestAnimationFrame(() => {
+      setScrollTopCanciones(el.scrollTop)
+    }) as any
+  }, [])
+  const [ordenar, setOrdenar] = useState<"numero" | "az" | "za" | "reciente" | "antigua">(() =>
+    (typeof window !== "undefined" ? localStorage.getItem("canciones-orden") || "numero" : "numero") as any
+  )
+  const cambiarOrden = (v: "numero" | "az" | "za" | "reciente" | "antigua") => {
+    setOrdenar(v); localStorage.setItem("canciones-orden", v)
+  }
   const [nombreCulto, setNombreCulto] = useState("")
-  const [partes, setPartes] = useState<any[]>([])
-  const [tituloActual, setTituloActual] = useState("")
+  const [partes, setPartes] = useState<Parte[]>(estadoGuardado?.partes || [])
+  const [tituloActual, setTituloActual] = useState(estadoGuardado?.titulo || "")
+
+  // ── Auto-avance y aprendizaje de tiempos ─────────────────────────────────
+  const [autoAvanceActivo, setAutoAvanceActivo] = useState(false)
+  const [contadorAuto, setContadorAuto] = useState(0) // segundos restantes
+  const [tiemposAprendidos, setTiemposAprendidos] = useState<number[]>([]) // ms por parte
+  const [aprendiendo, setAprendiendo] = useState(false)
+  const tiempoInicioParte = useRef<number | null>(null)
+  const tiemposRegistrados = useRef<number[]>([])
+  const intervaloAutoRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [indiceLista, setIndiceLista] = useState<number | null>(null)
   const [autoPlay, setAutoPlay] = useState(false)
   const esCoro = partes[index]?.tipo === "Coro"
   const [loopCoro, setLoopCoro] = useState(false)
+  // ✅ Botón "Ir al Coro" — guarda la posición del verso para volver después
+  const [versoDespuesCoro, setVersoDespuesCoro] = useState<number | null>(null)
   const [inputBiblia, setInputBiblia] = useState("")
   const [indiceActivoLista, setIndiceActivoLista] = useState<number | null>(null)
   const [paginasBiblia, setPaginasBiblia] = useState<string[]>([])
   const [paginaBibliaActual, setPaginaBibliaActual] = useState(0)
-  const [nombreIglesia, setNombreIglesia] = useState("")
+  const [nombreIglesia, setNombreIglesia] = useState(() => {
+    // ✅ Leer del cache al inicializar (evita flash vacío)
+    if (typeof window === "undefined") return ""
+    try {
+      const igId = localStorage.getItem("cancionero_iglesia_activa_id") || ""
+      if (!igId) return ""
+      const cached = localStorage.getItem(`selah-iglesia-${igId}`)
+      if (cached) return JSON.parse(cached).nombre || ""
+    } catch (e) {}
+    return ""
+  })
   // ✅ FIX: iglesiaId cacheado en ref para evitar múltiples llamadas
   // concurrentes a supabase.auth.getUser() que causan lock conflicts
   const iglesiaIdRef = useRef<string | null | undefined>(undefined)
@@ -50,6 +204,26 @@ export default function ControlPage() {
     if (iglesiaIdCtx) iglesiaIdRef.current = iglesiaIdCtx
   }, [iglesiaIdCtx])
 
+  // ✅ Autoload de culto cuando viene desde el dashboard
+  useEffect(() => {
+    const listaAutoload = localStorage.getItem("selah_autoload_lista")
+    if (listaAutoload) {
+      localStorage.removeItem("selah_autoload_lista")
+      // Esperar a que los cultos carguen antes de abrir
+      const intentar = (intentos = 0) => {
+        setTimeout(() => {
+          const lista = document.querySelector(`[data-lista-id="${listaAutoload}"]`)
+          if (lista || intentos > 10) {
+            cargarListaDesdeBD(listaAutoload)
+          } else {
+            intentar(intentos + 1)
+          }
+        }, 300)
+      }
+      intentar()
+    }
+  }, [])
+
   useEffect(() => {
     if (nombreIglesiaCtx) { setNombreIglesia(nombreIglesiaCtx); nombreIglesiaRef.current = nombreIglesiaCtx }
   }, [nombreIglesiaCtx])
@@ -58,9 +232,22 @@ export default function ControlPage() {
     if (logoUrlCtx) { setLogoEsperaUrl(logoUrlCtx); logoEsperaUrlRef.current = logoUrlCtx }
   }, [logoUrlCtx])
 
+  // ✅ Lock compartido: evita que el efecto de montaje y el efecto que
+  // escucha cancionesCtx disparen fetches duplicados si ambos corren
+  // cerca uno del otro (carga fría con AppContext aún resolviendo sesión)
+  const fetchEnCursoRef = useRef(false)
+
   useEffect(() => {
-    if (cancionesCtx.length > 0 && canciones.length === 0) {
+    if (cancionesCtx.length > 0 && canciones.length === 0 && !fetchEnCursoRef.current) {
+      console.log(`📋 Contexto tiene ${cancionesCtx.length} canciones — mostrando y refrescando`)
       setCanciones(cancionesCtx)
+      fetchEnCursoRef.current = true
+      // ✅ Forzar fetch en background para obtener datos actualizados
+      getIglesiaIdCached().then(igId => {
+        _fetchCanciones(igId, `selah-canciones-v3-${igId}`)
+          .catch(() => {})
+          .finally(() => { fetchEnCursoRef.current = false })
+      })
     }
   }, [cancionesCtx])
 
@@ -98,12 +285,19 @@ export default function ControlPage() {
   const cancionRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [fondoCancionUrl, setFondoCancionUrl] = useState("")
   const [fondoCancionNombre, setFondoCancionNombre] = useState("")
-  const [fondoCancionModo, setFondoCancionModo] = useState<"ninguno" | "preset" | "estatico" | "movimiento">("preset")
+  const [fondoCancionModo, setFondoCancionModo] = useState<"ninguno" | "preset" | "estatico" | "movimiento" | "video">("preset")
   const [fondoCancionPreset, setFondoCancionPreset] = useState("cielo-dorado")
   const [fondoCancionOscuridad, setFondoCancionOscuridad] = useState(55)
   const [fondoCancionAjuste, setFondoCancionAjuste] = useState<"cover" | "contain">("cover")
   const [iglesiaIdActual, setIglesiaIdActual] = useState<string | null>(null)
   const [fondoCancionConfigLista, setFondoCancionConfigLista] = useState(false)
+
+  // ✅ Emitir fondo al proyector en tiempo real cuando cambia
+  useEffect(() => {
+    if (!socket || !fondoCancionConfigLista) return
+    const fondo = fondoCancionActual()
+    socket.emit("cambiar-fondo", fondo)
+  }, [fondoCancionUrl, fondoCancionPreset, fondoCancionModo, fondoCancionOscuridad, fondoCancionAjuste])
   const [modalGuardar, setModalGuardar] = useState(false)
 // ── Preview panel ─────────────────────────────────────────────────
 const [previewCancion, setPreviewCancion] = useState<any>(null)
@@ -111,6 +305,8 @@ const [previewPartes, setPreviewPartes] = useState<any[]>([])
 const [previewIndex, setPreviewIndex] = useState(0)
 const [previewModoMusico, setPreviewModoMusico] = useState(false)
 const [tabDerechaMobile, setTabDerechaMobile] = useState<"lista"|"preview">("lista")
+const [bottomSheetAbierto, setBottomSheetAbierto] = useState(false)
+const [previewHabilitado, setPreviewHabilitado] = useState(true)
 // ── Visor Mobile Fullscreen ──────────────────────────────────────────
 const [visorAbierto, setVisorAbierto] = useState(false)
 const [visorPartes, setVisorPartes] = useState<any[]>([])
@@ -152,13 +348,39 @@ const fondosCancionPreset = [
     id: "fuego-suave",
     nombre: "Fuego suave",
     fondo: "radial-gradient(circle at 50% 35%, rgba(249,115,22,0.42), transparent 30%), radial-gradient(circle at 75% 75%, rgba(220,38,38,0.25), transparent 34%), linear-gradient(135deg, #1c1917 0%, #7c2d12 50%, #020617 100%)"
-  }
+  },
+  // ✅ Fondos animados
+  { id: "aurora",    nombre: "✨ Aurora boreal",  fondo: "animated", animacion: "aurora"    },
+  { id: "galaxia",   nombre: "🌌 Galaxia",        fondo: "animated", animacion: "galaxia"   },
+  { id: "amanecer",  nombre: "🌅 Amanecer",       fondo: "animated", animacion: "amanecer"  },
+  { id: "oceano",    nombre: "🌊 Océano",          fondo: "animated", animacion: "oceano"    },
+  { id: "paz",       nombre: "🕊️ Paz",             fondo: "animated", animacion: "paz"       },
+  { id: "lluvialuz", nombre: "💫 Lluvia de luz",  fondo: "animated", animacion: "lluvialuz" },
 ]
   
 useEffect(() => {
   document.body.style.overflow = "hidden"
   return () => { document.body.style.overflow = "" }
 }, [])
+
+  // ✅ visualViewport: adaptar altura cuando abre el teclado
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const handle = () => setAlturaVP(vv.height)
+    vv.addEventListener("resize", handle)
+    handle()
+    return () => vv.removeEventListener("resize", handle)
+  }, )
+
+  // ✅ Detectar sesión próxima a expirar y renovar
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "TOKEN_REFRESHED") setSesionExpirando(false)
+      if (event === "SIGNED_OUT") router.replace("/login")
+    })
+    return () => subscription.unsubscribe()
+  }, [router])
 
 // Audio silencioso para activar Media Session en Android
 const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -168,30 +390,76 @@ if (typeof window !== "undefined" && "Notification" in window && Notification.pe
 }
 
 useEffect(() => {
-  // Si es APK y no tiene IP configurada, ir a configuración
-if ((window as any).Capacitor) {
+  // ✅ Sin servidor igual carga el control — solo avisa al intentar proyectar
   const ip = localStorage.getItem("servidor_ip")
-  if (!ip) {
-    router.replace("/configurar-servidor")
+  const esCapacitor = (window as any).Capacitor
+
+  if (esCapacitor && !ip) {
+    // No hay servidor configurado — carga sin socket, modo local
     return
   }
-}
-// ...
-const s = io(getSocketUrl())
+
+  const s = io(getSocketUrl())
   s.on("connect", async () => {
-  const sala = (await getIglesiaIdCached()) || "global"
-
-  console.log("🔥 SOCKET CONECTADO A SALA:", sala)
-
-  s.emit("unirse-sala", { sala, pantalla: "control" })
-})
-
-  s.on("connect_error", (err) => {
-    console.log("❌ ERROR SOCKET:", err)
+    try {
+      const sala = (await getIglesiaIdCached()) || "global"
+      const pin = localStorage.getItem("selah-sala-pin") || undefined
+      if (process.env.NODE_ENV === "development") console.log("🔥 CONTROL conectado a sala:", sala)
+      s.emit("unirse-sala", { sala, pantalla: "control", pin })
+      setSocketConectado(true)
+    } catch (err) {
+      console.error("❌ Error en connect control:", err)
+    }
   })
 
-  s.on("cancion-activa", (data: any) => {
-    setActivaId(data.id)
+  s.on("disconnect", () => setSocketConectado(false))
+  s.on("connect_error", () => setSocketConectado(false))
+  s.on("reconnect", () => setSocketConectado(true))
+
+  socketRef2.current = s
+
+  // ✅ Estado del proyector: saber si está abierto o cerrado
+  s.on("proyector-conectado",    () => { console.log("✅ PROYECTOR CONECTADO"); setProyectorConectado(true) })
+  s.on("proyector-desconectado", () => { console.log("❌ PROYECTOR DESCONECTADO"); setProyectorConectado(false) })
+
+  // ✅ Sincronizar zoom cuando el proyector cambia con teclado
+  s.on("zoom-info", ({ actual }: { actual: number }) => {
+    setZoomActual(actual); zoomActualRef.current = actual
+  })
+
+  s.on("pin-invalido", (data: { mensaje?: string }) => {
+    alert("🔒 " + (data?.mensaje || "PIN incorrecto. Verifica en configuración."))
+  })
+
+  s.on("connect_error", () => {
+    // No redirigir — solo limpiar socket para mostrar "Sin conexión"
+    if ((window as any).Capacitor) {
+      localStorage.removeItem("servidor_ip")
+    }
+  })
+
+  s.on("cancion-activa", (data: { id?: string }) => {
+    setActivaId(data?.id || null)
+  })
+
+  s.on("cargar-cancion", (data: DatosCargaCancion) => {
+    if (!data?.partes?.length) return
+    const cancionId = (data.partes[0] as any)?.cancion_id
+    setPartes(data.partes)
+    setIndex(data.index || 0)
+    setTituloActual(data.titulo || "")
+    if (cancionId) setActivaId(cancionId)
+  })
+
+  s.on("restaurar-estado-control", (data: DatosCargaCancion) => {
+    if (data?.partes?.length) {
+      setPartes(data.partes)
+      setIndex(data.index || 0)
+      setTituloActual(data.titulo || "")
+      const cancionId = (data.partes[0] as any)?.cancion_id
+      if (cancionId) setActivaId(cancionId)
+      if (process.env.NODE_ENV === "development") console.log("♻️ Estado restaurado:", data.titulo)
+    }
   })
 
   // ✅ Cuando proyectar se abre, responde con el estado activo en control
@@ -220,7 +488,36 @@ const s = io(getSocketUrl())
 
   setSocket(s)
 
+  // ✅ Reconexión automática al volver al foco (bloqueo/desbloqueo, cambio de app)
+  const reconectar = () => {
+    if (!s.connected) {
+      s.connect()
+    }
+  }
+
+  // Web / Electron: detecta cuando el tab vuelve a ser visible
+  document.addEventListener("visibilitychange", reconectar)
+
+  // Capacitor APK: detecta cuando la app vuelve al frente
+  let capacitorListener: { remove: () => void } | null = null
+  let desmontado = false
+  const setupCapacitorReconexion = async () => {
+    if (!(window as any).Capacitor) return
+    try {
+      const { App } = await import("@capacitor/app")
+      const handle = await App.addListener("appStateChange", ({ isActive }) => {
+        if (isActive) reconectar()
+      })
+      if (desmontado) { handle.remove(); return }
+      capacitorListener = handle
+    } catch (e) {}
+  }
+  setupCapacitorReconexion()
+
   return () => {
+    desmontado = true
+    capacitorListener?.remove()
+    document.removeEventListener("visibilitychange", reconectar)
     s.off("control-siguiente", onSiguiente)
     s.off("control-anterior", onAnterior)
     s.disconnect()
@@ -336,33 +633,91 @@ const [mostrarCanciones, setMostrarCanciones] = useState(true)
 const [mostrarAcciones, setMostrarAcciones] = useState(false)
 const [mostrarPalabra, setMostrarPalabra] = useState(false)
 const [mostrarCultos, setMostrarCultos] = useState(false)
+const [estadoEspecialActivo, setEstadoEspecialActivo] = useState("")
 const cargarLista = async () => {
   if (!listaIdActual) return
   await cargarListaDesdeBD(listaIdActual)
 }
 
 const cargarCanciones = async () => {
+  if (fetchEnCursoRef.current) return  // ya hay un fetch corriendo desde el otro trigger
   const igId = await getIglesiaIdCached()
 
-  // ✅ Usar canciones del contexto si ya están cargadas
+  // ── 1. Contexto AppContext disponible → usar inmediatamente ───────────────
   if (cancionesCtx.length > 0) {
+    console.log(`📋 Usando contexto: ${cancionesCtx.length} canciones — forzando fetch igual`)
     setCanciones(cancionesCtx)
-  } else {
-    const { data, error } = await supabase
-      .from("canciones")
-      .select("id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda")
-      .or(`iglesia_id.eq.${igId},iglesia_id.is.null`)
-    if (error) { console.error("Error cargando canciones:", error); return }
-    if (data) setCanciones(data)
+    _cargarAcordes()
+    fetchEnCursoRef.current = true
+    // ✅ Igualmente refrescar en background para tener datos actualizados
+    _fetchCanciones(igId, `selah-canciones-v3-${igId}`)
+      .catch(() => {})
+      .finally(() => { fetchEnCursoRef.current = false })
+    return
   }
 
+  // ── 2. Cache localStorage → mostrar instantáneo y SIEMPRE refrescar ─────────
+  const CACHE_KEY    = `selah-canciones-v3-${igId}`  // v3 invalida cache anterior
+  const CACHE_TTL_MS = 2 * 60 * 1000  // 2 minutos
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    if (raw) {
+      const { data: cached, ts } = JSON.parse(raw)
+      if (Array.isArray(cached) && cached.length > 0) {
+        console.log(`📦 Caché: ${cached.length} canciones — refrescando en background...`)
+        setCanciones(cached)
+        _cargarAcordes()
+        // ✅ SIEMPRE refrescar en background para tener datos frescos
+        _fetchCanciones(igId, CACHE_KEY).catch(() => {})
+        return
+      }
+    }
+  } catch (e) { /* ignorar */ }
+
+  // ── 3. Sin cache → fetch normal (primera carga) ───────────────────────────
+  await _fetchCanciones(igId, CACHE_KEY)
+  _cargarAcordes()
+}
+
+const _fetchCanciones = async (igId: string | null, cacheKey: string) => {
+  const filtro = igId
+    ? `iglesia_id.eq.${igId},iglesia_id.is.null`
+    : `iglesia_id.is.null`
+
+  const PAGINA = 1000
+  let todas: any[] = []
+  let desde = 0
+  let continuar = true
+
+  while (continuar) {
+    const { data, error } = await supabase
+      .from("canciones")
+      .select("id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda, fecha_creacion")
+      .or(filtro)
+      .order("numero", { ascending: true, nullsFirst: false })
+      .range(desde, desde + PAGINA - 1)
+
+    if (error) { console.error("❌ Error fetch canciones:", error?.message); break }
+    if (!data || data.length === 0) break
+    todas = todas.concat(data)
+    continuar = data.length === PAGINA
+    desde += PAGINA
+  }
+
+  console.log(`✅ Fetch canciones: ${todas.length} total`)
+  if (todas.length > 0) {
+    setCanciones(todas)
+    try { localStorage.setItem(cacheKey, JSON.stringify({ data: todas, ts: Date.now() })) } catch (e) {}
+  }
+}
+
+// Helper: cargar IDs de canciones con acordes (separado para no bloquear el cache path)
+const _cargarAcordes = async () => {
   const { data: partesConAcordes, error: errorAcordes } = await supabase
     .from("partes_cancion")
     .select("cancion_id")
     .eq("tiene_acordes", true)
-
   if (errorAcordes) { setIdsCancionesConAcordes([]); return }
-
   const idsUnicos = Array.from(
     new Set((partesConAcordes || []).map((p: any) => p.cancion_id).filter(Boolean))
   )
@@ -384,36 +739,80 @@ const cargarCanciones = async () => {
       const config = JSON.parse(guardado)
       setFondoCancionUrl(config.url || "")
       setFondoCancionNombre(config.nombre || "")
-      setFondoCancionModo(config.modo || "preset")
+      setFondoCancionModo((config.modo || "preset") as "ninguno" | "preset" | "estatico" | "movimiento" | "video")
       setFondoCancionPreset(config.preset || "cielo-dorado")
       setFondoCancionOscuridad(config.oscuridad ?? 55)
       setFondoCancionAjuste(config.ajuste || "cover")
     }
-  } catch (error) {
-    console.error("No se pudo cargar configuración de fondo:", error)
-  } finally {
-    setFondoCancionConfigLista(true)
-  }
+  } catch (e) { /* ignorar */ }
+  finally { setFondoCancionConfigLista(true) }
 
-  // ✅ Usar datos del contexto si ya están disponibles (sin query adicional)
+  // ── 1. Mostrar desde localStorage inmediatamente (sin esperar a Supabase) ─
+  const igCacheKey = `selah-iglesia-${iglesiaId}`
+  try {
+    const igCachedRaw = localStorage.getItem(igCacheKey)
+    if (igCachedRaw) {
+      const { nombre, logo_url, logo_nombre } = JSON.parse(igCachedRaw)
+      if (nombre) {
+        setNombreIglesia(nombre || "")
+        setLogoEsperaUrl(logo_url || "")
+        setLogoEsperaNombre(logo_nombre || "")
+        nombreIglesiaRef.current = nombre
+        logoEsperaUrlRef.current = logo_url || ""
+        // Si viene del contexto también lo tenemos; no hace falta query
+        if (nombreIglesiaCtx) return
+      }
+    }
+  } catch (e) { /* ignorar */ }
+
+  // ✅ Usar datos del contexto si ya están disponibles
   if (nombreIglesiaCtx) {
     setNombreIglesia(nombreIglesiaCtx)
     setLogoEsperaUrl(logoUrlCtx || "")
     nombreIglesiaRef.current = nombreIglesiaCtx
     logoEsperaUrlRef.current = logoUrlCtx || ""
-    // Aún necesitamos logo_nombre — query mínima
-    const { data } = await supabase.from("iglesias").select("logo_nombre").eq("id", iglesiaId).single()
-    if (data) setLogoEsperaNombre(data.logo_nombre || "")
+    // Cargar logo_nombre en background (no bloquear)
+    supabase.from("iglesias").select("logo_nombre").eq("id", iglesiaId).limit(1)
+      .then(({ data: rows }) => {
+        const d = (rows as any[])?.[0]
+        if (d) setLogoEsperaNombre(d.logo_nombre || "")
+      })
     return
   }
 
-  const { data, error } = await supabase
-    .from("iglesias").select("nombre, logo_url, logo_nombre")
-    .eq("id", iglesiaId).single()
-  if (error) { console.error("Error cargando iglesia:", error); return }
-  setNombreIglesia(data?.nombre || "")
-  setLogoEsperaUrl(data?.logo_url || "")
-  setLogoEsperaNombre(data?.logo_nombre || "")
+  // ── 2. Query a Supabase con timeout ──────────────────────────────────────────
+  try {
+    const timeoutPromise = new Promise<null>((_, reject) =>
+      setTimeout(() => reject(new Error("timeout")), 5000)
+    )
+    const queryPromise = supabase
+      .from("iglesias").select("nombre, logo_url, logo_nombre")
+      .eq("id", iglesiaId).limit(1)
+
+    const { data: rows, error } = await Promise.race([
+      queryPromise,
+      timeoutPromise.then(() => ({ data: null, error: new Error("timeout") }))
+    ]) as any
+
+    if (error) {
+      console.warn("Iglesia timeout/error — usando caché localStorage")
+      return  // ya mostramos datos del localStorage arriba
+    }
+
+    const data = (rows as any[])?.[0] ?? null
+    if (!data) return
+
+    setNombreIglesia(data.nombre || "")
+    setLogoEsperaUrl(data.logo_url || "")
+    setLogoEsperaNombre(data.logo_nombre || "")
+    nombreIglesiaRef.current = data.nombre || ""
+    logoEsperaUrlRef.current = data.logo_url || ""
+
+    // Guardar en cache para la próxima carga (acceso instantáneo)
+    try { localStorage.setItem(igCacheKey, JSON.stringify({ nombre: data.nombre, logo_url: data.logo_url, logo_nombre: data.logo_nombre })) } catch (e) { /* ignorar */ }
+  } catch (e) {
+    console.warn("Error cargando iglesia:", e)
+  }
 }
 
 const fondoCancionActual = () => {
@@ -421,7 +820,15 @@ const fondoCancionActual = () => {
 
   if (fondoCancionModo === "preset") {
     const preset = fondosCancionPreset.find(f => f.id === fondoCancionPreset)
-
+    // ✅ Preset animado
+    if (preset?.fondo === "animated") {
+      return {
+        tipo: "animated",
+        animacion: preset.animacion,
+        nombre: preset.nombre,
+        oscuridad: fondoCancionOscuridad,
+      }
+    }
     return {
       tipo: "preset",
       preset: fondoCancionPreset,
@@ -435,12 +842,12 @@ const fondoCancionActual = () => {
   if (!fondoCancionUrl) return null
 
   return {
-  tipo: fondoCancionModo,
-  url: fondoCancionUrl,
-  nombre: fondoCancionNombre,
-  oscuridad: fondoCancionOscuridad,
-  ajuste: fondoCancionAjuste
-}
+    tipo: fondoCancionModo,  // "estatico" | "movimiento" | "video"
+    url: fondoCancionUrl,
+    nombre: fondoCancionNombre,
+    oscuridad: fondoCancionOscuridad,
+    ajuste: fondoCancionAjuste
+  }
 }
 
 const registrarProyeccionCancion = async (cancion: any) => {
@@ -470,11 +877,13 @@ const getPartesCancion = async (cancionId: string): Promise<any[]> => {
   }
   const { data, error } = await supabase
     .from("partes_cancion")
-    .select("*")
+    .select("cancion_id, tipo, texto, texto_letra, texto_acordes, tiene_acordes, orden")
     .eq("cancion_id", cancionId)
     .order("orden")
   if (error) { console.error(error); return [] }
-  const partes = data || []
+  // ✅ Normalizar texto_letra → texto
+  const partes = (data || []).map(p => ({ ...p, texto: p.texto_letra || (p as any).texto || "" }))
+  console.log("🎵 Partes cargadas:", partes.length, partes[0] ? `texto[0]="${partes[0].texto?.slice(0,30)}"` : "sin partes")
   partesCacheRef.current.set(cancionId, partes)
   return partes
 }
@@ -484,26 +893,34 @@ const precargarPartesBatch = async (ids: string[]) => {
   const sinCache = ids.filter(id => !partesCacheRef.current.has(id))
   if (sinCache.length === 0) return
 
-  // Dividir en lotes de 100 para no superar límites de Supabase
-  const LOTE = 100
+  // Lotes de 30 — más seguro con RLS de Supabase
+  const LOTE = 30
   for (let i = 0; i < sinCache.length; i += LOTE) {
     const lote = sinCache.slice(i, i + LOTE)
-    const { data, error } = await supabase
-      .from("partes_cancion")
-      .select("*")
-      .in("cancion_id", lote)
-      .order("cancion_id")
-      .order("orden")
-    if (error) { console.error("Error precarga batch:", error); continue }
+    try {
+      const { data, error } = await supabase
+        .from("partes_cancion")
+        .select("cancion_id, tipo, texto, texto_letra, texto_acordes, tiene_acordes, orden")
+        .in("cancion_id", lote)
+        .order("orden")
 
-    // Agrupar por cancion_id y guardar en caché
-    const agrupado: Record<string, any[]> = {}
-    for (const parte of data || []) {
-      if (!agrupado[parte.cancion_id]) agrupado[parte.cancion_id] = []
-      agrupado[parte.cancion_id].push(parte)
-    }
-    for (const id of lote) {
-      partesCacheRef.current.set(id, agrupado[id] || [])
+      if (error) {
+        console.warn("Precarga parcial:", error.message || error.code || "error RLS")
+        continue
+      }
+
+      // Agrupar por cancion_id
+      const agrupado: Record<string, any[]> = {}
+      for (const parte of data || []) {
+        if (!agrupado[parte.cancion_id]) agrupado[parte.cancion_id] = []
+        // ✅ Normalizar: texto_letra → texto para compatibilidad con el resto del código
+        agrupado[parte.cancion_id].push({ ...parte, texto: parte.texto_letra || (parte as any).texto || "" })
+      }
+      for (const id of lote) {
+        partesCacheRef.current.set(id, agrupado[id] || [])
+      }
+    } catch(e) {
+      logCatch(e, "Precarga batch", { tipo: "supabase", pagina: "/control", detalle: { lote: lote.slice(0, 3) } })
     }
   }
 }
@@ -542,8 +959,14 @@ const activarMediaSession = (titulo: string, partesList: any[], idx: number) => 
   navigator.mediaSession.setActionHandler("nexttrack", () => siguienteRef.current())
 }
 
+const verificarServidor = (): boolean => {
+  if (socket) return true
+  setModalServidor(true)
+  return false
+}
+
 const proyectar = async (id: string) => {
-  if (!socket) return
+  if (!verificarServidor()) return
 
   const idxEnLista = lista.findIndex(
     item => item.tipo === "cancion" && item.id === id
@@ -571,22 +994,31 @@ const proyectar = async (id: string) => {
   setIndiceLista(null)
   setIndiceActivoLista(null)
   limpiarModoBiblia()
+  setEstadoEspecialActivo("")
 
   setTituloActual(cancion?.titulo || "")
   setPartes(data || [])
   setIndex(0)
+  // Iniciar aprendizaje y cargar tiempos guardados
+  if (cancion?.id) {
+    const guardados = cargarTiempos(cancion.id)
+    setTiemposAprendidos(guardados)
+    iniciarAprendizaje()
+  }
+  detenerAutoAvance()
   // Activar audio desde gesto del usuario (requisito Android)
   activarMediaSession(cancion?.titulo || "", data || [], 0)
   registrarProyeccionCancion(cancion) // ✅ fire & forget — no bloquea el socket
+  console.log("📤 Enviando partes:", data?.length, "texto[0]:", data?.[0]?.texto?.slice(0, 40))
   socket.emit("cargar-cancion", {
-  partes: data,
-  index: 0,
-  titulo: cancion?.titulo || "",
-  tono: cancion?.tono || "",
-  iglesia: nombreIglesia || "",
-  logo_marca_url: logoEsperaUrl || "",
-  fondo: fondoCancionActual()
-})
+    partes: data,
+    index: 0,
+    titulo: cancion?.titulo || "",
+    tono: cancion?.tono || "",
+    iglesia: nombreIglesia || "",
+    logo_marca_url: logoEsperaUrl || "",
+    fondo: fondoCancionActual()
+  })
 
   socket.emit("cancion-activa", { id })
 }
@@ -617,7 +1049,13 @@ const transponerAcorde = (acorde: string, semitonos: number, americano: boolean)
 }
 
 const transponerTexto = (texto: string, semitonos: number, americano: boolean): string => {
-  if (semitonos === 0 && !americano && !texto.match(/\[[A-G][^a-z]/)) return texto
+  // ✅ Si no hay transposición Y el texto ya está en la notación correcta → retorno rápido
+  const tieneAcordesAmericanos = /\[[A-G][^a-z]|\[[A-G]\]/.test(texto)
+  const tieneAcordesLatinos = /\[Do|\[Re|\[Mi|\[Fa|\[Sol|\[La|\[Si/.test(texto)
+  if (semitonos === 0) {
+    if (!americano && tieneAcordesLatinos && !tieneAcordesAmericanos) return texto
+    if (americano && !tieneAcordesLatinos && tieneAcordesAmericanos) return texto
+  }
   // Reemplazar acordes en corchetes [Do] → [Re]
   let result = texto.replace(/\[([^\]]+)\]/g, (_,a) => "[" + transponerAcorde(a, semitonos, americano) + "]")
   // Reemplazar acordes en líneas separadas (formato linea)
@@ -639,7 +1077,7 @@ const transponerTexto = (texto: string, semitonos: number, americano: boolean): 
 const cargarPreview = async (c: any) => {
   setPreviewCancion(c)
   setPreviewIndex(0)
-  if (isMobile) setTabDerechaMobile("preview")
+  if (isMobile && previewHabilitado) setBottomSheetAbierto(true) // ✅ Abrir bottom sheet en mobile
   // Si ya está en caché → mostrar instantáneamente
   if (partesCacheRef.current.has(c.id)) {
     setPreviewPartes(partesCacheRef.current.get(c.id)!)
@@ -695,6 +1133,95 @@ const partirEnPaginasCliente = (texto: string, maxChars = 650) => {
   return paginas
 }
 
+// ── Helpers de timing ────────────────────────────────────────────────────
+const claveTimingCancion = (id: string) => `selah-tiempos-${id}`
+
+const cargarTiempos = (cancionId: string): number[] => {
+  try {
+    const raw = localStorage.getItem(claveTimingCancion(cancionId))
+    return raw ? JSON.parse(raw) : []
+  } catch (e) { return [] }
+}
+
+const guardarTiempos = (cancionId: string, tiempos: number[]) => {
+  try {
+    localStorage.setItem(claveTimingCancion(cancionId), JSON.stringify(tiempos))
+  } catch (e) {}
+}
+
+const iniciarAprendizaje = () => {
+  tiempoInicioParte.current = Date.now()
+  tiemposRegistrados.current = []
+  setAprendiendo(true)
+}
+
+const registrarCambioParte = (cancionId?: string) => {
+  if (!aprendiendo || tiempoInicioParte.current === null) return
+  const elapsed = Date.now() - tiempoInicioParte.current
+  tiemposRegistrados.current.push(elapsed)
+  tiempoInicioParte.current = Date.now()
+  // ✅ Guardar tiempos parciales en cada cambio — no esperar al final
+  if (cancionId && tiemposRegistrados.current.length > 0) {
+    guardarTiempos(cancionId, tiemposRegistrados.current)
+    setTiemposAprendidos([...tiemposRegistrados.current])
+  }
+}
+
+const finalizarAprendizaje = (cancionId: string) => {
+  if (!aprendiendo || tiemposRegistrados.current.length < 1) return
+  guardarTiempos(cancionId, tiemposRegistrados.current)
+  setTiemposAprendidos(tiemposRegistrados.current)
+  setAprendiendo(false)
+  tiemposRegistrados.current = []
+}
+
+// ── Ir al Coro y volver al siguiente verso ───────────────────────────────
+const irAlCoro = () => {
+  if (!socket || !partes.length) return
+  const esCoro = (p: any) => /coro|estribillo|chorus/i.test(p?.tipo || "")
+
+  // Si ya estamos en el coro y hay un verso guardado → volver al siguiente verso
+  if (esCoro(partes[index]) && versoDespuesCoro !== null) {
+    const siguiente = versoDespuesCoro
+    setVersoDespuesCoro(null)
+    setIndex(siguiente)
+    socket.emit("cambiar-parte", siguiente)
+    return
+  }
+
+  // Buscar el siguiente coro hacia adelante, o el primero de la canción
+  const siguiente = partes.findIndex((p, i) => i > index && esCoro(p))
+  const primero   = partes.findIndex(p => esCoro(p))
+  const destino   = siguiente !== -1 ? siguiente : primero
+
+  if (destino === -1) return  // no hay coro
+  // Guardar el próximo verso (parte actual + 1 o la siguiente parte no-coro)
+  setVersoDespuesCoro(index + 1 < partes.length ? index + 1 : index)
+  setIndex(destino)
+  socket.emit("cambiar-parte", destino)
+}
+
+const iniciarAutoAvance = (tiempos: number[], desde: number) => {
+  if (intervaloAutoRef.current) clearInterval(intervaloAutoRef.current)
+  const msActual = tiempos[desde] || tiempos[tiempos.length - 1] || 15000
+  let restante = Math.round(msActual / 1000)
+  setContadorAuto(restante)
+  intervaloAutoRef.current = setInterval(() => {
+    restante -= 1
+    setContadorAuto(restante)
+    if (restante <= 0) {
+      clearInterval(intervaloAutoRef.current!)
+      siguienteRef.current()
+    }
+  }, 1000)
+}
+
+const detenerAutoAvance = () => {
+  if (intervaloAutoRef.current) { clearInterval(intervaloAutoRef.current); intervaloAutoRef.current = null }
+  setAutoAvanceActivo(false)
+  setContadorAuto(0)
+}
+
 const siguiente = async () => {
   if (!socket) return
 
@@ -714,8 +1241,10 @@ const siguiente = async () => {
     if (!ultimo) {
       if (loopCoro && esCoro) return
       const nuevo = index + 1
+      registrarCambioParte(activaId || undefined)
       setIndex(nuevo)
       socket.emit("cambiar-parte", nuevo)
+      if (autoAvanceActivo) iniciarAutoAvance(tiemposAprendidos, nuevo)
     }
     return
   }
@@ -738,9 +1267,15 @@ const siguiente = async () => {
     if (!ultimo) {
       if (loopCoro && esCoro) return
       const nuevo = index + 1
+      registrarCambioParte(activaId || undefined)
       setIndex(nuevo)
       socket.emit("cambiar-parte", nuevo)
+      if (autoAvanceActivo) iniciarAutoAvance(tiemposAprendidos, nuevo)
       return
+    } else {
+      // Llegó al final → guardar tiempos aprendidos
+      if (activaId) finalizarAprendizaje(activaId)
+      detenerAutoAvance()
     }
   }
 
@@ -802,6 +1337,17 @@ const anterior = async () => {
 useEffect(() => {
   siguienteRef.current = siguiente
   anteriorRef.current = anterior
+
+  // ✅ Persistir estado en localStorage para recuperar tras bloqueo
+  if (typeof window !== "undefined") {
+    if (partes.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        partes, index, titulo: tituloActual, activaId
+      }))
+    } else {
+      localStorage.removeItem(STORAGE_KEY)
+    }
+  }
 
   // Media Session se actualiza desde activarMediaSession() llamado en cada acción
 }, [siguiente, anterior])
@@ -972,7 +1518,8 @@ const guardarCulto = async () => {
       .from("listas_culto")
       .insert({
         nombre: nombre.trim(),
-        iglesia_id: iglesiaId
+        iglesia_id: iglesiaId,
+        fecha: new Date().toISOString().split("T")[0]  // ✅ fecha del culto (YYYY-MM-DD)
       })
       .select()
       .single()
@@ -1253,6 +1800,7 @@ const cargarListaDesdeBD = async (id: string) => {
   setPartes([])
   setIndex(0)
   limpiarModoBiblia()
+  if (typeof window !== "undefined") localStorage.removeItem(STORAGE_KEY)
 }
 
 
@@ -1266,15 +1814,9 @@ const irAItemLista = async (i: number, alFinal = false) => {
   setIndiceActivoLista(i)
 
   if (item.tipo === "imagen") {
-    setActivaId(null)
-    setPartes([])
-    setIndex(0)
-    limpiarModoBiblia()
-
-    socket.emit("mostrar-imagen", {
-      url: item.url,
-      iglesia: ""
-    })
+    setActivaId(null); setPartes([]); setIndex(0); limpiarModoBiblia()
+    setAprendiendo(false); detenerAutoAvance(); setEstadoEspecialActivo("")
+    socket.emit("mostrar-imagen", { url: item.url, iglesia: "" })
     return
   }
 
@@ -1282,8 +1824,11 @@ const irAItemLista = async (i: number, alFinal = false) => {
     setActivaId(null)
     setPartes([])
     setIndex(0)
+    setAprendiendo(false)   // ✅ detener aprendizaje al cambiar a biblia
+    detenerAutoAvance()     // ✅ detener auto-avance si estaba activo
+    setEstadoEspecialActivo("")
 
-    const paginas = item.paginas || [item.texto]
+    const paginas = item.paginas || [item.texto].filter((t): t is string => !!t)
     const pagina = alFinal ? Math.max(0, paginas.length - 1) : 0
 
     setPaginasBiblia(paginas)
@@ -1295,32 +1840,44 @@ const irAItemLista = async (i: number, alFinal = false) => {
       paginas,
       pagina,
       iglesia: nombreIglesia || "",
-      logo_marca_url: logoEsperaUrl || ""
+      logo_marca_url: logoEsperaUrl || "",
+      fondo: fondoCancionActual()  // ✅ Bug 2: enviar fondo al proyector
     })
     return
   }
 
   if (item.tipo === "estado") {
-  setActivaId(null)
-  setPartes([])
-  setIndex(0)
-  limpiarModoBiblia()
+    setActivaId(null)
+    setPartes([])
+    setIndex(0)
+    limpiarModoBiblia()
+    setAprendiendo(false)
+    detenerAutoAvance()
+    setEstadoEspecialActivo(item.titulo || item.modo || "Pantalla especial")
 
-  socket.emit("mostrar-estado", {
-    tipo: item.modo,
-    titulo: item.titulo || "",
-    subtitulo: item.subtitulo || "",
-    url: item.url || ""
-  })
-  return
-}
+    // ✅ Para pantalla negra usar fondo actual o el preset por defecto
+    const fondoParaEstado = item.modo === "negro"
+      ? (fondoCancionActual() || { preset: fondoCancionPreset, tipo: "preset", oscuridad: fondoCancionOscuridad })
+      : fondoCancionActual()
+
+    socket.emit("mostrar-estado", {
+      tipo: item.modo,
+      titulo: item.titulo || "",
+      subtitulo: item.subtitulo || "",
+      url: item.url || "",
+      logo_marca_url: logoEsperaUrl || "",
+      fondo: fondoParaEstado
+    })
+    return
+  }
 
   // ✅ Desde cache — sin esperar red
-  const partesCancion = await getPartesCancion(item.id)
+  const partesCancion = await getPartesCancion(item.id || "")
   const parteInicial = alFinal ? Math.max(0, partesCancion.length - 1) : 0
 
-  setActivaId(item.id)
+  setActivaId(item.id || null)
   limpiarModoBiblia()
+  setEstadoEspecialActivo("")
   setPartes(partesCancion)
   setIndex(parteInicial)
 
@@ -1448,41 +2005,86 @@ useEffect(() => {
   return () => clearInterval(intervalo)
 }, [autoPlay, index, partes])
 
+const LIMITE_IMAGENES_NUBE = 20
+
 const subirImagen = async (file: File) => {
   try {
+    const iglesiaId = await getIglesiaIdCached()
     const archivoOptimizado = await optimizarImagen(file)
+    const baseName = file.name.replace(/\.[^/.]+$/, "").replace(/\s+/g, "_").trim()
+    const nombreArchivo = `${Date.now()}-${Math.random().toString(36).slice(2)}.webp`
 
-    const extension = "webp"
-    const baseName = file.name.replace(/\.[^/.]+$/, "")
-    const safeBaseName = baseName.replace(/\s+/g, " ").trim()
-    const nombreArchivo = `${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`
+    // ✅ En Electron: guardar local o nube según preferencia del usuario
+    const isElectron = typeof window !== "undefined" && navigator.userAgent.includes("Electron")
+    if (isElectron && modoGuardado === "local") {
+      const formData = new FormData()
+      formData.append("imagen", archivoOptimizado, nombreArchivo)
+      const res = await fetch(`http://localhost:4000/api/imagenes/guardar`, {
+        method: "POST", body: formData
+      })
+      if (res.ok) {
+        const { url } = await res.json()
+        return { url, nombre: baseName || "Imagen", local: true }
+      }
+    }
+
+    // ✅ En web/APK: subir a Supabase con carpeta por iglesia
+    const ruta = iglesiaId ? `${iglesiaId}/${nombreArchivo}` : nombreArchivo
+
+    // Verificar límite
+    if (iglesiaId) {
+      const { data: archivos } = await supabase.storage
+        .from("imagenes-culto").list(iglesiaId, { limit: LIMITE_IMAGENES_NUBE + 1 })
+      if ((archivos?.length || 0) >= LIMITE_IMAGENES_NUBE) {
+        alert(`Límite de ${LIMITE_IMAGENES_NUBE} imágenes en nube alcanzado. Elimina alguna para continuar.`)
+        return null
+      }
+    }
 
     const { error } = await supabase.storage
       .from("imagenes-culto")
-      .upload(nombreArchivo, archivoOptimizado, {
-        cacheControl: "3600",
-        upsert: false
-      })
+      .upload(ruta, archivoOptimizado, { cacheControl: "3600", upsert: false })
 
-    if (error) {
-      console.error("Error subiendo imagen:", error)
-      alert(`Error subiendo imagen: ${error.message}`)
-      return null
-    }
+    if (error) { alert(`Error subiendo imagen: ${error.message}`); return null }
 
-    const { data } = supabase.storage
-      .from("imagenes-culto")
-      .getPublicUrl(nombreArchivo)
+    const { data } = supabase.storage.from("imagenes-culto").getPublicUrl(ruta)
+    return { url: data.publicUrl, nombre: baseName || "Imagen", local: false }
 
-    return {
-      url: data.publicUrl,
-      nombre: safeBaseName || "Imagen"
-    }
   } catch (e) {
-    console.error(e)
-    alert("Falló la subida de imagen")
-    return null
+    console.error(e); alert("Falló la subida de imagen"); return null
   }
+}
+
+// ✅ Cargar galería de imágenes de la iglesia
+const cargarGaleriaImagenes = async (): Promise<{url: string, nombre: string, local: boolean}[]> => {
+  const iglesiaId = await getIglesiaIdCached()
+  const isElectron = typeof window !== "undefined" && navigator.userAgent.includes("Electron")
+  const resultado: {url: string, nombre: string, local: boolean}[] = []
+
+  // Imágenes locales (Electron)
+  if (isElectron) {
+    try {
+      const res = await fetch("http://localhost:4000/api/imagenes/listar")
+      if (res.ok) {
+        const { imagenes } = await res.json()
+        imagenes.forEach((img: any) => resultado.push({ ...img, local: true }))
+      }
+    } catch(e) {}
+  }
+
+  // Imágenes en nube
+  if (iglesiaId) {
+    const { data } = await supabase.storage
+      .from("imagenes-culto").list(iglesiaId, { limit: 100, sortBy: { column: "created_at", order: "desc" } })
+    if (data) {
+      data.forEach(f => {
+        const { data: pub } = supabase.storage.from("imagenes-culto")
+          .getPublicUrl(`${iglesiaId}/${f.name}`)
+        resultado.push({ url: pub.publicUrl, nombre: f.name.replace(/^\d+-[a-z0-9]+\.webp$/, "Imagen"), local: false })
+      })
+    }
+  }
+  return resultado
 }
 
 const enviarPrecargaImagenes = (items: any[]) => {
@@ -1525,15 +2127,14 @@ const subirLogoEspera = async (file: File) => {
   setLogoEsperaNombre(resultado.nombre || "Logo")
 }
 
-const buscarVersiculo = async (ref: string) => {
-  const res = await fetch(`/api/biblia/buscar?ref=${encodeURIComponent(ref)}`)
-  const data = await res.json()
-
-  if (!res.ok) {
-    throw new Error(data.error || "No se pudo cargar el versículo")
-  }
-
-  return data
+const buscarVersiculo = (ref: string): Promise<any> => {
+  return new Promise((resolve, reject) => {
+    if (!socket) { reject(new Error("Sin conexión al servidor")); return }
+    socket.emit("buscar-biblia", ref, (response: any) => {
+      if (response?.error) reject(new Error(response.error))
+      else resolve(response)
+    })
+  })
 }
 
 const proyectarBiblia = async (ref: string) => {
@@ -1547,17 +2148,21 @@ const proyectarBiblia = async (ref: string) => {
     setIndiceActivoLista(null)
     setPartes([])
     setIndex(0)
+    setAprendiendo(false)   // ✅ Bug 1: detener aprendizaje en AMBAS rutas de biblia
+    detenerAutoAvance()     // ✅ detener auto-avance si estaba activo
+    setEstadoEspecialActivo("")
 
-    setPaginasBiblia(data.paginas || [data.texto])
+    setPaginasBiblia(data.paginas || [data.texto].filter((t): t is string => !!t).filter((t): t is string => !!t))
     setPaginaBibliaActual(0)
 
     socket.emit("mostrar-biblia", {
     referencia: data.referencia,
     texto: data.texto,
-    paginas: data.paginas || [data.texto],
+    paginas: data.paginas || [data.texto].filter((t): t is string => !!t),
     pagina: 0,
     iglesia: nombreIglesia || "",
-    logo_marca_url: logoEsperaUrl || ""
+    logo_marca_url: logoEsperaUrl || "",
+    fondo: fondoCancionActual()  // ✅ Bug 2: enviar fondo al proyector
   })
   } catch (error: any) {
     alert(error.message || "No se pudo cargar el versículo")
@@ -1575,7 +2180,7 @@ const agregarBibliaALista = async (ref: string) => {
       tipo: "biblia",
       referencia: data.referencia,
       texto: data.texto,
-      paginas: data.paginas || [data.texto],
+      paginas: data.paginas || [data.texto].filter((t): t is string => !!t),
       titulo: `📖 ${data.referencia}`
     },
     `✅ Palabra agregada: ${data.referencia}`
@@ -1587,18 +2192,15 @@ const agregarBibliaALista = async (ref: string) => {
 
 const proyectarMensajeRapido = () => {
   if (!socket) return
-
-  setActivaId(null)
-  setIndiceLista(null)
-  setIndiceActivoLista(null)
-  setPartes([])
-  setIndex(0)
-  limpiarModoBiblia()
-
+  setActivaId(null); setIndiceLista(null); setIndiceActivoLista(null)
+  setPartes([]); setIndex(0); limpiarModoBiblia()
+  setAprendiendo(false); detenerAutoAvance()
+  setEstadoEspecialActivo("✍️ Mensaje")
   socket.emit("mostrar-estado", {
     tipo: "mensaje",
     titulo: mensajeRapido || "Espere un momento",
-    subtitulo: nombreIglesia || ""
+    subtitulo: nombreIglesia || "",
+    fondo: fondoCancionActual()
   })
 }
 
@@ -1609,50 +2211,49 @@ const proyectarPantallaLogo = () => {
     return
   }
 
-  setActivaId(null)
-  setIndiceLista(null)
-  setIndiceActivoLista(null)
-  setPartes([])
-  setIndex(0)
-  limpiarModoBiblia()
+  setActivaId(null); setIndiceLista(null); setIndiceActivoLista(null)
+  setPartes([]); setIndex(0); limpiarModoBiblia()
+  setAprendiendo(false); detenerAutoAvance()
+  setEstadoEspecialActivo("🖼️ Logo")
 
   socket.emit("mostrar-estado", {
     tipo: "logo",
     url: logoEsperaUrl.trim(),
     titulo: nombreIglesia || "",
-    subtitulo: "Espere un momento"
+    subtitulo: "Espere un momento",
+    fondo: fondoCancionActual()
   })
 }
 
 const proyectarPantallaNegra = () => {
   if (!socket) return
 
-  setActivaId(null)
-  setIndiceLista(null)
-  setIndiceActivoLista(null)
-  setPartes([])
-  setIndex(0)
-  limpiarModoBiblia()
+  setActivaId(null); setIndiceLista(null); setIndiceActivoLista(null)
+  setPartes([]); setIndex(0); limpiarModoBiblia()
+  setAprendiendo(false); detenerAutoAvance()
+  if (typeof window !== "undefined") localStorage.removeItem("selah_control_estado")
+  setEstadoEspecialActivo("🌑 Pantalla de descanso")
 
+  // Pantalla de descanso: solo el fondo configurado, sin logo ni texto
   socket.emit("mostrar-estado", {
-    tipo: "negro"
+    tipo: "descanso",
+    fondo: fondoCancionActual()
   })
 }
 
 const proyectarPantallaEspera = () => {
   if (!socket) return
 
-  setActivaId(null)
-  setIndiceLista(null)
-  setIndiceActivoLista(null)
-  setPartes([])
-  setIndex(0)
-  limpiarModoBiblia()
+  setActivaId(null); setIndiceLista(null); setIndiceActivoLista(null)
+  setPartes([]); setIndex(0); limpiarModoBiblia()
+  setAprendiendo(false); detenerAutoAvance()
+  setEstadoEspecialActivo("⏳ Pantalla de espera")
 
   socket.emit("mostrar-estado", {
     tipo: "espera",
     titulo: "Espere un momento",
-    subtitulo: nombreIglesia || ""
+    subtitulo: nombreIglesia || "",
+    fondo: fondoCancionActual()
   })
 }
 
@@ -1833,45 +2434,81 @@ const obtenerFragmentoBusqueda = (
 
 
 const cancionesFiltradas = useMemo(() => {
-  const q = normalizar(busqueda || "").trim()
+  const q = normalizar(busquedaDebounced || "").trim()
 
-  return [...canciones]
-    .filter((c) => {
-      if (!q) return true
+  // ✅ Detectar patrones de búsqueda:
+  // "263"           → solo número
+  // "263 yo quiero" → número + texto (muy común en iglesias)
+  // "yo quiero"     → solo texto
+  const esNumero = /^\d+$/.test(q)
+  const matchNumTexto = q.match(/^(\d+)\s+(.+)$/)  // ej: "263 yo quiero trabajar"
+  const numParte   = matchNumTexto?.[1] || ""       // "263"
+  const textoParte = matchNumTexto?.[2] || ""       // "yo quiero trabajar"
 
-      const titulo = normalizar(c.titulo || "")
+  const scored = canciones
+    .map(c => {
+      if (!q) return { c, score: 0, pass: true }
+
+      const titulo    = normalizar(c.titulo || "")
+      const numero    = String(c.numero || "")
       const categoria = normalizar(c.categoria || "")
-      const tono = normalizar(c.tono || "")
-      const numero = String(c.numero || "")
 
-      // NUEVO: búsqueda por letra
-      const textoBusqueda = normalizar(c.texto_busqueda || "")
+      // ── Búsqueda "263 yo quiero trabajar" (número + texto) ──────────────
+      if (matchNumTexto) {
+        const numOk    = numero === numParte || numero.startsWith(numParte)
+        const tituloOk = titulo.includes(textoParte)
+        if (numOk && tituloOk) return { c, score: 100, pass: true }
+        if (numOk)             return { c, score: 80,  pass: true }
+        if (tituloOk)          return { c, score: 60,  pass: true }
+        return { c, score: 0, pass: false }
+      }
 
-      return (
-        titulo.includes(q) ||
-        categoria.includes(q) ||
-        tono.includes(q) ||
-        numero.includes(q) ||
-        textoBusqueda.includes(q)
-      )
+      // ── Búsqueda solo por número ─────────────────────────────────────────
+      if (esNumero) {
+        if (numero === q)          return { c, score: 100, pass: true }
+        if (numero.startsWith(q))  return { c, score: 80,  pass: true }
+        return { c, score: 0, pass: false }
+      }
+
+      // ── Búsqueda por texto ───────────────────────────────────────────────
+      if (titulo === q)            return { c, score: 100, pass: true }
+      if (titulo.startsWith(q))    return { c, score: 90,  pass: true }
+      if (titulo.includes(q))      return { c, score: 70,  pass: true }
+      if (categoria.includes(q))   return { c, score: 30,  pass: true }
+      const texto = normalizar(c.texto_busqueda || "")
+      if (texto.includes(q))       return { c, score: 10,  pass: true }
+
+      return { c, score: 0, pass: false }
     })
-    .filter((c) => !filtroTono || c.tono === filtroTono)
-    .filter((c) => !filtroCategoria || c.categoria === filtroCategoria)
+    .filter(x => x.pass)
+    .filter(x => !filtroTono     || x.c.tono === filtroTono)
+    .filter(x => !filtroCategoria || x.c.categoria === filtroCategoria)
+
+  // Si hay búsqueda activa ordenar por relevancia, si no por el orden elegido
+  if (q) {
+    return scored
+      .sort((a, b) => b.score - a.score || (a.c.numero ?? 999999) - (b.c.numero ?? 999999))
+      .map(x => x.c)
+  }
+
+  return scored
+    .map(x => x.c)
     .sort((a, b) => {
-      const na = a.numero ?? 999999
-      const nb = b.numero ?? 999999
-
+      if (ordenar === "az")       return (a.titulo || "").localeCompare(b.titulo || "")
+      if (ordenar === "za")       return (b.titulo || "").localeCompare(a.titulo || "")
+      if (ordenar === "reciente") return new Date(b.fecha_creacion || 0).getTime() - new Date(a.fecha_creacion || 0).getTime()
+      if (ordenar === "antigua")  return new Date(a.fecha_creacion || 0).getTime() - new Date(b.fecha_creacion || 0).getTime()
+      const na = a.numero ?? 999999, nb = b.numero ?? 999999
       if (na !== nb) return na - nb
-
       return (a.titulo || "").localeCompare(b.titulo || "")
     })
-}, [canciones, busqueda, filtroTono, filtroCategoria])
+}, [canciones, busquedaDebounced, filtroTono, filtroCategoria, ordenar])
 
 const scrollCancionesRef = useRef<HTMLDivElement | null>(null)
 const [scrollTopCanciones, setScrollTopCanciones] = useState(0)
 
-const ALTURA_ITEM_CANCION = 64
-const OVERSCAN_CANCIONES = 5
+const ALTURA_ITEM_CANCION = 64  // achicado de 88 — más canciones visibles sin scrollear
+const OVERSCAN_CANCIONES = 10   // margen amplio para evitar gaps visibles
 
 const inicioVirtualCanciones = Math.max(
   0,
@@ -1890,6 +2527,17 @@ useEffect(() => {
   const ids = cancionesFiltradas.slice(0, 100).map(c => c.id)
   precargarPartesBatch(ids)
 }, [cancionesFiltradas.length])
+
+useEffect(() => {
+  if (isMobile) return
+  const contenedor = scrollCancionesRef.current
+  if (!contenedor) return
+  // Ir siempre al primer resultado — con o sin búsqueda activa,
+  // el usuario espera ver lo más relevante arriba de inmediato
+  requestAnimationFrame(() => {
+    contenedor.scrollTo({ top: 0, behavior: "smooth" })
+  })
+}, [busquedaDebounced, isMobile])
 
 const cancionesVirtuales = cancionesFiltradas.slice(
   inicioVirtualCanciones,
@@ -1967,6 +2615,12 @@ useEffect(() => {
     })
   })
 }, [isMobile, activaId, cancionesFiltradas.length])
+
+// ✅ Auto-scroll al cargar el control si ya había una canción activa
+useEffect(() => {
+  if (cargandoControl || !activaId || isMobile) return
+  setTimeout(() => centrarCancionEnLista(activaId), 500)
+}, [cargandoControl])
 
 const agregarItemAListaConFeedback = (item: any, mensaje: string) => {
   setLista(prev => {
@@ -2142,6 +2796,7 @@ if (cargandoControl) {
 }
 
 const etiquetaParteControl = (() => {
+  if (estadoEspecialActivo) return estadoEspecialActivo
   if (paginasBiblia.length > 0) {
     return `📖 Palabra • Página ${paginaBibliaActual + 1} de ${paginasBiblia.length}`
   }
@@ -2447,6 +3102,163 @@ return (
 `}</style>
 
 
+{/* ── BOTTOM SHEET MOBILE (preview rápido) ──────────────────────── */}
+{isMobile && bottomSheetAbierto && previewCancion && (
+  <>
+    {/* Overlay */}
+    <div onClick={() => setBottomSheetAbierto(false)} style={{
+      position: "fixed", inset: 0, zIndex: 9990,
+      background: "rgba(0,0,0,0.5)"
+    }} />
+    {/* Sheet */}
+    <div style={{
+      position: "fixed", bottom: 0, left: 0, right: 0,
+      zIndex: 9991, background: "#0d1b2e",
+      borderTop: "1px solid rgba(255,255,255,0.1)",
+      borderRadius: "16px 16px 0 0",
+      padding: "0 0 env(safe-area-inset-bottom)",
+      maxHeight: "70dvh", display: "flex", flexDirection: "column"
+    }}>
+      {/* Handle — click para cerrar */}
+      <div onClick={() => setBottomSheetAbierto(false)}
+        style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px", cursor: "pointer" }}>
+        <div style={{ width: 40, height: 4, borderRadius: 99, background: "rgba(255,255,255,0.3)" }} />
+      </div>
+
+      {/* Header */}
+      <div style={{ padding: "4px 16px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {previewCancion.titulo}
+          </div>
+          {previewCancion.tono && <div style={{ fontSize: 12, opacity: 0.5 }}>{previewCancion.tono}</div>}
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ display: "flex", background: "rgba(255,255,255,0.07)", borderRadius: 8, padding: 2 }}>
+            <button onClick={() => setPreviewModoMusico(false)} style={{
+              padding: "4px 9px", borderRadius: 6, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer",
+              background: !previewModoMusico ? "#2563eb" : "transparent", color: "white"
+            }}>A</button>
+            <button onClick={() => setPreviewModoMusico(true)} style={{
+              padding: "4px 9px", borderRadius: 6, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer",
+              background: previewModoMusico ? "#f59e0b" : "transparent", color: "white"
+            }}>🎸</button>
+          </div>
+          <button onClick={() => { setBottomSheetAbierto(false); abrirVisor(previewCancion) }} style={{
+            padding: "4px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)",
+            background: "rgba(255,255,255,0.06)", color: "white", fontSize: 12, fontWeight: 700, cursor: "pointer"
+          }}>⛶</button>
+        </div>
+      </div>
+
+      {/* Tabs de partes */}
+      {previewPartes.length > 0 && (
+        <div style={{ display: "flex", gap: 4, padding: "0 14px 8px", overflowX: "auto" }}>
+          {previewPartes.map((p, i) => (
+            <button key={i} onClick={() => setPreviewIndex(i)} style={{
+              padding: "4px 10px", borderRadius: 6, border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+              background: previewIndex === i ? "#2563eb" : "rgba(255,255,255,0.07)",
+              color: previewIndex === i ? "white" : "rgba(255,255,255,0.5)"
+            }}>{p.tipo || `Parte ${i+1}`}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Contenido letra */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "4px 16px 12px", minHeight: 80 }}>
+        {previewPartes.length === 0 ? (
+          <div style={{ opacity: 0.4, fontSize: 13 }}>Cargando...</div>
+        ) : (() => {
+          const parte = previewPartes[previewIndex]
+          if (!parte) return null
+          const texto = parte.texto || parte.texto_acordes || ""
+          if (!previewModoMusico) {
+            const limpio = texto.split("\n")
+              .filter((l: string) => {
+                if (!l.trim()) return false
+                const tokens = l.trim().split(/\s+/)
+                return !tokens.every((t: string) => t.length <= 6 &&
+                  /^(Do#?|Reb?|Re#?|Mib?|Mi|Fa#?|Solb?|Sol#?|Lab?|La#?|Sib?|Si|[A-G])(b|#)?(m|maj|min|sus|dim|aug|add)?\d*$/.test(t))
+              })
+              .map((l: string) => l.replace(/\[[^\]]*\]/g, "").trim())
+              .join("\n")
+            return <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", margin: 0, fontSize: 13, lineHeight: 1.7, fontWeight: 500, color: "rgba(255,255,255,0.92)" }}>{limpio.trim()}</pre>
+          }
+          return (
+            <div style={{ fontFamily: "'Courier New', monospace", fontSize: 13, lineHeight: 1.75, color: "white" }}>
+              {texto.split("\n").map((linea: string, i: number) => {
+                if (linea.includes("[")) {
+                  const parts: React.ReactNode[] = []
+                  let last = 0
+                  const re = /\[([^\]]+)\]/g
+                  let m: RegExpExecArray | null
+                  while ((m = re.exec(linea)) !== null) {
+                    if (m.index > last) parts.push(<span key={"t"+last}>{linea.slice(last, m.index)}</span>)
+                    parts.push(<span key={"a"+m.index} style={{ color: "#fbbf24", fontWeight: 800, fontSize: "0.75em", verticalAlign: "super" }}>{m[1]}</span>)
+                    last = m.index + m[0].length
+                  }
+                  if (last < linea.length) parts.push(<span key={"t"+last}>{linea.slice(last)}</span>)
+                  return <div key={i}>{parts}</div>
+                }
+                if (!linea.trim()) return <div key={i} style={{ height: 4 }} />
+                return <div key={i} style={{ color: "white" }}>{linea}</div>
+              })}
+            </div>
+          )
+        })()}
+      </div>
+
+      {/* Acciones */}
+      <div style={{ padding: "8px 14px 12px", display: "flex", gap: 8, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <button onClick={() => { proyectar(previewCancion.id); setBottomSheetAbierto(false) }} style={{
+          flex: 1, padding: "11px", borderRadius: 10, border: "none",
+          background: socket ? "#2563eb" : "rgba(255,255,255,0.07)",
+          color: "white", fontWeight: 800, fontSize: 14, cursor: socket ? "pointer" : "not-allowed",
+          opacity: socket ? 1 : 0.5
+        }}>▶ Proyectar</button>
+        <button onClick={() => { agregarALista(previewCancion); setBottomSheetAbierto(false) }} style={{
+          padding: "11px 16px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)",
+          background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 14, cursor: "pointer"
+        }}>+</button>
+      </div>
+    </div>
+  </>
+)}
+
+{/* ── MODAL CONECTAR SERVIDOR ───────────────────────────────────── */}
+{modalServidor && (
+  <div style={{
+    position: "fixed", inset: 0, zIndex: 9995,
+    background: "rgba(0,0,0,0.7)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    padding: 24
+  }}>
+    <div style={{
+      background: "#0d1b2e", borderRadius: 16,
+      border: "1px solid rgba(255,255,255,0.1)",
+      padding: 24, maxWidth: 320, width: "100%", textAlign: "center"
+    }}>
+      <div style={{ fontSize: 32, marginBottom: 12 }}>📡</div>
+      <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 8 }}>Sin conexión al servidor</div>
+      <div style={{ fontSize: 13, opacity: 0.6, marginBottom: 20, lineHeight: 1.5 }}>
+        Para proyectar en el PC necesitas estar conectado al servidor de la iglesia.
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <button onClick={() => { setModalServidor(false); router.push("/configurar-servidor") }} style={{
+          padding: "12px", borderRadius: 10, border: "none",
+          background: "#2563eb", color: "white", fontWeight: 700, fontSize: 14, cursor: "pointer"
+        }}>🔍 Buscar servidor</button>
+        <button onClick={() => setModalServidor(false)} style={{
+          padding: "12px", borderRadius: 10,
+          border: "1px solid rgba(255,255,255,0.1)",
+          background: "rgba(255,255,255,0.05)", color: "white",
+          fontWeight: 600, fontSize: 13, cursor: "pointer"
+        }}>Seguir sin proyectar</button>
+      </div>
+    </div>
+  </div>
+)}
+
 {/* ── VISOR FULLSCREEN MOBILE ──────────────────────────────────── */}
 {visorAbierto && (
   <div style={{
@@ -2732,7 +3544,7 @@ return (
 )}
 
 <div style={{
-  height: "calc(100dvh - 52px)",
+  height: isMobile && alturaVP ? `${alturaVP - 52}px` : "calc(100dvh - 52px)",
   width: "100%",
   background: "linear-gradient(180deg, #060d1a 0%, #0f172a 100%)",
   color: "white",
@@ -2748,67 +3560,177 @@ return (
     borderBottom: "1px solid rgba(255,255,255,0.07)",
     backdropFilter: "blur(12px)",
     WebkitBackdropFilter: "blur(12px)",
-    padding: isMobile ? "8px 12px" : "10px 20px",
-    display: "flex", alignItems: "center", gap: 12
+    padding: isMobile ? "6px 10px" : "10px 20px",
   }}>
-    {/* Título / culto activo */}
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{ fontSize: isMobile ? 16 : 18, fontWeight: 800, lineHeight: 1.2 }}>
-        🎛️ Control de Culto
-      </div>
-      {nombreCulto && (
-        <div style={{
-          fontSize: 11, opacity: 0.5, marginTop: 2,
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
-        }}>
-          {listaIdActual ? "✏️ Editando: " : ""}{nombreCulto}
+    {/* Fila 1: título + flechas */}
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: isMobile ? 13 : 18, fontWeight: 800, lineHeight: 1.2, display: "flex", alignItems: "center", gap: 5 }}>
+          🎛️ Control
+          {(socketConectado === false || (socketConectado === null && !!(window as any).Capacitor)) && (
+            <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 5,
+              background: "rgba(239,68,68,0.15)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.25)"
+            }}>● SIN CONEXIÓN</span>
+          )}
+          {socketConectado === true && (
+            <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 5,
+              background: "rgba(34,197,94,0.12)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.2)"
+            }}>● EN LÍNEA</span>
+          )}
+          {proyectorConectado && (
+            <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 5,
+              background: "rgba(99,102,241,0.15)", color: "#a5b4fc", border: "1px solid rgba(99,102,241,0.25)"
+            }}>🖥️ Proyector</span>
+          )}
         </div>
+        {nombreCulto && (
+          <div style={{ fontSize: 10, opacity: 0.4, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {listaIdActual ? "✏️ " : ""}{nombreCulto}
+          </div>
+        )}
+      </div>
+      <button data-tour="controles-nav" className="ctrl-btn" onClick={anterior} style={{
+        width: isMobile ? 40 : 56, height: isMobile ? 40 : 56, borderRadius: 10, border: "none",
+        background: "rgba(255,255,255,0.08)", color: "white", fontSize: isMobile ? 18 : 22,
+        cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
+      }}>⬅️</button>
+      <button className="ctrl-btn" onClick={siguiente} style={{
+        width: isMobile ? 40 : 56, height: isMobile ? 40 : 56, borderRadius: 10, border: "none",
+        background: "#2563eb", color: "white", fontSize: isMobile ? 18 : 22,
+        cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
+      }}>➡️</button>
+      {!isMobile && (
+        <button className="ctrl-btn" onClick={proyectarPantallaNegra} title="Pantalla negra" style={{
+          width: 52, height: 52, borderRadius: 14, border: "1px solid rgba(255,255,255,0.1)",
+          background: "#111", color: "white", fontSize: 16, cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center"
+        }}>⚫</button>
       )}
     </div>
 
-    {/* Botones navegación — siempre visibles */}
-    <button
-      className="ctrl-btn"
-      disabled={!socket}
-      onClick={anterior}
-      style={{
-        width: isMobile ? 34 : 56, height: isMobile ? 34 : 56,
-        borderRadius: 10, border: "none",
-        background: "rgba(255,255,255,0.08)",
-        color: "white", fontSize: isMobile ? 15 : 22,
-        cursor: "pointer", fontWeight: 700,
-        display: "flex", alignItems: "center", justifyContent: "center"
-      }}
-    >⬅️</button>
+    {/* Fila 2 — solo mobile: botones secundarios compactos */}
+    {isMobile && (
+      <div style={{ display: "flex", gap: 6, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
+        {partes.some(p => /coro|estribillo/i.test(p?.tipo || "")) && (
+          <button data-tour="btn-coro" onClick={irAlCoro} style={{
+            padding: "4px 9px", borderRadius: 8, flexShrink: 0,
+            border: `1px solid ${versoDespuesCoro !== null ? "rgba(251,191,36,0.4)" : "rgba(99,102,241,0.4)"}`,
+            background: versoDespuesCoro !== null ? "rgba(251,191,36,0.12)" : "rgba(99,102,241,0.12)",
+            color: versoDespuesCoro !== null ? "#fbbf24" : "#a5b4fc",
+            fontSize: 11, fontWeight: 700, cursor: "pointer"
+          }}>{versoDespuesCoro !== null ? "↩ Verso" : "🎵 Coro"}</button>
+        )}
+        {tiemposAprendidos.length > 0 && !autoAvanceActivo && partes.length > 0 && (
+          <button data-tour="btn-auto" onClick={() => { setAutoAvanceActivo(true); iniciarAutoAvance(tiemposAprendidos, index) }} style={{
+            padding: "4px 9px", borderRadius: 8, border: "1px solid rgba(34,197,94,0.3)",
+            background: "rgba(34,197,94,0.1)", color: "#4ade80",
+            fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0
+          }}>▶ Auto</button>
+        )}
+        {tiemposAprendidos.length > 0 && !autoAvanceActivo && activaId && (
+          <button onClick={() => {
+            if (!window.confirm("¿Borrar tiempos?")) return
+            try { localStorage.removeItem(`selah-tiempos-${activaId}`) } catch (e) {}
+            setTiemposAprendidos([]); tiemposRegistrados.current = []; iniciarAprendizaje()
+          }} style={{
+            padding: "4px 7px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.2)",
+            background: "transparent", color: "rgba(239,68,68,0.5)", fontSize: 11, cursor: "pointer", flexShrink: 0
+          }}>⏱×</button>
+        )}
+        {autoAvanceActivo && (
+          <button onClick={detenerAutoAvance} style={{
+            padding: "4px 9px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.3)",
+            background: "rgba(239,68,68,0.1)", color: "#fca5a5",
+            fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0
+          }}>⏹ {contadorAuto}s</button>
+        )}
+        <button onClick={proyectarPantallaNegra} style={{
+          marginLeft: "auto", padding: "4px 9px", borderRadius: 8,
+          border: "1px solid rgba(255,255,255,0.1)", background: "#111",
+          color: "white", fontSize: 12, cursor: "pointer", flexShrink: 0
+        }}>⚫ Apagar</button>
 
-    <button
-      className="ctrl-btn"
-      disabled={!socket}
-      onClick={siguiente}
-      style={{
-        width: isMobile ? 34 : 56, height: isMobile ? 34 : 56,
-        borderRadius: 10, border: "none",
-        background: "#2563eb",
-        color: "white", fontSize: isMobile ? 15 : 22,
-        cursor: "pointer", fontWeight: 700,
-        display: "flex", alignItems: "center", justifyContent: "center"
-      }}
-    >➡️</button>
+        {/* Zoom remoto */}
+        {socket && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 4 }}>
+            <button onClick={() => {
+              const v = Math.max(50, zoomActualRef.current - 10)
+              setZoomActual(v); zoomActualRef.current = v; socket?.emit("ajustar-zoom", { valor: v })
+              localStorage.setItem("proyector-escala-fuente", String(v))
+            }} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.06)", color: "white", fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
+            <span style={{ fontSize: 11, fontWeight: 700, color: zoomActual >= 190 ? "#fbbf24" : "rgba(255,255,255,0.6)", minWidth: 36, textAlign: "center" }}>{zoomActual}%</span>
+            <button onClick={() => {
+              const v = Math.min(200, zoomActualRef.current + 10)
+              setZoomActual(v); zoomActualRef.current = v; socket?.emit("ajustar-zoom", { valor: v })
+              localStorage.setItem("proyector-escala-fuente", String(v))
+            }} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.06)", color: "white", fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+          </div>
+        )}
+      </div>
+    )}
 
-    {/* Pantalla negra rápida */}
-    <button
-      className="ctrl-btn"
-      disabled={!socket}
-      onClick={proyectarPantallaNegra}
-      title="Pantalla negra"
-      style={{
-        width: isMobile ? 30 : 52, height: isMobile ? 30 : 52,
-        borderRadius: 14, border: "1px solid rgba(255,255,255,0.1)",
-        background: "#111", color: "white", fontSize: 16,
-        cursor: "pointer",
-        display: "flex", alignItems: "center", justifyContent: "center"
-      }}
-    >⚫</button>
+    {/* Desktop fila 2: botones secundarios */}
+    {!isMobile && (
+      <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
+        {partes.some(p => /coro|estribillo/i.test(p?.tipo || "")) && (
+          <button data-tour="btn-coro" onClick={irAlCoro} style={{
+            padding: "6px 12px", borderRadius: 8, flexShrink: 0,
+            border: `1px solid ${versoDespuesCoro !== null ? "rgba(251,191,36,0.4)" : "rgba(99,102,241,0.4)"}`,
+            background: versoDespuesCoro !== null ? "rgba(251,191,36,0.12)" : "rgba(99,102,241,0.12)",
+            color: versoDespuesCoro !== null ? "#fbbf24" : "#a5b4fc",
+            fontSize: 12, fontWeight: 700, cursor: "pointer"
+          }}>{versoDespuesCoro !== null ? "↩ Verso" : "🎵 Coro"}</button>
+        )}
+        {tiemposAprendidos.length > 0 && !autoAvanceActivo && (
+          <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4,
+            background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)",
+            color: "#4ade80", fontWeight: 600 }}>✓ {tiemposAprendidos.length}p</span>
+        )}
+        {tiemposAprendidos.length > 0 && !autoAvanceActivo && partes.length > 0 && (
+          <button data-tour="btn-auto" onClick={() => { setAutoAvanceActivo(true); iniciarAutoAvance(tiemposAprendidos, index) }} style={{
+            padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(34,197,94,0.3)",
+            background: "rgba(34,197,94,0.1)", color: "#4ade80",
+            fontSize: 12, fontWeight: 700, cursor: "pointer"
+          }}>▶ Auto</button>
+        )}
+        {tiemposAprendidos.length > 0 && !autoAvanceActivo && activaId && (
+          <button onClick={() => {
+            if (!window.confirm("¿Borrar tiempos aprendidos?")) return
+            try { localStorage.removeItem(`selah-tiempos-${activaId}`) } catch (e) {}
+            setTiemposAprendidos([]); tiemposRegistrados.current = []; iniciarAprendizaje()
+          }} style={{
+            padding: "6px 8px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.2)",
+            background: "transparent", color: "rgba(239,68,68,0.5)", fontSize: 12, cursor: "pointer"
+          }}>⏱×</button>
+        )}
+        {autoAvanceActivo && (
+          <button onClick={detenerAutoAvance} style={{
+            padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.3)",
+            background: "rgba(239,68,68,0.1)", color: "#fca5a5",
+            fontSize: 12, fontWeight: 700, cursor: "pointer"
+          }}>⏹ Stop {contadorAuto}s</button>
+        )}
+
+        {/* Zoom remoto desktop */}
+        {socket && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
+            <span style={{ fontSize: 11, opacity: 0.4 }}>Zoom:</span>
+            <button onClick={() => {
+              const v = Math.max(50, zoomActualRef.current - 10)
+              setZoomActual(v); zoomActualRef.current = v; socket?.emit("ajustar-zoom", { valor: v })
+              localStorage.setItem("proyector-escala-fuente", String(v))
+            }} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.06)", color: "white", fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
+            <span style={{ fontSize: 13, fontWeight: 700, minWidth: 42, textAlign: "center", color: zoomActual >= 190 ? "#fbbf24" : "white" }}>{zoomActual}%</span>
+            <button onClick={() => {
+              const v = Math.min(200, zoomActualRef.current + 10)
+              setZoomActual(v); zoomActualRef.current = v; socket?.emit("ajustar-zoom", { valor: v })
+              localStorage.setItem("proyector-escala-fuente", String(v))
+            }} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.06)", color: "white", fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+            {zoomActual >= 190 && <span style={{ fontSize: 10, color: "#fbbf24" }}>máx</span>}
+          </div>
+        )}
+      </div>
+    )}
   </div>
 
   {/* ── INDICADOR PARTE ACTUAL ──────────────────────────────────────────── */}
@@ -2816,12 +3738,34 @@ return (
     flexShrink: 0,
     background: "rgba(15,23,42,0.97)",
     borderBottom: "1px solid rgba(255,255,255,0.06)",
-    padding: isMobile ? "7px 14px" : "8px 20px",
+    padding: isMobile ? "6px 14px" : "8px 20px",
     fontSize: isMobile ? 12 : 13,
     fontWeight: 700, opacity: 0.85,
-    textAlign: "center"
+    textAlign: "center",
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 8
   }}>
     {etiquetaParteControl}
+    {aprendiendo && !autoAvanceActivo && tiemposAprendidos.length === 0 && (
+      <span style={{
+        fontSize: 9, padding: "1px 5px", borderRadius: 4,
+        background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.15)",
+        color: "rgba(251,191,36,0.5)", fontWeight: 600
+      }}>⏱</span>
+    )}
+    {tiemposAprendidos.length > 0 && !autoAvanceActivo && (
+      <span style={{
+        fontSize: 9, padding: "1px 5px", borderRadius: 4,
+        background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)",
+        color: "#4ade80", fontWeight: 600
+      }}>✓ {tiemposAprendidos.length}p</span>
+    )}
+    {autoAvanceActivo && (
+      <span style={{
+        fontSize: 10, padding: "2px 6px", borderRadius: 5,
+        background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.2)",
+        color: "#fca5a5", fontWeight: 700
+      }}>⏹ {contadorAuto}s</span>
+    )}
   </div>
 
   {/* ── CONTENIDO PRINCIPAL ────────────────────────────────────────────── */}
@@ -2870,11 +3814,31 @@ return (
 
         {mostrarCanciones && (
           <div style={{ padding: isMobile ? "8px 10px" : "14px 18px" }}>
+            {/* Toggle preview — solo mobile */}
+            {isMobile && (
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+                <button
+                  onClick={() => setPreviewHabilitado(v => !v)}
+                  style={{
+                    padding: "4px 10px", borderRadius: 8,
+                    border: `1px solid ${previewHabilitado ? "rgba(59,130,246,0.3)" : "rgba(255,255,255,0.1)"}`,
+                    background: previewHabilitado ? "rgba(59,130,246,0.12)" : "rgba(255,255,255,0.04)",
+                    color: previewHabilitado ? "#93c5fd" : "rgba(255,255,255,0.35)",
+                    fontSize: 11, fontWeight: 700, cursor: "pointer"
+                  }}
+                >{previewHabilitado ? "👁 Vista previa ON" : "👁 Vista previa OFF"}</button>
+              </div>
+            )}
+
             {/* Búsqueda */}
             <input
+              data-tour="lista-canciones"
               placeholder="🔍 Buscar por número, título o letra..."
               value={busqueda}
-              onChange={e => setBusqueda(e.target.value)}
+              onChange={e => handleBusqueda(e.target.value)}
+              onFocus={e => {
+                if (isMobile) setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "start" }), 300)
+              }}
               style={{
                 width: "100%", padding: "11px 13px",
                 borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)",
@@ -2919,17 +3883,34 @@ return (
               </select>
             </div>
 
+            {/* Ordenar */}
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
+              {([
+                { v: "numero",   l: "# Nº" },
+                { v: "az",       l: "A → Z" },
+                { v: "za",       l: "Z → A" },
+                { v: "reciente", l: "Reciente" },
+                { v: "antigua",  l: "Antigua" },
+              ] as const).map(({ v, l }) => (
+                <button key={v} onClick={() => cambiarOrden(v)} style={{
+                  padding: "3px 9px", borderRadius: 20, fontSize: 11, fontWeight: 600,
+                  cursor: "pointer", border: `1px solid ${ordenar === v ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.07)"}`,
+                  background: ordenar === v ? "rgba(99,102,241,0.15)" : "transparent",
+                  color: ordenar === v ? "#a5b4fc" : "rgba(255,255,255,0.35)"
+                }}>{l}</button>
+              ))}
+            </div>
+
             {/* Lista virtualizada */}
             <div
               id="scroll-canciones"
               ref={scrollCancionesRef}
-              onScroll={e => setScrollTopCanciones((e.target as HTMLDivElement).scrollTop)}
+              onScroll={handleScrollCanciones}
               style={{
-                height: "620px",
-                maxHeight: "620px",
+                height: isMobile ? "calc(100dvh - 390px)" : "min(560px, calc(100vh - 340px))",
+                maxHeight: isMobile ? "calc(100dvh - 390px)" : "min(560px, calc(100vh - 340px))",
                 overflowY: "auto",
                 overflowX: "hidden",
-                // ✅ Sin paddingRight — el overflow:hidden en cada item evita el desborde
               }}
             >
               <div style={{ height: cancionesFiltradas.length * ALTURA_ITEM_CANCION, position: "relative" }}>
@@ -2954,7 +3935,7 @@ return (
                           background: previewCancion?.id === c.id && !activa ? "rgba(59,130,246,0.12)" : activa ? "rgba(22,163,74,0.85)" : colorCategoria(c.categoria).bg,
                           border: `1px solid ${previewCancion?.id === c.id && !activa ? "rgba(59,130,246,0.35)" : activa ? "rgba(34,197,94,0.5)" : colorCategoria(c.categoria).border}`,
                           borderLeft: activa ? "3px solid #22c55e" : previewCancion?.id === c.id ? "3px solid #3b82f6" : `3px solid ${colorCategoria(c.categoria).border}`,
-                          borderRadius: 11,
+                          borderRadius: 9,
                           display: "flex", alignItems: "center",
                           gap: 8, padding: "0 10px",
                           transition: "background 0.15s",
@@ -2964,13 +3945,26 @@ return (
                         }}>
                           <div style={{ flex: 1, minWidth: 0, overflow: "hidden", width: 0 }}>
                             <div style={{
-                              fontWeight: 700, fontSize: 14, lineHeight: 1.25,
+                              fontWeight: 700, fontSize: 13, lineHeight: 1.2,
                               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                              color: activa ? "white" : undefined
+                              color: activa ? "white" : "rgba(255,255,255,0.92)"
                             }}>
-                              {tituloCancionVisible(c)}
+                              {busqueda.trim() ? (() => {
+                                const titulo = tituloCancionVisible(c)
+                                const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                                const q = norm(busqueda.trim())
+                                const idx = norm(titulo).indexOf(q)
+                                if (idx === -1) return titulo
+                                return <>
+                                  {titulo.slice(0, idx)}
+                                  <mark style={{ background: "rgba(251,191,36,0.35)", color: "#fbbf24", borderRadius: 2, padding: "0 1px" }}>
+                                    {titulo.slice(idx, idx + q.length)}
+                                  </mark>
+                                  {titulo.slice(idx + q.length)}
+                                </>
+                              })() : tituloCancionVisible(c)}
                             </div>
-                            <div style={{ display: "flex", gap: 4, marginTop: 2, flexWrap: "nowrap", overflow: "hidden", maxWidth: "100%" }}>
+                            <div style={{ display: "flex", gap: 4, marginTop: 1, flexWrap: "nowrap", overflow: "hidden", maxWidth: "100%" }}>
                               {c.categoria && !activa && (() => { const col = colorCategoria(c.categoria); return (
                                 <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: col.bg, color: col.text, border: `1px solid ${col.border}` }}>{c.categoria}</span>
                               )})()}
@@ -2983,43 +3977,41 @@ return (
                             </div>
                             {fragmento && busqueda && (
                               <div style={{
-                                fontSize: 10, opacity: 0.5, marginTop: 2,
+                                fontSize: 9, opacity: 0.45, marginTop: 1,
                                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
                               }}>
                                 {fragmento}
                               </div>
                             )}
                           </div>
-                          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                          <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
                             <button
                               className="ctrl-btn"
-                              onClick={() => abrirVisor(c)}
+                              onClick={e => { e.stopPropagation(); abrirVisor(c) }}
                               style={{
-                                padding: "5px 7px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.12)",
+                                padding: "4px 6px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.12)",
                                 background: "rgba(255,255,255,0.06)", color: "white",
-                                fontWeight: 700, fontSize: 13, cursor: "pointer"
+                                fontWeight: 700, fontSize: 12, cursor: "pointer"
                               }}
                             >📱</button>
                             <button
                               className="ctrl-btn"
-                              disabled={!socket}
-                              onClick={() => proyectar(c.id)}
+                              onClick={e => { e.stopPropagation(); proyectar(c.id) }}
                               style={{
-                                padding: "6px 10px",
-                                borderRadius: 9, border: "none",
+                                padding: "5px 9px",
+                                borderRadius: 8, border: "none",
                                 background: "#2563eb", color: "white",
-                                fontWeight: 700, fontSize: 13, cursor: "pointer"
+                                fontWeight: 700, fontSize: 12, cursor: "pointer"
                               }}
                             >▶</button>
                             <button
                               className="ctrl-btn"
-                              disabled={!socket}
-                              onClick={() => agregarALista(c)}
+                              onClick={e => { e.stopPropagation(); agregarALista(c) }}
                               style={{
-                                padding: "6px 10px",
-                                borderRadius: 9, border: "none",
+                                padding: "5px 9px",
+                                borderRadius: 8, border: "none",
                                 background: "rgba(255,255,255,0.08)", color: "white",
-                                fontWeight: 700, fontSize: 13, cursor: "pointer"
+                                fontWeight: 700, fontSize: 12, cursor: "pointer"
                               }}
                             >+</button>
                           </div>
@@ -3042,6 +4034,7 @@ return (
         borderRadius: 16, overflow: "hidden"
       }}>
         <div
+          data-tour="btn-herramientas"
           onClick={() => setMostrarAcciones(v => !v)}
           style={{
             padding: isMobile ? "12px 14px" : "14px 18px",
@@ -3061,39 +4054,26 @@ return (
         }}>
           <div style={{ padding: isMobile ? "12px 14px" : "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
 
-            {/* Pantallas rápidas */}
+            {/* Pantallas rápidas — ▶ proyecta directo, + agrega a lista */}
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
                 Pantallas rápidas
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                 {[
-                  { label: "⚫ Pantalla negra", fn: proyectarPantallaNegra, color: "#111" },
-                  { label: "⏳ Pantalla espera", fn: proyectarPantallaEspera, color: "#334155" },
-                  { label: "🖼️ Logo / Espera", fn: proyectarPantallaLogo, color: "#1e3a8a" },
-                ].map(({ label, fn, color }) => (
-                  <button
-                    key={label}
-                    className="ctrl-btn"
-                    disabled={!socket}
-                    onClick={fn}
-                    style={{
-                      padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)",
-                      background: color, color: "white", fontWeight: 700,
-                      fontSize: 13, cursor: "pointer", textAlign: "left"
-                    }}
-                  >{label}</button>
+                  { titulo: "⚫ Pantalla negra",   onPlay: proyectarPantallaNegra,  onAdd: agregarNegroALista },
+                  { titulo: "⏳ Pantalla espera",  onPlay: proyectarPantallaEspera, onAdd: agregarEsperaALista },
+                  { titulo: `✍️ ${mensajeRapido || "Mensaje rápido"}`, onPlay: proyectarMensajeRapido, onAdd: agregarMensajeALista },
+                  { titulo: logoEsperaNombre ? `🖼️ ${logoEsperaNombre}` : "🖼️ Logo de espera", onPlay: proyectarPantallaLogo, onAdd: agregarLogoALista, disabled: !logoEsperaUrl },
+                ].map((item, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "9px 12px" }}>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{item.titulo}</span>
+                    <button className="ctrl-btn" disabled={!socket || item.disabled} onClick={item.onPlay}
+                      style={{ padding: "5px 10px", borderRadius: 7, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>▶</button>
+                    <button className="ctrl-btn" disabled={item.disabled} onClick={item.onAdd}
+                      style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>+</button>
+                  </div>
                 ))}
-                <button
-                  className="ctrl-btn"
-                  disabled={!socket}
-                  onClick={proyectarMensajeRapido}
-                  style={{
-                    padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)",
-                    background: "#374151", color: "white", fontWeight: 700,
-                    fontSize: 13, cursor: "pointer", textAlign: "left"
-                  }}
-                >✍️ Mensaje</button>
               </div>
             </div>
 
@@ -3120,34 +4100,224 @@ return (
               <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
                 Imagen para el culto
               </div>
-              <label style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "10px 14px", borderRadius: 10,
-                border: "1px dashed rgba(255,255,255,0.15)",
-                background: "rgba(255,255,255,0.03)",
-                cursor: "pointer", fontSize: 13, fontWeight: 600
-              }}>
-                🖼️ Subir imagen y agregar a lista
-                <input type="file" accept="image/*" style={{ display: "none" }}
-                  onChange={async e => {
-                    const inputFile = e.target as HTMLInputElement
-                    const file = inputFile.files?.[0]
-                    if (!file) return
-                    const resultado = await subirImagen(file)
-                    if (resultado?.url) {
-                      agregarItemAListaConFeedback(
-                        { tipo: "imagen", url: resultado.url, titulo: resultado.nombre },
-                        `✅ Imagen agregada: ${resultado.nombre || "Imagen"}`
-                      )
+              {/* ── Panel de imágenes con galería modal ── */}
+              <div style={{ position: "relative" }}>
+                {/* Toggle local/nube (solo en Electron) */}
+                {isElectronCtx && (
+                  <div style={{ display:"flex", gap:6, marginBottom:8 }}>
+                    {(["local","nube"] as const).map(m => (
+                      <button key={m} onClick={() => { setModoGuardado(m); localStorage.setItem("selah-img-modo", m) }} style={{
+                        flex:1, padding:"5px 8px", borderRadius:8, fontSize:11, fontWeight:700, cursor:"pointer",
+                        border:`1px solid ${modoGuardado===m ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.08)"}`,
+                        background: modoGuardado===m ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.03)",
+                        color: modoGuardado===m ? "#a5b4fc" : "rgba(255,255,255,0.4)"
+                      }}>
+                        {m === "local" ? "💾 Disco" : "☁️ Nube"}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display:"flex", gap:8, marginBottom:4 }}>
+                  <label style={{
+                    flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+                    padding:"10px 14px", borderRadius:10,
+                    border:"1px dashed rgba(255,255,255,0.15)",
+                    background:"rgba(255,255,255,0.03)",
+                    cursor:"pointer", fontSize:13, fontWeight:600
+                  }}>
+                    🖼️ Subir imagen
+                    <input type="file" accept="image/*" style={{ display:"none" }}
+                      onChange={async e => {
+                        const inputFile = e.target as HTMLInputElement
+                        const file = inputFile.files?.[0]
+                        if (!file) return
+                        const resultado = await subirImagen(file)
+                        if (resultado?.url) {
+                          agregarItemAListaConFeedback(
+                            { tipo:"imagen", url:resultado.url, titulo:resultado.nombre },
+                            `✅ Imagen agregada${resultado.local ? " (local)" : " (nube)"}: ${resultado.nombre}`
+                          )
+                          const imgs = await cargarGaleriaImagenes()
+                          setGaleriaImagenes(imgs)
+                        }
+                        inputFile.value = ""
+                      }}
+                    />
+                  </label>
+                  <button onClick={async () => {
+                    if (!galeriaAbierta) {
+                      setCargandoGaleria(true)
+                      const imgs = await cargarGaleriaImagenes()
+                      setGaleriaImagenes(imgs); setCargandoGaleria(false)
                     }
-                    inputFile.value = ""
-                  }}
-                />
-              </label>
+                    setGaleriaAbierta(v => !v)
+                  }} style={{
+                    padding:"10px 14px", borderRadius:10,
+                    border:`1px solid ${galeriaAbierta ? "rgba(99,102,241,0.4)" : "rgba(255,255,255,0.1)"}`,
+                    background: galeriaAbierta ? "rgba(99,102,241,0.1)" : "rgba(255,255,255,0.03)",
+                    color:"white", fontSize:13, fontWeight:600, cursor:"pointer", whiteSpace:"nowrap"
+                  }}>
+                    {cargandoGaleria ? "⏳" : "🗂️"} Galería
+                  </button>
+                </div>
+
+                {/* ✅ Modal flotante de galería — no empuja el contenido */}
+                {galeriaAbierta && (
+                  <div style={{
+                    position:"fixed", inset:0, zIndex:200,
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    background:"rgba(0,0,0,0.75)", backdropFilter:"blur(4px)"
+                  }} onClick={() => setGaleriaAbierta(false)}>
+                    <div onClick={e => e.stopPropagation()} style={{
+                      width:"min(92vw, 480px)", maxHeight:"80vh",
+                      background:"#111827", borderRadius:16,
+                      border:"1px solid rgba(255,255,255,0.1)",
+                      display:"flex", flexDirection:"column", overflow:"hidden"
+                    }}>
+                      {/* Header */}
+                      <div style={{ padding:"14px 16px", borderBottom:"1px solid rgba(255,255,255,0.08)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                        <div style={{ fontWeight:800, fontSize:15 }}>🗂️ Galería de imágenes</div>
+                        <div style={{ display:"flex", gap:16, alignItems:"center" }}>
+                          <span style={{ fontSize:11, opacity:0.4 }}>☁️ {galeriaImagenes.filter(i=>!i.local).length}/20 · 💾 {galeriaImagenes.filter(i=>i.local).length}</span>
+                          <button onClick={() => setGaleriaAbierta(false)} style={{ background:"none", border:"none", color:"white", fontSize:18, cursor:"pointer", opacity:0.5 }}>✕</button>
+                        </div>
+                      </div>
+                      {/* Grid */}
+                      <div style={{ overflowY:"auto", flex:1, padding:12 }}>
+                        {galeriaImagenes.length === 0 ? (
+                          <div style={{ textAlign:"center", padding:32, opacity:0.3, fontSize:13 }}>Sin imágenes guardadas</div>
+                        ) : (
+                          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
+                            {galeriaImagenes.map((img, i) => (
+                              <div key={i} style={{ position:"relative", aspectRatio:"16/9", borderRadius:8, overflow:"hidden", border:"1px solid rgba(255,255,255,0.08)" }}>
+                                <img src={img.url} alt={img.nombre}
+                                  onClick={() => { agregarItemAListaConFeedback({ tipo:"imagen", url:img.url, titulo:img.nombre }, `✅ ${img.nombre}`); setGaleriaAbierta(false) }}
+                                  style={{ width:"100%", height:"100%", objectFit:"cover", cursor:"pointer" }} />
+                                {img.local && <span style={{ position:"absolute", top:3, left:3, fontSize:9, background:"rgba(0,0,0,0.7)", borderRadius:3, padding:"1px 4px" }}>💾</span>}
+                                <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:"4px 6px", background:"linear-gradient(transparent,rgba(0,0,0,0.7))", fontSize:10, opacity:0.8, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{img.nombre}</div>
+                                {/* ✅ Botón eliminar */}
+                                <button onClick={async e => {
+                                  e.stopPropagation()
+                                  if (!confirm(`¿Eliminar "${img.nombre}"?`)) return
+                                  try {
+                                    if (img.local) {
+                                      const nombre = img.url.split("/imagenes/").pop()
+                                      await fetch("http://localhost:4000/api/imagenes/eliminar", {
+                                        method:"DELETE", headers:{"Content-Type":"application/json"},
+                                        body: JSON.stringify({ nombre })
+                                      })
+                                    } else {
+                                      const igId = await getIglesiaIdCached()
+                                      const path = img.url.split("/imagenes-culto/")[1]?.split("?")[0]
+                                      if (path) await supabase.storage.from("imagenes-culto").remove([decodeURIComponent(path)])
+                                    }
+                                    const actualizadas = await cargarGaleriaImagenes()
+                                    setGaleriaImagenes(actualizadas)
+                                  } catch(e) { alert("No se pudo eliminar") }
+                                }} style={{
+                                  position:"absolute", top:3, right:3,
+                                  width:20, height:20, borderRadius:4,
+                                  background:"rgba(239,68,68,0.85)", border:"none",
+                                  color:"white", fontSize:11, cursor:"pointer", lineHeight:"1"
+                                }}>✕</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ── MODO LIMPIO + FUENTES ─────────────────────────────── */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
+                Apariencia del proyector
+              </div>
+
+              {/* Modo limpio toggle */}
+              <div
+                onClick={() => {
+                  const nuevo = !modoLimpio
+                  setModoLimpio(nuevo)
+                  localStorage.setItem("proyector-modo-limpio", nuevo ? "1" : "0")
+                  window.dispatchEvent(new Event("storage"))
+                }}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "10px 14px", borderRadius: 10, cursor: "pointer", marginBottom: 8,
+                  border: `1px solid ${modoLimpio ? "rgba(99,102,241,0.4)" : "rgba(255,255,255,0.08)"}`,
+                  background: modoLimpio ? "rgba(99,102,241,0.1)" : "rgba(255,255,255,0.03)"
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>✨ Modo limpio</div>
+                  <div style={{ fontSize: 11, opacity: 0.45, marginTop: 2 }}>Solo letra · Sin título, tono, logo ni verso</div>
+                </div>
+                <div style={{
+                  width: 38, height: 22, borderRadius: 999,
+                  background: modoLimpio ? "#6366f1" : "rgba(255,255,255,0.12)",
+                  position: "relative", transition: "background 0.2s", flexShrink: 0
+                }}>
+                  <div style={{
+                    position: "absolute", top: 3, left: modoLimpio ? 19 : 3,
+                    width: 16, height: 16, borderRadius: "50%", background: "white",
+                    transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.3)"
+                  }} />
+                </div>
+              </div>
+
+              {/* Selector de fuente */}
+              <div>
+                <div style={{ fontSize: 11, opacity: 0.35, marginBottom: 6 }}>Fuente de letra</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                  {[
+                    { id: "system",   label: "Sistema",    ejemplo: "Aa" },
+                    { id: "arial",    label: "Arial",      ejemplo: "Aa" },
+                    { id: "serif",    label: "Georgia",    ejemplo: "Aa" },
+                    { id: "cinzel",   label: "Cinzel",     ejemplo: "Aa" },
+                    { id: "playfair", label: "Playfair",   ejemplo: "Aa" },
+                    { id: "raleway",  label: "Raleway",    ejemplo: "Aa" },
+                    { id: "lato",     label: "Lato",       ejemplo: "Aa" },
+                    { id: "oswald",   label: "Oswald",     ejemplo: "Aa" },
+                    { id: "merriw",   label: "Merriweather", ejemplo: "Aa" },
+                    { id: "ptserif",  label: "PT Serif",   ejemplo: "Aa" },
+                    { id: "ubuntu",   label: "Ubuntu",     ejemplo: "Aa" },
+                    { id: "mono",     label: "Mono",       ejemplo: "Aa" },
+                  ].map(f => {
+                    const FUENTES_MAP: Record<string,string> = {
+                      system:"system-ui,sans-serif", arial:"Arial,sans-serif",
+                      serif:"Georgia,serif", cinzel:"'Cinzel',serif",
+                      playfair:"'Playfair Display',serif", raleway:"'Raleway',sans-serif",
+                      lato:"'Lato',sans-serif", oswald:"'Oswald',sans-serif",
+                      merriw:"'Merriweather',serif", ptserif:"'PT Serif',serif",
+                      ubuntu:"'Ubuntu',sans-serif", mono:"'Courier New',monospace"
+                    }
+                    const activa = familiaFuenteCtrl === f.id
+                    return (
+                      <button key={f.id} onClick={() => {
+                        setFamiliaFuenteCtrl(f.id)
+                        localStorage.setItem("proyector-font-family", f.id)
+                        window.dispatchEvent(new Event("storage"))
+                      }} style={{
+                        padding: "8px 10px", borderRadius: 9, cursor: "pointer", textAlign: "left",
+                        border: `1px solid ${activa ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.07)"}`,
+                        background: activa ? "rgba(99,102,241,0.12)" : "rgba(255,255,255,0.03)",
+                        color: "white", display: "flex", alignItems: "center", gap: 8
+                      }}>
+                        <span style={{ fontSize: 16, fontFamily: FUENTES_MAP[f.id], fontWeight: 700, flexShrink: 0 }}>Aa</span>
+                        <span style={{ fontSize: 11, opacity: activa ? 1 : 0.6, fontWeight: activa ? 700 : 400 }}>{f.label}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
 
             {/* Fondo para canciones */}
-            <div>
+            <div data-tour="panel-fondo">
               <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
                 Fondo para canciones
               </div>
@@ -3155,7 +4325,7 @@ return (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
                 <select
                   value={fondoCancionModo}
-                  onChange={e => setFondoCancionModo(e.target.value as "estatico" | "ninguno" | "preset" | "movimiento")}
+                  onChange={e => setFondoCancionModo(e.target.value as any)}
                   style={{
                     padding: "9px 10px", borderRadius: 10,
                     border: "1px solid rgba(255,255,255,0.08)",
@@ -3166,6 +4336,7 @@ return (
                   <option value="ninguno">Sin fondo</option>
                   <option value="estatico">Imagen estática</option>
                   <option value="movimiento">Imagen con movimiento</option>
+                  <option value="video">🎬 Video de fondo</option>
                 </select>
 
                 <label style={{
@@ -3175,17 +4346,34 @@ return (
                   background: "rgba(255,255,255,0.03)",
                   cursor: "pointer", fontSize: 13, fontWeight: 600
                 }}>
-                  🖼️ Subir fondo
-                  <input type="file" accept="image/*" style={{ display: "none" }}
+                  {fondoCancionModo === "video" ? "🎬 Subir video" : "🖼️ Subir fondo"}
+                  <input type="file" accept={fondoCancionModo === "video" ? "video/*" : "image/*"} style={{ display: "none" }}
                     onChange={async e => {
                       const inputFile = e.target as HTMLInputElement
                       const file = inputFile.files?.[0]
                       if (!file) return
-                      const resultado = await subirImagen(file)
-                      if (resultado?.url) {
-                        setFondoCancionUrl(resultado.url)
-                        setFondoCancionNombre(resultado.nombre || "Fondo")
-                        setFondoCancionModo("estatico")
+                      if (fondoCancionModo === "video") {
+                        // Video: guardar local en Electron o subir a Supabase Storage
+                        const isElectron = navigator.userAgent.includes("Electron")
+                        if (isElectron) {
+                          const fd = new FormData(); fd.append("imagen", file, file.name)
+                          const r = await fetch("http://localhost:4000/api/imagenes/guardar", { method:"POST", body:fd })
+                          if (r.ok) { const { url } = await r.json(); setFondoCancionUrl(url); setFondoCancionNombre(file.name) }
+                        } else {
+                          const iglesiaId = await getIglesiaIdCached()
+                          const nombre = `${Date.now()}-${file.name}`
+                          const ruta = iglesiaId ? `${iglesiaId}/videos/${nombre}` : `videos/${nombre}`
+                          await supabase.storage.from("imagenes-culto").upload(ruta, file, { upsert: false })
+                          const { data } = supabase.storage.from("imagenes-culto").getPublicUrl(ruta)
+                          setFondoCancionUrl(data.publicUrl); setFondoCancionNombre(file.name)
+                        }
+                      } else {
+                        const resultado = await subirImagen(file)
+                        if (resultado?.url) {
+                          setFondoCancionUrl(resultado.url)
+                          setFondoCancionNombre(resultado.nombre || "Fondo")
+                          setFondoCancionModo("estatico")
+                        }
                       }
                       inputFile.value = ""
                     }}
@@ -3268,45 +4456,16 @@ return (
                 </div>
               )}
             </div>
-
-            {/* Items especiales para agregar a lista */}
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
-                Agregar a lista
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                {[
-                  { titulo: "⚫ Pantalla negra", onPlay: proyectarPantallaNegra, onAdd: agregarNegroALista },
-                  { titulo: "⏳ Pantalla de espera", onPlay: proyectarPantallaEspera, onAdd: agregarEsperaALista },
-                  { titulo: `✍️ ${mensajeRapido || "Mensaje rápido"}`, onPlay: proyectarMensajeRapido, onAdd: agregarMensajeALista },
-                  {
-                    titulo: logoEsperaNombre ? `🖼️ ${logoEsperaNombre}` : "🖼️ Logo de espera",
-                    onPlay: proyectarPantallaLogo, onAdd: agregarLogoALista,
-                    disabled: !logoEsperaUrl
-                  }
-                ].map((item, i) => (
-                  <div key={i} style={{
-                    display: "flex", alignItems: "center", gap: 8,
-                    background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(255,255,255,0.07)",
-                    borderRadius: 10, padding: "9px 12px"
-                  }}>
-                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{item.titulo}</span>
-                    <button className="ctrl-btn" disabled={!socket || item.disabled} onClick={item.onPlay}
-                      style={{ padding: "5px 8px", borderRadius: 7, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>▶</button>
-                    <button className="ctrl-btn" disabled={item.disabled} onClick={item.onAdd}
-                      style={{ padding: "5px 8px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 11, cursor: "pointer" }}>+</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             {/* Links abrir proyector / músicos */}
             <div style={{ display: "flex", gap: 8 }}>
               <button className="ctrl-btn"
-                onClick={() => window.open(`${window.location.origin}/proyectar`, "_blank", "noopener,noreferrer")}
-                style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-                🖥️ Abrir Proyector
+                data-tour="btn-proyectar"
+                onClick={() => { window.open(`${window.location.origin}/proyectar`, "_blank", "noopener,noreferrer"); setProyectorConectado(false) }}
+                style={{ flex: 1, padding: "10px", borderRadius: 10,
+                  border: `1px solid ${proyectorConectado ? "rgba(34,197,94,0.3)" : "rgba(255,255,255,0.08)"}`,
+                  background: proyectorConectado ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.04)",
+                  color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                {proyectorConectado ? "🟢 Proyector activo" : "🖥️ Abrir Proyector"}
               </button>
               <button className="ctrl-btn"
                 onClick={() => window.open(`${window.location.origin}/musicos`, "_blank", "noopener,noreferrer")}
@@ -3323,7 +4482,6 @@ return (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
                   className="ctrl-btn"
-                  disabled={!socket}
                   onClick={() => {
                     setNombreModal(nombreCulto || "")
                     setModalGuardar(true)
@@ -3411,7 +4569,7 @@ return (
       </div>
 
       {/* ── Palabra / Biblia ──────────────────────────────────────────── */}
-      <div style={{
+      <div data-tour="input-biblia" style={{
         background: "rgba(17,27,46,0.95)",
         border: "1px solid rgba(255,255,255,0.08)",
         borderRadius: 16, overflow: "hidden"
@@ -3430,27 +4588,21 @@ return (
         </div>
 
         {mostrarPalabra && (
-          <div style={{ padding: isMobile ? "12px 14px" : "16px 18px" }}>
+          <div data-tour="input-biblia" style={{ padding: isMobile ? "12px 14px" : "16px 18px" }}>
             <div style={{ fontSize: 12, opacity: 0.5, marginBottom: 8 }}>
               Ejemplos: Juan 3:16 • Salmos 23 • 1 Corintios 13:4-7
             </div>
-            <input
-              list="libros-biblia"
-              placeholder="Escribe una cita bíblica..."
+            <BibleAutocomplete
               value={inputBiblia}
-              onChange={e => setInputBiblia(e.target.value)}
-              onKeyDown={async e => {
-                if (e.key === "Enter" && inputBiblia.trim()) {
-                  await proyectarBiblia(inputBiblia)
-                  setInputBiblia("")
-                }
+              onChange={setInputBiblia}
+              onSubmit={async () => {
+                if (!inputBiblia.trim()) return
+                await proyectarBiblia(inputBiblia)
+                setInputBiblia("")
               }}
-              style={{
-                width: "100%", padding: "11px 13px", borderRadius: 10,
-                border: "1px solid rgba(255,255,255,0.08)",
-                background: "#0a1525", color: "white",
-                fontSize: 16, outline: "none", boxSizing: "border-box", marginBottom: 10
-              }}
+              placeholder="Escribe una cita bíblica..."
+              style={{ marginBottom: 10 }}
+              inputStyle={{ background: "#0a1525", fontSize: 16 }}
             />
             <datalist id="libros-biblia">
               {sugerenciasBiblia.map(s => <option key={s} value={s} />)}
@@ -3458,7 +4610,6 @@ return (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <button
                 className="ctrl-btn"
-                disabled={!socket}
                 onClick={async () => {
                   if (!inputBiblia.trim()) return
                   await proyectarBiblia(inputBiblia)
@@ -3472,7 +4623,6 @@ return (
               >📖 Proyectar</button>
               <button
                 className="ctrl-btn"
-                disabled={!socket}
                 onClick={async () => {
                   if (!inputBiblia.trim()) return
                   await agregarBibliaALista(inputBiblia)
@@ -3602,8 +4752,8 @@ return (
       minWidth: 0, width: "100%"
     }}>
 
-      {/* Tabs mobile: Preview | Lista */}
-      {isMobile && (
+      {/* Tabs mobile: Preview | Lista — solo en desktop */}
+      {false && isMobile && (
         <div style={{ display: "flex", background: "rgba(255,255,255,0.06)", borderRadius: 10, padding: 3, gap: 3 }}>
           <button onClick={() => setTabDerechaMobile("preview")} style={{
             flex: 1, padding: "8px", borderRadius: 8, border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer",
@@ -3619,7 +4769,7 @@ return (
       )}
 
       {/* ── PANEL VISTA PREVIA ─────────────────────────────────────────── */}
-      {(!isMobile || tabDerechaMobile === "preview") && (
+      {(!isMobile) && (
         <div style={{
           background: "rgba(17,27,46,0.95)", border: "1px solid rgba(255,255,255,0.08)",
           borderRadius: 16, overflow: "hidden", minWidth: 0, width: "100%"
@@ -3630,26 +4780,15 @@ return (
             display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8
           }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: 13, opacity: previewCancion ? 1 : 0.4 }}>
+              <div style={{ fontWeight: 800, fontSize: 15, color: "white", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: previewCancion ? 1 : 0.4 }}>
                 {previewCancion ? previewCancion.titulo : "Selecciona una canción"}
               </div>
               {previewCancion?.tono && (
-                <div style={{ fontSize: 11, opacity: 0.5, marginTop: 1 }}>{previewCancion.tono}</div>
+                <div style={{ fontSize: 12, color: "#86efac", marginTop: 2, fontWeight: 600 }}>Tono {previewCancion.tono}</div>
               )}
             </div>
             {previewCancion && (
               <div style={{ display: "flex", gap: 4 }}>
-                {/* Toggle Letra / Músico */}
-                <div style={{ display: "flex", background: "rgba(255,255,255,0.07)", borderRadius: 7, padding: 2 }}>
-                  <button onClick={() => setPreviewModoMusico(false)} style={{
-                    padding: "3px 8px", borderRadius: 5, border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer",
-                    background: !previewModoMusico ? "#2563eb" : "transparent", color: "white"
-                  }}>A</button>
-                  <button onClick={() => setPreviewModoMusico(true)} style={{
-                    padding: "3px 8px", borderRadius: 5, border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer",
-                    background: previewModoMusico ? "#f59e0b" : "transparent", color: "white"
-                  }}>🎸</button>
-                </div>
                 {/* Botón abrir visor */}
                 <button onClick={() => abrirVisor(previewCancion)} style={{
                   padding: "3px 8px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)",
@@ -3686,45 +4825,19 @@ return (
             ) : (() => {
               const parte = previewPartes[previewIndex]
               if (!parte) return null
-              const texto = parte.texto_acordes || parte.texto || ""
-              if (!previewModoMusico) {
-                const limpio = texto.split("\n")
-                  .filter((l: string) => {
-                    const tokens = l.trim().split(/\s+/)
-                    return !(tokens.length > 0 && tokens.every((t: string) =>
-                      t.match(/^(Do#?|Reb?|Re#?|Mib?|Mi|Fa#?|Solb?|Sol#?|Lab?|La#?|Sib?|Si|[A-G])(b|#)?(m|maj|min|sus|dim|aug|add)?\d*(\/[A-G])?$/)
-                    ))
-                  })
-                  .map((l: string) => l.replace(/\[[A-Za-z#b0-9m7dimsus/]+\]/g, "").trim())
-                  .join("\n")
-                return <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", margin: 0, fontSize: 14, lineHeight: 1.75, fontWeight: 500 }}>{limpio.trim()}</pre>
-              }
-              return (
-                <div style={{ fontFamily: "'Courier New', monospace", fontSize: 13, lineHeight: 1.75 }}>
-                  {texto.split("\n").map((linea: string, i: number) => {
-                    if (linea.includes("[")) {
-                      const parts: React.ReactNode[] = []
-                      let last = 0
-                      const re = /\[([A-Za-z#b0-9m7dimsus/]+)\]/g
-                      let m: RegExpExecArray | null
-                      while ((m = re.exec(linea)) !== null) {
-                        if (m.index > last) parts.push(<span key={"t"+last}>{linea.slice(last, m.index)}</span>)
-                        parts.push(<span key={"a"+m.index} style={{ color: "#fbbf24", fontWeight: 800, fontSize: "0.75em", verticalAlign: "super" }}>{m[1]}</span>)
-                        last = m.index + m[0].length
-                      }
-                      if (last < linea.length) parts.push(<span key={"t"+last}>{linea.slice(last)}</span>)
-                      return <div key={i}>{parts}</div>
-                    }
-                    const tokens = linea.trim().split(/\s+/)
-                    const esSoloAcord = tokens.length > 0 && tokens.every((t: string) =>
-                      t.match(/^(Do#?|Reb?|Re#?|Mib?|Mi|Fa#?|Solb?|Sol#?|Lab?|La#?|Sib?|Si|[A-G])(b|#)?(m|maj|min|sus|dim|aug|add)?\d*(\/[A-G])?$/)
-                    )
-                    if (esSoloAcord && linea.trim()) return <div key={i} style={{ color: "#fbbf24", fontWeight: 800, letterSpacing: 2 }}>{linea}</div>
-                    if (!linea.trim()) return <div key={i} style={{ height: 4 }} />
-                    return <div key={i}>{linea}</div>
-                  })}
-                </div>
-              )
+              // ✅ Siempre texto limpio — sin acordes, sin toggle
+              const textoBase = parte.texto || parte.texto_acordes || ""
+              const limpio = textoBase.split("\n")
+                .map((l: string) => l.replace(/\[[^\]]+\]/g, "").trim())
+                .filter((l: string) => {
+                  if (!l) return false
+                  const tokens = l.split(/\s+/)
+                  return !tokens.every((t: string) =>
+                    t.match(/^(Do#?|Reb?|Re#?|Mib?|Mi|Fa#?|Solb?|Sol#?|Lab?|La#?|Sib?|Si|[A-G])(b|#)?(m|maj|min|sus|dim|aug|add)?\d*(\/[A-G])?$/)
+                  )
+                })
+                .join("\n")
+              return <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", margin: 0, fontSize: 14, lineHeight: 1.75, fontWeight: 500 }}>{limpio.trim()}</pre>
             })()}
           </div>
 
@@ -3734,7 +4847,7 @@ return (
               padding: "8px 12px", borderTop: "1px solid rgba(255,255,255,0.04)",
               display: "flex", gap: 6
             }}>
-              <button disabled={!socket} onClick={() => proyectar(previewCancion.id)} style={{
+              <button onClick={() => proyectar(previewCancion.id)} style={{
                 flex: 1, padding: "8px", borderRadius: 9, border: "none",
                 background: socket ? "#2563eb" : "rgba(255,255,255,0.07)",
                 color: "white", fontWeight: 700, fontSize: 13, cursor: socket ? "pointer" : "not-allowed",
@@ -3767,7 +4880,7 @@ return (
           borderBottom: "1px solid rgba(255,255,255,0.06)",
           display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10
         }}>
-          <div>
+          <div data-tour="lista-culto">
             <div style={{ fontWeight: 800, fontSize: isMobile ? 14 : 15 }}>
               📋 Lista de Culto
             </div>
@@ -3867,7 +4980,7 @@ return (
 
                 {/* Acciones */}
                 <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                  <button className="ctrl-btn" disabled={!socket} onClick={() => proyectarDesdeLista(i)}
+                  <button className="ctrl-btn" onClick={() => proyectarDesdeLista(i)}
                     style={{ width: 38, height: 38, borderRadius: 9, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     ▶
                   </button>
@@ -3912,6 +5025,7 @@ return (
     </div>
   </div>
 </div></div>
+<OnboardingTour id="tour-control" pasos={TOUR_CONTROL} nombrePagina="Control de Culto" />
 </>
 )
 }

@@ -4,38 +4,56 @@
     "data": {
       "partes": [
         {
-          "id": "f6cec2f2-28d8-4a78-b9c6-fb514addc4ad",
-          "cancion_id": "033f94b6-26fb-4b7a-aa14-b6d1426ab3ce",
+          "id": "8c9ce6ac-efe1-410b-9e67-68e44846394f",
+          "cancion_id": "e87c3f6c-fb33-42a8-84d1-cb21ed57f2e6",
           "tipo": "Verso",
-          "texto": "LUZ DE VIDA CELESTIAL,\nFUEGO DE DIVINO AMOR,\nBRILLA EN MI CORAZÓN,\nVEN, INSPÍRAME FERVOR.\nA CANTAR AYÚDAME\nDIGNAMENTE EN HONOR\nDEL CORDERO QUE MURIÓ\nPOR SALVAR AL PECADOR",
+          "texto": "OIDLO, POBRE PECADOR,\nEN CRISTO HAY PERDÓN.\nCONFIAD EN ÉL, CONFIAD EN ÉL,\nEN ÉL HAY SALVACIÓN",
           "orden": 0,
-          "texto_letra": "LUZ DE VIDA CELESTIAL,\nFUEGO DE DIVINO AMOR,\nBRILLA EN MI CORAZÓN,\nVEN, INSPÍRAME FERVOR.\nA CANTAR AYÚDAME\nDIGNAMENTE EN HONOR\nDEL CORDERO QUE MURIÓ\nPOR SALVAR AL PECADOR",
+          "texto_letra": "OIDLO, POBRE PECADOR,\nEN CRISTO HAY PERDÓN.\nCONFIAD EN ÉL, CONFIAD EN ÉL,\nEN ÉL HAY SALVACIÓN",
           "texto_acordes": null,
           "tiene_acordes": false
         },
         {
-          "id": "7be8c05c-ad03-4519-871f-dcc03dfe56a4",
-          "cancion_id": "033f94b6-26fb-4b7a-aa14-b6d1426ab3ce",
-          "tipo": "Verso",
-          "texto": "DIGNO, DIGNO DE HONOR\nES MI REDENTO JESÚS,\nQUIEN AL MUNDO REDIMIÓ\nPOR SU MUERTE EN LA CRUZ.\nGLORIA SEA A JESÚS,\nGLORIA SEA Y LOOR,\nY DOMINIO ETERNAL\nA JESÚS, MI REDENTOR.",
+          "id": "332dc124-76b7-45e0-8b69-5a9bd2e222bb",
+          "cancion_id": "e87c3f6c-fb33-42a8-84d1-cb21ed57f2e6",
+          "tipo": "Coro",
+          "texto": "VEN A CRISTO, VEN A CRISTO,\nVEN A EMMANUEL;\nY LA VIDA, Y LA VIDA,\nHALLARÁS EN ÉL.",
           "orden": 1,
-          "texto_letra": "DIGNO, DIGNO DE HONOR\nES MI REDENTO JESÚS,\nQUIEN AL MUNDO REDIMIÓ\nPOR SU MUERTE EN LA CRUZ.\nGLORIA SEA A JESÚS,\nGLORIA SEA Y LOOR,\nY DOMINIO ETERNAL\nA JESÚS, MI REDENTOR.",
+          "texto_letra": "VEN A CRISTO, VEN A CRISTO,\nVEN A EMMANUEL;\nY LA VIDA, Y LA VIDA,\nHALLARÁS EN ÉL.",
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "7571ab83-8f9f-4ab5-9795-af4e4b21afec",
+          "cancion_id": "e87c3f6c-fb33-42a8-84d1-cb21ed57f2e6",
+          "tipo": "Verso",
+          "texto": "POR REDIMIRTE EL SEÑOR\nSU SANGRE DERRAMÓ,\nY EN LA CRUZ, Y EN LA CRUZ\nTU REDENCIÓN OBRÓ.",
+          "orden": 2,
+          "texto_letra": "POR REDIMIRTE EL SEÑOR\nSU SANGRE DERRAMÓ,\nY EN LA CRUZ, Y EN LA CRUZ\nTU REDENCIÓN OBRÓ.",
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "86ece33f-d1bd-4183-acef-01635c277cfe",
+          "cancion_id": "e87c3f6c-fb33-42a8-84d1-cb21ed57f2e6",
+          "tipo": "Verso",
+          "texto": "CAMINO CIERTO ES JESÚS,\nQUE LLEVA A LA PAZ;\nVENID A ÉL, VENID A ÉL,\nDESCANSO HALLARÁS.",
+          "orden": 3,
+          "texto_letra": "CAMINO CIERTO ES JESÚS,\nQUE LLEVA A LA PAZ;\nVENID A ÉL, VENID A ÉL,\nDESCANSO HALLARÁS.",
           "texto_acordes": null,
           "tiene_acordes": false
         }
       ],
-      "index": 1,
-      "titulo": "LUZ DE VIDA",
-      "tono": "Re",
+      "index": 0,
+      "titulo": "OIDLO, POBRE PECADOR",
+      "tono": "Do",
       "iglesia": "IEP Moradora de Sion La Ligua",
-      "logo_marca_url": "https://dkufqtrfvduonsubmwka.supabase.co/storage/v1/object/public/imagenes-culto/logos/c76bc168-da61-4a86-8881-9dc3c17391fe/1778514807728-hc7u8bqcy5o.png",
+      "logo_marca_url": "https://dkufqtrfvduonsubmwka.supabase.co/storage/v1/object/public/imagenes-culto/1781581337450-axmondrsyg.webp",
       "fondo": {
-        "tipo": "preset",
-        "preset": "cielo-dorado",
-        "fondoCss": "radial-gradient(circle at 50% 20%, rgba(251,191,36,0.45), transparent 34%), linear-gradient(135deg, #1e1b4b 0%, #7c2d12 48%, #0f172a 100%)",
-        "nombre": "Cielo dorado",
-        "oscuridad": 55,
-        "ajuste": "cover"
+        "tipo": "animated",
+        "animacion": "paz",
+        "nombre": "🕊️ Paz",
+        "oscuridad": 55
       }
     }
   },
@@ -83,107 +101,70 @@
     "data": {
       "partes": [
         {
-          "id": "09fb3d3f-5953-4307-913f-0ee6611a5f75",
-          "cancion_id": "e5a414bd-f427-4525-9e9d-00c471fe5be6",
+          "id": "3ee9747c-8e4e-42b5-8f58-c780074e1f6b",
+          "cancion_id": "2242b75a-ed3d-438c-820a-dc6516ab9cd6",
           "tipo": "Verso",
-          "texto": "VEN, ¡OH, TODOPODEROSO,\nADORABLE CREADOR!\nPADRE SANTO, CARIÑOSO,\nMANIFIESTA TU AMOR.\nA TU TRONO DE CLEMENCIA\nLEVANTAMOS NUESTRA VOZ.\nTU PRESENCIA TE PEDIMOS,\nNUESTRO PADRE, NUESTRO DIOS.",
+          "texto": "YO POR CRISTO DEFENDIDO,\nA TU NOMBRE DOY LOOR;\nYO, CON BIENES PROVEÍDO\nQUE NO TUVO MI SEÑOR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
           "orden": 0,
-          "texto_letra": "VEN, ¡OH, TODOPODEROSO,\nADORABLE CREADOR!\nPADRE SANTO, CARIÑOSO,\nMANIFIESTA TU AMOR.\nA TU TRONO DE CLEMENCIA\nLEVANTAMOS NUESTRA VOZ.\nTU PRESENCIA TE PEDIMOS,\nNUESTRO PADRE, NUESTRO DIOS.",
+          "texto_letra": "YO POR CRISTO DEFENDIDO,\nA TU NOMBRE DOY LOOR;\nYO, CON BIENES PROVEÍDO\nQUE NO TUVO MI SEÑOR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
           "texto_acordes": null,
           "tiene_acordes": false
         },
         {
-          "id": "10c26dca-a27f-49d3-a877-eef2b22589b6",
-          "cancion_id": "e5a414bd-f427-4525-9e9d-00c471fe5be6",
+          "id": "9070b137-23c5-4d55-bf54-28dcacb072fc",
+          "cancion_id": "2242b75a-ed3d-438c-820a-dc6516ab9cd6",
           "tipo": "Verso",
-          "texto": "VEN, ¡OH SALVADOR DIVINO,\nDIOS DE NUESTRA SALVACIÓN!\nEN NOSOTROS HAZ MORADA,\nVIVE EN NUESTRO CORAZÓN.\nERES TÚ, JESÚS, BENIGNO,\nERES INFINITO AMOR:\nÓYENOS, TE SUPLICAMOS.\nVEN, BENDÍCENOS, SEÑOR.",
+          "texto": "LA POBREZA Y LOS DOLORES\nESTE SE DIGNÓ PASAR;\nY MI DIOS CON PECADORES\nNO HALLABA DO POSAR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
           "orden": 1,
-          "texto_letra": "VEN, ¡OH SALVADOR DIVINO,\nDIOS DE NUESTRA SALVACIÓN!\nEN NOSOTROS HAZ MORADA,\nVIVE EN NUESTRO CORAZÓN.\nERES TÚ, JESÚS, BENIGNO,\nERES INFINITO AMOR:\nÓYENOS, TE SUPLICAMOS.\nVEN, BENDÍCENOS, SEÑOR.",
+          "texto_letra": "LA POBREZA Y LOS DOLORES\nESTE SE DIGNÓ PASAR;\nY MI DIOS CON PECADORES\nNO HALLABA DO POSAR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
           "texto_acordes": null,
           "tiene_acordes": false
         },
         {
-          "id": "f83130fb-8fb4-4fdf-b59e-d63b48fa083e",
-          "cancion_id": "e5a414bd-f427-4525-9e9d-00c471fe5be6",
+          "id": "e47c96a0-cbf7-48d7-b77d-5d6b09ac4524",
+          "cancion_id": "2242b75a-ed3d-438c-820a-dc6516ab9cd6",
           "tipo": "Verso",
-          "texto": "VEN, ¡ESPÍRITU DIVINO!\nDANOS TU PRECIOSO DON;\nDIOS CONSOLADOR, INSPIRA\nPAZ EN TODO CORAZÓN.\nDE LOS SANTOS LA HERENCIA\nDÉJANOS HALLAR EN TI.\nY LA VIDA DE LOS CIELOS\nGOZAREMOS YA AQUÍ.",
+          "texto": "A TU SOMBRA, DIOS CLEMENTE,\nYO TRANQUILO DORMIRÉ;\nY A TI, OMNIPOTENTE,\nYO MI ALMA FIARÉ.\nALABANZAS\nDOY A TI, MI SALVADOR.",
           "orden": 2,
-          "texto_letra": "VEN, ¡ESPÍRITU DIVINO!\nDANOS TU PRECIOSO DON;\nDIOS CONSOLADOR, INSPIRA\nPAZ EN TODO CORAZÓN.\nDE LOS SANTOS LA HERENCIA\nDÉJANOS HALLAR EN TI.\nY LA VIDA DE LOS CIELOS\nGOZAREMOS YA AQUÍ.",
+          "texto_letra": "A TU SOMBRA, DIOS CLEMENTE,\nYO TRANQUILO DORMIRÉ;\nY A TI, OMNIPOTENTE,\nYO MI ALMA FIARÉ.\nALABANZAS\nDOY A TI, MI SALVADOR.",
+          "texto_acordes": null,
+          "tiene_acordes": false
+        },
+        {
+          "id": "90e58bdf-3715-4b87-8180-cd17abf3a6ff",
+          "cancion_id": "2242b75a-ed3d-438c-820a-dc6516ab9cd6",
+          "tipo": "Verso",
+          "texto": "YO INDIGNO, TÚ PIADOSO,\nSÉ NO QUIERES DESECHAR\nAL QUE VIENE PRESUROSO\nTU PIEDAD A IMPETRAR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
+          "orden": 3,
+          "texto_letra": "YO INDIGNO, TÚ PIADOSO,\nSÉ NO QUIERES DESECHAR\nAL QUE VIENE PRESUROSO\nTU PIEDAD A IMPETRAR.\nALABANZAS\nDOY A TI, MI SALVADOR.",
           "texto_acordes": null,
           "tiene_acordes": false
         }
       ],
       "index": 0,
-      "titulo": "VEN, ¡OH, TODOPODEROSO",
-      "tono": "Sol",
+      "titulo": "YO POR CRISTO ",
+      "tono": "",
       "iglesia": "IEP Moradora de Sion Renca",
       "logo_marca_url": "https://dkufqtrfvduonsubmwka.supabase.co/storage/v1/object/public/imagenes-culto/logos/cb7db0f2-7e9a-4cb7-bdfb-2bdd57ca1630/1778516783046-kbg9fygymg.png",
       "fondo": {
-        "tipo": "estatico",
-        "url": "https://dkufqtrfvduonsubmwka.supabase.co/storage/v1/object/public/imagenes-culto/1779371052551-xmna7dff33g.webp",
-        "nombre": "WhatsApp Image 2026-05-18 at 19.55.07 (2)",
+        "tipo": "preset",
+        "preset": "amanecer-suave",
+        "fondoCss": "radial-gradient(circle at 70% 25%, rgba(253,186,116,0.55), transparent 30%), linear-gradient(135deg, #312e81 0%, #9f1239 45%, #431407 100%)",
+        "nombre": "Amanecer suave",
         "oscuridad": 55,
         "ajuste": "cover"
       }
     }
   },
   "c76bc168-da61-4a86-8881-9dc3c17391fe": {
-    "tipo": "cancion",
+    "tipo": "estado",
     "data": {
-      "partes": [
-        {
-          "id": "9830c4c1-6970-47b9-9346-cc54cd6a36b1",
-          "cancion_id": "be2562af-7831-4ff5-aa32-9a9a1a4eee1c",
-          "tipo": "Verso",
-          "texto": "VOY AL CIELO -SOY PEREGRINO-\nA VIVIR ETERNAMENTE CON JESÚS,\nEL NOS ABRIÓ, YA, VERAZ CAMINO,\nCUANDO MURIÓ POR NOSOTROS EN LA CRUZ.",
-          "orden": 0,
-          "texto_letra": "VOY AL CIELO -SOY PEREGRINO-\nA VIVIR ETERNAMENTE CON JESÚS,\nEL NOS ABRIÓ, YA, VERAZ CAMINO,\nCUANDO MURIÓ POR NOSOTROS EN LA CRUZ.",
-          "texto_acordes": "2 Timoteo 1.12 2 Corintios 5.1 Salmo 17.15",
-          "tiene_acordes": true
-        },
-        {
-          "id": "d4750c7c-dab1-4edf-8f2a-36ff09495486",
-          "cancion_id": "be2562af-7831-4ff5-aa32-9a9a1a4eee1c",
-          "tipo": "Coro",
-          "texto": "VOY AL CIELO -SOY PEREGRINO-\nA VIVIR ETERNAMENTE CON JESÚS.",
-          "orden": 1,
-          "texto_letra": "VOY AL CIELO -SOY PEREGRINO-\nA VIVIR ETERNAMENTE CON JESÚS.",
-          "texto_acordes": "E\nAl cielo voy, al cielo voy,",
-          "tiene_acordes": true
-        },
-        {
-          "id": "dd2f346b-07a8-4c6f-a20f-59cb1bc4024e",
-          "cancion_id": "be2562af-7831-4ff5-aa32-9a9a1a4eee1c",
-          "tipo": "Verso",
-          "texto": "MUERTE, DUELOS, AMARGA PENA,\nNUNCA, NUNCA SE PODRÁN SENTIR MÁS ALLÁ,\nPRECIOSA VIDA DE GOZO LLENA,\nEL ALMA MÍA SIN FIN DISFRUTARÁ.",
-          "orden": 2,
-          "texto_letra": "MUERTE, DUELOS, AMARGA PENA,\nNUNCA, NUNCA SE PODRÁN SENTIR MÁS ALLÁ,\nPRECIOSA VIDA DE GOZO LLENA,\nEL ALMA MÍA SIN FIN DISFRUTARÁ.",
-          "texto_acordes": "B              E\nyo confío en Jesús.",
-          "tiene_acordes": true
-        },
-        {
-          "id": "9450104d-8980-4c6e-ac5b-ae716caf7fee",
-          "cancion_id": "be2562af-7831-4ff5-aa32-9a9a1a4eee1c",
-          "tipo": "Verso",
-          "texto": "TIERRA SANTA, HERMOSA Y PURA,\nENTRARÉ A TI, SALVADO POR JESÚS;\nY GOZARÉ CÉLICA VENTURA\nVIVIENDO SIEMPRE EN LA DIVINA LUZ.",
-          "orden": 3,
-          "texto_letra": "TIERRA SANTA, HERMOSA Y PURA,\nENTRARÉ A TI, SALVADO POR JESÚS;\nY GOZARÉ CÉLICA VENTURA\nVIVIENDO SIEMPRE EN LA DIVINA LUZ.",
-          "texto_acordes": "E\nÉl me salvó, Él me salvó;",
-          "tiene_acordes": true
-        }
-      ],
-      "index": 3,
-      "titulo": "VOY AL CIELO",
-      "tono": "Re",
-      "iglesia": "IEP Moradora de Sion La Ligua",
-      "logo_marca_url": "https://dkufqtrfvduonsubmwka.supabase.co/storage/v1/object/public/imagenes-culto/logos/c76bc168-da61-4a86-8881-9dc3c17391fe/1778514807728-hc7u8bqcy5o.png",
+      "tipo": "descanso",
       "fondo": {
-        "tipo": "preset",
-        "preset": "cielo-dorado",
-        "fondoCss": "radial-gradient(circle at 50% 20%, rgba(251,191,36,0.45), transparent 34%), linear-gradient(135deg, #1e1b4b 0%, #7c2d12 48%, #0f172a 100%)",
-        "nombre": "Cielo dorado",
-        "oscuridad": 55,
-        "ajuste": "cover"
+        "tipo": "animated",
+        "animacion": "paz",
+        "nombre": "🕊️ Paz",
+        "oscuridad": 55
       }
     }
   }
