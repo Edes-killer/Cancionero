@@ -25,6 +25,7 @@
     "jsonwebtoken": "^9.0.3",
     "jszip": "^3.10.1",
     "next": "^16.2.1",
+    "qrcode": "^1.5.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "socket.io": "^4.8.3",
