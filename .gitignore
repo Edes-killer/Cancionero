@@ -49,3 +49,7 @@ next-env.d.ts
 # generated reports/exports
 *.docx
 correccion*.log
+
+# claude code local/session state (compartir solo .claude/launch.json)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

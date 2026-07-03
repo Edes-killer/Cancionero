@@ -10,8 +10,11 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [checking, setChecking] = useState(false)
 
   const publicRoutes = ["/login", "/register", "/proyectar", "/musicos"]
+  // ✅ next.config.ts usa trailingSlash: true → usePathname() devuelve "/login/"
+  // con barra final, que no calzaba con las entradas de publicRoutes.
+  const pathnameNormalizado = pathname.length > 1 ? pathname.replace(/\/$/, "") : pathname
   const isPublicRoute =
-    publicRoutes.includes(pathname) || pathname.startsWith("/auth")
+    publicRoutes.includes(pathnameNormalizado) || pathnameNormalizado.startsWith("/auth")
 
   useEffect(() => {
     // Rutas públicas y callback: nunca bloquear
