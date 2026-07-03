@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Selah Live necesita conectarse por HTTP plano (sin TLS) al servidor local
+  que corre en la PC (Electron) dentro de la red WiFi de la iglesia — ping,
+  auto-discovery, QR de conexión y carga de imágenes locales. Android 9+
+  bloquea cleartext por defecto; se permite explícitamente aquí.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
