@@ -12,7 +12,7 @@ const LINKS = [
   { href: "/configuracion", label: "Config",    icon: "⚙️"  },
 ]
 
-const RUTAS_SIN_NAVBAR = ["/proyectar", "/musicos"]
+const RUTAS_SIN_NAVBAR = ["/proyectar", "/musicos", "/login", "/register"]
 
 // ── Logo Selah Live ──────────────────────────────────────────────────────────
 const SelahLogo = ({ size = 30 }: { size?: number }) => (
