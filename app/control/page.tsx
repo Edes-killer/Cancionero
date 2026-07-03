@@ -199,6 +199,27 @@ export default function ControlPage() {
     return id
   }
 
+  // ✅ El pin_sala en localStorage lo escribe AppContext en segundo plano
+  // (fetch async sin esperar). Si el socket conecta antes de que ese fetch
+  // termine, se leía "sin pin" y el servidor rechazaba la conexión si otro
+  // dispositivo ya se había unido con el pin correcto. Se consulta directo
+  // a Supabase para no depender de ese timing.
+  const pinSalaRef = useRef<string | null | undefined>(undefined)
+  const getPinSalaCached = async (igId: string | null): Promise<string | undefined> => {
+    if (pinSalaRef.current !== undefined) return pinSalaRef.current || undefined
+    if (!igId || igId === "global") return undefined
+    try {
+      const { data } = await supabase.from("iglesias").select("pin_sala").eq("id", igId).single()
+      const pin = data?.pin_sala || null
+      pinSalaRef.current = pin
+      if (pin) localStorage.setItem("selah-sala-pin", pin)
+      return pin || undefined
+    } catch {
+      // Sin conexión — usar lo que haya en caché como último recurso
+      return localStorage.getItem("selah-sala-pin") || undefined
+    }
+  }
+
   // ✅ Sincronizar contexto → estados locales (sin queries adicionales)
   useEffect(() => {
     if (iglesiaIdCtx) iglesiaIdRef.current = iglesiaIdCtx
@@ -403,7 +424,7 @@ useEffect(() => {
   s.on("connect", async () => {
     try {
       const sala = (await getIglesiaIdCached()) || "global"
-      const pin = localStorage.getItem("selah-sala-pin") || undefined
+      const pin = await getPinSalaCached(sala)
       if (process.env.NODE_ENV === "development") console.log("🔥 CONTROL conectado a sala:", sala)
       s.emit("unirse-sala", { sala, pantalla: "control", pin })
       setSocketConectado(true)

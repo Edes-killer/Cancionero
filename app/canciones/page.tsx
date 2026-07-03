@@ -313,6 +313,25 @@ export default function CancionesPage() {
   const partesCacheRef = useRef<Map<string, any[]>>(new Map())
   // ✅ Cache de sala para evitar múltiples getIglesiaId() en reconexiones
   const salaRef = useRef<string | null>(null)
+  // ✅ El pin_sala en localStorage lo escribe AppContext en segundo plano
+  // (fetch async sin esperar) — si el socket conecta antes de que termine,
+  // se leía "sin pin" y el servidor podía rechazar la conexión si otro
+  // dispositivo ya se había unido con el pin correcto. Se consulta directo
+  // a Supabase para no depender de ese timing.
+  const pinSalaRef = useRef<string | null | undefined>(undefined)
+  const getPinSalaCached = async (igId: string | null): Promise<string | undefined> => {
+    if (pinSalaRef.current !== undefined) return pinSalaRef.current || undefined
+    if (!igId || igId === "global") return undefined
+    try {
+      const { data } = await supabase.from("iglesias").select("pin_sala").eq("id", igId).single()
+      const pin = data?.pin_sala || null
+      pinSalaRef.current = pin
+      if (pin) localStorage.setItem("selah-sala-pin", pin)
+      return pin || undefined
+    } catch {
+      return localStorage.getItem("selah-sala-pin") || undefined
+    }
+  }
 
   // ── Socket ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -320,7 +339,7 @@ export default function CancionesPage() {
     s.on("connect", async () => {
       try {
         if (!salaRef.current) salaRef.current = iglesiaIdCtx || (await getIglesiaId()) || "global"
-        const pin = localStorage.getItem("selah-sala-pin") || undefined
+        const pin = await getPinSalaCached(salaRef.current)
         s.emit("unirse-sala", { sala: salaRef.current, pantalla: "canciones", pin })
       } catch (err) {
         if (process.env.NODE_ENV === "development") console.error("❌ canciones socket connect:", err)
