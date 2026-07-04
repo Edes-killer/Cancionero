@@ -143,6 +143,10 @@ const upsertEstadoCulto = async (sala, tipo, data = {}) => {
 // ── Servidor Socket.IO ─────────────────────────────────────────────────────────
 let estadosPorSala = {}
 const pinesPorSala = {}
+// ✅ Banner de urgencia: se superpone a lo que sea que esté proyectando sin
+// reemplazarlo, así que se guarda aparte de estadosPorSala. No se persiste
+// a disco -es intencionalmente efímero.
+let bannerPorSala = {}
 
 function startSocketServer(port) {
   const estadoPath = path.join(app.getPath("userData"), "estado.json")
@@ -404,8 +408,9 @@ try {
       }
 
       // ✅ Enviar estado guardado al proyector también
-      if (pantalla === "proyectar" && estadosPorSala[salaFinal]) {
-        socket.emit("estado-actual", estadosPorSala[salaFinal])
+      if (pantalla === "proyectar") {
+        if (estadosPorSala[salaFinal]) socket.emit("estado-actual", estadosPorSala[salaFinal])
+        if (bannerPorSala[salaFinal]) socket.emit("mostrar-banner-urgente", bannerPorSala[salaFinal])
         // Notificar al control que el proyector se conectó
         socket.broadcast.to(salaFinal).emit("proyector-conectado")
       }
@@ -470,6 +475,18 @@ try {
       // ✅ Spread para guardar fondo y tipo correctamente
       guardarEstadoSala(sala, { tipo: "estado", data: { ...data } })
       io.to(sala).emit("mostrar-estado", data)
+    })
+
+    socket.on("mostrar-banner-urgente", (texto) => {
+      const sala = salaDe(socket)
+      bannerPorSala[sala] = String(texto || "").slice(0, 200)
+      io.to(sala).emit("mostrar-banner-urgente", bannerPorSala[sala])
+    })
+
+    socket.on("ocultar-banner-urgente", () => {
+      const sala = salaDe(socket)
+      delete bannerPorSala[sala]
+      io.to(sala).emit("ocultar-banner-urgente")
     })
 
     socket.on("cambiar-fondo", (fondo) => {

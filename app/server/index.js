@@ -46,6 +46,12 @@ const guardarEstadoSala = (sala, estado) => {
   guardarEstados()
 }
 
+// ✅ Banner de urgencia: se superpone a lo que sea que esté proyectando
+// (canción, mensaje, biblia) sin reemplazarlo, así que se guarda aparte
+// de estadosPorSala en vez de mezclarse con el tipo/data de la canción
+// activa. No se persiste a disco -es intencionalmente efímero.
+let bannerPorSala = {}
+
 // ── Firebase Cloud Messaging (opcional) ──────────────────────────────────────
 // Configurar en .env: FIREBASE_SERVER_KEY=AAAAxxx... (Firebase Console > Project Settings > Cloud Messaging)
 const FCM_KEY = process.env.FIREBASE_SERVER_KEY
@@ -158,6 +164,7 @@ io.on("connection", socket => {
     // ✅ Notificar al control cuando el proyector se conecta
     if (panF === "proyectar") {
       socket.broadcast.to(salaF).emit("proyector-conectado")
+      if (bannerPorSala[salaF]) socket.emit("mostrar-banner-urgente", bannerPorSala[salaF])
     }
     // ✅ Enviar estado actual a músicos al conectarse
     if (panF === "musicos" && estadosPorSala[salaF]) {
@@ -224,6 +231,18 @@ io.on("connection", socket => {
     const sala = salaDe(socket)
     guardarEstadoSala(sala, { tipo:"estado", data:{ ...data } })
     io.to(sala).emit("mostrar-estado", data)
+  })
+
+  socket.on("mostrar-banner-urgente", texto => {
+    const sala = salaDe(socket)
+    bannerPorSala[sala] = String(texto || "").slice(0, 200)
+    io.to(sala).emit("mostrar-banner-urgente", bannerPorSala[sala])
+  })
+
+  socket.on("ocultar-banner-urgente", () => {
+    const sala = salaDe(socket)
+    delete bannerPorSala[sala]
+    io.to(sala).emit("ocultar-banner-urgente")
   })
 
   socket.on("cambiar-fondo", fondo => {
