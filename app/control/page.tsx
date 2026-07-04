@@ -591,9 +591,15 @@ useEffect(() => {
       // para evitar que múltiples getUser() compitan por el auth lock de Supabase
       await getIglesiaIdCached()
 
+      // ✅ cargarCultos no tiene cache (siempre pide a Supabase) y es un panel
+      // secundario (colapsado por defecto) — no vale la pena que la pantalla
+      // de carga espere por él. Antes, su latencia variable (sin caché ni
+      // contexto que reusar) era la causa de que Control a veces tardara y
+      // a veces no, aunque canciones ya estuviera cacheado.
+      cargarCultos()
+
       await Promise.all([
         cargarCanciones(),
-        cargarCultos(),
         cargarNombreIglesia()
       ])
 
