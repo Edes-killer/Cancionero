@@ -702,7 +702,7 @@ const cargarCanciones = async () => {
   _cargarAcordes()
 }
 
-const _fetchCanciones = async (igId: string | null, cacheKey: string) => {
+const _fetchCanciones = async (igId: string | null, cacheKey: string, intento = 1): Promise<void> => {
   const filtro = igId
     ? `iglesia_id.eq.${igId},iglesia_id.is.null`
     : `iglesia_id.is.null`
@@ -720,7 +720,16 @@ const _fetchCanciones = async (igId: string | null, cacheKey: string) => {
       .order("numero", { ascending: true, nullsFirst: false })
       .range(desde, desde + PAGINA - 1)
 
-    if (error) { console.error("❌ Error fetch canciones:", error?.message); break }
+    if (error) {
+      console.error("❌ Error fetch canciones:", error?.message)
+      // ✅ Reintentar ante timeouts/errores transitorios del gateway de Supabase
+      // (igual que AppContext.cargarCanciones) — antes se rendía al primer error.
+      if (intento < 3) {
+        await new Promise(r => setTimeout(r, intento * 1000))
+        return _fetchCanciones(igId, cacheKey, intento + 1)
+      }
+      return
+    }
     if (!data || data.length === 0) break
     todas = todas.concat(data)
     continuar = data.length === PAGINA

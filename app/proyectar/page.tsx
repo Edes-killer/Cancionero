@@ -551,7 +551,8 @@ export default function ProyectarPage() {
         const d = estado.data || {}
         limpiarPantalla(true) // preservar fondo
         if (d.fondo) setFondoCancion(d.fondo)
-        setBiblia(d); setIglesia(d.iglesia || ""); setPaginaBiblia(d.pagina || 0); return
+        setBiblia(d); setIglesia(d.iglesia || ""); setPaginaBiblia(d.pagina || 0)
+        setLogoMarcaUrl(d.logo_marca_url || ""); return
       }
       if (estado.tipo === "estado") {
         // ✅ mantenerFondo=true: preservar fondoCancion al restaurar estado especial
