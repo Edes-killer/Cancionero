@@ -385,18 +385,30 @@ export default function CancionesPage() {
   const cargarCanciones = async (id?: string | null) => {
     const igId = id ?? iglesiaId
     // ✅ Siempre incluir himnario global (iglesia_id IS NULL) + propias de la iglesia
-    let query = supabase.from("canciones").select("id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda, fecha_creacion")
-    if (igId) {
-      query = query.or(`iglesia_id.eq.${igId},iglesia_id.is.null`)
-    } else {
-      query = query.is("iglesia_id", null)
-    }
+    const filtro = igId ? `iglesia_id.eq.${igId},iglesia_id.is.null` : null
 
-    const { data } = await query
-      .order("numero", { ascending: true, nullsFirst: false })
-      .limit(5000)  // ✅ Supabase default es 1000
-    setCanciones(data || [])
-    console.log(`✅ Canciones cargadas: ${data?.length}`)
+    // ✅ Supabase corta cada request en 1000 filas del lado del servidor sin
+    // importar el .limit() que pidas — hay que paginar con .range() como ya
+    // hacen AppContext.cargarCanciones y control/page.tsx._fetchCanciones,
+    // si no la lista queda incompleta (se ve como "Canciones (1000)" fijo).
+    const PAGINA = 1000
+    let todas: any[] = []
+    let desde = 0
+    let continuar = true
+    while (continuar) {
+      let query = supabase.from("canciones").select("id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda, fecha_creacion")
+      query = filtro ? query.or(filtro) : query.is("iglesia_id", null)
+      const { data, error } = await query
+        .order("numero", { ascending: true, nullsFirst: false })
+        .range(desde, desde + PAGINA - 1)
+      if (error) { console.error("❌ Error fetch canciones:", error.message); break }
+      if (!data || data.length === 0) break
+      todas = todas.concat(data)
+      continuar = data.length === PAGINA
+      desde += PAGINA
+    }
+    setCanciones(todas)
+    console.log(`✅ Canciones cargadas: ${todas.length}`)
 
     const { data: conAcordes } = await supabase
       .from("partes_cancion")
