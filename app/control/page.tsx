@@ -260,12 +260,25 @@ export default function ControlPage() {
 
   useEffect(() => {
     if (cancionesCtx.length > 0 && canciones.length === 0 && !fetchEnCursoRef.current) {
-      console.log(`📋 Contexto tiene ${cancionesCtx.length} canciones — mostrando y refrescando`)
       setCanciones(cancionesCtx)
-      fetchEnCursoRef.current = true
-      // ✅ Forzar fetch en background para obtener datos actualizados
+      const CACHE_TTL_MS = 2 * 60 * 1000  // 2 minutos — igual que en cargarCanciones()
       getIglesiaIdCached().then(igId => {
-        _fetchCanciones(igId, `selah-canciones-v3-${igId}`)
+        const cacheKey = `selah-canciones-v3-${igId}`
+        let cacheReciente = false
+        try {
+          const raw = localStorage.getItem(cacheKey)
+          if (raw) {
+            const { ts } = JSON.parse(raw)
+            cacheReciente = typeof ts === "number" && (Date.now() - ts) < CACHE_TTL_MS
+          }
+        } catch { /* ignorar */ }
+        if (cacheReciente) {
+          console.log(`📋 Contexto tiene ${cancionesCtx.length} canciones — caché reciente, sin refetch`)
+          return
+        }
+        console.log(`📋 Contexto tiene ${cancionesCtx.length} canciones — mostrando y refrescando`)
+        fetchEnCursoRef.current = true
+        _fetchCanciones(igId, cacheKey)
           .catch(() => {})
           .finally(() => { fetchEnCursoRef.current = false })
       })
@@ -662,42 +675,63 @@ const cargarLista = async () => {
   await cargarListaDesdeBD(listaIdActual)
 }
 
+// ✅ TTL para no repetir el fetch completo de canciones en cada montaje/
+// navegación — antes decía "SIEMPRE refrescar" y lo hacía literalmente en
+// cada visita a Control, sintiéndose como una recarga constante. El TTL
+// sigue garantizando que nunca pase más de CACHE_TTL_MS sin traer la lista
+// completa de nuevo (la razón original de refrescar seguido: evitar
+// canciones incompletas por un caché viejo/corrupto).
+const CACHE_TTL_MS = 2 * 60 * 1000  // 2 minutos
+
 const cargarCanciones = async () => {
   if (fetchEnCursoRef.current) return  // ya hay un fetch corriendo desde el otro trigger
   const igId = await getIglesiaIdCached()
+  const CACHE_KEY = `selah-canciones-v3-${igId}`
 
-  // ── 1. Contexto AppContext disponible → usar inmediatamente ───────────────
+  // ── 1. Contexto AppContext disponible → usar inmediatamente ────────────────────────────
   if (cancionesCtx.length > 0) {
-    console.log(`📋 Usando contexto: ${cancionesCtx.length} canciones — forzando fetch igual`)
     setCanciones(cancionesCtx)
     _cargarAcordes()
+    let cacheReciente = false
+    try {
+      const raw = localStorage.getItem(CACHE_KEY)
+      if (raw) {
+        const { ts } = JSON.parse(raw)
+        cacheReciente = typeof ts === "number" && (Date.now() - ts) < CACHE_TTL_MS
+      }
+    } catch { /* ignorar */ }
+    if (cacheReciente) {
+      console.log(`📋 Usando contexto: ${cancionesCtx.length} canciones — caché reciente, sin refetch`)
+      return
+    }
+    console.log(`📋 Usando contexto: ${cancionesCtx.length} canciones — refrescando en background`)
     fetchEnCursoRef.current = true
-    // ✅ Igualmente refrescar en background para tener datos actualizados
-    _fetchCanciones(igId, `selah-canciones-v3-${igId}`)
+    _fetchCanciones(igId, CACHE_KEY)
       .catch(() => {})
       .finally(() => { fetchEnCursoRef.current = false })
     return
   }
 
-  // ── 2. Cache localStorage → mostrar instantáneo y SIEMPRE refrescar ─────────
-  const CACHE_KEY    = `selah-canciones-v3-${igId}`  // v3 invalida cache anterior
-  const CACHE_TTL_MS = 2 * 60 * 1000  // 2 minutos
+  // ── 2. Cache localStorage → mostrar instantáneo y refrescar si está vieja ────
   try {
     const raw = localStorage.getItem(CACHE_KEY)
     if (raw) {
       const { data: cached, ts } = JSON.parse(raw)
       if (Array.isArray(cached) && cached.length > 0) {
-        console.log(`📦 Caché: ${cached.length} canciones — refrescando en background...`)
         setCanciones(cached)
         _cargarAcordes()
-        // ✅ SIEMPRE refrescar en background para tener datos frescos
+        if (typeof ts === "number" && (Date.now() - ts) < CACHE_TTL_MS) {
+          console.log(`📦 Caché: ${cached.length} canciones — reciente, sin refetch`)
+          return
+        }
+        console.log(`📦 Caché: ${cached.length} canciones — vieja, refrescando en background...`)
         _fetchCanciones(igId, CACHE_KEY).catch(() => {})
         return
       }
     }
   } catch (e) { /* ignorar */ }
 
-  // ── 3. Sin cache → fetch normal (primera carga) ───────────────────────────
+  // ── 3. Sin cache → fetch normal (primera carga) ─────────────────────────────
   await _fetchCanciones(igId, CACHE_KEY)
   _cargarAcordes()
 }
