@@ -387,6 +387,9 @@ export default function ProyectarPage() {
   const [iglesia, setIglesia] = useState("")
   const [estadoEspecial, setEstadoEspecial] = useState<any>(null)
   const [logoMarcaUrl, setLogoMarcaUrl] = useState("")
+  // ✅ Banner de urgencia: independiente de estadoEspecial/partes/biblia —
+  // se dibuja encima de lo que sea que esté en pantalla, sin reemplazarlo.
+  const [bannerUrgente, setBannerUrgente] = useState<string | null>(null)
 
   // ✅ Fondo per-iglesia: la key incluye el iglesiaId una vez que se conoce.
   // Evita que distintas iglesias en el mismo dispositivo compartan el fondo.
@@ -632,6 +635,9 @@ export default function ProyectarPage() {
       setEscalaFuente(v)
       localStorage.setItem("proyector-escala-fuente", String(v))
     })
+
+    s.on("mostrar-banner-urgente", (texto: string) => setBannerUrgente(texto))
+    s.on("ocultar-banner-urgente", () => setBannerUrgente(null))
 
     s.on("mostrar-estado", (data: any) => {
       setEstadoInicialRevisado(true)
@@ -1042,6 +1048,30 @@ export default function ProyectarPage() {
 
       {/* ── Overlay transición ────────────────────────────────── */}
       {overlayVisible && <div style={{ position:"fixed",inset:0,background:"#000",pointerEvents:"none",opacity:overlayFadingOut?0:1,transition:overlayFadingOut?"opacity 220ms ease-in-out":"none",zIndex:9999 }} />}
+
+      {/* ── Banner de urgencia — encima de todo, sin tapar lo demás ────── */}
+      {bannerUrgente && (
+        <div style={{
+          position: "fixed", left: 0, right: 0, bottom: 0,
+          zIndex: 10000, pointerEvents: "none",
+          display: "flex", justifyContent: "center",
+          padding: "0 0 3vh 0"
+        }}>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 14,
+            background: "rgba(185,28,28,0.95)", color: "white",
+            padding: "16px 32px", borderRadius: 14,
+            boxShadow: "0 10px 40px rgba(0,0,0,.5)",
+            maxWidth: "88vw", fontWeight: 800,
+            fontSize: "clamp(16px,2.2vw,30px)",
+            animation: "pulseBannerUrgente 1.4s ease-in-out infinite"
+          }}>
+            <span style={{ fontSize: "1.3em", flexShrink: 0 }}>🚨</span>
+            <span style={{ wordBreak: "break-word" }}>{bannerUrgente}</span>
+          </div>
+          <style>{`@keyframes pulseBannerUrgente { 0%,100% { transform: scale(1) } 50% { transform: scale(1.03) } }`}</style>
+        </div>
+      )}
     </div>
   )
 }

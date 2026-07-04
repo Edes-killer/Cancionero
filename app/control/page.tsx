@@ -291,6 +291,8 @@ export default function ControlPage() {
   const audioSilenciosoRef = useRef<HTMLAudioElement | null>(null)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [mensajeRapido, setMensajeRapido] = useState("Oremos")
+  const [bannerUrgente, setBannerUrgente] = useState("")
+  const [bannerUrgenteActivo, setBannerUrgenteActivo] = useState(false)
   const [logoEsperaUrl, setLogoEsperaUrl] = useState("")
   const [logoEsperaNombre, setLogoEsperaNombre] = useState("")
   const [menuItemAbierto, setMenuItemAbierto] = useState<number | null>(null)
@@ -2211,6 +2213,23 @@ const agregarBibliaALista = async (ref: string) => {
   }
 }
 
+// ✅ Banner de urgencia — se superpone a lo que sea que esté proyectando
+// (canción, mensaje, biblia) sin reemplazarlo. Pensado para avisos que no
+// pueden esperar (ej. "mover auto patente XYZ") en medio de la alabanza
+// o el mensaje. A diferencia de "Mensaje rápido" (que sí reemplaza la
+// pantalla, para separadores entre secciones), este no toca partes/index.
+const mostrarBannerUrgente = () => {
+  if (!socket || !bannerUrgente.trim()) return
+  setBannerUrgenteActivo(true)
+  socket.emit("mostrar-banner-urgente", bannerUrgente.trim())
+}
+
+const ocultarBannerUrgente = () => {
+  if (!socket) return
+  setBannerUrgenteActivo(false)
+  socket.emit("ocultar-banner-urgente")
+}
+
 const proyectarMensajeRapido = () => {
   if (!socket) return
   setActivaId(null); setIndiceLista(null); setIndiceActivoLista(null)
@@ -4116,6 +4135,40 @@ return (
               />
             </div>
 
+            {/* 🚨 Banner de urgencia — se superpone sin interrumpir lo que se está proyectando */}
+            <div style={{ border: "1px solid rgba(239,68,68,0.35)", borderRadius: 12, padding: 12, background: "rgba(239,68,68,0.06)" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#fca5a5", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
+                🚨 Banner de urgencia
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 8 }}>
+                Se muestra encima de la canción o el mensaje sin taparlos. Para avisos que no pueden esperar (ej. mover un auto).
+              </div>
+              <input
+                value={bannerUrgente}
+                onChange={e => setBannerUrgente(e.target.value)}
+                placeholder="Ej: Favor mover auto patente AB-1234"
+                style={{
+                  width: "100%", padding: "10px 12px", borderRadius: 10,
+                  border: "1px solid rgba(239,68,68,0.25)",
+                  background: "#0a1525", color: "white",
+                  fontSize: 14, outline: "none", boxSizing: "border-box",
+                  marginBottom: 8
+                }}
+              />
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="ctrl-btn" disabled={!socket || !bannerUrgente.trim()} onClick={mostrarBannerUrgente}
+                  style={{ flex: 1, padding: "9px 12px", borderRadius: 9, border: "none", background: "#dc2626", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                  🚨 Mostrar banner
+                </button>
+                {bannerUrgenteActivo && (
+                  <button className="ctrl-btn" onClick={ocultarBannerUrgente}
+                    style={{ padding: "9px 14px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                    Ocultar
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Subir imagen para lista */}
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
@@ -4979,9 +5032,22 @@ return (
                   display: "flex", alignItems: "center", gap: 10,
                   flexWrap: "wrap",
                   opacity: dragIndex === i ? 0.5 : 1,
+                  cursor: isMobile ? "default" : dragIndex === i ? "grabbing" : "grab",
                   transition: "background 0.2s, border-color 0.2s"
                 }}
               >
+                {/* Handle de arrastre — solo escritorio */}
+                {!isMobile && (
+                  <div title="Arrastra para reordenar" style={{
+                    display: "grid", gridTemplateColumns: "repeat(2, 4px)", gridAutoRows: "4px",
+                    gap: 3, flexShrink: 0, cursor: dragIndex === i ? "grabbing" : "grab", padding: "4px 2px"
+                  }}>
+                    {Array.from({ length: 6 }).map((_, dot) => (
+                      <span key={dot} style={{ width: 4, height: 4, borderRadius: "50%", background: "rgba(255,255,255,0.35)" }} />
+                    ))}
+                  </div>
+                )}
+
                 {/* Info */}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
                   <span style={{ opacity: 0.6, fontSize: 12, flexShrink: 0 }}>{i + 1}.</span>
