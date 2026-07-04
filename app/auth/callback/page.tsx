@@ -11,6 +11,8 @@ export default function CallbackPage() {
 
   
 useEffect(() => {
+  let activo = true
+
   const completarLogin = async (hash: string) => {
     try {
       if (!hash.includes('access_token')) return
@@ -24,19 +26,39 @@ useEffect(() => {
     } catch { setEstado('error'); setMensajeError('Error inesperado.') }
   }
 
-  // Web normal
-  if (window.location.hash.includes('access_token')) {
-    completarLogin(window.location.hash)
-    return
+  const revisar = async () => {
+    // Web normal
+    if (window.location.hash.includes('access_token')) {
+      await completarLogin(window.location.hash)
+      return
+    }
+
+    // APK — leer URL guardada por DeepLinkHandler
+    const deepLinkUrl = sessionStorage.getItem('deepLinkUrl')
+    if (deepLinkUrl) {
+      sessionStorage.removeItem('deepLinkUrl')
+      const hash = deepLinkUrl.includes('#') ? '#' + deepLinkUrl.split('#')[1] : ''
+      await completarLogin(hash)
+      return
+    }
+
+    // ✅ Con detectSessionInUrl:true (lib/supabase.ts), el propio cliente de
+    // Supabase puede procesar el #access_token y limpiar el hash de la URL
+    // ANTES de que este efecto llegue a revisarlo — si eso ya pasó, la
+    // sesión ya existe aunque no haya token en la URL. Sin este chequeo la
+    // pantalla se queda en "Iniciando sesión..." para siempre.
+    const { data } = await supabase.auth.getSession()
+    if (!activo) return
+    if (data.session) {
+      router.replace('/')
+    } else {
+      setEstado('error')
+      setMensajeError('No se pudo iniciar sesión.')
+    }
   }
 
-  // APK — leer URL guardada por DeepLinkHandler
-  const deepLinkUrl = sessionStorage.getItem('deepLinkUrl')
-  if (deepLinkUrl) {
-    sessionStorage.removeItem('deepLinkUrl')
-    const hash = deepLinkUrl.includes('#') ? '#' + deepLinkUrl.split('#')[1] : ''
-    completarLogin(hash)
-  }
+  revisar()
+  return () => { activo = false }
 }, [router])
 
   // ── UI procesando ─────────────────────────────────────────────────────────

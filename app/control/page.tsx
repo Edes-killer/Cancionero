@@ -4088,7 +4088,10 @@ return (
         </div>
 
         <div style={{
-          maxHeight: mostrarAcciones ? 1200 : 0,
+          // ✅ Límite en px para animar el acordeón con max-height (CSS no anima
+          // "auto"). Se dejó margen amplio sobre el contenido real para que
+          // agregar secciones nuevas (como el banner de urgencia) no lo corte.
+          maxHeight: mostrarAcciones ? 2000 : 0,
           overflow: "hidden",
           transition: "max-height 0.25s ease"
         }}>
