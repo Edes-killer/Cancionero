@@ -23,6 +23,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     let activo = true
 
     const checkSession = async () => {
+      const MAX_INTENTOS = 4
       try {
         setChecking(true)
 
@@ -32,15 +33,28 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
         if (!activo) return
 
-        const { data, error } = await supabase.auth.getSession()
+        for (let intento = 1; intento <= MAX_INTENTOS; intento++) {
+          const { data, error } = await supabase.auth.getSession()
+          if (!activo) return
 
-        if (error) console.error("Error obteniendo sesión:", error)
+          if (data.session) return // sesión válida, listo
 
-        if (!activo) return
+          if (!error) break // sin sesión y sin error → genuinamente no hay sesión, no vale la pena reintentar
 
-        if (!data.session) {
-          router.replace("/login")
+          console.error(`Error obteniendo sesión (intento ${intento}/${MAX_INTENTOS}):`, error)
+
+          // ✅ Un corte temporal de Supabase (timeout, 504, etc.) no debería
+          // desloguear a alguien que ya había iniciado sesión antes — se
+          // reintenta con espera progresiva antes de mandarlo a /login, que
+          // de todas formas tampoco podría completar el login mientras dure
+          // la caída.
+          if (intento < MAX_INTENTOS) {
+            await new Promise(r => setTimeout(r, intento * 1500))
+            if (!activo) return
+          }
         }
+
+        router.replace("/login")
       } catch (error) {
         console.error("Error en AuthProvider:", error)
         if (activo) router.replace("/login")
