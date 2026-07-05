@@ -3,11 +3,19 @@
 import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { getIglesiaIdCacheOnly } from "@/lib/getIglesia"
+
+// ✅ Clave compartida con AppContext para el banner de "modo sin conexión"
+export const KEY_MODO_SIN_CONEXION = "selah-modo-sin-conexion"
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const [checking, setChecking] = useState(false)
+  const [sinConexion, setSinConexion] = useState(() => {
+    try { return typeof window !== "undefined" && localStorage.getItem(KEY_MODO_SIN_CONEXION) === "1" }
+    catch { return false }
+  })
 
   const publicRoutes = ["/login", "/register", "/proyectar", "/musicos", "/unirse"]
   // ✅ next.config.ts usa trailingSlash: true → usePathname() devuelve "/login/"
@@ -33,14 +41,22 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
         if (!activo) return
 
+        let huboErrorDeRed = false
+
         for (let intento = 1; intento <= MAX_INTENTOS; intento++) {
           const { data, error } = await supabase.auth.getSession()
           if (!activo) return
 
-          if (data.session) return // sesión válida, listo
+          if (data.session) {
+            // ✅ Sesión confirmada — si veníamos del modo sin conexión, salir de él
+            try { localStorage.removeItem(KEY_MODO_SIN_CONEXION) } catch {}
+            if (activo) setSinConexion(false)
+            return
+          }
 
           if (!error) break // sin sesión y sin error → genuinamente no hay sesión, no vale la pena reintentar
 
+          huboErrorDeRed = true
           console.error(`Error obteniendo sesión (intento ${intento}/${MAX_INTENTOS}):`, error)
 
           // ✅ Un corte temporal de Supabase (timeout, 504, etc.) no debería
@@ -54,10 +70,27 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           }
         }
 
+        // ✅ Modo sin conexión: si no se pudo confirmar la sesión por un
+        // problema de red (no por un logout real) pero este dispositivo ya
+        // tiene un iglesia_id guardado de un login anterior, dejarlo seguir
+        // con lo que haya en caché en vez de mandarlo a un /login que
+        // tampoco podría completar mientras Supabase esté caído.
+        if (huboErrorDeRed && getIglesiaIdCacheOnly()) {
+          try { localStorage.setItem(KEY_MODO_SIN_CONEXION, "1") } catch {}
+          setSinConexion(true)
+          return
+        }
+
         router.replace("/login")
       } catch (error) {
         console.error("Error en AuthProvider:", error)
-        if (activo) router.replace("/login")
+        if (!activo) return
+        if (getIglesiaIdCacheOnly()) {
+          try { localStorage.setItem(KEY_MODO_SIN_CONEXION, "1") } catch {}
+          setSinConexion(true)
+          return
+        }
+        router.replace("/login")
       } finally {
         if (activo) setChecking(false)
       }
@@ -69,7 +102,15 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     // Esto cubre el caso de login por magic link / OAuth
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (!activo) return
-      if (event === "SIGNED_OUT") router.replace("/login")
+      if (event === "SIGNED_OUT") {
+        try { localStorage.removeItem(KEY_MODO_SIN_CONEXION) } catch {}
+        setSinConexion(false)
+        router.replace("/login")
+      }
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        try { localStorage.removeItem(KEY_MODO_SIN_CONEXION) } catch {}
+        setSinConexion(false)
+      }
     })
 
     return () => {
@@ -145,5 +186,20 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     )
   }
 
-  return <>{children}</>
+  return (
+    <>
+      {sinConexion && !isPublicRoute && (
+        <div style={{
+          position: "sticky", top: 0, zIndex: 200,
+          background: "rgba(217,119,6,0.95)", color: "white",
+          padding: "8px 16px", textAlign: "center",
+          fontSize: 13, fontWeight: 700,
+          fontFamily: "'Segoe UI', system-ui, sans-serif"
+        }}>
+          ⚠️ Sin conexión con el servidor — usando datos guardados. Algunas funciones (crear, guardar cambios) no están disponibles.
+        </div>
+      )}
+      {children}
+    </>
+  )
 }
