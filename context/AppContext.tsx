@@ -20,6 +20,7 @@ interface AppContextType {
   desdeCache: boolean
   pinSala: string | null
   listo: boolean
+  sinConexion: boolean
 }
 
 const AppContext = createContext<AppContextType>({
@@ -32,7 +33,12 @@ const AppContext = createContext<AppContextType>({
   desdeCache: false,
   pinSala: null,
   listo: false,
+  sinConexion: false,
 })
+
+// ✅ Misma clave que components/AuthProvider.tsx (KEY_MODO_SIN_CONEXION) —
+// no se importa directo para evitar un ciclo de dependencias entre ambos.
+const KEY_MODO_SIN_CONEXION = "selah-modo-sin-conexion"
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<any>(null)
@@ -47,6 +53,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [listo, setListo] = useState(false)
   const [desdeCache, setDesdeCache] = useState(false)
   const [pinSala, setPinSala] = useState<string | null>(null)
+  const [sinConexion, setSinConexion] = useState(() => {
+    try { return typeof window !== "undefined" && localStorage.getItem(KEY_MODO_SIN_CONEXION) === "1" }
+    catch { return false }
+  })
+
+  // ✅ AuthProvider es quien decide activar/desactivar el modo sin conexión
+  // (escribe en localStorage) — acá solo lo reflejamos para que cualquier
+  // pantalla pueda leerlo vía useApp() y bloquear acciones que necesitan
+  // escribir a Supabase (crear canción, crear lista, etc).
+  useEffect(() => {
+    const leer = () => {
+      try { setSinConexion(localStorage.getItem(KEY_MODO_SIN_CONEXION) === "1") }
+      catch {}
+    }
+    window.addEventListener("storage", leer) // otras pestañas/ventanas
+    const intervalo = setInterval(leer, 2000) // misma pestaña
+    return () => { window.removeEventListener("storage", leer); clearInterval(intervalo) }
+  }, [])
 
   // ✅ Flags para evitar cargas duplicadas
   const yaCargadoRef = useRef(false)
@@ -223,7 +247,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       iglesiaId, nombreIglesia, logoUrl, localidad,
       canciones, cargandoCanciones, errorCanciones,
       recargarCanciones, actualizarCancion, eliminarCancionDelCache,
-      desdeCache, pinSala, listo,
+      desdeCache, pinSala, listo, sinConexion,
     }}>
       {children}
     </AppContext.Provider>

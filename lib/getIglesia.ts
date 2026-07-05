@@ -18,7 +18,18 @@ export const limpiarIglesiaActivaId = () => {
 // Previene que strings como "undefined", "null" o "" lleguen como iglesiaId
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-const esUUIDValido = (s: string | null): s is string => !!(s && UUID_REGEX.test(s))
+export const esUUIDValido = (s: string | null): s is string => !!(s && UUID_REGEX.test(s))
+
+// ── Lectura sincrónica sin red — para el modo sin conexión ────────────────────
+// A diferencia de getIglesiaId(), esto NUNCA llama a Supabase. Se usa cuando
+// ya se confirmó (en AuthProvider) que no se puede verificar la sesión, para
+// decidir si hay evidencia suficiente de un login real anterior en este
+// dispositivo como para seguir funcionando con los datos ya cacheados.
+export const getIglesiaIdCacheOnly = (): string | null => {
+  if (typeof window === "undefined") return null
+  const guardada = localStorage.getItem(KEY_IGLESIA_ACTIVA)
+  return esUUIDValido(guardada) ? guardada : null
+}
 
 // ── Promise deduplication: evita llamadas concurrentes a getUser() ────────────
 let _fetchEnCurso: Promise<string | null> | null = null
@@ -44,10 +55,34 @@ export const getIglesiaId = async (): Promise<string | null> => {
   // ✅ Validar UUID: descarta strings corruptos ("undefined", "null", "", etc.)
   // que podrían causar queries fallidas con error {} vacío en Supabase
   if (esUUIDValido(guardada)) {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (session) return guardada
-    // Sesión inválida o expirada — limpiar cache y autenticar de nuevo
-    if (typeof window !== "undefined") localStorage.removeItem(KEY_IGLESIA_ACTIVA)
+    try {
+      // ✅ Con timeout: si Supabase esta caido/lento, no nos quedamos colgados
+      // aca para siempre (bloquearia control/canciones/proyectar enteros).
+      // "timedOut" marca el caso ambiguo (no sabemos si hay sesion o no)
+      // para distinguirlo de un "no hay sesion" confirmado de verdad.
+      const resultado = await Promise.race<{ session: any; error: any; timedOut: boolean }>([
+        supabase.auth.getSession().then(r => ({ session: r.data.session, error: r.error, timedOut: false })),
+        new Promise(resolve =>
+          setTimeout(() => resolve({ session: null, error: null, timedOut: true }), 4000)
+        )
+      ])
+      if (resultado.session) return guardada
+
+      if (!resultado.error && !resultado.timedOut) {
+        // ✅ Confirmado sin ambigüedad: no hay sesion (logout real o nunca
+        // hubo login en este dispositivo) -- ahi si limpiar y re-autenticar.
+        if (typeof window !== "undefined") localStorage.removeItem(KEY_IGLESIA_ACTIVA)
+      } else {
+        // ✅ Error de red o timeout -- no podemos confirmar nada. Antes esto
+        // borraba el cache igual, destruyendo justo el dato que permite
+        // seguir usando la app sin conexion (ver AuthProvider). Confiar en
+        // el cache en vez de asumir que la sesion es invalida.
+        return guardada
+      }
+    } catch {
+      // Error de red al verificar -- confiar en el cache en vez de borrarlo
+      return guardada
+    }
   } else if (guardada) {
     // Valor en localStorage pero no es UUID válido → limpiar silenciosamente
     if (typeof window !== "undefined") {

@@ -86,7 +86,7 @@ interface FondoConfig {
 
 export default function ControlPage() {
   const { iglesiaId: iglesiaIdCtx, nombreIglesia: nombreIglesiaCtx,
-          logoUrl: logoUrlCtx, canciones: cancionesCtx, pinSala } = useApp()
+          logoUrl: logoUrlCtx, canciones: cancionesCtx, pinSala, sinConexion } = useApp()
   const [socket, setSocket] = useState<any>(null)
   const [zoomActual, setZoomActual] = useState(() =>
     typeof window !== "undefined" ? Number(localStorage.getItem("proyector-escala-fuente") || "100") : 100
@@ -1542,6 +1542,10 @@ const itemAFila = (item: any, i: number, listaId: string) => ({
 
 
 const guardarCulto = async () => {
+  if (sinConexion) {
+    alert("⚠️ Sin conexión con el servidor — no se puede guardar el culto en este momento. Podés seguir usando las canciones y listas ya guardadas.")
+    return
+  }
   if (lista.length === 0) {
     alert("No hay elementos en la lista de culto para guardar.")
     return
@@ -1629,6 +1633,10 @@ const guardarCulto = async () => {
 }
 
 const guardarCultoComoCopia = async () => {
+  if (sinConexion) {
+    alert("⚠️ Sin conexión con el servidor — no se puede guardar el culto en este momento.")
+    return
+  }
   const nombreBase = nombreCulto?.trim() || "Culto"
   const nombre = prompt("Nombre de la copia", `${nombreBase} (copia)`)
   if (!nombre) return
@@ -1760,6 +1768,18 @@ const duplicarCulto = async (culto: any) => {
 
 const cargarCultos = async () => {
   const igId = await getIglesiaIdCached()
+  const CACHE_KEY = `selah-cultos-${igId || "global"}`
+
+  // ✅ Mostrar caché de inmediato (permite ver los cultos guardados sin
+  // conexión — crear uno nuevo igual requiere Supabase, eso se avisa aparte)
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    if (raw) {
+      const cached = JSON.parse(raw)
+      if (Array.isArray(cached) && cached.length > 0) setCultos(cached)
+    }
+  } catch { /* ignorar */ }
+
   const query = supabase
     .from("listas_culto")
     .select("*")
@@ -1770,7 +1790,10 @@ const cargarCultos = async () => {
 
   const { data, error } = await query
 
-  if (data) setCultos(data)
+  if (data) {
+    setCultos(data)
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(data)) } catch { /* ignorar */ }
+  }
 }
 
 const nombreImagenAmigable = (url?: string, fallback = "Imagen") => {

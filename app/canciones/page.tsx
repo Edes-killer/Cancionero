@@ -208,7 +208,7 @@ const VistaPrevia = ({ texto, formato }: { texto: string; formato: string }) => 
 
 export default function CancionesPage() {
   const { iglesiaId: iglesiaIdCtx, canciones: cancionesCtx,
-        actualizarCancion: actualizarCtx, eliminarCancionDelCache } = useApp()
+        actualizarCancion: actualizarCtx, eliminarCancionDelCache, sinConexion } = useApp()
   const [socket, setSocket] = useState<any>(null)
   const [canciones, setCanciones] = useState<Cancion[]>([])
   const [idsConAcordes, setIdsConAcordes] = useState<string[]>([])
@@ -757,6 +757,7 @@ export default function CancionesPage() {
   // ── Guardar ──────────────────────────────────────────────────────────────────
 
   const guardarCancion = async () => {
+    if (sinConexion) { flash("⚠️ Sin conexión con el servidor — no se puede guardar ahora"); return }
     if (!titulo.trim()) { flash("⚠️ El título es obligatorio"); return }
     setGuardando(true)
 
@@ -851,6 +852,7 @@ export default function CancionesPage() {
   }
 
   const eliminarCancion = async (id: string, titulo: string) => {
+    if (sinConexion) { flash("⚠️ Sin conexión con el servidor — no se puede eliminar ahora"); return }
     if (!confirm(`¿Eliminar "${titulo}"? Esta acción no se puede deshacer.`)) return
     await supabase.from("partes_cancion").delete().eq("cancion_id", id)
     await supabase.from("canciones").delete().eq("id", id)
