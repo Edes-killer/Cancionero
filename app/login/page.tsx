@@ -95,8 +95,14 @@ function LoginContent() {
 
       if (isCapacitor) {
         // APK: abrir browser del sistema → DeepLinkHandler captura el callback
+        // ✅ A diferencia de Electron/Web, acá NO navegamos fuera de la página
+        // (el WebView de la app se queda tal cual, solo se abre el navegador
+        // externo aparte) — sin este reset, el botón se quedaba en "Abriendo..."
+        // para siempre si el usuario volvía a la app antes de completar el login
+        // o si el login fallaba/se cancelaba en el navegador externo.
         console.log('[Login] APK → _system')
         window.open(data.url, '_system')
+        setCargando(false)
       } else if (isElectron) {
         // Electron: navegar la misma ventana → Supabase redirige a localhost:3000/auth/callback
         console.log('[Login] Electron → window.location.href')
