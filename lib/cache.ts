@@ -68,3 +68,29 @@ export const CACHE_TTL_MS = 5 * 60 * 1000
 export function cacheEsValido(entry: CacheEntry): boolean {
   return Date.now() - entry.timestamp < CACHE_TTL_MS
 }
+
+// ── Disyuntor de Supabase ──────────────────────────────────────────────────
+// Si un fetch de fondo (no crítico, ya hay datos en caché mostrándose) falla
+// por red/timeout, no tiene sentido que CADA pantalla (control, canciones,
+// musicos, AppContext) siga intentando su propio refresh inmediatamente —
+// eso solo genera errores en consola y trabajo desperdiciado mientras
+// Supabase sigue caído. Se guarda la última falla y se evitan reintentos de
+// fondo por un rato corto; los reintentos explícitos del usuario (ej. tirar
+// para refrescar) o las escrituras (guardar/crear) no pasan por acá.
+const KEY_SUPABASE_CAIDO = "selah-supabase-caido-desde"
+const COOLDOWN_MS = 45 * 1000
+
+export function marcarSupabaseCaido() {
+  try { localStorage.setItem(KEY_SUPABASE_CAIDO, String(Date.now())) } catch { /* ignorar */ }
+}
+
+export function marcarSupabaseOk() {
+  try { localStorage.removeItem(KEY_SUPABASE_CAIDO) } catch { /* ignorar */ }
+}
+
+export function supabaseProbablementeCaido(): boolean {
+  try {
+    const desde = Number(localStorage.getItem(KEY_SUPABASE_CAIDO) || 0)
+    return desde > 0 && (Date.now() - desde) < COOLDOWN_MS
+  } catch { return false }
+}

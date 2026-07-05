@@ -2,7 +2,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId } from "@/lib/getIglesia"
-import { getCancelacionesCache, setCancelacionesCache, cacheEsValido } from "@/lib/cache"
+import { getCancelacionesCache, setCancelacionesCache, cacheEsValido, supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "@/lib/cache"
 
 interface AppContextType {
   session: any
@@ -81,14 +81,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setErrorCanciones(null)
 
     // ✅ Paso 1: Cargar desde cache inmediatamente si existe
+    let yaHabiaCache = false
     if (intento === 1) {
       const cached = await getCancelacionesCache(igId)
       if (cached && cached.canciones.length > 0) {
         setCanciones(cached.canciones)
         setDesdeCache(true)
         setCargandoCanciones(false)
+        yaHabiaCache = true
         // ✅ SIEMPRE refrescar desde Supabase en background para tener datos completos
         // No retornar aunque el caché sea válido — puede tener datos incompletos
+        // ... salvo que Supabase haya fallado hace poco: ya se está mostrando
+        // el caché, no vale la pena martillar un servicio caído ahora mismo.
+        if (supabaseProbablementeCaido()) return
       }
     }
 
@@ -114,11 +119,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       console.log(`✅ AppContext canciones desde Supabase: ${todas.length}`)
+      marcarSupabaseOk()
       setCanciones(todas)
       setDesdeCache(false)
       await setCancelacionesCache(igId, todas)
     } catch (e: any) {
       console.error("Error cargando canciones:", e)
+      marcarSupabaseCaido()
+      // ✅ Si ya había caché mostrándose, no insistir con más reintentos —
+      // esos son solo para el primer arranque sin nada que mostrar todavía.
+      if (yaHabiaCache) return
       if (intento < 3) {
         await new Promise(r => setTimeout(r, intento * 1000))
         return cargarCanciones(igId, intento + 1)
