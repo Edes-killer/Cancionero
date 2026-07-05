@@ -13,6 +13,7 @@ import { io } from "socket.io-client"
 import { getIglesiaId } from "../../lib/getIglesia"
 import { useRouter } from "next/navigation"
 import { useApp } from "@/context/AppContext"
+import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "@/lib/cache"
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 interface Cancion {
@@ -710,6 +711,10 @@ const cargarCanciones = async () => {
       console.log(`📋 Usando contexto: ${cancionesCtx.length} canciones — caché reciente, sin refetch`)
       return
     }
+    if (supabaseProbablementeCaido()) {
+      console.log(`📋 Usando contexto: ${cancionesCtx.length} canciones — Supabase caído hace poco, sin refetch`)
+      return
+    }
     console.log(`📋 Usando contexto: ${cancionesCtx.length} canciones — refrescando en background`)
     fetchEnCursoRef.current = true
     _fetchCanciones(igId, CACHE_KEY)
@@ -728,6 +733,10 @@ const cargarCanciones = async () => {
         _cargarAcordes()
         if (typeof ts === "number" && (Date.now() - ts) < CACHE_TTL_MS) {
           console.log(`📦 Caché: ${cached.length} canciones — reciente, sin refetch`)
+          return
+        }
+        if (supabaseProbablementeCaido()) {
+          console.log(`📦 Caché: ${cached.length} canciones — Supabase caído hace poco, sin refetch`)
           return
         }
         console.log(`📦 Caché: ${cached.length} canciones — vieja, refrescando en background...`)
@@ -762,6 +771,7 @@ const _fetchCanciones = async (igId: string | null, cacheKey: string, intento = 
 
     if (error) {
       console.error("❌ Error fetch canciones:", error?.message)
+      marcarSupabaseCaido()
       // ✅ Reintentar ante timeouts/errores transitorios del gateway de Supabase
       // (igual que AppContext.cargarCanciones) — antes se rendía al primer error.
       if (intento < 3) {
@@ -776,6 +786,7 @@ const _fetchCanciones = async (igId: string | null, cacheKey: string, intento = 
     desde += PAGINA
   }
 
+  marcarSupabaseOk()
   console.log(`✅ Fetch canciones: ${todas.length} total`)
   if (todas.length > 0) {
     setCanciones(todas)
@@ -821,6 +832,7 @@ const _cargarAcordes = async () => {
 
   // ── 1. Mostrar desde localStorage inmediatamente (sin esperar a Supabase) ─
   const igCacheKey = `selah-iglesia-${iglesiaId}`
+  let huboCacheIglesia = false
   try {
     const igCachedRaw = localStorage.getItem(igCacheKey)
     if (igCachedRaw) {
@@ -831,11 +843,17 @@ const _cargarAcordes = async () => {
         setLogoEsperaNombre(logo_nombre || "")
         nombreIglesiaRef.current = nombre
         logoEsperaUrlRef.current = logo_url || ""
+        huboCacheIglesia = true
         // Si viene del contexto también lo tenemos; no hace falta query
         if (nombreIglesiaCtx) return
       }
     }
   } catch (e) { /* ignorar */ }
+
+  // ✅ Ya se mostró algo (caché) y Supabase falló hace poco — no insistir
+  // con la query de abajo, que es justo la que generaba el "Error cargando
+  // iglesia: timeout" en consola una y otra vez sin necesidad.
+  if (huboCacheIglesia && supabaseProbablementeCaido()) return
 
   // ✅ Usar datos del contexto si ya están disponibles
   if (nombreIglesiaCtx) {
@@ -844,11 +862,13 @@ const _cargarAcordes = async () => {
     nombreIglesiaRef.current = nombreIglesiaCtx
     logoEsperaUrlRef.current = logoUrlCtx || ""
     // Cargar logo_nombre en background (no bloquear)
-    supabase.from("iglesias").select("logo_nombre").eq("id", iglesiaId).limit(1)
-      .then(({ data: rows }) => {
-        const d = (rows as any[])?.[0]
-        if (d) setLogoEsperaNombre(d.logo_nombre || "")
-      })
+    if (!supabaseProbablementeCaido()) {
+      supabase.from("iglesias").select("logo_nombre").eq("id", iglesiaId).limit(1)
+        .then(({ data: rows }) => {
+          const d = (rows as any[])?.[0]
+          if (d) setLogoEsperaNombre(d.logo_nombre || "")
+        })
+    }
     return
   }
 
@@ -868,8 +888,10 @@ const _cargarAcordes = async () => {
 
     if (error) {
       console.warn("Iglesia timeout/error — usando caché localStorage")
+      marcarSupabaseCaido()
       return  // ya mostramos datos del localStorage arriba
     }
+    marcarSupabaseOk()
 
     const data = (rows as any[])?.[0] ?? null
     if (!data) return
@@ -1772,13 +1794,17 @@ const cargarCultos = async () => {
 
   // ✅ Mostrar caché de inmediato (permite ver los cultos guardados sin
   // conexión — crear uno nuevo igual requiere Supabase, eso se avisa aparte)
+  let huboCache = false
   try {
     const raw = localStorage.getItem(CACHE_KEY)
     if (raw) {
       const cached = JSON.parse(raw)
-      if (Array.isArray(cached) && cached.length > 0) setCultos(cached)
+      if (Array.isArray(cached) && cached.length > 0) { setCultos(cached); huboCache = true }
     }
   } catch { /* ignorar */ }
+
+  // ✅ Si Supabase falló hace poco y ya hay algo mostrándose, no insistir
+  if (huboCache && supabaseProbablementeCaido()) return
 
   const query = supabase
     .from("listas_culto")
@@ -1789,6 +1815,9 @@ const cargarCultos = async () => {
   if (igId) query.eq("iglesia_id", igId)
 
   const { data, error } = await query
+
+  if (error) { marcarSupabaseCaido(); return }
+  marcarSupabaseOk()
 
   if (data) {
     setCultos(data)

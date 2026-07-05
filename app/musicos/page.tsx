@@ -6,6 +6,7 @@ import { io } from "socket.io-client"
 import { supabase } from "../../lib/supabase"
 import { getIglesiaId } from "../../lib/getIglesia"
 import { getSocketUrl } from "../../lib/servidor"
+import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "../../lib/cache"
 import PitchDetector from "@/components/PitchDetector"
 
 export default function MusicosPage() {
@@ -114,6 +115,10 @@ export default function MusicosPage() {
 
     // 2. Si hay conexión → refrescar desde Supabase
     if (!navigator.onLine) return
+    // ✅ Si Supabase falló hace poco, no repetir el intento ahora — ya se
+    // está mostrando el repertorio cacheado, no vale la pena martillar un
+    // servicio que sabemos caído (solo ensucia la consola con timeouts).
+    if (supabaseProbablementeCaido()) return
     setCargandoRepo(cancionesRepo.length === 0)
     try {
       const filtro = igId
@@ -126,25 +131,27 @@ export default function MusicosPage() {
       let desde = 0
       let continuar = true
       while (continuar) {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("canciones")
           .select("id, titulo, tono, categoria, numero")
           .or(filtro)
           .order("numero", { ascending: true, nullsFirst: false })
           .range(desde, desde + PAGINA - 1)
+        if (error) throw error
         if (!data || data.length === 0) break
         todas = todas.concat(data)
         continuar = data.length === PAGINA
         desde += PAGINA
       }
 
+      marcarSupabaseOk()
       if (todas.length > 0) {
         // Invalidar caché viejo cambiando la clave
         const CACHE_KEY_V2 = `selah-repo-canciones-v2-${igId || "global"}`
         setCancionesRepo(todas)
         try { localStorage.setItem(CACHE_KEY_V2, JSON.stringify(todas)) } catch { }
       }
-    } catch { }
+    } catch { marcarSupabaseCaido() }
     setCargandoRepo(false)
   }
 

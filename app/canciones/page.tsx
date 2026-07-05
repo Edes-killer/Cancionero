@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { io } from "socket.io-client"
 import { supabase } from "../../lib/supabase"
+import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "../../lib/cache"
 import { getIglesiaId } from "../../lib/getIglesia"
 import { getSocketUrl } from "@/lib/servidor"
 import { useApp } from "@/context/AppContext"
@@ -401,12 +402,13 @@ export default function CancionesPage() {
       const { data, error } = await query
         .order("numero", { ascending: true, nullsFirst: false })
         .range(desde, desde + PAGINA - 1)
-      if (error) { console.error("❌ Error fetch canciones:", error.message); break }
+      if (error) { console.error("❌ Error fetch canciones:", error.message); marcarSupabaseCaido(); break }
       if (!data || data.length === 0) break
       todas = todas.concat(data)
       continuar = data.length === PAGINA
       desde += PAGINA
     }
+    marcarSupabaseOk()
     setCanciones(todas)
     console.log(`✅ Canciones cargadas: ${todas.length}`)
 
