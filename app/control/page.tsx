@@ -796,11 +796,15 @@ const _fetchCanciones = async (igId: string | null, cacheKey: string, intento = 
 
 // Helper: cargar IDs de canciones con acordes (separado para no bloquear el cache path)
 const _cargarAcordes = async () => {
+  // ✅ No es crítico (solo marca qué canciones tienen acordes) — si ya
+  // sabemos que Supabase está caído, no vale la pena intentarlo de nuevo.
+  if (supabaseProbablementeCaido()) return
   const { data: partesConAcordes, error: errorAcordes } = await supabase
     .from("partes_cancion")
     .select("cancion_id")
     .eq("tiene_acordes", true)
-  if (errorAcordes) { setIdsCancionesConAcordes([]); return }
+  if (errorAcordes) { marcarSupabaseCaido(); setIdsCancionesConAcordes([]); return }
+  marcarSupabaseOk()
   const idsUnicos = Array.from(
     new Set((partesConAcordes || []).map((p: any) => p.cancion_id).filter(Boolean))
   )
@@ -986,6 +990,10 @@ const getPartesCancion = async (cancionId: string): Promise<any[]> => {
 const precargarPartesBatch = async (ids: string[]) => {
   const sinCache = ids.filter(id => !partesCacheRef.current.has(id))
   if (sinCache.length === 0) return
+  // ✅ No crítico (solo precarga) — si Supabase está caído, no martillarlo
+  // con un lote tras otro; cuando el usuario elija una canción puntual, el
+  // fetch directo de esa canción sigue intentando igual (no pasa por acá).
+  if (supabaseProbablementeCaido()) return
 
   // Lotes de 30 — más seguro con RLS de Supabase
   const LOTE = 30
@@ -1000,8 +1008,10 @@ const precargarPartesBatch = async (ids: string[]) => {
 
       if (error) {
         console.warn("Precarga parcial:", error.message || error.code || "error RLS")
+        marcarSupabaseCaido()
         continue
       }
+      marcarSupabaseOk()
 
       // Agrupar por cancion_id
       const agrupado: Record<string, any[]> = {}

@@ -12,10 +12,18 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const pathname = usePathname()
   const router = useRouter()
   const [checking, setChecking] = useState(false)
-  const [sinConexion, setSinConexion] = useState(() => {
-    try { return typeof window !== "undefined" && localStorage.getItem(KEY_MODO_SIN_CONEXION) === "1" }
-    catch { return false }
-  })
+  // ✅ Siempre arranca en false (igual que en el servidor, donde no existe
+  // localStorage) para que el primer render del cliente calce con el HTML
+  // que ya mandó el servidor. Leer localStorage acá en el useState inicial
+  // causaba un "Hydration failed" cada vez que el modo sin conexión ya
+  // estaba activo de una carga anterior. El valor real se sincroniza en
+  // el useEffect de abajo, que solo corre en el cliente después de montar.
+  const [sinConexion, setSinConexion] = useState(false)
+
+  useEffect(() => {
+    try { setSinConexion(localStorage.getItem(KEY_MODO_SIN_CONEXION) === "1") }
+    catch { /* ignorar */ }
+  }, [])
 
   const publicRoutes = ["/login", "/register", "/proyectar", "/musicos", "/unirse"]
   // ✅ next.config.ts usa trailingSlash: true → usePathname() devuelve "/login/"
