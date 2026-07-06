@@ -13,7 +13,7 @@ import { io } from "socket.io-client"
 import { getIglesiaId } from "../../lib/getIglesia"
 import { useRouter } from "next/navigation"
 import { useApp } from "@/context/AppContext"
-import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "@/lib/cache"
+import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk, getPartesCache, setPartesCache } from "@/lib/cache"
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 interface Cancion {
@@ -968,28 +968,53 @@ const registrarProyeccionCancion = async (cancion: any) => {
   }
 }
 
-// ✅ Helper: obtiene partes desde cache o Supabase
+// ✅ Helper: obtiene partes desde cache (memoria → IndexedDB → Supabase)
 const getPartesCancion = async (cancionId: string): Promise<any[]> => {
   if (partesCacheRef.current.has(cancionId)) {
     return partesCacheRef.current.get(cancionId)!
   }
+
+  // ✅ Caché persistente: sobrevive a un reinicio de la app. Sin esto, si
+  // Supabase ya estaba caído al abrir, no había forma de proyectar NINGUNA
+  // canción aunque la lista de títulos sí se viera bien (esa sí persiste).
+  const persistido = await getPartesCache(cancionId)
+  if (persistido) {
+    partesCacheRef.current.set(cancionId, persistido)
+    return persistido
+  }
+
   const { data, error } = await supabase
     .from("partes_cancion")
     .select("cancion_id, tipo, texto, texto_letra, texto_acordes, tiene_acordes, orden")
     .eq("cancion_id", cancionId)
     .order("orden")
-  if (error) { console.error(error); return [] }
+  if (error) { console.error(error); marcarSupabaseCaido(); return [] }
+  marcarSupabaseOk()
   // ✅ Normalizar texto_letra → texto
   const partes = (data || []).map(p => ({ ...p, texto: p.texto_letra || (p as any).texto || "" }))
   console.log("🎵 Partes cargadas:", partes.length, partes[0] ? `texto[0]="${partes[0].texto?.slice(0,30)}"` : "sin partes")
   partesCacheRef.current.set(cancionId, partes)
+  setPartesCache(cancionId, partes).catch(() => {})
   return partes
 }
 
 // ✅ Precarga partes en batch — una sola query para múltiples canciones
 const precargarPartesBatch = async (ids: string[]) => {
-  const sinCache = ids.filter(id => !partesCacheRef.current.has(id))
+  let sinCache = ids.filter(id => !partesCacheRef.current.has(id))
   if (sinCache.length === 0) return
+
+  // ✅ Antes de ir a Supabase, revisar el caché persistente (sobrevive a un
+  // reinicio) — permite recuperar la letra de canciones ya usadas antes
+  // sin depender de la red, en vez de solo restaurar la lista de títulos.
+  const aunSinCache: string[] = []
+  for (const id of sinCache) {
+    const persistido = await getPartesCache(id)
+    if (persistido) partesCacheRef.current.set(id, persistido)
+    else aunSinCache.push(id)
+  }
+  sinCache = aunSinCache
+  if (sinCache.length === 0) return
+
   // ✅ No crítico (solo precarga) — si Supabase está caído, no martillarlo
   // con un lote tras otro; cuando el usuario elija una canción puntual, el
   // fetch directo de esa canción sigue intentando igual (no pasa por acá).
@@ -1021,7 +1046,9 @@ const precargarPartesBatch = async (ids: string[]) => {
         agrupado[parte.cancion_id].push({ ...parte, texto: parte.texto_letra || (parte as any).texto || "" })
       }
       for (const id of lote) {
-        partesCacheRef.current.set(id, agrupado[id] || [])
+        const partes = agrupado[id] || []
+        partesCacheRef.current.set(id, partes)
+        if (partes.length > 0) setPartesCache(id, partes).catch(() => {})
       }
     } catch(e) {
       logCatch(e, "Precarga batch", { tipo: "supabase", pagina: "/control", detalle: { lote: lote.slice(0, 3) } })

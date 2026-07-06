@@ -1,24 +1,61 @@
 // lib/cache.ts — Cache local de canciones usando IndexedDB
 const DB_NAME    = "selah-live"
-const DB_VERSION = 2  // ✅ Subido a 2 para invalidar caché anterior automáticamente
+const DB_VERSION = 3  // ✅ v3: agrega STORE_PARTES sin borrar los stores existentes
 const STORE_CANCIONES = "canciones"
 const STORE_META      = "meta"
+const STORE_PARTES    = "partes"
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof indexedDB === "undefined") { reject(new Error("IndexedDB no disponible")); return }
     const req = indexedDB.open(DB_NAME, DB_VERSION)
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (event) => {
       const db = req.result
-      // Limpiar stores viejos al actualizar versión
-      if (db.objectStoreNames.contains(STORE_CANCIONES)) db.deleteObjectStore(STORE_CANCIONES)
-      if (db.objectStoreNames.contains(STORE_META)) db.deleteObjectStore(STORE_META)
-      db.createObjectStore(STORE_CANCIONES, { keyPath: "iglesiaId" })
-      db.createObjectStore(STORE_META)
+      // ✅ Solo recrear canciones/meta si venimos de una version anterior a
+      // la 2 (estructura vieja incompatible) — NO borrarlos en cada upgrade,
+      // o el modo sin conexion perderia justo el cache que necesita cuando
+      // Supabase esta caido durante una actualizacion de la app.
+      if (event.oldVersion < 2) {
+        if (db.objectStoreNames.contains(STORE_CANCIONES)) db.deleteObjectStore(STORE_CANCIONES)
+        if (db.objectStoreNames.contains(STORE_META)) db.deleteObjectStore(STORE_META)
+        db.createObjectStore(STORE_CANCIONES, { keyPath: "iglesiaId" })
+        db.createObjectStore(STORE_META)
+      }
+      if (!db.objectStoreNames.contains(STORE_PARTES)) {
+        db.createObjectStore(STORE_PARTES) // clave explícita = cancion_id
+      }
     }
     req.onsuccess = () => resolve(req.result)
     req.onerror  = () => reject(req.error)
   })
+}
+
+// ── Cache persistente de partes (letra/acordes) por canción ──────────────────
+// Antes solo vivía en memoria (useRef) y se perdía en cada reinicio de la
+// app — si Supabase ya estaba caído al abrir, no había forma de proyectar
+// ninguna canción aunque la lista (títulos) sí se viera desde el caché.
+export async function getPartesCache(cancionId: string): Promise<any[] | null> {
+  try {
+    const db = await openDB()
+    return new Promise((resolve) => {
+      const tx  = db.transaction(STORE_PARTES, "readonly")
+      const req = tx.objectStore(STORE_PARTES).get(cancionId)
+      req.onsuccess = () => resolve(req.result?.partes || null)
+      req.onerror   = () => resolve(null)
+    })
+  } catch { return null }
+}
+
+export async function setPartesCache(cancionId: string, partes: any[]): Promise<void> {
+  try {
+    const db = await openDB()
+    await new Promise<void>((resolve, reject) => {
+      const tx  = db.transaction(STORE_PARTES, "readwrite")
+      const req = tx.objectStore(STORE_PARTES).put({ partes, timestamp: Date.now() }, cancionId)
+      req.onsuccess = () => resolve()
+      req.onerror   = () => reject(req.error)
+    })
+  } catch (e) { console.error("Error guardando cache de partes:", e) }
 }
 
 export interface CacheEntry {
