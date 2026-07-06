@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase"
+import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "@/lib/cache"
 
 export type TipoError = "socket"|"supabase"|"proyeccion"|"biblia"|"imagen"|"ppt"|"audio"|"autenticacion"|"general"
 
@@ -30,10 +31,13 @@ export const logError = async (mensaje: string, opciones: OpcionesLog = {}): Pro
     console.warn(`[ErrorLog] ${opciones.tipo || "general"}: ${mensaje}`)
     return
   }
+  // ✅ Registrar un error mientras Supabase está caído solo generaría otro
+  // error de red — no vale la pena intentarlo hasta que se recupere.
+  if (supabaseProbablementeCaido()) return
   try {
     const { iglesiaId, userId } = await getIds()
     if (!userId) return
-    await supabase.from("errores_log").insert({
+    const { error } = await supabase.from("errores_log").insert({
       iglesia_id: iglesiaId, user_id: userId,
       pagina: opciones.pagina || (typeof window !== "undefined" ? window.location.pathname : ""),
       tipo: opciones.tipo || "general",
@@ -41,7 +45,8 @@ export const logError = async (mensaje: string, opciones: OpcionesLog = {}): Pro
       detalle: opciones.detalle || null,
       plataforma: detectarPlataforma(),
     })
-  } catch {}
+    if (error) marcarSupabaseCaido(); else marcarSupabaseOk()
+  } catch { marcarSupabaseCaido() }
 }
 
 export const logCatch = (e: unknown, contexto: string, opciones: OpcionesLog = {}): void => {

@@ -53,10 +53,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [listo, setListo] = useState(false)
   const [desdeCache, setDesdeCache] = useState(false)
   const [pinSala, setPinSala] = useState<string | null>(null)
-  const [sinConexion, setSinConexion] = useState(() => {
-    try { return typeof window !== "undefined" && localStorage.getItem(KEY_MODO_SIN_CONEXION) === "1" }
-    catch { return false }
-  })
+  // ✅ Arranca en false igual que en el servidor (ver mismo comentario en
+  // AuthProvider.tsx) para no causar un hydration mismatch. El valor real
+  // se sincroniza en el useEffect de abajo, ya en el cliente.
+  const [sinConexion, setSinConexion] = useState(false)
 
   // ✅ AuthProvider es quien decide activar/desactivar el modo sin conexión
   // (escribe en localStorage) — acá solo lo reflejamos para que cualquier
@@ -67,6 +67,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try { setSinConexion(localStorage.getItem(KEY_MODO_SIN_CONEXION) === "1") }
       catch {}
     }
+    leer() // sincronizar de inmediato al montar, no esperar el primer intervalo
     window.addEventListener("storage", leer) // otras pestañas/ventanas
     const intervalo = setInterval(leer, 2000) // misma pestaña
     return () => { window.removeEventListener("storage", leer); clearInterval(intervalo) }
