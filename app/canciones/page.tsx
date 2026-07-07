@@ -1708,22 +1708,67 @@ export default function CancionesPage() {
                     </button>
                   ))}
                 </div>
-                <input
-                  data-tour="buscador-canciones"
-                  placeholder="🔍  Buscar por título, categoría, tono o número..."
-                  value={busqueda}
-                  onChange={e => handleBusqueda(e.target.value)}
-                  style={{ ...inputStyle, fontSize: 16 }}
-                />
+                <div style={{ position: "relative" }}>
+                  <input
+                    data-tour="buscador-canciones"
+                    placeholder="🔍  Buscar por título, categoría, tono o número..."
+                    value={busqueda}
+                    onChange={e => handleBusqueda(e.target.value)}
+                    style={{ ...inputStyle, fontSize: 16, paddingRight: busqueda ? 34 : 14 }}
+                  />
+                  {busqueda && (
+                    <button
+                      onClick={() => handleBusqueda("")}
+                      aria-label="Limpiar búsqueda"
+                      style={{
+                        position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+                        width: 24, height: 24, borderRadius: "50%", border: "none",
+                        background: "rgba(255,255,255,0.1)", color: colors.textMuted,
+                        fontSize: 14, lineHeight: 1, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center"
+                      }}
+                    >✕</button>
+                  )}
+                </div>
                 <div data-tour="filtros-rapidos" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <select value={filtroTono} onChange={e => setFiltroTono(e.target.value)} style={selectStyle}>
-                    <option value="">Todos los tonos</option>
-                    {TONOS.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                  <select value={filtroCategoria} onChange={e => setFiltroCategoria(e.target.value)} style={selectStyle}>
-                    <option value="">Todas categorías</option>
-                    {categoriasDisponibles.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                  </select>
+                  <div style={{ position: "relative" }}>
+                    <select value={filtroTono} onChange={e => setFiltroTono(e.target.value)} style={{ ...selectStyle, paddingRight: filtroTono ? 40 : 14 }}>
+                      <option value="">Todos los tonos</option>
+                      {TONOS.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    {filtroTono && (
+                      <button
+                        onClick={() => setFiltroTono("")}
+                        aria-label="Limpiar filtro de tono"
+                        style={{
+                          position: "absolute", right: 22, top: "50%", transform: "translateY(-50%)",
+                          width: 18, height: 18, borderRadius: "50%", border: "none",
+                          background: "rgba(255,255,255,0.12)", color: colors.textMuted,
+                          fontSize: 11, lineHeight: 1, cursor: "pointer",
+                          display: "flex", alignItems: "center", justifyContent: "center"
+                        }}
+                      >✕</button>
+                    )}
+                  </div>
+                  <div style={{ position: "relative" }}>
+                    <select value={filtroCategoria} onChange={e => setFiltroCategoria(e.target.value)} style={{ ...selectStyle, paddingRight: filtroCategoria ? 40 : 14 }}>
+                      <option value="">Todas categorías</option>
+                      {categoriasDisponibles.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                    </select>
+                    {filtroCategoria && (
+                      <button
+                        onClick={() => setFiltroCategoria("")}
+                        aria-label="Limpiar filtro de categoría"
+                        style={{
+                          position: "absolute", right: 22, top: "50%", transform: "translateY(-50%)",
+                          width: 18, height: 18, borderRadius: "50%", border: "none",
+                          background: "rgba(255,255,255,0.12)", color: colors.textMuted,
+                          fontSize: 11, lineHeight: 1, cursor: "pointer",
+                          display: "flex", alignItems: "center", justifyContent: "center"
+                        }}
+                      >✕</button>
+                    )}
+                  </div>
                 </div>
 
                 {/* ── Ordenar ── */}

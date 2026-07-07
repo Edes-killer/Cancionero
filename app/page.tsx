@@ -56,15 +56,33 @@ export default function InicioPage() {
     setServidorIp(ip)
   }, [])
 
-  // Ping al servidor
+  // Ping al servidor — y si falla en el APK, intentar encontrarlo solo
   useEffect(() => {
     const ping = async () => {
       const ip = localStorage.getItem("servidor_ip") || window.location.hostname
       try {
         const r = await fetch(`http://${ip}:4000/ping`, { signal: AbortSignal.timeout(2500) })
         const d = await r.json()
-        setServidorActivo(d?.ok === true)
-      } catch { setServidorActivo(false) }
+        if (d?.ok === true) { setServidorActivo(true); return }
+        throw new Error("ping sin ok")
+      } catch {
+        setServidorActivo(false)
+        // ✅ En el APK, si el ping al servidor guardado (o a localhost) falla,
+        // intentar encontrarlo solo en la red antes de obligar al usuario a
+        // ir a Configuración y tocar "Buscar automáticamente" a mano —
+        // pensado para el primer uso o cuando el PC cambió de IP.
+        const esCapacitor = typeof window !== "undefined" && !!(window as any).Capacitor
+        if (!esCapacitor) return
+        try {
+          const { buscarServidorEnRed } = await import("@/lib/servidor")
+          const encontrada = await buscarServidorEnRed()
+          if (encontrada) {
+            localStorage.setItem("servidor_ip", encontrada)
+            setServidorIp(encontrada)
+            setServidorActivo(true)
+          }
+        } catch { /* ignorar — se queda el banner de "servidor no detectado" */ }
+      }
     }
     ping()
   }, [])

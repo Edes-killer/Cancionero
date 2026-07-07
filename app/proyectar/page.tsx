@@ -321,6 +321,22 @@ export default function ProyectarPage() {
     return localStorage.getItem("proyector-modo-limpio") === "1"
   })
 
+  // ✅ Tamaño de ventana en estado: el cálculo de tamaño de letra usa
+  // window.innerWidth/innerHeight, pero sin un listener de resize esos
+  // valores quedaban "congelados" desde el primer render — si la ventana
+  // del proyector se movía a una segunda pantalla con otra resolución (o
+  // se maximizaba/cambiaba de tamaño después), el texto se calculaba para
+  // el tamaño viejo y se desbordaba en el nuevo.
+  const [winSize, setWinSize] = useState(() => ({
+    w: typeof window !== "undefined" ? window.innerWidth : 1920,
+    h: typeof window !== "undefined" ? window.innerHeight : 1080,
+  }))
+  useEffect(() => {
+    const onResize = () => setWinSize({ w: window.innerWidth, h: window.innerHeight })
+    window.addEventListener("resize", onResize)
+    return () => window.removeEventListener("resize", onResize)
+  }, [])
+
   const FUENTES: Record<string, string> = {
     "system":    "system-ui, -apple-system, sans-serif",
     "arial":     "Arial, Helvetica, sans-serif",
@@ -348,8 +364,7 @@ export default function ProyectarPage() {
   }, [])
 
   const computeFontNum = (minPx: number, vwPct: number, maxPx: number, scale = 1): number => {
-    const vw = typeof window !== "undefined" ? window.innerWidth : 1920
-    const base = Math.min(maxPx, Math.max(minPx, (vwPct / 100) * vw))
+    const base = Math.min(maxPx, Math.max(minPx, (vwPct / 100) * winSize.w))
     return Math.round(base * scale)
   }
 
@@ -728,8 +743,8 @@ export default function ProyectarPage() {
     largoBiblia > 1300 || totalPalabrasBiblia > 220 ? 1.22
     : largoBiblia > 700 || totalPalabrasBiblia > 120 ? 1.28 : 1.34
 
-  const altB  = typeof window !== "undefined" ? window.innerHeight * 0.66 : 534
-  const ancB  = typeof window !== "undefined" ? window.innerWidth  * 0.88 : 1690
+  const altB  = winSize.h * 0.66
+  const ancB  = winSize.w * 0.88
   const capB  = largoBiblia > 0 ? Math.floor(Math.sqrt(altB * ancB / (lhBiblia * 0.58 * largoBiblia))) : tierBiblia
   const fsBiblia = `${Math.min(tierBiblia, Math.max(12, capB))}px`
 
@@ -751,8 +766,8 @@ export default function ProyectarPage() {
     : lineasVis >= 4  ? computeFontNum(34,4.0,64,escala)
     :                   computeFontNum(42,5.0,80,escala)
 
-  const altC   = typeof window !== "undefined" ? window.innerHeight * (modoLimpio ? 0.90 : 0.66) : 703
-  const screenW = typeof window !== "undefined" ? window.innerWidth * 0.88 : 1690
+  const altC   = winSize.h * (modoLimpio ? 0.90 : 0.66)
+  const screenW = winSize.w * 0.88
 
   // ✅ Binary search: máximo font que cabe verticalmente considerando wrap real
   // Monotónico: a mayor zoom, el resultado solo puede subir o quedarse igual
