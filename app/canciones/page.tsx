@@ -211,6 +211,7 @@ export default function CancionesPage() {
   const { iglesiaId: iglesiaIdCtx, canciones: cancionesCtx,
         actualizarCancion: actualizarCtx, eliminarCancionDelCache, sinConexion } = useApp()
   const [socket, setSocket] = useState<any>(null)
+  const [socketConectado, setSocketConectado] = useState<boolean | null>(null)
   const [canciones, setCanciones] = useState<Cancion[]>([])
   const [idsConAcordes, setIdsConAcordes] = useState<string[]>([])
   const [iglesiaId, setIglesiaId] = useState<string | null>(null)
@@ -342,10 +343,14 @@ export default function CancionesPage() {
         if (!salaRef.current) salaRef.current = iglesiaIdCtx || (await getIglesiaId()) || "global"
         const pin = await getPinSalaCached(salaRef.current)
         s.emit("unirse-sala", { sala: salaRef.current, pantalla: "canciones", pin })
+        setSocketConectado(true)
       } catch (err) {
         if (process.env.NODE_ENV === "development") console.error("❌ canciones socket connect:", err)
       }
     })
+    s.on("disconnect", () => setSocketConectado(false))
+    s.on("connect_error", () => setSocketConectado(false))
+    s.on("reconnect", () => setSocketConectado(true))
     s.on("cancion-activa", (data: any) => setActivaId(data.id))
     setSocket(s)
     return () => { s.disconnect() }
@@ -1101,7 +1106,19 @@ export default function CancionesPage() {
               fontSize: 18, flexShrink: 0
             }}>🎵</div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.2 }}>Cancionero</div>
+              <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.2, display: "flex", alignItems: "center", gap: 6 }}>
+                Cancionero
+                {(socketConectado === false || (socketConectado === null && !!(window as any).Capacitor)) && (
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 5,
+                    background: "rgba(239,68,68,0.15)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.25)"
+                  }}>● SIN CONEXIÓN</span>
+                )}
+                {socketConectado === true && (
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 5,
+                    background: "rgba(34,197,94,0.12)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.2)"
+                  }}>● EN LÍNEA</span>
+                )}
+              </div>
               <div style={{ fontSize: 11, color: colors.textMuted }}>
                 {canciones.length} canciones
               </div>
