@@ -171,3 +171,30 @@ export const cambiarIglesiaActiva = async (iglesiaId: string): Promise<boolean> 
   setIglesiaActivaId(iglesiaId)
   return true
 }
+
+// ── Rol del usuario en la iglesia activa ──────────────────────────────────────
+// Usado para mostrar/ocultar acciones destructivas (eliminar canciones) que
+// ahora están restringidas a "lider"/"admin" del lado del servidor (RLS +
+// funciones security definer) — esto solo evita mostrar un botón que de
+// todas formas Supabase rechazaría, la verificación real vive en la BD.
+let _rolCache: { iglesiaId: string; rol: string | null } | null = null
+
+export const getRolEnIglesia = async (iglesiaId: string): Promise<string | null> => {
+  if (_rolCache && _rolCache.iglesiaId === iglesiaId) return _rolCache.rol
+  try {
+    const { data: userData } = await supabase.auth.getUser()
+    const userId = userData?.user?.id
+    if (!userId) return null
+    const { data } = await supabase
+      .from("usuarios_iglesia")
+      .select("rol")
+      .eq("iglesia_id", iglesiaId)
+      .eq("user_id", userId)
+      .single()
+    const rol = data?.rol || null
+    _rolCache = { iglesiaId, rol }
+    return rol
+  } catch {
+    return null
+  }
+}

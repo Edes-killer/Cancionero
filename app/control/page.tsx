@@ -767,6 +767,7 @@ const _fetchCanciones = async (igId: string | null, cacheKey: string, intento = 
       .from("canciones")
       .select("id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda, fecha_creacion")
       .or(filtro)
+      .is("eliminado_en", null)
       .order("numero", { ascending: true, nullsFirst: false })
       .range(desde, desde + PAGINA - 1)
 
