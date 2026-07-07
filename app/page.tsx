@@ -282,14 +282,14 @@ export default function InicioPage() {
               <div style={{ width:8, height:8, borderRadius:"50%", background: servidorActivo?"#22c55e":"#ef4444", flexShrink:0, boxShadow: servidorActivo?"0 0 6px rgba(34,197,94,0.6)":"0 0 6px rgba(239,68,68,0.4)" }} />
               <div style={{ flex:1 }}>
                 <div style={{ fontSize:13, fontWeight:700, color: servidorActivo?"#4ade80":"#fca5a5" }}>
-                  {servidorActivo ? "Servidor activo" : "Servidor no detectado"}
+                  {servidorActivo ? "Conectado con el computador" : "Sin conexión con el computador"}
                 </div>
                 <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:1 }}>
-                  {servidorActivo ? `${servidorIp || "localhost"}:4000 — listo para proyectar` : "Inicia el servidor Node.js para poder proyectar"}
+                  {servidorActivo ? "Ya puedes proyectar" : "Abre Selah Live en el computador para poder proyectar"}
                 </div>
               </div>
               <button onClick={() => router.push("/configuracion")} style={{ padding:"5px 12px", borderRadius:7, border:"none", background: servidorActivo?"rgba(34,197,94,0.1)":"rgba(239,68,68,0.15)", color: servidorActivo?"#4ade80":"#fca5a5", fontSize:12, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
-                {servidorActivo ? "Cambiar IP" : "Configurar"}
+                {servidorActivo ? "Detalles" : "Configurar"}
               </button>
             </div>
           )}
