@@ -129,17 +129,17 @@ export default function InicioPage() {
           iglesiasnombresRes,
         ] = await Promise.all([
           supabase.from("usuarios_iglesia").select("iglesia_id").eq("user_id", userId),
-          supabase.from("canciones").select("*", { count:"exact", head:true }).or(`iglesia_id.eq.${iglesiaId},iglesia_id.is.null`),
-          supabase.from("canciones").select("*", { count:"exact", head:true }).or(`iglesia_id.eq.${iglesiaId},iglesia_id.is.null`).is("tono", null),
+          supabase.from("canciones").select("*", { count:"exact", head:true }).or(`iglesia_id.eq.${iglesiaId},iglesia_id.is.null`).is("eliminado_en", null),
+          supabase.from("canciones").select("*", { count:"exact", head:true }).or(`iglesia_id.eq.${iglesiaId},iglesia_id.is.null`).is("eliminado_en", null).is("tono", null),
           supabase.from("partes_cancion").select("cancion_id", { count:"exact", head:false }).eq("tiene_acordes", true).limit(5000),
           supabase.from("listas_culto").select("*", { count:"exact", head:true }).eq("iglesia_id", iglesiaId),
           // ✅ 6 últimos cultos (antes solo 1)
           supabase.from("listas_culto").select("id, nombre, fecha").eq("iglesia_id", iglesiaId).order("fecha", { ascending:false }).limit(6),
           supabase.from("historial_proyecciones").select("cancion_id, titulo, tono, categoria").eq("iglesia_id", iglesiaId).eq("tipo","cancion").gte("proyectado_en", inicioMes.toISOString()).limit(200),
           // ✅ Canciones recientes — query que antes faltaba
-          supabase.from("canciones").select("id, titulo, tono, categoria, fecha_creacion").eq("iglesia_id", iglesiaId).order("fecha_creacion", { ascending:false }).limit(5),
+          supabase.from("canciones").select("id, titulo, tono, categoria, fecha_creacion").eq("iglesia_id", iglesiaId).is("eliminado_en", null).order("fecha_creacion", { ascending:false }).limit(5),
           // ✅ Categorías — query que antes faltaba
-          supabase.from("canciones").select("categoria").or(`iglesia_id.eq.${iglesiaId},iglesia_id.is.null`).not("categoria","is",null),
+          supabase.from("canciones").select("categoria").or(`iglesia_id.eq.${iglesiaId},iglesia_id.is.null`).is("eliminado_en", null).not("categoria","is",null),
           supabase.from("iglesias").select("id, nombre").in("id",
             (await supabase.from("usuarios_iglesia").select("iglesia_id").eq("user_id", userId)).data?.map((r:any) => r.iglesia_id).filter(Boolean) || []
           ),

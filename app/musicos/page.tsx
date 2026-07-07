@@ -135,6 +135,7 @@ export default function MusicosPage() {
           .from("canciones")
           .select("id, titulo, tono, categoria, numero")
           .or(filtro)
+          .is("eliminado_en", null)
           .order("numero", { ascending: true, nullsFirst: false })
           .range(desde, desde + PAGINA - 1)
         if (error) throw error

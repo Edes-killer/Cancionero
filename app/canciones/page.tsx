@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation"
 import { io } from "socket.io-client"
 import { supabase } from "../../lib/supabase"
 import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "../../lib/cache"
-import { getIglesiaId } from "../../lib/getIglesia"
+import { getIglesiaId, getRolEnIglesia } from "../../lib/getIglesia"
 import { getSocketUrl } from "@/lib/servidor"
 import { useApp } from "@/context/AppContext"
 
@@ -216,6 +216,14 @@ export default function CancionesPage() {
   const [idsConAcordes, setIdsConAcordes] = useState<string[]>([])
   const [iglesiaId, setIglesiaId] = useState<string | null>(null)
   const [cargando, setCargando] = useState(true)
+  // ✅ Solo lider/admin pueden eliminar canciones (verificado también en la
+  // BD vía funciones security-definer) — esto solo evita mostrar un botón
+  // que igual sería rechazado.
+  const [rol, setRol] = useState<string | null>(null)
+  const puedeEliminar = rol === "lider" || rol === "admin"
+  const [papeleraAbierta, setPapeleraAbierta] = useState(false)
+  const [papeleraCanciones, setPapeleraCanciones] = useState<Cancion[]>([])
+  const [cargandoPapelera, setCargandoPapelera] = useState(false)
 
   // Editor
   const [editandoId, setEditandoId] = useState<string | null>(null)
@@ -364,6 +372,7 @@ export default function CancionesPage() {
       const id = iglesiaIdCtx || await getIglesiaId()
       if (!activo) return
       setIglesiaId(id)
+      if (id) getRolEnIglesia(id).then(r => { if (activo) setRol(r) })
 
       // ✅ Usar canciones del contexto si ya están cargadas (sin query)
       if (cancionesCtx.length > 0) {
@@ -405,6 +414,7 @@ export default function CancionesPage() {
       let query = supabase.from("canciones").select("id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda, fecha_creacion")
       query = filtro ? query.or(filtro) : query.is("iglesia_id", null)
       const { data, error } = await query
+        .is("eliminado_en", null)
         .order("numero", { ascending: true, nullsFirst: false })
         .range(desde, desde + PAGINA - 1)
       if (error) { console.error("❌ Error fetch canciones:", error.message); marcarSupabaseCaido(); break }
@@ -860,14 +870,46 @@ export default function CancionesPage() {
 
   const eliminarCancion = async (id: string, titulo: string) => {
     if (sinConexion) { flash("⚠️ Sin conexión con el servidor — no se puede eliminar ahora"); return }
-    if (!confirm(`¿Eliminar "${titulo}"? Esta acción no se puede deshacer.`)) return
-    await supabase.from("partes_cancion").delete().eq("cancion_id", id)
-    await supabase.from("canciones").delete().eq("id", id)
+    if (!confirm(`¿Enviar "${titulo}" a la papelera? Podrás restaurarla luego desde ahí.`)) return
+    // ✅ Ya no se borra directo — pasa por una función que verifica en la BD
+    // que el usuario sea lider/admin y solo la marca como eliminada (soft-delete).
+    const { error } = await supabase.rpc("eliminar_cancion_soft", { p_id: id })
+    if (error) { flash(`❌ ${error.message || "No se pudo eliminar"}`); return }
     if (editandoId === id) resetEditor()
-    flash("🗑️ Canción eliminada")
+    flash("🗑️ Enviada a la papelera")
     await cargarCanciones()
     partesCacheRef.current.delete(id) // ✅ Invalidar cache de partes
     eliminarCancionDelCache(id)
+  }
+
+  const cargarPapelera = async () => {
+    setCargandoPapelera(true)
+    try {
+      const filtro = iglesiaId ? `iglesia_id.eq.${iglesiaId},iglesia_id.is.null` : null
+      let query = supabase.from("canciones").select("id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda, fecha_creacion")
+      query = filtro ? query.or(filtro) : query.is("iglesia_id", null)
+      const { data, error } = await query.not("eliminado_en", "is", null).order("titulo")
+      if (error) { flash(`❌ ${error.message}`); return }
+      setPapeleraCanciones((data || []) as Cancion[])
+    } finally {
+      setCargandoPapelera(false)
+    }
+  }
+
+  const restaurarCancion = async (id: string, titulo: string) => {
+    const { error } = await supabase.rpc("restaurar_cancion", { p_id: id })
+    if (error) { flash(`❌ ${error.message || "No se pudo restaurar"}`); return }
+    flash(`✅ "${titulo}" restaurada`)
+    setPapeleraCanciones(prev => prev.filter(c => c.id !== id))
+    await cargarCanciones()
+  }
+
+  const purgarCancion = async (id: string, titulo: string) => {
+    if (!confirm(`¿Eliminar "${titulo}" definitivamente? Esta acción NO se puede deshacer.`)) return
+    const { error } = await supabase.rpc("purgar_cancion", { p_id: id })
+    if (error) { flash(`❌ ${error.message || "No se pudo eliminar"}`); return }
+    flash("🗑️ Eliminada definitivamente")
+    setPapeleraCanciones(prev => prev.filter(c => c.id !== id))
   }
 
   const proyectar = async (c: Cancion) => {
@@ -1169,8 +1211,58 @@ export default function CancionesPage() {
               ))}
             </div>
           )}
+
+          {/* Papelera — solo lider/admin */}
+          {puedeEliminar && (
+            <button
+              onClick={() => { setPapeleraAbierta(true); cargarPapelera() }}
+              title="Canciones eliminadas"
+              style={{ ...btnBase, padding: "7px 12px", fontSize: 13, background: "rgba(255,255,255,0.05)", color: colors.textMuted, flexShrink: 0 }}
+            >🗑 Papelera</button>
+          )}
         </div>
       </div>
+
+      {/* ── PAPELERA (modal) ── */}
+      {papeleraAbierta && (
+        <div onClick={() => setPapeleraAbierta(false)} style={{
+          position: "fixed", inset: 0, zIndex: 200,
+          background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            width: "min(560px, 92vw)", maxHeight: "80vh", display: "flex", flexDirection: "column",
+            background: colors.card, border: `1px solid ${colors.border}`, borderRadius: 16, overflow: "hidden"
+          }}>
+            <div style={{ padding: "16px 20px", borderBottom: `1px solid ${colors.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>🗑 Papelera</div>
+              <button onClick={() => setPapeleraAbierta(false)} style={btnSecondary}>✕ Cerrar</button>
+            </div>
+            <div style={{ overflowY: "auto", padding: 16 }}>
+              {cargandoPapelera ? (
+                <div style={{ textAlign: "center", padding: 30, color: colors.textMuted }}>Cargando...</div>
+              ) : papeleraCanciones.length === 0 ? (
+                <div style={{ textAlign: "center", padding: 30, color: colors.textMuted }}>La papelera está vacía.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {papeleraCanciones.map(c => (
+                    <div key={c.id} style={{
+                      display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+                      background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: 10
+                    }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.titulo}</div>
+                        {c.categoria && <div style={{ fontSize: 11, color: colors.textMuted }}>{c.categoria}</div>}
+                      </div>
+                      <button onClick={() => restaurarCancion(c.id, c.titulo)} style={{ ...btnSecondary, fontSize: 12, padding: "6px 10px", flexShrink: 0 }}>↩ Restaurar</button>
+                      <button onClick={() => purgarCancion(c.id, c.titulo)} style={{ ...btnDanger, fontSize: 12, padding: "6px 10px", flexShrink: 0 }}>Eliminar definitivo</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── FLASH ── */}
       {flashMsg && (
@@ -1870,7 +1962,9 @@ export default function CancionesPage() {
                     <div style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => proyectar(c)} style={{ ...btnSuccess, flex: 1, justifyContent: "center" }}>▶</button>
                       <button onClick={() => editarCancion(c)} style={{ ...btnSecondary, flex: 1, justifyContent: "center" }}>✏️</button>
-                      <button onClick={() => eliminarCancion(c.id, c.titulo)} style={{ ...btnDanger, padding: "9px 10px" }}>🗑</button>
+                      {puedeEliminar && (
+                        <button onClick={() => eliminarCancion(c.id, c.titulo)} style={{ ...btnDanger, padding: "9px 10px" }}>🗑</button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1938,7 +2032,9 @@ export default function CancionesPage() {
                     <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
                       <button onClick={() => proyectar(c)} style={{ ...btnSuccess, padding: "8px 10px", fontSize: 13 }}>▶</button>
                       <button onClick={() => editarCancion(c)} style={{ ...btnSecondary, padding: "8px 10px", fontSize: 13 }}>✏️</button>
-                      <button onClick={() => eliminarCancion(c.id, c.titulo)} style={{ ...btnDanger, padding: "8px 10px", fontSize: 13 }}>🗑</button>
+                      {puedeEliminar && (
+                        <button onClick={() => eliminarCancion(c.id, c.titulo)} style={{ ...btnDanger, padding: "8px 10px", fontSize: 13 }}>🗑</button>
+                      )}
                     </div>
                   </div>
                 ))}

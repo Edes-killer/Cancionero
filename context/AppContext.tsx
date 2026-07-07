@@ -109,6 +109,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           .from("canciones")
           .select("id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda, fecha_creacion")
           .or(`iglesia_id.eq.${igId},iglesia_id.is.null`)
+          .is("eliminado_en", null)
           .order("numero", { ascending: true, nullsFirst: false })
           .range(desde, desde + PAGINA - 1)
 
