@@ -1,0 +1,9 @@
+dist-electron
+android
+electron
+out
+.next
+tsconfig.tsbuildinfo
+*.log
+*.docx
+no_match.json
