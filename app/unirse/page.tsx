@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { setIglesiaActivaId } from "@/lib/getIglesia"
 
 const ROLES: Record<string, { label: string; icon: string; desc: string }> = {
   admin:  { label: "Administrador",     icon: "👑", desc: "Acceso completo a la aplicación" },
@@ -92,6 +93,11 @@ export default function UnirsePage() {
       await supabase.from("invitaciones")
         .update({ usos_actuales: (inv.usos_actuales || 0) + 1 }).eq("id", inv.id)
     }
+    // ✅ Si la cuenta ya estaba vinculada a OTRA iglesia (cacheada en este
+    // dispositivo), sin esto seguía viendo los datos de la iglesia vieja
+    // después de aceptar una invitación nueva — nada actualizaba cuál es
+    // la "iglesia activa".
+    setIglesiaActivaId(inv.iglesia_id)
     localStorage.removeItem("selah_inv_codigo")
     router.replace(inv.rol === "musico" ? "/musicos" : inv.rol === "lider" ? "/control" : "/")
   }
