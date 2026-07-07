@@ -4,6 +4,7 @@ import { CSSProperties, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId } from "@/lib/getIglesia"
+import { buscarServidorEnRed } from "@/lib/servidor"
 
 // ── Estilos compartidos ──────────────────────────────────────────────────────
 const cardStyle: CSSProperties = {
@@ -225,32 +226,14 @@ export default function ConfiguracionPage() {
     setBuscandoServidor(true)
     mostrarFlash("🔍 Buscando servidor en la red...", "ok")
     try {
-      // Obtener IP del dispositivo para determinar la subred
-      const respInfo = await fetch("https://api.ipify.org?format=json").catch(() => null)
-      // Intentar subredes comunes en paralelo
-      const subredes = ["192.168.1", "192.168.0", "192.168.100", "10.0.0", "10.0.1", "172.16.0"]
-      const ips: string[] = []
-      subredes.forEach(sub => { for (let i = 1; i <= 254; i++) ips.push(`${sub}.${i}`) })
-
-      // Buscar en lotes de 30 en paralelo
-      const BATCH = 30
-      for (let i = 0; i < ips.length; i += BATCH) {
-        const lote = ips.slice(i, i + BATCH)
-        const resultados = await Promise.allSettled(
-          lote.map(ip => fetch(`http://${ip}:4000/info`, { signal: AbortSignal.timeout(400) })
-            .then(r => r.json()).then(d => d?.app === "selah-live" ? ip : null))
-        )
-        for (const r of resultados) {
-          if (r.status === "fulfilled" && r.value) {
-            const ipEncontrada = r.value
-            setServidorIp(ipEncontrada)
-            localStorage.setItem("servidor_ip", ipEncontrada)
-            await testearServidor(ipEncontrada)
-            mostrarFlash(`✅ Servidor encontrado en ${ipEncontrada}`, "ok")
-            setBuscandoServidor(false)
-            return
-          }
-        }
+      const ipEncontrada = await buscarServidorEnRed()
+      if (ipEncontrada) {
+        setServidorIp(ipEncontrada)
+        localStorage.setItem("servidor_ip", ipEncontrada)
+        await testearServidor(ipEncontrada)
+        mostrarFlash(`✅ Servidor encontrado en ${ipEncontrada}`, "ok")
+        setBuscandoServidor(false)
+        return
       }
       mostrarFlash("❌ No se encontró el servidor. ¿Está abierto Selah Live en el PC?", "error")
     } catch(e) {

@@ -671,6 +671,7 @@ useEffect(() => {
 }, [socket, fondoCancionUrl])
 
 const [isMobile, setIsMobile] = useState(false)
+const [busquedaEnfocada, setBusquedaEnfocada] = useState(false)
 const [pantallaDetectada, setPantallaDetectada] = useState(false)
 const [mostrarCanciones, setMostrarCanciones] = useState(true)
 const [mostrarAcciones, setMostrarAcciones] = useState(false)
@@ -4009,84 +4010,141 @@ return (
             )}
 
             {/* Búsqueda */}
-            <input
-              data-tour="lista-canciones"
-              placeholder="🔍 Buscar por número, título o letra..."
-              value={busqueda}
-              onChange={e => handleBusqueda(e.target.value)}
-              onFocus={e => {
-                if (isMobile) setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "start" }), 300)
-              }}
-              style={{
-                width: "100%", padding: "11px 13px",
-                borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)",
-                background: "#0a1525", color: "white",
-                fontSize: 16, outline: "none",
-                boxSizing: "border-box", marginBottom: 8
-              }}
-            />
+            <div style={{ position: "relative", marginBottom: 8 }}>
+              <input
+                data-tour="lista-canciones"
+                placeholder="🔍 Buscar por número, título o letra..."
+                value={busqueda}
+                onChange={e => handleBusqueda(e.target.value)}
+                onFocus={e => {
+                  setBusquedaEnfocada(true)
+                  if (isMobile) setTimeout(() => e.target.scrollIntoView({ behavior: "smooth", block: "start" }), 300)
+                }}
+                onBlur={() => setBusquedaEnfocada(false)}
+                style={{
+                  width: "100%", padding: busqueda ? "11px 34px 11px 13px" : "11px 13px",
+                  borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)",
+                  background: "#0a1525", color: "white",
+                  fontSize: 16, outline: "none",
+                  boxSizing: "border-box"
+                }}
+              />
+              {busqueda && (
+                <button
+                  onClick={() => handleBusqueda("")}
+                  aria-label="Limpiar búsqueda"
+                  style={{
+                    position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+                    width: 24, height: 24, borderRadius: "50%", border: "none",
+                    background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.6)",
+                    fontSize: 14, lineHeight: 1, cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center"
+                  }}
+                >✕</button>
+              )}
+            </div>
 
             {/* Filtros en fila */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-              <select
-                value={filtroTono}
-                onChange={e => setFiltroTono(e.target.value)}
-                style={{
-                  padding: "9px 10px", borderRadius: 10,
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  background: "#0a1525", color: "white",
-                  fontSize: 13, outline: "none"
-                }}
-              >
-                <option value="">Todos los tonos</option>
-                {["Do","Dom","Do#","Re","Rem","Re#","Mi","Mim","Fa","Fam","Fa#","Sol","Solm","Sol#","La","Lam","La#","Si","Sim"].map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
+              <div style={{ position: "relative" }}>
+                <select
+                  value={filtroTono}
+                  onChange={e => setFiltroTono(e.target.value)}
+                  style={{
+                    width: "100%", padding: filtroTono ? "9px 40px 9px 10px" : "9px 10px", borderRadius: 10,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "#0a1525", color: "white",
+                    fontSize: 13, outline: "none", boxSizing: "border-box"
+                  }}
+                >
+                  <option value="">Todos los tonos</option>
+                  {["Do","Dom","Do#","Re","Rem","Re#","Mi","Mim","Fa","Fam","Fa#","Sol","Solm","Sol#","La","Lam","La#","Si","Sim"].map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+                {filtroTono && (
+                  <button
+                    onClick={() => setFiltroTono("")}
+                    aria-label="Limpiar filtro de tono"
+                    style={{
+                      position: "absolute", right: 22, top: "50%", transform: "translateY(-50%)",
+                      width: 18, height: 18, borderRadius: "50%", border: "none",
+                      background: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)",
+                      fontSize: 11, lineHeight: 1, cursor: "pointer", pointerEvents: "auto",
+                      display: "flex", alignItems: "center", justifyContent: "center"
+                    }}
+                  >✕</button>
+                )}
+              </div>
 
-              <select
-                value={filtroCategoria}
-                onChange={e => setFiltroCategoria(e.target.value)}
-                style={{
-                  padding: "9px 10px", borderRadius: 10,
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  background: "#0a1525", color: "white",
-                  fontSize: 13, outline: "none"
-                }}
-              >
-                <option value="">Todas las categorías</option>
-                {categoriasDisponibles.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
+              <div style={{ position: "relative" }}>
+                <select
+                  value={filtroCategoria}
+                  onChange={e => setFiltroCategoria(e.target.value)}
+                  style={{
+                    width: "100%", padding: filtroCategoria ? "9px 40px 9px 10px" : "9px 10px", borderRadius: 10,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "#0a1525", color: "white",
+                    fontSize: 13, outline: "none", boxSizing: "border-box"
+                  }}
+                >
+                  <option value="">Todas las categorías</option>
+                  {categoriasDisponibles.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                {filtroCategoria && (
+                  <button
+                    onClick={() => setFiltroCategoria("")}
+                    aria-label="Limpiar filtro de categoría"
+                    style={{
+                      position: "absolute", right: 22, top: "50%", transform: "translateY(-50%)",
+                      width: 18, height: 18, borderRadius: "50%", border: "none",
+                      background: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.6)",
+                      fontSize: 11, lineHeight: 1, cursor: "pointer", pointerEvents: "auto",
+                      display: "flex", alignItems: "center", justifyContent: "center"
+                    }}
+                  >✕</button>
+                )}
+              </div>
             </div>
 
-            {/* Ordenar */}
-            <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
-              {([
-                { v: "numero",   l: "# Nº" },
-                { v: "az",       l: "A → Z" },
-                { v: "za",       l: "Z → A" },
-                { v: "reciente", l: "Reciente" },
-                { v: "antigua",  l: "Antigua" },
-              ] as const).map(({ v, l }) => (
-                <button key={v} onClick={() => cambiarOrden(v)} style={{
-                  padding: "3px 9px", borderRadius: 20, fontSize: 11, fontWeight: 600,
-                  cursor: "pointer", border: `1px solid ${ordenar === v ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.07)"}`,
-                  background: ordenar === v ? "rgba(99,102,241,0.15)" : "transparent",
-                  color: ordenar === v ? "#a5b4fc" : "rgba(255,255,255,0.35)"
-                }}>{l}</button>
-              ))}
-            </div>
+            {/* Ordenar — se oculta en mobile mientras el teclado está abierto, para
+                dejarle más espacio vertical a los resultados de la búsqueda */}
+            {!(isMobile && busquedaEnfocada) && (
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 8 }}>
+                {([
+                  { v: "numero",   l: "# Nº" },
+                  { v: "az",       l: "A → Z" },
+                  { v: "za",       l: "Z → A" },
+                  { v: "reciente", l: "Reciente" },
+                  { v: "antigua",  l: "Antigua" },
+                ] as const).map(({ v, l }) => (
+                  <button key={v} onClick={() => cambiarOrden(v)} style={{
+                    padding: "3px 9px", borderRadius: 20, fontSize: 11, fontWeight: 600,
+                    cursor: "pointer", border: `1px solid ${ordenar === v ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.07)"}`,
+                    background: ordenar === v ? "rgba(99,102,241,0.15)" : "transparent",
+                    color: ordenar === v ? "#a5b4fc" : "rgba(255,255,255,0.35)"
+                  }}>{l}</button>
+                ))}
+              </div>
+            )}
 
-            {/* Lista virtualizada */}
+            {/* Lista virtualizada — en mobile se apoya en visualViewport (alturaVP)
+                en vez de 100dvh porque varios WebView de Android no achican el
+                dvh al abrir el teclado, dejando la lista con casi nada de alto
+                visible; se pone un piso mínimo para que nunca quede inutilizable */}
             <div
               id="scroll-canciones"
               ref={scrollCancionesRef}
               onScroll={handleScrollCanciones}
               style={{
-                height: isMobile ? "calc(100dvh - 390px)" : "min(560px, calc(100vh - 340px))",
-                maxHeight: isMobile ? "calc(100dvh - 390px)" : "min(560px, calc(100vh - 340px))",
+                height: isMobile
+                  ? (alturaVP ? `${Math.max(alturaVP - (busquedaEnfocada ? 260 : 390), 160)}px` : "calc(100dvh - 390px)")
+                  : "min(560px, calc(100vh - 340px))",
+                maxHeight: isMobile
+                  ? (alturaVP ? `${Math.max(alturaVP - (busquedaEnfocada ? 260 : 390), 160)}px` : "calc(100dvh - 390px)")
+                  : "min(560px, calc(100vh - 340px))",
                 overflowY: "auto",
                 overflowX: "hidden",
               }}
