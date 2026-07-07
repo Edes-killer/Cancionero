@@ -163,7 +163,12 @@ export default function ConfiguracionPage() {
   }
 
   const copiarLink = (codigo: string) => {
-    const link = `${window.location.origin}/unirse?codigo=${codigo}`
+    // ✅ Nunca usar window.location.origin — dentro de Electron/Capacitor eso
+    // es "localhost" o un esquema interno, inútil para compartir con alguien
+    // en otro dispositivo. El link de invitación siempre debe apuntar a la
+    // versión pública web (Vercel), que es la única que cualquiera puede abrir.
+    const base = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
+    const link = `${base}/unirse?codigo=${codigo}`
     navigator.clipboard.writeText(link).then(() => {
       setLinkCopiado(codigo)
       setTimeout(() => setLinkCopiado(""), 2500)
