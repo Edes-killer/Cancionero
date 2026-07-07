@@ -838,6 +838,29 @@ export default function ProyectarPage() {
   const fondoAnimado = fondoCancion?.tipo === "animated"
   const fondoVideo = fondoCancion?.tipo === "video"
 
+  // ✅ Fondo compartido para las pantallas especiales (negro/descanso, espera,
+  // mensaje, logo) — antes cada bloque duplicaba a mano fondoCss/fondoImg y
+  // se olvidaba de fondoAnimado (Canvas) y fondoVideo, por lo que un fondo
+  // animado o de video elegido en Herramientas nunca se veía en esas pantallas.
+  const renderFondoEspecial = (fallback: string) => (<>
+    {fondoCss && (<>
+      <div style={{ position:"fixed",inset:0,backgroundImage:fondoCancion.fondoCss,backgroundSize:"cover",backgroundPosition:"center",backgroundRepeat:"no-repeat",zIndex:0 }} />
+      <div style={{ position:"fixed",inset:0,backgroundColor:`rgba(0,0,0,${(fondoCancion.oscuridad??55)/100})`,zIndex:1 }} />
+    </>)}
+    {fondoImg && (<>
+      <div style={{ position:"fixed",inset:0,backgroundImage:`url(${fondoCancion.url})`,backgroundSize:fondoCancion.ajuste||"cover",backgroundPosition:"center",backgroundColor:"#000",zIndex:0 }} />
+      <div style={{ position:"fixed",inset:0,backgroundColor:`rgba(0,0,0,${(fondoCancion.oscuridad??55)/100})`,zIndex:1 }} />
+    </>)}
+    {fondoAnimado && fondoCancion.animacion && (
+      <CanvasFondo animacion={fondoCancion.animacion} oscuridad={fondoCancion.oscuridad ?? 30} />
+    )}
+    {fondoVideo && fondoCancion.url && (<>
+      <video autoPlay loop muted playsInline style={{ position:"fixed",inset:0,width:"100%",height:"100%",objectFit:"cover",zIndex:0 }} src={fondoCancion.url} />
+      <div style={{ position:"fixed",inset:0,backgroundColor:`rgba(0,0,0,${(fondoCancion.oscuridad??50)/100})`,zIndex:1 }} />
+    </>)}
+    {!fondoCancion && <div style={{ position:"fixed",inset:0,background:fallback,zIndex:0 }} />}
+  </>)
+
   return (
     <div style={{ width:"100vw",height:"100vh",overflow:"hidden",background:"#000",color:"white",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",position:"fixed",inset:0,padding:0,margin:0 }}>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}} @keyframes fmov{0%{transform:scale(1.04) translate3d(0,0,0)}50%{transform:scale(1.12) translate3d(-1.8%,-1.2%,0)}100%{transform:scale(1.04) translate3d(0,0,0)}}`}</style>
@@ -877,9 +900,7 @@ export default function ProyectarPage() {
 
       {/* ── Descanso ──────────────────────────────────────────── */}
       {estadoEspecial?.tipo === "descanso" && (<>
-        {fondoCss && (<><div style={{ position:"fixed",inset:0,backgroundImage:fondoCancion.fondoCss,backgroundSize:"cover",backgroundPosition:"center",backgroundRepeat:"no-repeat",zIndex:0 }}/><div style={{ position:"fixed",inset:0,backgroundColor:`rgba(0,0,0,${(fondoCancion.oscuridad??55)/100})`,zIndex:1 }}/></>)}
-        {fondoImg && (<><div style={{ position:"fixed",inset:0,backgroundImage:`url(${fondoCancion.url})`,backgroundSize:fondoCancion.ajuste||"cover",backgroundPosition:"center",backgroundColor:"#000",zIndex:0 }}/><div style={{ position:"fixed",inset:0,backgroundColor:`rgba(0,0,0,${(fondoCancion.oscuridad??55)/100})`,zIndex:1 }}/></>)}
-        {!fondoCancion && <div style={{ position:"fixed",inset:0,background:"radial-gradient(circle at 50% 30%,rgba(10,20,50,.9),#000)",zIndex:0 }} />}
+        {renderFondoEspecial("radial-gradient(circle at 50% 30%,rgba(10,20,50,.9),#000)")}
         {estadoEspecial.logo_marca_url && (
           <div style={{ position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:2,flexDirection:"column",gap:24 }}>
             <img src={estadoEspecial.logo_marca_url} alt="" style={{ maxWidth:"30vw",maxHeight:"30vh",objectFit:"contain",opacity:.7 }} />
@@ -890,15 +911,7 @@ export default function ProyectarPage() {
 
       {/* ── Espera ────────────────────────────────────────────── */}
       {estadoEspecial?.tipo === "espera" && (<>
-        {fondoCss && (<>
-          <div style={{ position:"fixed",inset:0,backgroundImage:fondoCancion.fondoCss,backgroundSize:"cover",backgroundPosition:"center",backgroundRepeat:"no-repeat",zIndex:0 }} />
-          <div style={{ position:"fixed",inset:0,backgroundColor:`rgba(0,0,0,${(fondoCancion.oscuridad??55)/100})`,zIndex:1 }} />
-        </>)}
-        {fondoImg && (<>
-          <div style={{ position:"fixed",inset:0,backgroundImage:`url(${fondoCancion.url})`,backgroundSize:fondoCancion.ajuste||"cover",backgroundPosition:"center",backgroundColor:"#000",zIndex:0 }} />
-          <div style={{ position:"fixed",inset:0,backgroundColor:`rgba(0,0,0,${(fondoCancion.oscuridad??55)/100})`,zIndex:1 }} />
-        </>)}
-        {!fondoCancion && <div style={{ position:"fixed",inset:0,background:"radial-gradient(circle at 50% 30%,rgba(37,99,235,.22),transparent 38%),linear-gradient(180deg,#020617 0%,#000 100%)",zIndex:0 }} />}
+        {renderFondoEspecial("radial-gradient(circle at 50% 30%,rgba(37,99,235,.22),transparent 38%),linear-gradient(180deg,#020617 0%,#000 100%)")}
         <div style={{ width:"100vw",height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"5vh 6vw",boxSizing:"border-box",gap:18,position:"relative",zIndex:2 }}>
           <div style={{ fontSize:(estadoEspecial.titulo||"").length>70?"clamp(34px,4vw,64px)":"clamp(48px,6vw,104px)",fontWeight:900,lineHeight:1.05,maxWidth:"90vw" }}>{estadoEspecial.titulo||"Espere un momento"}</div>
           {!!estadoEspecial.subtitulo && <div style={{ fontSize:"clamp(18px,2vw,32px)",opacity:.68,fontWeight:600,maxWidth:"80vw" }}>{estadoEspecial.subtitulo}</div>}
@@ -1010,15 +1023,7 @@ export default function ProyectarPage() {
 
       {/* ── Mensaje ───────────────────────────────────────────── */}
       {estadoEspecial?.tipo === "mensaje" && (<>
-        {fondoCss && (<>
-          <div style={{ position:"fixed",inset:0,backgroundImage:fondoCancion.fondoCss,backgroundSize:"cover",backgroundPosition:"center",backgroundRepeat:"no-repeat",zIndex:0 }} />
-          <div style={{ position:"fixed",inset:0,backgroundColor:`rgba(0,0,0,${(fondoCancion.oscuridad??55)/100})`,zIndex:1 }} />
-        </>)}
-        {fondoImg && (<>
-          <div style={{ position:"fixed",inset:0,backgroundImage:`url(${fondoCancion.url})`,backgroundSize:fondoCancion.ajuste||"cover",backgroundPosition:"center",backgroundColor:"#000",zIndex:0 }} />
-          <div style={{ position:"fixed",inset:0,backgroundColor:`rgba(0,0,0,${(fondoCancion.oscuridad??55)/100})`,zIndex:1 }} />
-        </>)}
-        {!fondoCancion && <div style={{ position:"fixed",inset:0,background:"radial-gradient(circle at 50% 35%,rgba(34,197,94,.18),transparent 38%),linear-gradient(180deg,#020617 0%,#000 100%)",zIndex:0 }} />}
+        {renderFondoEspecial("radial-gradient(circle at 50% 35%,rgba(34,197,94,.18),transparent 38%),linear-gradient(180deg,#020617 0%,#000 100%)")}
         <div style={{ width:"100vw",height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"5vh 6vw",boxSizing:"border-box",gap:20,position:"relative",zIndex:2 }}>
           <div style={{ fontSize:(estadoEspecial.titulo||"").length>220?"clamp(18px,2vw,32px)":(estadoEspecial.titulo||"").length>140?"clamp(28px,3.2vw,52px)":(estadoEspecial.titulo||"").length>70?"clamp(38px,4.5vw,74px)":"clamp(54px,6.5vw,112px)",fontWeight:900,lineHeight:1.08,wordBreak:"break-word",whiteSpace:"pre-line",maxWidth:"90vw" }}>
             {estadoEspecial.titulo}
@@ -1029,15 +1034,7 @@ export default function ProyectarPage() {
 
       {/* ── Logo ──────────────────────────────────────────────── */}
       {estadoEspecial?.tipo === "logo" && (<>
-        {fondoCss && (<>
-          <div style={{ position:"fixed",inset:0,backgroundImage:fondoCancion.fondoCss,backgroundSize:"cover",backgroundPosition:"center",backgroundRepeat:"no-repeat",zIndex:0 }} />
-          <div style={{ position:"fixed",inset:0,backgroundColor:`rgba(0,0,0,${(fondoCancion.oscuridad??55)/100})`,zIndex:1 }} />
-        </>)}
-        {fondoImg && (<>
-          <div style={{ position:"fixed",inset:0,backgroundImage:`url(${fondoCancion.url})`,backgroundSize:fondoCancion.ajuste||"cover",backgroundPosition:"center",backgroundColor:"#000",zIndex:0 }} />
-          <div style={{ position:"fixed",inset:0,backgroundColor:`rgba(0,0,0,${(fondoCancion.oscuridad??55)/100})`,zIndex:1 }} />
-        </>)}
-        {!fondoCancion && <div style={{ position:"fixed",inset:0,background:"radial-gradient(circle at 50% 35%,rgba(255,255,255,.08),transparent 36%),linear-gradient(180deg,#020617 0%,#000 100%)",zIndex:0 }} />}
+        {renderFondoEspecial("radial-gradient(circle at 50% 35%,rgba(255,255,255,.08),transparent 36%),linear-gradient(180deg,#020617 0%,#000 100%)")}
         <div style={{ width:"100vw",height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"5vh 6vw",boxSizing:"border-box",gap:28,position:"relative",zIndex:2 }}>
           <img src={estadoEspecial.url} alt="" style={{ 
             maxWidth:"45vw", maxHeight:"45vh",
