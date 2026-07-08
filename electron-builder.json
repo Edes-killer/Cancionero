@@ -19,7 +19,8 @@
     "installerIcon": "assets/icon.ico",
     "uninstallerIcon": "assets/icon.ico",
     "allowToChangeInstallationDirectory": false,
-    "deleteAppDataOnUninstall": false
+    "deleteAppDataOnUninstall": false,
+    "include": "electron/installer.nsh"
   },
   "win": {
     "target": "nsis",
