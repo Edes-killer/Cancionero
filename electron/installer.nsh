@@ -12,3 +12,13 @@
   nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /T'
   Sleep 500
 !macroend
+
+; ✅ Al actualizar, el instalador primero corre en silencio el DESINSTALADOR
+; VIEJO ya instalado (uninstallOldVersion) -- ese es un .exe aparte, con su
+; propio chequeo de "¿está corriendo?" al inicio (customUnInit, no
+; customInit). Sin este macro, el aviso seguía saliendo ahí aunque el
+; instalador nuevo ya tuviera el arreglo de arriba.
+!macro customUnInit
+  nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /T'
+  Sleep 500
+!macroend
