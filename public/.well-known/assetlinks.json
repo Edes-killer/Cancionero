@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.tuiglesia.cancionero",
+      "sha256_cert_fingerprints": [
+        "CE:02:36:49:3F:86:02:F1:7B:23:37:2B:19:2C:4E:7D:4F:BA:CE:C2:52:DB:48:78:2C:8A:93:EA:AB:6B:4B:8A"
+      ]
+    }
+  }
+]
