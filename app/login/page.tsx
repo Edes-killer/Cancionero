@@ -87,7 +87,12 @@ function LoginContent() {
         options: {
           redirectTo: getRedirectUrl(),
           // ✅ skipBrowserRedirect solo en APK — en Electron y web manejamos la redirección nosotros
-          skipBrowserRedirect: isCapacitor
+          skipBrowserRedirect: isCapacitor,
+          // ✅ Sin esto, Google reutiliza en silencio la última cuenta con
+          // sesión activa en el navegador/WebView -- aunque ya hayas cerrado
+          // sesión en la app, "Iniciar sesión con Google" te metía derecho
+          // con el mismo correo de antes, sin dejarte elegir otro.
+          queryParams: { prompt: "select_account" }
         }
       })
       if (error) throw error

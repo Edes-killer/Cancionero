@@ -107,7 +107,11 @@ export default function UnirsePage() {
     setError(""); setEnviando(true)
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: getRedirectUrl(codigo) }
+      options: {
+        redirectTo: getRedirectUrl(codigo),
+        // ✅ Fuerza el selector de cuentas de Google -- ver login/page.tsx
+        queryParams: { prompt: "select_account" }
+      }
     })
     setEnviando(false)
   }
