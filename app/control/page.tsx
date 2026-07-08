@@ -4518,6 +4518,10 @@ return (
                   setModoLimpio(nuevo)
                   localStorage.setItem("proyector-modo-limpio", nuevo ? "1" : "0")
                   window.dispatchEvent(new Event("storage"))
+                  // ✅ El storage event de arriba solo sirve si Control y
+                  // Proyector son el mismo dispositivo -- por socket llega
+                  // aunque estén en equipos distintos (igual que el banner).
+                  socket?.emit("modo-limpio", nuevo)
                 }}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "space-between",
