@@ -28,8 +28,18 @@ export function DeepLinkHandler() {
       try {
         const { App } = await import('@capacitor/app')
 
+        // ✅ Dominio público (Vercel) registrado como App Link -- ver
+        // android/app/src/main/AndroidManifest.xml + public/.well-known/assetlinks.json.
+        // Antes procesarUrl solo reaccionaba al esquema propio
+        // "com.tuiglesia.cancionero://"; un link normal compartido por
+        // WhatsApp (https://selah-live.vercel.app/...) abría la app pero
+        // esta lo ignoraba por completo.
+        const DOMINIO_APP_LINK = 'https://selah-live.vercel.app'
+
         const procesarUrl = async (url: string) => {
-          if (!url.startsWith('com.tuiglesia.cancionero')) return
+          const esEsquemaPropio = url.startsWith('com.tuiglesia.cancionero')
+          const esAppLink = url.startsWith(DOMINIO_APP_LINK)
+          if (!esEsquemaPropio && !esAppLink) return
 
           try { const { Browser } = await import('@capacitor/browser'); await Browser.close() } catch {}
 
@@ -46,8 +56,23 @@ export function DeepLinkHandler() {
 
           if (access_token && refresh_token) {
             const { error: e } = await supabase.auth.setSession({ access_token, refresh_token })
-            window.location.href = e ? '/login?error=session' : '/'
+            if (e) { window.location.href = '/login?error=session'; return }
+            // ✅ Si veníamos de aceptar una invitación, volver ahí para
+            // terminarla -- antes esto siempre mandaba al home y el código
+            // pendiente en localStorage quedaba sin usarse.
+            const codigoPendiente = localStorage.getItem('selah_inv_codigo')
+            window.location.href = codigoPendiente ? `/unirse?codigo=${codigoPendiente}` : '/'
             return
+          }
+
+          // ✅ App Link normal (sin tokens de OAuth) -- ej. el usuario toca
+          // el link de invitación y la app ya está instalada: llevar la
+          // WebView interna a la misma ruta que traía el link público.
+          if (esAppLink) {
+            try {
+              const u = new URL(url)
+              window.location.href = u.pathname + u.search
+            } catch { /* ignorar URL malformada */ }
           }
         }
 
