@@ -4,6 +4,14 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { useEffect, useState } from "react"
+import { useApp } from "@/context/AppContext"
+import { getRolEnIglesia } from "@/lib/getIglesia"
+
+const ROLES_INFO: Record<string, { icon: string; label: string }> = {
+  admin:  { icon: "👑", label: "Administrador" },
+  lider:  { icon: "🎛️", label: "Líder de alabanza" },
+  musico: { icon: "🎸", label: "Músico" },
+}
 
 const LINKS = [
   { href: "/",              label: "Inicio",    icon: "⌂"  },
@@ -37,9 +45,11 @@ const SelahLogo = ({ size = 30 }: { size?: number }) => (
 export default function Navbar() {
   const pathname = usePathname()
   const router = useRouter()
+  const { iglesiaId } = useApp()
   const [isMobile, setIsMobile] = useState(false)
   const [menuAbierto, setMenuAbierto] = useState(false)
   const [cerrando, setCerrando] = useState(false)
+  const [rol, setRol] = useState<string | null>(null)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 700)
@@ -47,6 +57,15 @@ export default function Navbar() {
     window.addEventListener("resize", check)
     return () => window.removeEventListener("resize", check)
   }, [])
+
+  // ✅ Sugerido por el usuario: mostrar el rol propio (admin/lider/musico)
+  // en el menú hamburguesa -- antes no había forma de saber con qué
+  // permisos entraste sin adivinar por qué botones aparecían.
+  useEffect(() => {
+    let activo = true
+    if (iglesiaId) getRolEnIglesia(iglesiaId).then(r => { if (activo) setRol(r) })
+    return () => { activo = false }
+  }, [iglesiaId])
 
   useEffect(() => { setMenuAbierto(false) }, [pathname])
 
@@ -183,6 +202,16 @@ export default function Navbar() {
             padding: "8px 12px 12px",
             display: "flex", flexDirection: "column", gap: 4
           }}>
+            {rol && ROLES_INFO[rol] && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "10px 14px", borderRadius: 10, marginBottom: 4,
+                background: "rgba(255,255,255,0.04)",
+                fontSize: 13, color: "rgba(255,255,255,0.55)", fontWeight: 600
+              }}>
+                <span>{ROLES_INFO[rol].icon}</span>Tu rol: {ROLES_INFO[rol].label}
+              </div>
+            )}
             {LINKS.map(({ href, label, icon }) => {
               const activo = isActive(href)
               return (
