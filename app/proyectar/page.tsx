@@ -769,7 +769,7 @@ export default function ProyectarPage() {
     : lineasVis >= 4  ? computeFontNum(34,4.0,64,escala)
     :                   computeFontNum(42,5.0,80,escala)
 
-  const altC   = winSize.h * (modoLimpio ? 0.90 : 0.66)
+  const altC   = winSize.h * (modoLimpio ? 0.94 : 0.66)
   const screenW = winSize.w * 0.88
 
   // ✅ Binary search: máximo font que cabe verticalmente considerando wrap real
@@ -957,8 +957,13 @@ export default function ProyectarPage() {
 
       {/* ── CANCIÓN ───────────────────────────────────────────── */}
       {!estadoEspecial && !imagen && !biblia && (
-        <div style={{ width:"100vw",height:"100vh",overflow:"hidden",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"2vh",padding:"3vh 4vw",boxSizing:"border-box",textAlign:"center",position:"relative",zIndex:2 }}>
-          <div style={{ display:"flex",flexDirection:"column",alignItems:"center",gap:10,minHeight:78,paddingTop:".5vh",maxWidth:"92vw" }}>
+        <div style={{ width:"100vw",height:"100vh",overflow:"hidden",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap: modoLimpio ? 0 : "2vh",padding: modoLimpio ? "1vh 2vw" : "3vh 4vw",boxSizing:"border-box",textAlign:"center",position:"relative",zIndex:2 }}>
+          {/* ✅ En modo limpio no reservar espacio para el título/píldoras
+              aunque estén ocultos -- antes minHeight:78 seguía "robando"
+              esa franja aunque no hubiera nada dentro, y el cálculo de
+              tamaño de letra (altC) asumía que tenía toda esa altura
+              disponible, cortando el texto abajo. */}
+          <div style={{ display:"flex",flexDirection:"column",alignItems:"center",gap:10,minHeight: modoLimpio ? 0 : 78,paddingTop:".5vh",maxWidth:"92vw" }}>
             {titulo && !modoLimpio && <div style={{ fontSize:"clamp(18px,2.2vw,36px)",opacity:.92,fontWeight:800,letterSpacing:".06em",textTransform:"uppercase",whiteSpace:"nowrap",maxWidth:"92vw",overflow:"hidden",textOverflow:"ellipsis" }} title={titulo}>{titulo}</div>}
 
             {/* Indicador de partes — reemplaza el badge "Verso X" en el header.
@@ -1013,11 +1018,11 @@ export default function ProyectarPage() {
             )}
           </div>
           <div style={{ flex:1,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",padding:"0 2vw" }}>
-            <div style={{ maxWidth:"92vw", maxHeight: modoLimpio ? "92vh" : "68vh", overflow:"hidden", fontFamily:FUENTES[familiaFuente]||FUENTES["system"], fontSize:fsCancion, lineHeight:lhCancion, wordBreak:"break-word", overflowWrap:"anywhere", whiteSpace:"pre-line", textAlign:"center" }}>
+            <div style={{ maxWidth:"92vw", maxHeight: modoLimpio ? "96vh" : "68vh", overflow:"hidden", fontFamily:FUENTES[familiaFuente]||FUENTES["system"], fontSize:fsCancion, lineHeight:lhCancion, wordBreak:"break-word", overflowWrap:"anywhere", whiteSpace:"pre-line", textAlign:"center" }}>
               {textoCancion}
             </div>
           </div>
-          <div style={{ display:"flex",flexDirection:"column",alignItems:"center",gap:4,minHeight:42,justifyContent:"center" }}>
+          <div style={{ display:"flex",flexDirection:"column",alignItems:"center",gap:4,minHeight: modoLimpio ? 0 : 42,justifyContent:"center" }}>
             {tono    && !modoLimpio && <div style={{ fontSize:"clamp(13px,1.25vw,20px)",opacity:.48,fontWeight:600 }}>Tono: {tono}</div>}
             {iglesia && !modoLimpio && <div style={{ fontSize:"clamp(12px,1.1vw,18px)",opacity:.38 }}>{iglesia}</div>}
           </div>
