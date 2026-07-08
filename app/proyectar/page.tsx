@@ -654,6 +654,9 @@ export default function ProyectarPage() {
 
     s.on("mostrar-banner-urgente", (texto: string) => setBannerUrgente(texto))
     s.on("ocultar-banner-urgente", () => setBannerUrgente(null))
+    // ✅ Modo limpio por socket -- funciona aunque Control y Proyector estén
+    // en dispositivos distintos (antes solo dependía de localStorage local).
+    s.on("modo-limpio", (activo: boolean) => setModoLimpio(!!activo))
 
     s.on("mostrar-estado", (data: any) => {
       setEstadoInicialRevisado(true)

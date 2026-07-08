@@ -147,6 +147,7 @@ const pinesPorSala = {}
 // reemplazarlo, así que se guarda aparte de estadosPorSala. No se persiste
 // a disco -es intencionalmente efímero.
 let bannerPorSala = {}
+let modoLimpioPorSala = {}
 
 function startSocketServer(port) {
   const estadoPath = path.join(app.getPath("userData"), "estado.json")
@@ -411,6 +412,7 @@ try {
       if (pantalla === "proyectar") {
         if (estadosPorSala[salaFinal]) socket.emit("estado-actual", estadosPorSala[salaFinal])
         if (bannerPorSala[salaFinal]) socket.emit("mostrar-banner-urgente", bannerPorSala[salaFinal])
+        if (modoLimpioPorSala[salaFinal] !== undefined) socket.emit("modo-limpio", modoLimpioPorSala[salaFinal])
         // Notificar al control que el proyector se conectó
         socket.broadcast.to(salaFinal).emit("proyector-conectado")
       }
@@ -487,6 +489,16 @@ try {
       const sala = salaDe(socket)
       delete bannerPorSala[sala]
       io.to(sala).emit("ocultar-banner-urgente")
+    })
+
+    // ✅ Modo limpio: antes solo se guardaba en localStorage, lo que solo
+    // funcionaba si Control y Proyector eran la misma máquina -- si Control
+    // se opera desde un celular y Proyector corre en otro equipo, nunca se
+    // enteraba. Ahora viaja por el socket como el resto del estado en vivo.
+    socket.on("modo-limpio", (activo) => {
+      const sala = salaDe(socket)
+      modoLimpioPorSala[sala] = !!activo
+      io.to(sala).emit("modo-limpio", !!activo)
     })
 
     socket.on("cambiar-fondo", (fondo) => {

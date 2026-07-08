@@ -51,6 +51,7 @@ const guardarEstadoSala = (sala, estado) => {
 // de estadosPorSala en vez de mezclarse con el tipo/data de la canción
 // activa. No se persiste a disco -es intencionalmente efímero.
 let bannerPorSala = {}
+let modoLimpioPorSala = {}
 
 // ── Firebase Cloud Messaging (opcional) ──────────────────────────────────────
 // Configurar en .env: FIREBASE_SERVER_KEY=AAAAxxx... (Firebase Console > Project Settings > Cloud Messaging)
@@ -165,6 +166,7 @@ io.on("connection", socket => {
     if (panF === "proyectar") {
       socket.broadcast.to(salaF).emit("proyector-conectado")
       if (bannerPorSala[salaF]) socket.emit("mostrar-banner-urgente", bannerPorSala[salaF])
+      if (modoLimpioPorSala[salaF] !== undefined) socket.emit("modo-limpio", modoLimpioPorSala[salaF])
     }
     // ✅ Enviar estado actual a músicos al conectarse
     if (panF === "musicos" && estadosPorSala[salaF]) {
@@ -243,6 +245,14 @@ io.on("connection", socket => {
     const sala = salaDe(socket)
     delete bannerPorSala[sala]
     io.to(sala).emit("ocultar-banner-urgente")
+  })
+
+  // ✅ Modo limpio por socket -- antes solo vivía en localStorage, lo que
+  // solo funcionaba si Control y Proyector eran el mismo dispositivo.
+  socket.on("modo-limpio", activo => {
+    const sala = salaDe(socket)
+    modoLimpioPorSala[sala] = !!activo
+    io.to(sala).emit("modo-limpio", !!activo)
   })
 
   socket.on("cambiar-fondo", fondo => {
