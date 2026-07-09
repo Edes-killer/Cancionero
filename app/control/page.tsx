@@ -307,6 +307,8 @@ export default function ControlPage() {
   const [mensajeRapido, setMensajeRapido] = useState("Oremos")
   const [bannerUrgente, setBannerUrgente] = useState("")
   const [bannerUrgenteActivo, setBannerUrgenteActivo] = useState(false)
+  const [cuentaRegresivaMensaje, setCuentaRegresivaMensaje] = useState("Empezamos pronto")
+  const [cuentaRegresivaHora, setCuentaRegresivaHora] = useState("")
   const [logoEsperaUrl, setLogoEsperaUrl] = useState("")
   const [logoEsperaNombre, setLogoEsperaNombre] = useState("")
   const [menuItemAbierto, setMenuItemAbierto] = useState<number | null>(null)
@@ -2384,6 +2386,29 @@ const proyectarMensajeRapido = () => {
   })
 }
 
+// ✅ Cuenta regresiva para el inicio del culto — el proyector calcula el
+// tiempo restante solo (segundo a segundo) a partir de "hasta" (un
+// timestamp absoluto), no hace falta reenviar nada por socket cada
+// segundo. Si la hora ya pasó hoy, se asume que es para mañana.
+const proyectarCuentaRegresiva = () => {
+  if (!socket || !cuentaRegresivaHora) return
+  const [hh, mm] = cuentaRegresivaHora.split(":").map(Number)
+  const objetivo = new Date()
+  objetivo.setHours(hh, mm, 0, 0)
+  if (objetivo.getTime() <= Date.now()) objetivo.setDate(objetivo.getDate() + 1)
+
+  setActivaId(null); setIndiceLista(null); setIndiceActivoLista(null)
+  setPartes([]); setIndex(0); limpiarModoBiblia()
+  setAprendiendo(false); detenerAutoAvance()
+  setEstadoEspecialActivo("⏳ Cuenta regresiva")
+  socket.emit("mostrar-estado", {
+    tipo: "cuenta-regresiva",
+    mensaje: cuentaRegresivaMensaje || "",
+    hasta: objetivo.toISOString(),
+    fondo: fondoCancionActual()
+  })
+}
+
 const proyectarPantallaLogo = () => {
   if (!socket) return
   if (!logoEsperaUrl.trim()) {
@@ -4367,6 +4392,44 @@ return (
                   </button>
                 )}
               </div>
+            </div>
+
+            {/* ⏳ Cuenta regresiva para el inicio del culto */}
+            <div style={{ border: "1px solid rgba(99,102,241,0.35)", borderRadius: 12, padding: 12, background: "rgba(99,102,241,0.06)" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#a5b4fc", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
+                ⏳ Cuenta regresiva
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 8 }}>
+                Muestra un conteo en vivo hasta la hora de inicio. Si esa hora ya pasó hoy, se asume que es para mañana.
+              </div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <input
+                  type="time"
+                  value={cuentaRegresivaHora}
+                  onChange={e => setCuentaRegresivaHora(e.target.value)}
+                  style={{
+                    padding: "10px 12px", borderRadius: 10,
+                    border: "1px solid rgba(99,102,241,0.25)",
+                    background: "#0a1525", color: "white",
+                    fontSize: 14, outline: "none"
+                  }}
+                />
+                <input
+                  value={cuentaRegresivaMensaje}
+                  onChange={e => setCuentaRegresivaMensaje(e.target.value)}
+                  placeholder="Ej: Empezamos a las 6:30"
+                  style={{
+                    flex: 1, padding: "10px 12px", borderRadius: 10,
+                    border: "1px solid rgba(99,102,241,0.25)",
+                    background: "#0a1525", color: "white",
+                    fontSize: 14, outline: "none", boxSizing: "border-box"
+                  }}
+                />
+              </div>
+              <button className="ctrl-btn" disabled={!socket || !cuentaRegresivaHora} onClick={proyectarCuentaRegresiva}
+                style={{ width: "100%", padding: "9px 12px", borderRadius: 9, border: "none", background: "#4f46e5", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                ⏳ Mostrar cuenta regresiva
+              </button>
             </div>
 
             {/* Subir imagen para lista */}
