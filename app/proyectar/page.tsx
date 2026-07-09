@@ -402,6 +402,16 @@ export default function ProyectarPage() {
   const [iglesia, setIglesia] = useState("")
   const [estadoEspecial, setEstadoEspecial] = useState<any>(null)
   const [logoMarcaUrl, setLogoMarcaUrl] = useState("")
+  // ✅ Tick de la cuenta regresiva -- el tiempo restante se recalcula solo
+  // (segundo a segundo) contra estadoEspecial.hasta, no llega nada nuevo
+  // por socket cada segundo. Este estado solo existe para forzar el
+  // re-render cada 1s mientras esa pantalla está activa.
+  const [tickCuentaRegresiva, setTickCuentaRegresiva] = useState(0)
+  useEffect(() => {
+    if (estadoEspecial?.tipo !== "cuenta-regresiva") return
+    const id = setInterval(() => setTickCuentaRegresiva(t => t + 1), 1000)
+    return () => clearInterval(id)
+  }, [estadoEspecial?.tipo])
   // ✅ Banner de urgencia: independiente de estadoEspecial/partes/biblia —
   // se dibuja encima de lo que sea que esté en pantalla, sin reemplazarlo.
   const [bannerUrgente, setBannerUrgente] = useState<string | null>(null)
@@ -1051,6 +1061,28 @@ export default function ProyectarPage() {
           }} />
           {!!estadoEspecial.titulo && <div style={{ fontSize:"clamp(28px,3.2vw,56px)",fontWeight:900,lineHeight:1.08,maxWidth:"90vw" }}>{estadoEspecial.titulo}</div>}
           {!!estadoEspecial.subtitulo && <div style={{ fontSize:"clamp(18px,2vw,32px)",opacity:.65,fontWeight:600 }}>{estadoEspecial.subtitulo}</div>}
+        </div>
+      </>)}
+
+      {/* ── Cuenta regresiva ──────────────────────────────────── */}
+      {estadoEspecial?.tipo === "cuenta-regresiva" && (<>
+        {renderFondoEspecial("radial-gradient(circle at 50% 30%,rgba(99,102,241,.22),transparent 38%),linear-gradient(180deg,#020617 0%,#000 100%)")}
+        <div style={{ width:"100vw",height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"5vh 6vw",boxSizing:"border-box",gap:20,position:"relative",zIndex:2 }}>
+          {(() => {
+            const restanteMs = Math.max(0, new Date(estadoEspecial.hasta).getTime() - Date.now())
+            const totalSeg = Math.floor(restanteMs / 1000)
+            const h = Math.floor(totalSeg / 3600)
+            const m = Math.floor((totalSeg % 3600) / 60)
+            const s = totalSeg % 60
+            const pad = (n: number) => String(n).padStart(2, "0")
+            const texto = h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
+            return (
+              <div style={{ fontSize:"clamp(60px,11vw,180px)",fontWeight:900,lineHeight:1,fontVariantNumeric:"tabular-nums" }}>
+                {totalSeg > 0 ? texto : "¡Comenzamos!"}
+              </div>
+            )
+          })()}
+          {!!estadoEspecial.mensaje && <div style={{ fontSize:"clamp(20px,2.4vw,38px)",opacity:.75,fontWeight:600,maxWidth:"85vw" }}>{estadoEspecial.mensaje}</div>}
         </div>
       </>)}
 
