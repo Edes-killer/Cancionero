@@ -2020,6 +2020,25 @@ const irAItemLista = async (i: number, alFinal = false) => {
     detenerAutoAvance()
     setEstadoEspecialActivo(item.titulo || item.modo || "Pantalla especial")
 
+    // ✅ Cuenta regresiva: recalcular "hasta" fresco a partir de la hora
+    // guardada (item.url) en vez de una fecha congelada -- importante si
+    // este item viene de una lista de culto guardada y se reutiliza otro día.
+    if (item.modo === "cuenta-regresiva") {
+      const [hh, mm] = String(item.url || "").split(":").map(Number)
+      const objetivo = new Date()
+      if (!Number.isNaN(hh) && !Number.isNaN(mm)) {
+        objetivo.setHours(hh, mm, 0, 0)
+        if (objetivo.getTime() <= Date.now()) objetivo.setDate(objetivo.getDate() + 1)
+      }
+      socket.emit("mostrar-estado", {
+        tipo: "cuenta-regresiva",
+        mensaje: item.subtitulo || "",
+        hasta: objetivo.toISOString(),
+        fondo: fondoCancionActual()
+      })
+      return
+    }
+
     // ✅ Para pantalla negra usar fondo actual o el preset por defecto
     const fondoParaEstado = item.modo === "negro"
       ? (fondoCancionActual() || { preset: fondoCancionPreset, tipo: "preset", oscuridad: fondoCancionOscuridad })
@@ -2516,6 +2535,27 @@ const agregarLogoALista = () => {
 )
 }
 
+// ✅ La hora va en "url" (reutilizando ese campo genérico de los items tipo
+// "estado") para poder recalcular "hasta" fresco cada vez que se proyecte
+// este item -- incluso si se guarda en una lista de culto y se reutiliza
+// otro día, no queda una fecha/hora vieja congelada.
+const agregarCuentaRegresivaALista = () => {
+  if (!cuentaRegresivaHora) {
+    alert("Primero elige la hora de inicio")
+    return
+  }
+  agregarItemAListaConFeedback(
+    {
+      tipo: "estado",
+      modo: "cuenta-regresiva",
+      titulo: `Cuenta regresiva ${cuentaRegresivaHora}`,
+      subtitulo: cuentaRegresivaMensaje || "",
+      url: cuentaRegresivaHora
+    },
+    "✅ Cuenta regresiva agregada"
+  )
+}
+
 const limpiarTituloLista = (titulo?: string) => {
   return (titulo || "")
     .replace(/^(🎵|📖|🖼️|⚫|⏳|✍️|✨)\s*/u, "")
@@ -2538,6 +2578,7 @@ const subtituloItemLista = (item: any) => {
     if (item.modo === "espera") return "Espera"
     if (item.modo === "negro") return "Pantalla negra"
     if (item.modo === "logo") return "Logo"
+    if (item.modo === "cuenta-regresiva") return "Cuenta regresiva"
     return "Estado"
   }
 
@@ -2554,6 +2595,7 @@ const iconoItemLista = (item: any) => {
     if (item.modo === "espera") return "⏳"
     if (item.modo === "mensaje") return "✍️"
     if (item.modo === "logo") return "🖼️"
+    if (item.modo === "cuenta-regresiva") return "⏳"
     return "✨"
   }
 
@@ -4428,10 +4470,16 @@ return (
                   }}
                 />
               </div>
-              <button className="ctrl-btn" disabled={!socket || !cuentaRegresivaHora} onClick={proyectarCuentaRegresiva}
-                style={{ width: "100%", padding: "9px 12px", borderRadius: 9, border: "none", background: "#4f46e5", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-                ⏳ Mostrar cuenta regresiva
-              </button>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="ctrl-btn" disabled={!socket || !cuentaRegresivaHora} onClick={proyectarCuentaRegresiva}
+                  style={{ flex: 1, padding: "9px 12px", borderRadius: 9, border: "none", background: "#4f46e5", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                  ⏳ Mostrar cuenta regresiva
+                </button>
+                <button className="ctrl-btn" disabled={!cuentaRegresivaHora} onClick={agregarCuentaRegresivaALista} title="Agregar a la lista del culto"
+                  style={{ padding: "9px 14px", borderRadius: 9, border: "1px solid rgba(99,102,241,0.3)", background: "rgba(99,102,241,0.12)", color: "#a5b4fc", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
+                  +
+                </button>
+              </div>
             </div>
 
             {/* Subir imagen para lista */}
