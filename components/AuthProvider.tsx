@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
-import { getIglesiaIdCacheOnly } from "@/lib/getIglesia"
+import { getIglesiaIdCacheOnly, getIglesiaId, getRolEnIglesia } from "@/lib/getIglesia"
 
 // ✅ Clave compartida con AppContext para el banner de "modo sin conexión"
 export const KEY_MODO_SIN_CONEXION = "selah-modo-sin-conexion"
@@ -32,6 +32,13 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const isPublicRoute =
     publicRoutes.includes(pathnameNormalizado) || pathnameNormalizado.startsWith("/auth")
 
+  // ✅ El rol solo decidía a qué pantalla te mandaba el login al aceptar una
+  // invitación -- pero nada impedía que un "músico" escribiera /configuracion
+  // en la barra de direcciones y entrara igual. Estas rutas quedan
+  // restringidas a líder/admin; un músico es redirigido a /musicos.
+  const RUTAS_SOLO_LIDER = ["/configuracion", "/control", "/canciones"]
+  const requiereLider = RUTAS_SOLO_LIDER.includes(pathnameNormalizado)
+
   useEffect(() => {
     // Rutas públicas y callback: nunca bloquear
     if (isPublicRoute) return
@@ -59,6 +66,16 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
             // ✅ Sesión confirmada — si veníamos del modo sin conexión, salir de él
             try { localStorage.removeItem(KEY_MODO_SIN_CONEXION) } catch {}
             if (activo) setSinConexion(false)
+
+            if (requiereLider) {
+              try {
+                const igId = await getIglesiaId()
+                if (igId) {
+                  const rol = await getRolEnIglesia(igId)
+                  if (activo && rol === "musico") { router.replace("/musicos"); return }
+                }
+              } catch { /* si falla la consulta, no bloquear -- mejor no molestar que trabar por un error de red */ }
+            }
             return
           }
 
