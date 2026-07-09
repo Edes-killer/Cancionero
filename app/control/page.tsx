@@ -4312,8 +4312,10 @@ return (
         <div style={{
           // ✅ Límite en px para animar el acordeón con max-height (CSS no anima
           // "auto"). Se dejó margen amplio sobre el contenido real para que
-          // agregar secciones nuevas (como el banner de urgencia) no lo corte.
-          maxHeight: mostrarAcciones ? 2000 : 0,
+          // agregar secciones nuevas (como el banner de urgencia o la cuenta
+          // regresiva) no lo corte -- subir este número no hace la apertura
+          // más lenta, el contenido real sigue revelándose en el mismo tiempo.
+          maxHeight: mostrarAcciones ? 3000 : 0,
           overflow: "hidden",
           transition: "max-height 0.25s ease"
         }}>
