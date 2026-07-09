@@ -1077,7 +1077,11 @@ export default function ProyectarPage() {
             const pad = (n: number) => String(n).padStart(2, "0")
             const texto = h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`
             return (
-              <div style={{ fontSize:"clamp(80px,16vw,260px)",fontWeight:900,lineHeight:1,fontVariantNumeric:"tabular-nums" }}>
+              <div style={{
+                fontSize: totalSeg > 0 ? "clamp(80px,16vw,260px)" : "clamp(40px,7vw,110px)",
+                fontWeight:900,lineHeight:1,fontVariantNumeric:"tabular-nums",
+                maxWidth:"88vw",overflowWrap:"break-word"
+              }}>
                 {totalSeg > 0 ? texto : "¡Comenzamos!"}
               </div>
             )
