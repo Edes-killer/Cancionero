@@ -137,6 +137,52 @@ export default function ConfiguracionPage() {
   const [generandoInv, setGenerandoInv] = useState(false)
   const [linkCopiado, setLinkCopiado] = useState("")
 
+  // ── Miembros ──────────────────────────────────────────────────────────────
+  const [miembros, setMiembros] = useState<any[]>([])
+  const [cargandoMiembros, setCargandoMiembros] = useState(false)
+  const [miUserId, setMiUserId] = useState<string | null>(null)
+  const [guardandoMiembro, setGuardandoMiembro] = useState<string | null>(null)
+
+  const cargarMiembros = async (igId: string) => {
+    setCargandoMiembros(true)
+    try {
+      const { data, error } = await supabase.rpc("get_miembros_iglesia", { p_iglesia_id: igId })
+      if (error) { mostrarFlash(`❌ ${error.message}`, "error"); return }
+      setMiembros(data || [])
+    } finally {
+      setCargandoMiembros(false)
+    }
+  }
+
+  const cambiarRolMiembro = async (userId: string, nuevoRol: string) => {
+    if (!iglesiaId) return
+    setGuardandoMiembro(userId)
+    const { error } = await supabase.rpc("cambiar_rol_miembro", {
+      p_iglesia_id: iglesiaId, p_user_id: userId, p_nuevo_rol: nuevoRol
+    })
+    if (error) { mostrarFlash(`❌ ${error.message}`, "error") }
+    else {
+      setMiembros(prev => prev.map(m => m.user_id === userId ? { ...m, rol: nuevoRol } : m))
+      mostrarFlash("✅ Rol actualizado")
+    }
+    setGuardandoMiembro(null)
+  }
+
+  const quitarMiembro = async (userId: string, email: string) => {
+    if (!iglesiaId) return
+    if (!confirm(`¿Quitar a "${email}" de esta iglesia? Perderá acceso de inmediato.`)) return
+    setGuardandoMiembro(userId)
+    const { error } = await supabase.rpc("quitar_miembro_iglesia", {
+      p_iglesia_id: iglesiaId, p_user_id: userId
+    })
+    if (error) { mostrarFlash(`❌ ${error.message}`, "error") }
+    else {
+      setMiembros(prev => prev.filter(m => m.user_id !== userId))
+      mostrarFlash("✅ Miembro eliminado")
+    }
+    setGuardandoMiembro(null)
+  }
+
   const cargarInvitaciones = async (igId: string) => {
     const { data } = await supabase.from("invitaciones").select("*")
       .eq("iglesia_id", igId).eq("activa", true).order("created_at", { ascending: false })
@@ -371,6 +417,7 @@ export default function ConfiguracionPage() {
       // getUser() sí lo adquiere y choca con proyectar/músicos/control
       const { data: sessionData } = await supabase.auth.getSession()
       if (!sessionData.session?.user) { router.replace("/login"); return }
+      setMiUserId(sessionData.session.user.id)
 
       const id = await getIglesiaId()
       if (!id) { router.replace("/crear-iglesia"); return }
@@ -397,6 +444,7 @@ export default function ConfiguracionPage() {
       setLogoNombre(data?.logo_nombre || "")
       setPinSala(data?.pin_sala || "")
       cargarInvitaciones(id)
+      cargarMiembros(id)
       setCargando(false)
     }
 
@@ -1209,6 +1257,58 @@ export default function ConfiguracionPage() {
 
             <div style={{ fontSize: 12, opacity: 0.4, lineHeight: 1.6 }}>
               El link es válido por 7 días y hasta 20 usos. Compártelo por WhatsApp o correo.
+            </div>
+          </div>
+        </div>
+
+        {/* ── MIEMBROS ───────────────────────────────────────────────────── */}
+        <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>🧑‍🤝‍🧑 Miembros</div>
+            <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2 }}>Quiénes tienen acceso a esta iglesia y con qué rol</div>
+          </div>
+          <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
+            {cargandoMiembros ? (
+              <div style={{ fontSize: 13, opacity: 0.5, textAlign: "center", padding: "12px 0" }}>Cargando...</div>
+            ) : miembros.length === 0 ? (
+              <div style={{ fontSize: 13, opacity: 0.5, textAlign: "center", padding: "12px 0" }}>No se encontraron miembros.</div>
+            ) : (
+              miembros.map(m => {
+                const soyYo = m.user_id === miUserId
+                const guardando = guardandoMiembro === m.user_id
+                return (
+                  <div key={m.user_id} style={{
+                    padding: "12px 14px", borderRadius: 12, background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", gap: 10,
+                    opacity: guardando ? 0.6 : 1
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {m.email}{soyYo && <span style={{ opacity: 0.4, fontWeight: 500 }}> (tú)</span>}
+                      </div>
+                    </div>
+                    <select
+                      value={m.rol}
+                      disabled={guardando}
+                      onChange={e => cambiarRolMiembro(m.user_id, e.target.value)}
+                      style={{
+                        padding: "7px 10px", borderRadius: 8, background: "rgba(255,255,255,0.07)",
+                        border: "1px solid rgba(255,255,255,0.1)", color: "white", fontSize: 12, outline: "none", flexShrink: 0
+                      }}>
+                      <option value="musico" style={{ background: "#1e293b" }}>🎸 Músico</option>
+                      <option value="lider"  style={{ background: "#1e293b" }}>🎛️ Líder</option>
+                      <option value="admin"  style={{ background: "#1e293b" }}>👑 Admin</option>
+                    </select>
+                    <button onClick={() => quitarMiembro(m.user_id, m.email)} disabled={guardando}
+                      style={{ padding: "7px 10px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.1)", color: "#fca5a5", fontSize: 13, cursor: "pointer", flexShrink: 0 }}>
+                      ✕
+                    </button>
+                  </div>
+                )
+              })
+            )}
+            <div style={{ fontSize: 12, opacity: 0.4, lineHeight: 1.6, marginTop: 4 }}>
+              No puedes quitar ni degradar al último administrador de la iglesia.
             </div>
           </div>
         </div>
