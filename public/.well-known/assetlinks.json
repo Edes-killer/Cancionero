@@ -5,7 +5,8 @@
       "namespace": "android_app",
       "package_name": "com.tuiglesia.cancionero",
       "sha256_cert_fingerprints": [
-        "CE:02:36:49:3F:86:02:F1:7B:23:37:2B:19:2C:4E:7D:4F:BA:CE:C2:52:DB:48:78:2C:8A:93:EA:AB:6B:4B:8A"
+        "CE:02:36:49:3F:86:02:F1:7B:23:37:2B:19:2C:4E:7D:4F:BA:CE:C2:52:DB:48:78:2C:8A:93:EA:AB:6B:4B:8A",
+        "E2:F8:70:E2:35:BB:DF:4B:EE:71:ED:91:B8:D8:2C:21:CA:D9:54:38:39:B1:51:80:68:A6:5F:3A:7B:5D:AB:55"
       ]
     }
   }
