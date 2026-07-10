@@ -53,3 +53,8 @@ correccion*.log
 # claude code local/session state (compartir solo .claude/launch.json)
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+
+# firma de Android -- NUNCA versionar el keystore de release ni sus credenciales
+*.keystore
+*.jks
+android/keystore.properties
