@@ -278,13 +278,33 @@ export default function MusicosPage() {
   }, [])
 
   // ── Supabase Realtime — para músicos fuera del WiFi de la iglesia ─────────
+  // ✅ Antes esta suscripción apuntaba a una tabla que nunca se creó (nadie
+  // la escribía) -- por eso nunca funcionó. Ahora control.tsx sí publica ahí
+  // en cada cambio de canción/parte (ver control/page.tsx).
   useEffect(() => {
     let channel: any = null
     let activo = true
 
+    const aplicarFila = (d: any) => {
+      if (!d || d.tipo !== "cancion") return
+      if (socketConectadoRef.current) return
+      setPartes(d.partes || [])
+      setIndex(d.index || 0)
+      setTitulo(d.titulo || "")
+      setTono(d.tono || "")
+      setTransposicion(0)
+      setAlertaVivo(true)
+    }
+
     const suscribir = async () => {
       const igId = await getIglesiaId()
       if (!igId || !activo) return
+
+      // ✅ Estado inicial: Realtime solo empuja CAMBIOS a partir de ahora --
+      // si la canción ya estaba activa antes de abrir esta pantalla, sin esto
+      // no se ve nada hasta el próximo cambio de parte.
+      const { data } = await supabase.from("estado_culto").select("*").eq("iglesia_id", igId).maybeSingle()
+      if (activo && data) aplicarFila(data)
 
       // ✅ Nombre único por sesión para evitar reusar canal ya suscrito
       const nombreCanal = `estado_culto_${igId}_${Date.now()}`
@@ -292,22 +312,11 @@ export default function MusicosPage() {
       channel = supabase
         .channel(nombreCanal)
         .on("postgres_changes", {
-          event: "UPDATE",
+          event: "*", // ✅ INSERT (primera vez) y UPDATE (el resto)
           schema: "public",
           table: "estado_culto",
           filter: `iglesia_id=eq.${igId}`
-        }, (payload: any) => {
-          if (!activo) return
-          const d = payload.new
-          if (!d || d.tipo !== "cancion") return
-          if (socketConectadoRef.current) return
-          setPartes(d.partes || [])
-          setIndex(d.index || 0)
-          setTitulo(d.titulo || "")
-          setTono(d.tono || "")
-          setTransposicion(0)
-          setAlertaVivo(true)
-        })
+        }, (payload: any) => { if (activo) aplicarFila(payload.new) })
         .subscribe()
     }
 
