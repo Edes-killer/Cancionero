@@ -4051,7 +4051,12 @@ return (
 }}>
 
     {/* ══ COLUMNA IZQUIERDA: Canciones + Herramientas ═══════════════════ */}
-    <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 6 : 16 }}>
+    {/* ✅ minWidth: 0 -- sin esto, un item de grid/flex no se achica más allá
+        del ancho mínimo de su contenido (aunque ese contenido esté oculto
+        visualmente, ej. el acordeón "Herramientas" colapsado con
+        maxHeight:0). Una fila ancha ahí adentro (ej. la de la cuenta
+        regresiva) empujaba el ancho de toda la columna en mobile. */}
+    <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 6 : 16, minWidth: 0 }}>
 
       {/* ── Canciones ─────────────────────────────────────────────────── */}
       <div style={{
@@ -4469,7 +4474,7 @@ return (
               <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 8 }}>
                 Muestra un conteo en vivo hasta la hora de inicio. Si esa hora ya pasó hoy, se asume que es para mañana.
               </div>
-              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
                 <input
                   type="time"
                   value={cuentaRegresivaHora}
@@ -4478,7 +4483,7 @@ return (
                     padding: "10px 12px", borderRadius: 10,
                     border: "1px solid rgba(99,102,241,0.25)",
                     background: "#0a1525", color: "white",
-                    fontSize: 14, outline: "none"
+                    fontSize: 14, outline: "none", flexShrink: 0
                   }}
                 />
                 <input
@@ -4486,7 +4491,7 @@ return (
                   onChange={e => setCuentaRegresivaMensaje(e.target.value)}
                   placeholder="Ej: Empezamos a las 6:30"
                   style={{
-                    flex: 1, padding: "10px 12px", borderRadius: 10,
+                    flex: 1, minWidth: 120, padding: "10px 12px", borderRadius: 10,
                     border: "1px solid rgba(99,102,241,0.25)",
                     background: "#0a1525", color: "white",
                     fontSize: 14, outline: "none", boxSizing: "border-box"
