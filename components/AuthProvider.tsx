@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaIdCacheOnly, getIglesiaId, getRolEnIglesia } from "@/lib/getIglesia"
+import { navegarSPA } from "@/lib/navegar"
 
 // ✅ Clave compartida con AppContext para el banner de "modo sin conexión"
 export const KEY_MODO_SIN_CONEXION = "selah-modo-sin-conexion"
@@ -82,7 +83,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
                   new Promise<"timeout">(resolve => setTimeout(() => resolve("timeout"), 4000))
                 ])
                 if (activo && resultado !== "timeout" && resultado.rol === "musico") {
-                  router.replace("/musicos"); return
+                  navegarSPA(router, "/musicos", { replace: true }); return
                 }
               } catch { /* si falla la consulta, no bloquear -- mejor no molestar que trabar por un error de red */ }
             }
@@ -116,7 +117,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           return
         }
 
-        router.replace("/login")
+        navegarSPA(router, "/login", { replace: true })
       } catch (error) {
         console.error("Error en AuthProvider:", error)
         if (!activo) return
@@ -125,7 +126,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           setSinConexion(true)
           return
         }
-        router.replace("/login")
+        navegarSPA(router, "/login", { replace: true })
       } finally {
         if (activo) setChecking(false)
       }
@@ -140,7 +141,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       if (event === "SIGNED_OUT") {
         try { localStorage.removeItem(KEY_MODO_SIN_CONEXION) } catch {}
         setSinConexion(false)
-        router.replace("/login")
+        navegarSPA(router, "/login", { replace: true })
       }
       if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
         try { localStorage.removeItem(KEY_MODO_SIN_CONEXION) } catch {}

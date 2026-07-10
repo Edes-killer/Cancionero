@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
 import { setIglesiaActivaId } from "@/lib/getIglesia"
 
@@ -20,7 +21,7 @@ export default function CrearIglesiaPage() {
       const { data, error } = await supabase.auth.getUser()
 
       if (error || !data.user) {
-        router.replace("/login")
+        navegarSPA(router, "/login", { replace: true })
         return
       }
 
@@ -82,7 +83,7 @@ export default function CrearIglesiaPage() {
 
       setIglesiaActivaId(nuevoId)
 
-      router.replace("/")
+      navegarSPA(router, "/", { replace: true })
       router.refresh()
     } catch (error) {
       console.error("Error creando iglesia:", error)
@@ -457,7 +458,7 @@ export default function CrearIglesiaPage() {
             <button
               type="button"
               style={botonSecundario}
-              onClick={() => router.replace("/")}
+              onClick={() => navegarSPA(router, "/", { replace: true })}
             >
               Volver al inicio
             </button>

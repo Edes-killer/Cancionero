@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import { navegarSPA } from "@/lib/navegar"
 import { io } from "socket.io-client"
 import { supabase } from "../../lib/supabase"
 import { getIglesiaId } from "../../lib/getIglesia"
@@ -855,7 +856,7 @@ export default function MusicosPage() {
                     ? "Sin internet · Mostrando canciones guardadas"
                     : "Sin conexión al servidor"}
                 </span>
-                <button onClick={() => router.push("/configuracion")} style={{
+                <button onClick={() => navegarSPA(router, "/configuracion")} style={{
                   padding: "4px 10px", borderRadius: 8, border: "1px solid rgba(251,191,36,0.3)",
                   background: "rgba(251,191,36,0.1)", color: "#fbbf24",
                   fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0

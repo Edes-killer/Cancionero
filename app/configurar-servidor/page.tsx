@@ -1,6 +1,7 @@
 "use client"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { navegarSPA } from "@/lib/navegar"
 
 export default function ConfigurarServidor() {
   const [ip, setIp] = useState("")
@@ -44,7 +45,7 @@ export default function ConfigurarServidor() {
                 setIp(ipEncontrada)
                 setEstado("encontrado")
                 encontrado = true
-                setTimeout(() => router.replace("/control"), 1500)
+                setTimeout(() => navegarSPA(router, "/control", { replace: true }), 1500)
               }
             })
         )
@@ -58,7 +59,7 @@ export default function ConfigurarServidor() {
     if (!ip.trim()) return
     localStorage.setItem("servidor_ip", ip.trim())
     localStorage.setItem("servidor_puerto", puerto.trim() || "4000")
-    router.replace("/control")
+    navegarSPA(router, "/control", { replace: true })
   }
 
   return (

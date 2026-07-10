@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase"
 import { useEffect, useState } from "react"
 import { useApp } from "@/context/AppContext"
 import { getRolEnIglesia } from "@/lib/getIglesia"
+import { navegarSPA } from "@/lib/navegar"
 
 const ROLES_INFO: Record<string, { icon: string; label: string }> = {
   admin:  { icon: "👑", label: "Administrador" },
@@ -74,7 +75,7 @@ export default function Navbar() {
   const cerrarSesion = async () => {
     setCerrando(true)
     await supabase.auth.signOut()
-    router.push("/login")
+    navegarSPA(router, "/login")
   }
 
   const isActive = (href: string) =>
@@ -132,7 +133,7 @@ export default function Navbar() {
                 )
               })}
               {/* Músicos — visible en desktop también */}
-              <button onClick={() => isCapacitor ? router.push("/musicos") : window.open(`${window.location.origin}/musicos`, "_blank", "noopener")} style={{
+              <button onClick={() => isCapacitor ? (window.location.href = "/musicos") : window.open(`${window.location.origin}/musicos`, "_blank", "noopener")} style={{
                 display: "flex", alignItems: "center", gap: 5,
                 padding: "5px 10px", borderRadius: 8,
                 fontSize: 13, fontWeight: 500,
@@ -149,7 +150,7 @@ export default function Navbar() {
 
           {/* ── Músicos (mobile) / Proyector (desktop) ── */}
           {isMobile ? (
-            <button onClick={() => isCapacitor ? router.push("/musicos") : window.open(`${window.location.origin}/musicos`, "_blank", "noopener")} style={{
+            <button onClick={() => isCapacitor ? (window.location.href = "/musicos") : window.open(`${window.location.origin}/musicos`, "_blank", "noopener")} style={{
               padding: "5px 8px", borderRadius: 7,
               background: "rgba(251,191,36,0.08)",
               border: "1px solid rgba(251,191,36,0.2)",
@@ -214,21 +215,34 @@ export default function Navbar() {
             )}
             {LINKS.map(({ href, label, icon }) => {
               const activo = isActive(href)
+              const estilo: React.CSSProperties = {
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "12px 14px", borderRadius: 10,
+                textDecoration: "none", fontSize: 15,
+                fontWeight: activo ? 700 : 500,
+                color: activo ? "white" : "rgba(255,255,255,0.6)",
+                background: activo ? "rgba(59,130,246,0.12)" : "transparent",
+                border: activo ? "1px solid rgba(59,130,246,0.2)" : "1px solid transparent",
+              }
+              // ✅ Dentro del APK (Capacitor) no hay un servidor HTTP real
+              // detrás -- son solo archivos empaquetados -- y la navegación
+              // del lado del cliente de Next (<Link>/router.push) se queda
+              // sin hacer nada ahí (confirmado: la URL ni siquiera cambiaba).
+              // Forzamos una navegación dura, que no depende de eso.
+              if (isCapacitor) {
+                return (
+                  <div key={href} onClick={() => { window.location.href = href }} style={{ ...estilo, cursor: "pointer" }}>
+                    <span>{icon}</span>{label}
+                  </div>
+                )
+              }
               return (
-                <Link key={href} href={href} style={{
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "12px 14px", borderRadius: 10,
-                  textDecoration: "none", fontSize: 15,
-                  fontWeight: activo ? 700 : 500,
-                  color: activo ? "white" : "rgba(255,255,255,0.6)",
-                  background: activo ? "rgba(59,130,246,0.12)" : "transparent",
-                  border: activo ? "1px solid rgba(59,130,246,0.2)" : "1px solid transparent",
-                }}>
+                <Link key={href} href={href} style={estilo}>
                   <span>{icon}</span>{label}
                 </Link>
               )
             })}
-            <button onClick={() => isCapacitor ? router.push("/musicos") : window.open(`${window.location.origin}/musicos`, "_blank", "noopener")} style={{
+            <button onClick={() => isCapacitor ? (window.location.href = "/musicos") : window.open(`${window.location.origin}/musicos`, "_blank", "noopener")} style={{
               display: "flex", alignItems: "center", gap: 10,
               padding: "12px 14px", borderRadius: 10,
               fontSize: 15, color: "rgba(255,255,255,0.4)", fontWeight: 500,

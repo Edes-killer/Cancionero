@@ -2,6 +2,7 @@
 
 import { CSSProperties, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId } from "@/lib/getIglesia"
 import { buscarServidorEnRed } from "@/lib/servidor"
@@ -416,11 +417,11 @@ export default function ConfiguracionPage() {
       // ✅ getSession() no adquiere el auth lock (lee de memoria/localStorage)
       // getUser() sí lo adquiere y choca con proyectar/músicos/control
       const { data: sessionData } = await supabase.auth.getSession()
-      if (!sessionData.session?.user) { router.replace("/login"); return }
+      if (!sessionData.session?.user) { navegarSPA(router, "/login", { replace: true }); return }
       setMiUserId(sessionData.session.user.id)
 
       const id = await getIglesiaId()
-      if (!id) { router.replace("/crear-iglesia"); return }
+      if (!id) { navegarSPA(router, "/crear-iglesia", { replace: true }); return }
 
       setIglesiaId(id)
 
@@ -753,7 +754,7 @@ export default function ConfiguracionPage() {
               ⚙️ Configuración
             </h1>
           </div>
-          <button style={btnSecundario} onClick={() => router.push("/")}>
+          <button style={btnSecundario} onClick={() => navegarSPA(router, "/")}>
             ← Volver al inicio
           </button>
         </div>
@@ -944,7 +945,7 @@ export default function ConfiguracionPage() {
               { href: "/canciones", label: "🎵 Canciones", desc: "Gestionar repertorio" },
               { href: "/",          label: "⌂ Dashboard",  desc: "Estadísticas" },
             ].map(({ href, label, desc }) => (
-              <button key={href} onClick={() => router.push(href)}
+              <button key={href} onClick={() => navegarSPA(router, href)}
                 style={{ ...btnSecundario, flexDirection: "column", alignItems: "flex-start", gap: 2, padding: "12px 16px", minWidth: 130 }}>
                 <span style={{ fontWeight: 800, fontSize: 14 }}>{label}</span>
                 <span style={{ fontSize: 11, opacity: 0.5, fontWeight: 400 }}>{desc}</span>
@@ -1106,7 +1107,7 @@ export default function ConfiguracionPage() {
 
             {/* ✅ Botón ir al control cuando conecta OK */}
             {servidorOk && (
-              <button onClick={() => router.push("/control")}
+              <button onClick={() => navegarSPA(router, "/control")}
                 style={{ ...btnPrincipal, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
                 🎛️ Ir al Control de Culto →
               </button>
@@ -1339,7 +1340,7 @@ export default function ConfiguracionPage() {
                     onClick={() => {
                       localStorage.removeItem(id)
                       sessionStorage.setItem(`${id}-forzar`, "1")
-                      router.push(ruta)
+                      navegarSPA(router, ruta)
                     }}
                     style={{ padding: "8px 14px", borderRadius: 10, border: "1px solid rgba(59,130,246,0.3)",
                       background: "rgba(59,130,246,0.1)", color: "#93c5fd",

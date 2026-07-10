@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { navegarSPA } from "@/lib/navegar"
 
 export default function CallbackPage() {
   const router = useRouter()
@@ -22,7 +23,7 @@ useEffect(() => {
       if (!access_token || !refresh_token) { setEstado('error'); setMensajeError('Link inválido.'); return }
       const { error } = await supabase.auth.setSession({ access_token, refresh_token })
       if (error) { setEstado('error'); setMensajeError('No se pudo iniciar sesión.'); return }
-      router.replace('/')
+      navegarSPA(router, '/', { replace: true })
     } catch { setEstado('error'); setMensajeError('Error inesperado.') }
   }
 
@@ -50,7 +51,7 @@ useEffect(() => {
     const { data } = await supabase.auth.getSession()
     if (!activo) return
     if (data.session) {
-      router.replace('/')
+      navegarSPA(router, '/', { replace: true })
     } else {
       setEstado('error')
       setMensajeError('No se pudo iniciar sesión.')
@@ -94,7 +95,7 @@ useEffect(() => {
           {mensajeError}
         </div>
         <button
-          onClick={() => router.replace("/login")}
+          onClick={() => navegarSPA(router, "/login", { replace: true })}
           style={{
             padding: "12px 24px",
             background: "linear-gradient(135deg, #2563eb, #6366f1)",

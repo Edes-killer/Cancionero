@@ -1,6 +1,7 @@
 "use client"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
 import { setIglesiaActivaId } from "@/lib/getIglesia"
 
@@ -33,7 +34,7 @@ export default function OnboardingPage() {
     setError("")
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.replace("/login"); return }
+      if (!user) { navegarSPA(router, "/login", { replace: true }); return }
 
       // Crear iglesia
       const { data: iglesia, error: errIglesia } = await supabase
@@ -251,7 +252,7 @@ export default function OnboardingPage() {
             </div>
             <button onClick={() => {
               localStorage.setItem("selah-onboarding-ok", "1")
-              router.replace("/control")
+              navegarSPA(router, "/control", { replace: true })
             }} style={{
               width: "100%", padding: "14px", borderRadius: 12, border: "none",
               background: "linear-gradient(135deg, #2563eb, #6366f1)",
@@ -265,7 +266,7 @@ export default function OnboardingPage() {
       {step !== "bienvenida" && step !== "tour" && (
         <button onClick={() => {
           localStorage.setItem("selah-onboarding-ok", "1")
-          router.replace("/")
+          navegarSPA(router, "/", { replace: true })
         }} style={{
           marginTop: 20, background: "none", border: "none",
           color: "rgba(255,255,255,0.3)", fontSize: 13, cursor: "pointer"
