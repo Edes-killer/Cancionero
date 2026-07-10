@@ -69,10 +69,20 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
             if (requiereLider) {
               try {
-                const igId = await getIglesiaId()
-                if (igId) {
-                  const rol = await getRolEnIglesia(igId)
-                  if (activo && rol === "musico") { router.replace("/musicos"); return }
+                // ✅ Sin timeout, una red lenta/mala (ej. datos móviles) dejaba
+                // esta verificación colgada para siempre -- y como "checking"
+                // no se apagaba hasta que esto terminara, la pantalla de
+                // "Verificando sesión..." quedaba trabada sin avisar nada.
+                const resultado = await Promise.race<{ igId: string | null; rol: string | null } | "timeout">([
+                  (async () => {
+                    const igId = await getIglesiaId()
+                    const rol = igId ? await getRolEnIglesia(igId) : null
+                    return { igId, rol }
+                  })(),
+                  new Promise<"timeout">(resolve => setTimeout(() => resolve("timeout"), 4000))
+                ])
+                if (activo && resultado !== "timeout" && resultado.rol === "musico") {
+                  router.replace("/musicos"); return
                 }
               } catch { /* si falla la consulta, no bloquear -- mejor no molestar que trabar por un error de red */ }
             }
