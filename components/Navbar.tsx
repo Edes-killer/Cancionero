@@ -215,29 +215,34 @@ export default function Navbar() {
             )}
             {LINKS.map(({ href, label, icon }) => {
               const activo = isActive(href)
-              const estilo: React.CSSProperties = {
-                display: "flex", alignItems: "center", gap: 10,
-                padding: "12px 14px", borderRadius: 10,
-                textDecoration: "none", fontSize: 15,
-                fontWeight: activo ? 700 : 500,
-                color: activo ? "white" : "rgba(255,255,255,0.6)",
-                background: activo ? "rgba(59,130,246,0.12)" : "transparent",
-                border: activo ? "1px solid rgba(59,130,246,0.2)" : "1px solid transparent",
-              }
-              // ✅ Dentro del APK (Capacitor) no hay un servidor HTTP real
-              // detrás -- son solo archivos empaquetados -- y la navegación
-              // del lado del cliente de Next (<Link>/router.push) se queda
-              // sin hacer nada ahí (confirmado: la URL ni siquiera cambiaba).
-              // Forzamos una navegación dura, que no depende de eso.
-              if (isCapacitor) {
-                return (
-                  <div key={href} onClick={() => { window.location.href = href }} style={{ ...estilo, cursor: "pointer" }}>
-                    <span>{icon}</span>{label}
-                  </div>
-                )
-              }
               return (
-                <Link key={href} href={href} style={estilo}>
+                <Link
+                  key={href}
+                  href={href}
+                  // ✅ Mismo elemento <Link> siempre (nunca cambiar el tipo de
+                  // etiqueta según isCapacitor) -- eso fue lo que rompió la
+                  // navegación entera: el HTML estático se genera en el build
+                  // (sin window, isCapacitor=false → <a>), pero en el celular
+                  // real isCapacitor=true desde el arranque, así que React
+                  // esperaba un <div> ahí y chocaba al hidratar (error #418),
+                  // dejando ese árbol entero sin manejadores de clic.
+                  // El comportamiento distinto va solo en onClick, que no
+                  // afecta el HTML renderizado ni la hidratación.
+                  onClick={e => {
+                    if (!isCapacitor) return
+                    e.preventDefault()
+                    window.location.href = href
+                  }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "12px 14px", borderRadius: 10,
+                    textDecoration: "none", fontSize: 15,
+                    fontWeight: activo ? 700 : 500,
+                    color: activo ? "white" : "rgba(255,255,255,0.6)",
+                    background: activo ? "rgba(59,130,246,0.12)" : "transparent",
+                    border: activo ? "1px solid rgba(59,130,246,0.2)" : "1px solid transparent",
+                  }}
+                >
                   <span>{icon}</span>{label}
                 </Link>
               )
