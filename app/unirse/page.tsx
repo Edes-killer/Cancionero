@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
 import { setIglesiaActivaId } from "@/lib/getIglesia"
 
@@ -99,7 +100,7 @@ export default function UnirsePage() {
     // la "iglesia activa".
     setIglesiaActivaId(inv.iglesia_id)
     localStorage.removeItem("selah_inv_codigo")
-    router.replace(inv.rol === "musico" ? "/musicos" : inv.rol === "lider" ? "/control" : "/")
+    navegarSPA(router, inv.rol === "musico" ? "/musicos" : inv.rol === "lider" ? "/control" : "/", { replace: true })
   }
 
   // ── Google OAuth — redirige de vuelta al /unirse?codigo=X ─────────────────
@@ -169,7 +170,7 @@ export default function UnirsePage() {
           style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#3b82f6,#6366f1)", color: "white", fontWeight: 800, fontSize: 16, cursor: "pointer", opacity: (buscando || !codigoInput.trim()) ? 0.5 : 1 }}>
           {buscando ? "Buscando..." : "Continuar →"}
         </button>
-        <button onClick={() => router.push("/login")}
+        <button onClick={() => navegarSPA(router, "/login")}
           style={{ width: "100%", marginTop: 10, padding: "12px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.4)", fontSize: 14, cursor: "pointer" }}>
           Volver al inicio de sesión
         </button>

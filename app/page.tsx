@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
+import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId, setIglesiaActivaId } from "@/lib/getIglesia"
 
@@ -92,13 +93,13 @@ export default function InicioPage() {
     const cargar = async () => {
       try {
         const { data: sessionData } = await supabase.auth.getSession()
-        if (!sessionData.session?.user) { router.replace("/login"); return }
+        if (!sessionData.session?.user) { navegarSPA(router, "/login", { replace: true }); return }
         const userId    = sessionData.session.user.id
         const iglesiaId = await getIglesiaId()
 
         if (!iglesiaId) {
           const onbDone = typeof window !== "undefined" && localStorage.getItem("selah-onboarding-ok")
-          if (!onbDone) { router.replace("/onboarding"); return }
+          if (!onbDone) { navegarSPA(router, "/onboarding", { replace: true }); return }
           setSinIglesia(true); setCargando(false); return
         }
 
@@ -196,10 +197,10 @@ export default function InicioPage() {
         <div style={{ fontSize:52, marginBottom:16 }}>⛪</div>
         <div style={{ fontSize:22, fontWeight:800, marginBottom:10 }}>No tienes una iglesia</div>
         <div style={{ opacity:.5, marginBottom:24, lineHeight:1.6, fontSize:14 }}>Crea una iglesia nueva o únete a una existente con un código de invitación.</div>
-        <button onClick={() => router.push("/crear-iglesia")} style={{ padding:"13px 28px", borderRadius:12, border:"none", background:"linear-gradient(135deg,#2563eb,#6366f1)", color:"white", fontWeight:800, fontSize:16, cursor:"pointer", width:"100%" }}>
+        <button onClick={() => navegarSPA(router, "/crear-iglesia")} style={{ padding:"13px 28px", borderRadius:12, border:"none", background:"linear-gradient(135deg,#2563eb,#6366f1)", color:"white", fontWeight:800, fontSize:16, cursor:"pointer", width:"100%" }}>
           Crear iglesia
         </button>
-        <button onClick={() => router.push("/unirse")} style={{ marginTop:12, padding:"13px 28px", borderRadius:12, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"white", fontWeight:700, fontSize:15, cursor:"pointer", width:"100%" }}>
+        <button onClick={() => navegarSPA(router, "/unirse")} style={{ marginTop:12, padding:"13px 28px", borderRadius:12, border:"1px solid rgba(255,255,255,0.15)", background:"transparent", color:"white", fontWeight:700, fontSize:15, cursor:"pointer", width:"100%" }}>
           🔑 Tengo un código de invitación
         </button>
       </div>
@@ -246,7 +247,7 @@ export default function InicioPage() {
 
           {/* ══ ACCESOS RÁPIDOS ════════════════════════════════════════════ */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-            <button onClick={() => router.push("/control")} style={{ gridColumn:"1 / -1", padding:"20px", borderRadius:16, border:"1px solid rgba(37,99,235,0.35)", background:"linear-gradient(135deg,rgba(37,99,235,0.2) 0%,rgba(99,102,241,0.12) 100%)", color:"white", cursor:"pointer", display:"flex", alignItems:"center", gap:16 }}>
+            <button onClick={() => navegarSPA(router, "/control")} style={{ gridColumn:"1 / -1", padding:"20px", borderRadius:16, border:"1px solid rgba(37,99,235,0.35)", background:"linear-gradient(135deg,rgba(37,99,235,0.2) 0%,rgba(99,102,241,0.12) 100%)", color:"white", cursor:"pointer", display:"flex", alignItems:"center", gap:16 }}>
               <div style={{ width:52, height:52, borderRadius:14, background:"rgba(37,99,235,0.3)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, flexShrink:0 }}>🎛️</div>
               <div style={{ textAlign:"left" }}>
                 <div style={{ fontWeight:900, fontSize:18 }}>Control de Culto</div>
@@ -256,15 +257,15 @@ export default function InicioPage() {
             </button>
 
             {[
-              { icon:"🎵", label:"Canciones",       sub:"Gestionar repertorio",           border:"rgba(124,58,237,0.3)",  bg:"rgba(124,58,237,0.1)",  ibg:"rgba(124,58,237,0.25)",  action:() => router.push("/canciones") },
+              { icon:"🎵", label:"Canciones",       sub:"Gestionar repertorio",           border:"rgba(124,58,237,0.3)",  bg:"rgba(124,58,237,0.1)",  ibg:"rgba(124,58,237,0.25)",  action:() => navegarSPA(router, "/canciones") },
               { icon:"🖥️", label:"Proyector",       sub:"Abrir pantalla de proyección",   border:"rgba(14,116,144,0.3)", bg:"rgba(14,116,144,0.1)",  ibg:"rgba(14,116,144,0.25)",  action:() => window.open(`${window.location.origin}/proyectar`, "_blank") },
               { icon:"🎸", label:"Vista Músicos",   sub:"Letras y acordes en tiempo real", border:"rgba(21,128,61,0.3)",  bg:"rgba(21,128,61,0.1)",   ibg:"rgba(21,128,61,0.25)",   action:() => {
                 const esCapacitor = !!(window as any).Capacitor
-                if (esCapacitor) router.push("/musicos")
+                if (esCapacitor) navegarSPA(router, "/musicos")
                 else window.open(`${window.location.origin}/musicos`, "_blank")
               }},
-              { icon:"📅", label:"Historial",        sub:"Cultos y estadísticas",        border:"rgba(245,158,11,0.3)", bg:"rgba(245,158,11,0.1)", ibg:"rgba(245,158,11,0.25)",  action:() => router.push("/historial") },
-              { icon:"⚙️", label:"Configuración",  sub:"Iglesia, servidor y ajustes",    border:"rgba(255,255,255,0.08)", bg:"rgba(255,255,255,0.04)", ibg:"rgba(255,255,255,0.07)", action:() => router.push("/configuracion") },
+              { icon:"📅", label:"Historial",        sub:"Cultos y estadísticas",        border:"rgba(245,158,11,0.3)", bg:"rgba(245,158,11,0.1)", ibg:"rgba(245,158,11,0.25)",  action:() => navegarSPA(router, "/historial") },
+              { icon:"⚙️", label:"Configuración",  sub:"Iglesia, servidor y ajustes",    border:"rgba(255,255,255,0.08)", bg:"rgba(255,255,255,0.04)", ibg:"rgba(255,255,255,0.07)", action:() => navegarSPA(router, "/configuracion") },
             ].map(({ icon, label, sub, border, bg, ibg, action }) => (
               <button key={label} onClick={action} style={{ padding:"16px 14px", borderRadius:14, border:`1px solid ${border}`, background:bg, color:"white", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"flex-start", gap:8 }}>
                 <div style={{ width:40, height:40, borderRadius:11, background:ibg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{icon}</div>
@@ -288,7 +289,7 @@ export default function InicioPage() {
                   {servidorActivo ? "Ya puedes proyectar" : "Abre Selah Live en el computador para poder proyectar"}
                 </div>
               </div>
-              <button onClick={() => router.push("/configuracion")} style={{ padding:"5px 12px", borderRadius:7, border:"none", background: servidorActivo?"rgba(34,197,94,0.1)":"rgba(239,68,68,0.15)", color: servidorActivo?"#4ade80":"#fca5a5", fontSize:12, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
+              <button onClick={() => navegarSPA(router, "/configuracion")} style={{ padding:"5px 12px", borderRadius:7, border:"none", background: servidorActivo?"rgba(34,197,94,0.1)":"rgba(239,68,68,0.15)", color: servidorActivo?"#4ade80":"#fca5a5", fontSize:12, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
                 {servidorActivo ? "Detalles" : "Configurar"}
               </button>
             </div>
@@ -298,16 +299,16 @@ export default function InicioPage() {
           <div style={{ display:"grid", gridTemplateColumns:"repeat(2, 1fr)", gap:8 }}>
             {[
               { valor:totalCanciones.toLocaleString(), label:"canciones",      sub:"en el repertorio",            color:"#3b82f6", icon:"🎵",
-                action:() => router.push("/canciones") },
+                action:() => navegarSPA(router, "/canciones") },
               { valor:totalConAcordes, label:"con acordes", sub:`${pct(totalConAcordes)}% del repertorio`, color:"#a855f7", icon:"🎸",
-                action:() => router.push("/canciones?filtro=con-acordes") },
+                action:() => navegarSPA(router, "/canciones?filtro=con-acordes") },
               { valor:totalListas, label:"cultos guardados", sub:"listas de canciones", color:"#22c55e", icon:"📋",
-                action:() => router.push("/control") },
+                action:() => navegarSPA(router, "/control") },
               { valor:totalSinTono, label:"sin tono",
                 sub:   totalSinTono > 0 ? "requieren atención" : "todo completo ✓",
                 color: totalSinTono > 0 ? "#f59e0b" : "#22c55e",
                 icon:  totalSinTono > 0 ? "⚠️" : "✅",
-                action:() => router.push(totalSinTono > 0 ? "/canciones?filtro=sin-tono" : "/canciones") },
+                action:() => navegarSPA(router, totalSinTono > 0 ? "/canciones?filtro=sin-tono" : "/canciones") },
             ].map(({ valor, label, sub, color, icon, action }) => (
               <button key={label} onClick={action} style={{ padding:"14px 12px", borderRadius:12, background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.06)", textAlign:"left", cursor:"pointer", color:"white" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
@@ -325,7 +326,7 @@ export default function InicioPage() {
             <div style={{ borderRadius:14, overflow:"hidden", border:"1px solid rgba(255,255,255,0.06)", background:"rgba(255,255,255,0.02)" }}>
               <div style={{ padding:"12px 16px", borderBottom:"1px solid rgba(255,255,255,0.05)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                 <div style={{ fontWeight:800, fontSize:14 }}>📋 Cultos recientes</div>
-                <button onClick={() => router.push("/control")} style={{ fontSize:12, color:"rgba(255,255,255,0.35)", background:"none", border:"none", cursor:"pointer", padding:0 }}>Ver todos →</button>
+                <button onClick={() => navegarSPA(router, "/control")} style={{ fontSize:12, color:"rgba(255,255,255,0.35)", background:"none", border:"none", cursor:"pointer", padding:0 }}>Ver todos →</button>
               </div>
               {cultosRecientes.map((c, i) => (
                 <div key={c.id}>
@@ -334,7 +335,7 @@ export default function InicioPage() {
                       <div style={{ fontSize:14, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c.nombre || "Sin nombre"}</div>
                       {c.fecha && <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:2 }}>{new Date(c.fecha + "T00:00:00").toLocaleDateString("es-ES", { weekday:"short", day:"numeric", month:"short", year:"numeric" })}</div>}
                     </div>
-                    <button onClick={() => { localStorage.setItem("selah_autoload_lista", c.id); router.push("/control") }} style={{ padding:"6px 12px", borderRadius:8, border:"none", background:"rgba(37,99,235,0.18)", color:"#93c5fd", fontWeight:700, fontSize:12, cursor:"pointer", flexShrink:0 }}>
+                    <button onClick={() => { localStorage.setItem("selah_autoload_lista", c.id); navegarSPA(router, "/control") }} style={{ padding:"6px 12px", borderRadius:8, border:"none", background:"rgba(37,99,235,0.18)", color:"#93c5fd", fontWeight:700, fontSize:12, cursor:"pointer", flexShrink:0 }}>
                       Abrir →
                     </button>
                   </div>
@@ -386,7 +387,7 @@ export default function InicioPage() {
                 </div>
               ))}
               {totalSinTono > 0 && (
-                <button onClick={() => router.push("/canciones?filtro=sin-tono")} style={{ marginTop:8, width:"100%", padding:"8px 12px", borderRadius:8, border:"1px solid rgba(245,158,11,0.25)", background:"rgba(245,158,11,0.06)", color:"#fbbf24", fontSize:12, fontWeight:600, cursor:"pointer", textAlign:"left" }}>
+                <button onClick={() => navegarSPA(router, "/canciones?filtro=sin-tono")} style={{ marginTop:8, width:"100%", padding:"8px 12px", borderRadius:8, border:"1px solid rgba(245,158,11,0.25)", background:"rgba(245,158,11,0.06)", color:"#fbbf24", fontSize:12, fontWeight:600, cursor:"pointer", textAlign:"left" }}>
                   ⚠️ Tienes {totalSinTono} canciones sin tono — ir a completarlas →
                 </button>
               )}
@@ -398,7 +399,7 @@ export default function InicioPage() {
             <div style={{ borderRadius:14, overflow:"hidden", border:"1px solid rgba(255,255,255,0.06)", background:"rgba(255,255,255,0.02)" }}>
               <div style={{ padding:"12px 16px", borderBottom:"1px solid rgba(255,255,255,0.05)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
                 <div style={{ fontWeight:800, fontSize:14 }}>🆕 Últimas canciones agregadas</div>
-                <button onClick={() => router.push("/canciones")} style={{ fontSize:12, color:"rgba(255,255,255,0.35)", background:"none", border:"none", cursor:"pointer", padding:0 }}>Ver todas →</button>
+                <button onClick={() => navegarSPA(router, "/canciones")} style={{ fontSize:12, color:"rgba(255,255,255,0.35)", background:"none", border:"none", cursor:"pointer", padding:0 }}>Ver todas →</button>
               </div>
               {cancionesRecientes.map((c, i) => (
                 <div key={c.id}>

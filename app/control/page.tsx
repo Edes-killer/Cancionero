@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase"
 import { io } from "socket.io-client"
 import { getIglesiaId } from "../../lib/getIglesia"
 import { useRouter } from "next/navigation"
+import { navegarSPA } from "@/lib/navegar"
 import { useApp } from "@/context/AppContext"
 import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk, getPartesCache, setPartesCache } from "@/lib/cache"
 
@@ -439,7 +440,7 @@ useEffect(() => {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "TOKEN_REFRESHED") setSesionExpirando(false)
-      if (event === "SIGNED_OUT") router.replace("/login")
+      if (event === "SIGNED_OUT") navegarSPA(router, "/login", { replace: true })
     })
     return () => subscription.unsubscribe()
   }, [router])
@@ -3514,7 +3515,7 @@ return (
         Para proyectar en el PC necesitas estar conectado al servidor de la iglesia.
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <button onClick={() => { setModalServidor(false); router.push("/configurar-servidor") }} style={{
+        <button onClick={() => { setModalServidor(false); navegarSPA(router, "/configurar-servidor") }} style={{
           padding: "12px", borderRadius: 10, border: "none",
           background: "#2563eb", color: "white", fontWeight: 700, fontSize: 14, cursor: "pointer"
         }}>🔍 Buscar servidor</button>

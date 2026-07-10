@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId } from "@/lib/getIglesia"
 
@@ -23,7 +24,7 @@ export default function HistorialPage() {
 
   const cargar = async () => {
     const igId = await getIglesiaId()
-    if (!igId) { router.replace("/login"); return }
+    if (!igId) { navegarSPA(router, "/login", { replace: true }); return }
 
     const [cultosRes, histRes] = await Promise.all([
       supabase.from("listas_culto")
@@ -146,7 +147,7 @@ export default function HistorialPage() {
 
         {/* Header */}
         <div style={{ padding:"24px 16px 16px", display:"flex", alignItems:"center", gap:12 }}>
-          <button onClick={() => router.push("/")} style={{ padding:"8px 14px", borderRadius:10, border:"1px solid rgba(255,255,255,0.1)", background:"rgba(255,255,255,0.05)", color:"white", fontSize:14, cursor:"pointer" }}>← Dashboard</button>
+          <button onClick={() => navegarSPA(router, "/")} style={{ padding:"8px 14px", borderRadius:10, border:"1px solid rgba(255,255,255,0.1)", background:"rgba(255,255,255,0.05)", color:"white", fontSize:14, cursor:"pointer" }}>← Dashboard</button>
           <div style={{ fontSize:22, fontWeight:900 }}>📅 Historial de Cultos</div>
         </div>
 
