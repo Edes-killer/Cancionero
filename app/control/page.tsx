@@ -226,6 +226,29 @@ export default function ControlPage() {
     if (iglesiaIdCtx) iglesiaIdRef.current = iglesiaIdCtx
   }, [iglesiaIdCtx])
 
+  // ✅ Publica el estado en vivo de la canción en Supabase (tabla
+  // estado_culto) para que Músicos pueda seguir la letra sin estar en la
+  // misma red -- el socket local solo llega a quien está conectado al
+  // servidor de la iglesia; esta tabla la puede leer cualquier dispositivo
+  // con internet, en cualquier red, vía Supabase Realtime.
+  useEffect(() => {
+    if (!iglesiaIdCtx || partes.length === 0 || !activaId) return
+    if (supabaseProbablementeCaido()) return
+    const cancionActiva = canciones.find(c => c.id === activaId)
+    supabase.from("estado_culto").upsert({
+      iglesia_id: iglesiaIdCtx,
+      tipo: "cancion",
+      partes,
+      index,
+      titulo: tituloActual,
+      tono: cancionActiva?.tono || "",
+      actualizado_en: new Date().toISOString()
+    }, { onConflict: "iglesia_id" }).then(({ error }) => {
+      if (error) { console.warn("⚠️ No se pudo publicar estado en vivo:", error.message); marcarSupabaseCaido() }
+      else marcarSupabaseOk()
+    })
+  }, [iglesiaIdCtx, partes, index, tituloActual, activaId, canciones])
+
   // ✅ Autoload de culto cuando viene desde el dashboard
   useEffect(() => {
     const listaAutoload = localStorage.getItem("selah_autoload_lista")
