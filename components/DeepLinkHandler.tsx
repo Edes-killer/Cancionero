@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { conTimeout } from '@/lib/timeout'
 import { debugLog } from '@/lib/debugTrail'
 import { navegarSPA } from '@/lib/navegar'
+import { establecerSesionUnaVez } from '@/lib/authCallback'
 
 export function DeepLinkHandler() {
   const router = useRouter()
@@ -60,14 +61,14 @@ export function DeepLinkHandler() {
           if (error) { navegarSPA(router, '/login?error=oauth', { replace: true }); return }
 
           if (access_token && refresh_token) {
-            debugLog(`DeepLink procesarUrl: tiene tokens, llamando setSession`)
-            const { error: e } = await supabase.auth.setSession({ access_token, refresh_token })
-            if (e) { debugLog(`DeepLink setSession ERROR -> /login`); navegarSPA(router, '/login?error=session', { replace: true }); return }
+            debugLog(`DeepLink procesarUrl: tiene tokens, procesando (single-flight)`)
+            const r = await establecerSesionUnaVez(access_token, refresh_token)
+            if (r !== "ok") { debugLog(`DeepLink: sesion fallo (${r}) -> /login`); navegarSPA(router, '/login?error=session', { replace: true }); return }
             // ✅ Si veníamos de aceptar una invitación, volver ahí para
             // terminarla -- antes esto siempre mandaba al home y el código
             // pendiente en localStorage quedaba sin usarse.
             const codigoPendiente = localStorage.getItem('selah_inv_codigo')
-            debugLog(`DeepLink setSession OK -> ${codigoPendiente ? '/unirse' : '/'}`)
+            debugLog(`DeepLink: sesion OK -> ${codigoPendiente ? '/unirse' : '/'}`)
             navegarSPA(router, codigoPendiente ? `/unirse?codigo=${codigoPendiente}` : '/', { replace: true })
             return
           }
