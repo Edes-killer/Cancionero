@@ -28,19 +28,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Deep link para OAuth callback -->
+            <!-- Deep link para OAuth callback + magic link email.
+                 UN SOLO filtro, sin host y SIN autoVerify: autoVerify es solo
+                 para links http/https (App Links). Ponerlo sobre un esquema
+                 propio es invalido y hacia que Android mostrara el dialogo
+                 "abrir con..." en vez de devolver el token directo a la app,
+                 dejando el login sin completarse. Este filtro (scheme solo, sin
+                 host) captura tanto com.tuiglesia.cancionero://auth/callback
+                 como cualquier otra ruta del mismo esquema. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="com.tuiglesia.cancionero" />
-            </intent-filter>
-             <!-- Deep link para magic link email -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="com.tuiglesia.cancionero" android:host="auth" />
             </intent-filter>
 
             <!-- App Links: si la app ya está instalada, un link normal de
@@ -69,5 +69,5 @@
     </application>
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>  ← opcional, mejora compatibilidad
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
 </manifest>
