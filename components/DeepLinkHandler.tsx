@@ -1,11 +1,13 @@
 'use client'
 import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { conTimeout } from '@/lib/timeout'
 import { debugLog } from '@/lib/debugTrail'
-import { conBarraFinal } from '@/lib/navegar'
+import { navegarSPA } from '@/lib/navegar'
 
 export function DeepLinkHandler() {
+  const router = useRouter()
   useEffect(() => {
     // ❌ Service Worker DESACTIVADO: su estrategia cache-first servía JS/CSS
     // viejo indefinidamente tras un cierre/apertura normal del navegador,
@@ -55,18 +57,18 @@ export function DeepLinkHandler() {
           const refresh_token = hp.get('refresh_token') || qp.get('refresh_token')
           const error         = hp.get('error')         || qp.get('error')
 
-          if (error) { window.location.href = conBarraFinal('/login?error=oauth'); return }
+          if (error) { navegarSPA(router, '/login?error=oauth', { replace: true }); return }
 
           if (access_token && refresh_token) {
             debugLog(`DeepLink procesarUrl: tiene tokens, llamando setSession`)
             const { error: e } = await supabase.auth.setSession({ access_token, refresh_token })
-            if (e) { debugLog(`DeepLink setSession ERROR -> /login`); window.location.href = conBarraFinal('/login?error=session'); return }
+            if (e) { debugLog(`DeepLink setSession ERROR -> /login`); navegarSPA(router, '/login?error=session', { replace: true }); return }
             // ✅ Si veníamos de aceptar una invitación, volver ahí para
             // terminarla -- antes esto siempre mandaba al home y el código
             // pendiente en localStorage quedaba sin usarse.
             const codigoPendiente = localStorage.getItem('selah_inv_codigo')
             debugLog(`DeepLink setSession OK -> ${codigoPendiente ? '/unirse' : '/'}`)
-            window.location.href = codigoPendiente ? conBarraFinal(`/unirse?codigo=${codigoPendiente}`) : '/'
+            navegarSPA(router, codigoPendiente ? `/unirse?codigo=${codigoPendiente}` : '/', { replace: true })
             return
           }
 
@@ -76,7 +78,7 @@ export function DeepLinkHandler() {
           if (esAppLink) {
             try {
               const u = new URL(url)
-              window.location.href = conBarraFinal(u.pathname + u.search)
+              navegarSPA(router, u.pathname + u.search, { replace: true })
             } catch { /* ignorar URL malformada */ }
           }
         }
@@ -110,10 +112,12 @@ export function DeepLinkHandler() {
           if (!isActive) return
           const resultado = await conTimeout(supabase.auth.getSession(), 5000)
           const haySesion = resultado !== "timeout" && !!resultado.data.session
+          // ✅ normalizar barra final (trailingSlash) -- pathname es "/login/"
+          const enLogin = window.location.pathname.replace(/\/$/, "") === '/login'
           debugLog(`DeepLink appStateChange activo: sesion=${haySesion} path=${window.location.pathname}`)
-          if (resultado !== "timeout" && resultado.data.session && window.location.pathname === '/login') {
-            debugLog(`DeepLink appStateChange -> window.location='/'`)
-            window.location.href = '/'
+          if (haySesion && enLogin) {
+            debugLog(`DeepLink appStateChange -> navega a /`)
+            navegarSPA(router, '/', { replace: true })
           }
         })
 
