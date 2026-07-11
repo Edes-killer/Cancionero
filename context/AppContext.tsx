@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId } from "@/lib/getIglesia"
+import { conTimeout } from "@/lib/timeout"
 import { getCancelacionesCache, setCancelacionesCache, cacheEsValido, supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "@/lib/cache"
 
 interface AppContextType {
@@ -227,7 +228,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    // ✅ Sin timeout, una red mala podía dejar esto colgado para siempre --
+    // no bloqueaba nada visible (nada gatea el render con "listo"), pero sí
+    // dejaba session/userId/canciones sin cargar nunca por esta vía. La app
+    // igual se recupera por onAuthStateChange (dispara INITIAL_SESSION casi
+    // siempre), pero más vale no depender de esa carrera.
+    conTimeout(supabase.auth.getSession(), 5000).then(resultado => {
+      if (resultado === "timeout") { setListo(true); return }
+      const { data } = resultado
       setSession(data.session)
       setUserId(data.session?.user?.id || null)
       if (data.session) cargarDatos()
