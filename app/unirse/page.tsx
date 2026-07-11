@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
 import { setIglesiaActivaId } from "@/lib/getIglesia"
+import { conTimeout } from "@/lib/timeout"
 
 const ROLES: Record<string, { label: string; icon: string; desc: string }> = {
   admin:  { label: "Administrador",     icon: "👑", desc: "Acceso completo a la aplicación" },
@@ -79,8 +80,10 @@ export default function UnirsePage() {
     localStorage.setItem("selah_inv_codigo", cod)
 
     // Si ya hay sesión activa → unirse directamente
-    const { data: { session } } = await supabase.auth.getSession()
-    if (session?.user) { await unirseAIglesia(session.user.id, inv); return }
+    const resultado = await conTimeout(supabase.auth.getSession(), 5000)
+    if (resultado !== "timeout" && resultado.data.session?.user) {
+      await unirseAIglesia(resultado.data.session.user.id, inv); return
+    }
     setCargando(false)
   }
 

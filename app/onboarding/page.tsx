@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
 import { setIglesiaActivaId } from "@/lib/getIglesia"
+import { conTimeout } from "@/lib/timeout"
 
 const STEPS = ["bienvenida", "iglesia", "logo", "tour"] as const
 type Step = typeof STEPS[number]
@@ -33,7 +34,9 @@ export default function OnboardingPage() {
     setGuardando(true)
     setError("")
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const resultado = await conTimeout(supabase.auth.getUser(), 5000)
+      if (resultado === "timeout") throw new Error("Sin conexión — intenta de nuevo")
+      const { data: { user } } = resultado
       if (!user) { navegarSPA(router, "/login", { replace: true }); return }
 
       // Crear iglesia

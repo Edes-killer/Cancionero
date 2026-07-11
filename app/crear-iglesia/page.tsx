@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
 import { setIglesiaActivaId } from "@/lib/getIglesia"
+import { conTimeout } from "@/lib/timeout"
 
 export default function CrearIglesiaPage() {
   const router = useRouter()
@@ -18,7 +19,15 @@ export default function CrearIglesiaPage() {
 
   useEffect(() => {
     const revisarUsuario = async () => {
-      const { data, error } = await supabase.auth.getUser()
+      const resultado = await conTimeout(supabase.auth.getUser(), 5000)
+      if (resultado === "timeout") {
+        // ✅ Ambiguo (pudo ser solo la red) -- no mandar a /login por las
+        // dudas. Se deja pasar sin userId; crearIglesia() ya avisa si
+        // intentan guardar sin haberlo podido confirmar.
+        setCargando(false)
+        return
+      }
+      const { data, error } = resultado
 
       if (error || !data.user) {
         navegarSPA(router, "/login", { replace: true })

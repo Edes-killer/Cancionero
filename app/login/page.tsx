@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
+import { conTimeout } from "@/lib/timeout"
 import { Suspense } from "react"
 
 function LoginContent() {
@@ -59,7 +60,8 @@ function LoginContent() {
         console.log('[Login] 📱 appStateChange:', isActive)
         if (!isActive) return
         await new Promise(r => setTimeout(r, 1500))
-        const { data: { session } } = await supabase.auth.getSession()
+        const resultado = await conTimeout(supabase.auth.getSession(), 5000)
+        const session = resultado === "timeout" ? null : resultado.data.session
         console.log('[Login] sesión después de volver:', !!session)
         if (session) window.location.href = '/'
         else setCargando(false)
