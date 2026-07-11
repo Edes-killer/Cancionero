@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { conTimeout } from "@/lib/timeout"
+import { debugLog } from "@/lib/debugTrail"
 
 function LoginContent() {
   const [email, setEmail] = useState("")
@@ -61,13 +62,12 @@ function LoginContent() {
       })
 
       App.addListener('appStateChange', async ({ isActive }) => {
-        console.log('[Login] 📱 appStateChange:', isActive)
         if (!isActive) return
         await new Promise(r => setTimeout(r, 1500))
         const resultado = await conTimeout(supabase.auth.getSession(), 5000)
         const session = resultado === "timeout" ? null : resultado.data.session
-        console.log('[Login] sesión después de volver:', !!session)
-        if (session) window.location.href = '/'
+        debugLog(`Login appStateChange activo: sesion=${!!session}`)
+        if (session) { debugLog(`Login appStateChange -> window.location='/'`); window.location.href = '/' }
         else setCargando(false)
       })
 
