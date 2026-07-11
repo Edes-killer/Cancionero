@@ -1,13 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { conTimeout } from "@/lib/timeout"
-import { Suspense } from "react"
 
 function LoginContent() {
-  const searchParams = useSearchParams()
   const [email, setEmail] = useState("")
   const [enviado, setEnviado] = useState(false)
   const [cargando, setCargando] = useState(false)
@@ -16,11 +13,18 @@ function LoginContent() {
 
   useEffect(() => {
     setIsApk(!!(window as any).Capacitor)
-    const err = searchParams.get("error")
+    // ✅ useSearchParams() de next/navigation obliga a envolver la página en
+    // <Suspense> porque en export estático Next.js no puede conocer los
+    // parámetros de la URL al compilar -- hornea solo el spinner de fallback
+    // en el HTML y delega el resto al cliente ("BAILOUT_TO_CLIENT_SIDE_
+    // RENDERING"). Esa transición no estaba hidratando bien acá (error #418
+    // en loop en el APK). Leer window.location.search a mano evita todo ese
+    // mecanismo -- ya estamos en un useEffect, o sea 100% cliente.
+    const err = new URLSearchParams(window.location.search).get("error")
     if (err === "no_token")   setError("El link de acceso no es válido.")
     if (err === "no_session") setError("No se pudo leer la sesión del link.")
     if (err === "session")    setError("El link expiró o ya fue usado. Solicita uno nuevo.")
-  }, [searchParams])
+  }, [])
 
   // ── Diagnóstico + manejo de callback en Capacitor ─────────────────────────
   useEffect(() => {
@@ -234,9 +238,5 @@ const s: Record<string, React.CSSProperties> = {
 }
 
 export default function LoginPage() {
-  return (
-    <Suspense fallback={<div style={{minHeight:"100dvh",background:"#060d1a",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:48,height:48,borderRadius:"50%",border:"4px solid rgba(255,255,255,0.1)",borderTopColor:"#3b82f6",animation:"spin 0.8s linear infinite"}}/><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>}>
-      <LoginContent/>
-    </Suspense>
-  )
+  return <LoginContent/>
 }
