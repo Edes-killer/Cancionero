@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { conTimeout } from "@/lib/timeout"
 import { debugLog } from "@/lib/debugTrail"
+import { establecerSesionUnaVez } from "@/lib/authCallback"
 
 function LoginContent() {
   const [email, setEmail] = useState("")
@@ -52,14 +53,14 @@ function LoginContent() {
           return
         }
 
-        debugLog(`Login: llamando setSession...`)
-        const { error } = await supabase.auth.setSession({ access_token, refresh_token })
-        if (error) {
-          debugLog(`Login setSession ERROR: ${error.message}`)
-          setCargando(false)
-        } else {
-          debugLog(`Login setSession OK -> navega a /`)
+        debugLog(`Login: procesando tokens (single-flight)...`)
+        const r = await establecerSesionUnaVez(access_token, refresh_token)
+        if (r === "ok") {
+          debugLog(`Login: sesion OK -> navega a /`)
           window.location.href = '/'
+        } else {
+          debugLog(`Login: sesion fallo (${r})`)
+          setCargando(false)
         }
       })
 
