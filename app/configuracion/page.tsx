@@ -149,7 +149,16 @@ export default function ConfiguracionPage() {
     try {
       const { data, error } = await supabase.rpc("get_miembros_iglesia", { p_iglesia_id: igId })
       if (error) { mostrarFlash(`❌ ${error.message}`, "error"); return }
-      setMiembros(data || [])
+      // ✅ Resguardo defensivo: si por alguna razón queda una fila duplicada
+      // en usuarios_iglesia (ya se agregó una restricción única en la BD
+      // para que no vuelva a pasar), no romper la lista con keys repetidas.
+      const vistos = new Set<string>()
+      const unicos = (data || []).filter((m: any) => {
+        if (vistos.has(m.user_id)) return false
+        vistos.add(m.user_id)
+        return true
+      })
+      setMiembros(unicos)
     } finally {
       setCargandoMiembros(false)
     }
