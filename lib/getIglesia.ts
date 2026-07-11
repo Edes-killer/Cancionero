@@ -101,9 +101,21 @@ export const getIglesiaId = async (): Promise<string | null> => {
   }
 }
 
+// ✅ Sin timeout, estas dos consultas podían quedar colgadas para siempre
+// con red mala (ej. datos móviles justo después de reinstalar la app, sin
+// nada en caché todavía) -- dejando "cargando" trabado sin ningún error
+// visible, exactamente el mismo patrón que ya se arregló en AuthProvider.
+const conTimeout = <T,>(promesa: Promise<T>, ms: number): Promise<T | "timeout"> =>
+  Promise.race([promesa, new Promise<"timeout">(resolve => setTimeout(() => resolve("timeout"), ms))])
+
 // Fetch real desde auth + BD (solo cuando localStorage está vacío)
 const _fetchIglesiaDesdeAuth = async (): Promise<string | null> => {
-  const { data: userData, error: userError } = await supabase.auth.getUser()
+  const resultadoUser = await conTimeout(supabase.auth.getUser(), 5000)
+  if (resultadoUser === "timeout") {
+    console.warn("⚠️ getIglesiaId: getUser() no respondió a tiempo")
+    return null
+  }
+  const { data: userData, error: userError } = resultadoUser
 
   if (userError || !userData.user) {
     console.warn("⚠️ getIglesiaId: usuario no autenticado")
@@ -112,11 +124,15 @@ const _fetchIglesiaDesdeAuth = async (): Promise<string | null> => {
 
   const userId = userData.user.id
 
-  const { data, error } = await supabase
-    .from("usuarios_iglesia")
-    .select("iglesia_id, creado_en")
-    .eq("user_id", userId)
-    .order("creado_en", { ascending: true })
+  const resultadoRelaciones = await conTimeout(
+    Promise.resolve(supabase.from("usuarios_iglesia").select("iglesia_id, creado_en").eq("user_id", userId).order("creado_en", { ascending: true })),
+    5000
+  )
+  if (resultadoRelaciones === "timeout") {
+    console.warn("⚠️ getIglesiaId: consulta a usuarios_iglesia no respondió a tiempo")
+    return null
+  }
+  const { data, error } = resultadoRelaciones
 
   if (error) {
     console.error("❌ getIglesiaId: error consultando usuarios_iglesia:", error)
