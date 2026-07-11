@@ -106,13 +106,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       let continuar = true
 
       while (continuar) {
-        const { data, error } = await supabase
-          .from("canciones")
-          .select("id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda, fecha_creacion")
-          .or(`iglesia_id.eq.${igId},iglesia_id.is.null`)
-          .is("eliminado_en", null)
-          .order("numero", { ascending: true, nullsFirst: false })
-          .range(desde, desde + PAGINA - 1)
+        // ✅ Sin timeout, una sola página colgada con datos móviles malos
+        // dejaba "cargandoCanciones" en true para siempre -- Canciones y
+        // Control se quedaban esperando sin ningún error visible.
+        const resultado = await conTimeout(
+          Promise.resolve(
+            supabase
+              .from("canciones")
+              .select("id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda, fecha_creacion")
+              .or(`iglesia_id.eq.${igId},iglesia_id.is.null`)
+              .is("eliminado_en", null)
+              .order("numero", { ascending: true, nullsFirst: false })
+              .range(desde, desde + PAGINA - 1)
+          ),
+          8000
+        )
+        if (resultado === "timeout") throw new Error("timeout paginando canciones")
+        const { data, error } = resultado
 
         if (error) throw error
         if (!data || data.length === 0) break

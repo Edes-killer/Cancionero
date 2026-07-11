@@ -137,8 +137,49 @@ export default function InicioPage() {
 
         const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0,0,0,0)
 
+        // ✅ 10 consultas en paralelo SIN timeout -- si una sola se cuelga con
+        // datos móviles malos, el bloque entero queda esperando para siempre
+        // (el try/catch de más abajo no ayuda: un hang no es un rechazo, no
+        // dispara el catch). El dashboard se quedaba mostrando el layout con
+        // todo en cero y sin ningún error visible. Mismo patrón que ya se
+        // reparó en el resto del codebase, aplicado acá.
+        //
+        // relacionesRes se pide una sola vez y se reutiliza también para la
+        // consulta de nombres de iglesias (antes se pedía dos veces).
+        const resultadoRelaciones = await conTimeout(
+          Promise.resolve(supabase.from("usuarios_iglesia").select("iglesia_id").eq("user_id", userId)),
+          8000
+        )
+        if (resultadoRelaciones === "timeout") {
+          console.warn("⚠️ Inicio: las estadísticas no respondieron a tiempo -- se muestra el dashboard sin ellas")
+          return
+        }
+        const idsRel = (resultadoRelaciones.data || []).filter((r:any) => r.iglesia_id).map((r:any) => r.iglesia_id)
+
+        const resultadoStats = await conTimeout(
+          Promise.all([
+            supabase.from("canciones").select("*", { count:"exact", head:true }).or(`iglesia_id.eq.${iglesiaId},iglesia_id.is.null`).is("eliminado_en", null),
+            supabase.from("canciones").select("*", { count:"exact", head:true }).or(`iglesia_id.eq.${iglesiaId},iglesia_id.is.null`).is("eliminado_en", null).is("tono", null),
+            supabase.from("partes_cancion").select("cancion_id", { count:"exact", head:false }).eq("tiene_acordes", true).limit(5000),
+            supabase.from("listas_culto").select("*", { count:"exact", head:true }).eq("iglesia_id", iglesiaId),
+            // ✅ 6 últimos cultos (antes solo 1)
+            supabase.from("listas_culto").select("id, nombre, fecha").eq("iglesia_id", iglesiaId).order("fecha", { ascending:false }).limit(6),
+            supabase.from("historial_proyecciones").select("cancion_id, titulo, tono, categoria").eq("iglesia_id", iglesiaId).eq("tipo","cancion").gte("proyectado_en", inicioMes.toISOString()).limit(200),
+            // ✅ Canciones recientes — query que antes faltaba
+            supabase.from("canciones").select("id, titulo, tono, categoria, fecha_creacion").eq("iglesia_id", iglesiaId).is("eliminado_en", null).order("fecha_creacion", { ascending:false }).limit(5),
+            // ✅ Categorías — query que antes faltaba
+            supabase.from("canciones").select("categoria").or(`iglesia_id.eq.${iglesiaId},iglesia_id.is.null`).is("eliminado_en", null).not("categoria","is",null),
+            supabase.from("iglesias").select("id, nombre").in("id", idsRel),
+          ]),
+          8000
+        )
+
+        if (resultadoStats === "timeout") {
+          console.warn("⚠️ Inicio: las estadísticas no respondieron a tiempo -- se muestra el dashboard sin ellas")
+          return
+        }
+
         const [
-          relacionesRes,
           cancionesCountRes,
           sinTonoRes,
           acordesRes,
@@ -148,25 +189,8 @@ export default function InicioPage() {
           cancionesRecientesRes,
           categoriasRes,
           iglesiasnombresRes,
-        ] = await Promise.all([
-          supabase.from("usuarios_iglesia").select("iglesia_id").eq("user_id", userId),
-          supabase.from("canciones").select("*", { count:"exact", head:true }).or(`iglesia_id.eq.${iglesiaId},iglesia_id.is.null`).is("eliminado_en", null),
-          supabase.from("canciones").select("*", { count:"exact", head:true }).or(`iglesia_id.eq.${iglesiaId},iglesia_id.is.null`).is("eliminado_en", null).is("tono", null),
-          supabase.from("partes_cancion").select("cancion_id", { count:"exact", head:false }).eq("tiene_acordes", true).limit(5000),
-          supabase.from("listas_culto").select("*", { count:"exact", head:true }).eq("iglesia_id", iglesiaId),
-          // ✅ 6 últimos cultos (antes solo 1)
-          supabase.from("listas_culto").select("id, nombre, fecha").eq("iglesia_id", iglesiaId).order("fecha", { ascending:false }).limit(6),
-          supabase.from("historial_proyecciones").select("cancion_id, titulo, tono, categoria").eq("iglesia_id", iglesiaId).eq("tipo","cancion").gte("proyectado_en", inicioMes.toISOString()).limit(200),
-          // ✅ Canciones recientes — query que antes faltaba
-          supabase.from("canciones").select("id, titulo, tono, categoria, fecha_creacion").eq("iglesia_id", iglesiaId).is("eliminado_en", null).order("fecha_creacion", { ascending:false }).limit(5),
-          // ✅ Categorías — query que antes faltaba
-          supabase.from("canciones").select("categoria").or(`iglesia_id.eq.${iglesiaId},iglesia_id.is.null`).is("eliminado_en", null).not("categoria","is",null),
-          supabase.from("iglesias").select("id, nombre").in("id",
-            (await supabase.from("usuarios_iglesia").select("iglesia_id").eq("user_id", userId)).data?.map((r:any) => r.iglesia_id).filter(Boolean) || []
-          ),
-        ])
+        ] = resultadoStats
 
-        const idsRel     = (relacionesRes.data || []).filter((r:any) => r.iglesia_id).map((r:any) => r.iglesia_id)
         const nombresMap = new Map((iglesiasnombresRes.data || []).map((ig:any) => [ig.id, ig.nombre]))
         setIglesiasUsuario(Array.from(new Set(idsRel)).map(id => ({ iglesia_id:id, nombre: nombresMap.get(id) || id })))
 
