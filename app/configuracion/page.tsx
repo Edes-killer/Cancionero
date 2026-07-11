@@ -238,16 +238,33 @@ export default function ConfiguracionPage() {
   }
 
   // ── IP del servidor ───────────────────────────────────────────────────────
-  const [servidorIp, setServidorIp] = useState(() =>
-    typeof window !== "undefined" ? localStorage.getItem("servidor_ip") || "" : ""
-  )
+  // ✅ Arranca vacío (igual que en el servidor) y se sincroniza recién
+  // después de montar -- este valor decide bloques enteros de JSX más abajo
+  // (líneas ~1021, 1106), así que leerlo de localStorage directo en el
+  // render también producía "Hydration failed" (error #418) en el APK.
+  const [servidorIp, setServidorIp] = useState("")
+  useEffect(() => {
+    const guardada = localStorage.getItem("servidor_ip")
+    if (guardada) setServidorIp(guardada)
+  }, [])
   const [servidorPing, setServidorPing] = useState<"idle" | "testing" | "ok" | "error">("idle")
   const [servidorOk, setServidorOk] = useState(false)
   const [buscandoServidor, setBuscandoServidor] = useState(false)
   const [qrUrl, setQrUrl] = useState("")
   const [escaneandoQR, setEscaneandoQR] = useState(false)
-  const isCapacitor = typeof window !== "undefined" && !!(window as any).Capacitor
-  const isElectron  = typeof navigator !== "undefined" && navigator.userAgent.includes("Electron")
+  // ✅ Igual que en Navbar: arrancar SIEMPRE en false (como en el servidor,
+  // donde no existe window) y recién sincronizar el valor real en un
+  // useEffect que solo corre en el cliente después de montar. Calcularlo
+  // directo en el render causaba "Hydration failed" (error #418) en el
+  // APK -- el HTML estático se genera con isCapacitor=false, pero el APK
+  // arranca con true desde el primer render, dejando un árbol de JSX
+  // distinto (el bloque de auto-discovery/QR) entre servidor y cliente.
+  const [isCapacitor, setIsCapacitor] = useState(false)
+  const [isElectron, setIsElectron] = useState(false)
+  useEffect(() => {
+    setIsCapacitor(!!(window as any).Capacitor)
+    setIsElectron(navigator.userAgent.includes("Electron"))
+  }, [])
   const getLocalIPDisplay = () => servidorIp || "localhost"
 
   // Mostrar QR en Electron al cargar + obtener IP local
@@ -408,12 +425,18 @@ export default function ConfiguracionPage() {
   }
 
   // ── Fuentes del proyector ────────────────────────────────────────────────
-  const [escalaFuente, setEscalaFuente] = useState(() =>
-    typeof window !== "undefined" ? Number(localStorage.getItem("proyector-escala-fuente") || "100") : 100
-  )
-  const [familiaFuente, setFamiliaFuente] = useState(() =>
-    typeof window !== "undefined" ? localStorage.getItem("proyector-font-family") || "system" : "system"
-  )
+  // ✅ Mismo motivo que servidorIp arriba: arrancar con el default seguro y
+  // sincronizar recién en el cliente, para no volver a producir un mismatch
+  // de hidratación (estos valores se comparan contra opciones fijas en el
+  // JSX de abajo para resaltar la seleccionada).
+  const [escalaFuente, setEscalaFuente] = useState(100)
+  const [familiaFuente, setFamiliaFuente] = useState("system")
+  useEffect(() => {
+    const escalaGuardada = localStorage.getItem("proyector-escala-fuente")
+    if (escalaGuardada) setEscalaFuente(Number(escalaGuardada))
+    const familiaGuardada = localStorage.getItem("proyector-font-family")
+    if (familiaGuardada) setFamiliaFuente(familiaGuardada)
+  }, [])
 
   const mostrarFlash = (msg: string, tipo: "ok" | "error" | "info" = "ok") => {
     setFlash({ msg, tipo })
