@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaIdCacheOnly, getIglesiaId, getRolEnIglesia } from "@/lib/getIglesia"
 import { navegarSPA } from "@/lib/navegar"
+import { conTimeout } from "@/lib/timeout"
 
 // ✅ Clave compartida con AppContext para el banner de "modo sin conexión"
 export const KEY_MODO_SIN_CONEXION = "selah-modo-sin-conexion"
@@ -60,7 +61,15 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         let huboErrorDeRed = false
 
         for (let intento = 1; intento <= MAX_INTENTOS; intento++) {
-          const { data, error } = await supabase.auth.getSession()
+          // ✅ Este era el punto más crítico sin protección: si getSession()
+          // se colgaba en el PRIMER intento (ej. tratando de refrescar el
+          // token con datos móviles malos), el for ni siquiera llegaba a
+          // reintentar -- "checking" quedaba trabado en true para siempre,
+          // sin ningún error visible, bloqueando toda la app.
+          const resultado = await conTimeout(supabase.auth.getSession(), 5000)
+          const { data, error } = resultado === "timeout"
+            ? { data: { session: null }, error: new Error("timeout esperando getSession()") }
+            : resultado
           if (!activo) return
 
           if (data.session) {

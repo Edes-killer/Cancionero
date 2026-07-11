@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId, setIglesiaActivaId } from "@/lib/getIglesia"
+import { conTimeout } from "@/lib/timeout"
 
 const VERSICULOS = [
   { texto: "Cantad alegres a Dios, habitantes de toda la tierra.", cita: "Salmos 100:1" },
@@ -92,7 +93,13 @@ export default function InicioPage() {
   useEffect(() => {
     const cargar = async () => {
       try {
-        const { data: sessionData } = await supabase.auth.getSession()
+        // ✅ getSession() puede intentar refrescar el token en silencio si
+        // ya expiró -- eso pega a la red, y sin límite de tiempo podía
+        // quedarse colgado para siempre con datos móviles malos, dejando
+        // el spinner de "Cargando..." trabado sin ningún error visible.
+        const resultadoSesion = await conTimeout(supabase.auth.getSession(), 5000)
+        if (resultadoSesion === "timeout") { setCargando(false); return }
+        const { data: sessionData } = resultadoSesion
         if (!sessionData.session?.user) { navegarSPA(router, "/login", { replace: true }); return }
         const userId    = sessionData.session.user.id
         const iglesiaId = await getIglesiaId()

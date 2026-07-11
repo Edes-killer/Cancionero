@@ -425,7 +425,15 @@ export default function ConfiguracionPage() {
     const cargar = async () => {
       // ✅ getSession() no adquiere el auth lock (lee de memoria/localStorage)
       // getUser() sí lo adquiere y choca con proyectar/músicos/control
-      const { data: sessionData } = await supabase.auth.getSession()
+      const resultadoSesion = await conTimeout(supabase.auth.getSession(), 5000)
+      if (!resultadoSesion) {
+        // ✅ Ambiguo (pudo ser solo la red) -- no mandar a /login por las
+        // dudas, eso desloguearía a alguien que sí tenía sesión.
+        mostrarFlash("⚠️ Sin conexión — intenta de nuevo", "error")
+        setCargando(false)
+        return
+      }
+      const { data: sessionData } = resultadoSesion
       if (!sessionData.session?.user) { navegarSPA(router, "/login", { replace: true }); return }
       setMiUserId(sessionData.session.user.id)
 

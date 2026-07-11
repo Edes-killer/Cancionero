@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { navegarSPA } from "@/lib/navegar"
+import { conTimeout } from "@/lib/timeout"
 
 export default function CallbackPage() {
   const router = useRouter()
@@ -48,13 +49,13 @@ useEffect(() => {
     // ANTES de que este efecto llegue a revisarlo — si eso ya pasó, la
     // sesión ya existe aunque no haya token en la URL. Sin este chequeo la
     // pantalla se queda en "Iniciando sesión..." para siempre.
-    const { data } = await supabase.auth.getSession()
+    const resultado = await conTimeout(supabase.auth.getSession(), 5000)
     if (!activo) return
-    if (data.session) {
+    if (resultado !== "timeout" && resultado.data.session) {
       navegarSPA(router, '/', { replace: true })
     } else {
       setEstado('error')
-      setMensajeError('No se pudo iniciar sesión.')
+      setMensajeError(resultado === "timeout" ? 'Sin conexión — intenta de nuevo.' : 'No se pudo iniciar sesión.')
     }
   }
 

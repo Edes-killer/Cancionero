@@ -1,6 +1,7 @@
 'use client'
 import { useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { conTimeout } from '@/lib/timeout'
 
 export function DeepLinkHandler() {
   useEffect(() => {
@@ -85,8 +86,8 @@ export function DeepLinkHandler() {
 
         App.addListener('appStateChange', async ({ isActive }) => {
           if (!isActive) return
-          const { data } = await supabase.auth.getSession()
-          if (data.session && window.location.pathname === '/login') {
+          const resultado = await conTimeout(supabase.auth.getSession(), 5000)
+          if (resultado !== "timeout" && resultado.data.session && window.location.pathname === '/login') {
             window.location.href = '/'
           }
         })

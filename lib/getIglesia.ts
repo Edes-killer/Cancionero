@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase"
+import { conTimeout } from "@/lib/timeout"
 
 const KEY_IGLESIA_ACTIVA = "cancionero_iglesia_activa_id"
 
@@ -101,13 +102,6 @@ export const getIglesiaId = async (): Promise<string | null> => {
   }
 }
 
-// ✅ Sin timeout, estas dos consultas podían quedar colgadas para siempre
-// con red mala (ej. datos móviles justo después de reinstalar la app, sin
-// nada en caché todavía) -- dejando "cargando" trabado sin ningún error
-// visible, exactamente el mismo patrón que ya se arregló en AuthProvider.
-const conTimeout = <T,>(promesa: Promise<T>, ms: number): Promise<T | "timeout"> =>
-  Promise.race([promesa, new Promise<"timeout">(resolve => setTimeout(() => resolve("timeout"), ms))])
-
 // Fetch real desde auth + BD (solo cuando localStorage está vacío)
 const _fetchIglesiaDesdeAuth = async (): Promise<string | null> => {
   const resultadoUser = await conTimeout(supabase.auth.getUser(), 5000)
@@ -169,7 +163,9 @@ const _fetchIglesiaDesdeAuth = async (): Promise<string | null> => {
 // ── Cambiar iglesia activa ────────────────────────────────────────────────────
 export const cambiarIglesiaActiva = async (iglesiaId: string): Promise<boolean> => {
   // getSession() en vez de getUser() — no adquiere el auth lock
-  const { data: sessionData } = await supabase.auth.getSession()
+  const resultado = await conTimeout(supabase.auth.getSession(), 5000)
+  if (resultado === "timeout") return false
+  const { data: sessionData } = resultado
   if (!sessionData.session?.user) return false
 
   const { data } = await supabase
@@ -198,15 +194,20 @@ let _rolCache: { iglesiaId: string; rol: string | null } | null = null
 export const getRolEnIglesia = async (iglesiaId: string): Promise<string | null> => {
   if (_rolCache && _rolCache.iglesiaId === iglesiaId) return _rolCache.rol
   try {
-    const { data: userData } = await supabase.auth.getUser()
+    // ✅ No todos los llamadores envuelven esto en su propio timeout (ej.
+    // Navbar/Configuración lo llaman directo) -- se protege acá adentro
+    // para que ningún caso se quede colgado con red mala.
+    const resultadoUser = await conTimeout(supabase.auth.getUser(), 5000)
+    if (resultadoUser === "timeout") return null
+    const { data: userData } = resultadoUser
     const userId = userData?.user?.id
     if (!userId) return null
-    const { data } = await supabase
-      .from("usuarios_iglesia")
-      .select("rol")
-      .eq("iglesia_id", iglesiaId)
-      .eq("user_id", userId)
-      .single()
+    const resultadoRol = await conTimeout(
+      Promise.resolve(supabase.from("usuarios_iglesia").select("rol").eq("iglesia_id", iglesiaId).eq("user_id", userId).single()),
+      5000
+    )
+    if (resultadoRol === "timeout") return null
+    const { data } = resultadoRol
     const rol = data?.rol || null
     _rolCache = { iglesiaId, rol }
     return rol
