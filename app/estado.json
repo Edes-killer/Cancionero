@@ -159,7 +159,9 @@
   "c76bc168-da61-4a86-8881-9dc3c17391fe": {
     "tipo": "estado",
     "data": {
-      "tipo": "descanso",
+      "tipo": "cuenta-regresiva",
+      "mensaje": "Comenzamos a las 17:05",
+      "hasta": "2026-07-09T21:05:00.000Z",
       "fondo": {
         "tipo": "animated",
         "animacion": "paz",

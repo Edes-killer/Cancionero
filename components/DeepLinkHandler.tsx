@@ -2,6 +2,8 @@
 import { useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { conTimeout } from '@/lib/timeout'
+import { debugLog } from '@/lib/debugTrail'
+import { conBarraFinal } from '@/lib/navegar'
 
 export function DeepLinkHandler() {
   useEffect(() => {
@@ -53,16 +55,18 @@ export function DeepLinkHandler() {
           const refresh_token = hp.get('refresh_token') || qp.get('refresh_token')
           const error         = hp.get('error')         || qp.get('error')
 
-          if (error) { window.location.href = '/login?error=oauth'; return }
+          if (error) { window.location.href = conBarraFinal('/login?error=oauth'); return }
 
           if (access_token && refresh_token) {
+            debugLog(`DeepLink procesarUrl: tiene tokens, llamando setSession`)
             const { error: e } = await supabase.auth.setSession({ access_token, refresh_token })
-            if (e) { window.location.href = '/login?error=session'; return }
+            if (e) { debugLog(`DeepLink setSession ERROR -> /login`); window.location.href = conBarraFinal('/login?error=session'); return }
             // ✅ Si veníamos de aceptar una invitación, volver ahí para
             // terminarla -- antes esto siempre mandaba al home y el código
             // pendiente en localStorage quedaba sin usarse.
             const codigoPendiente = localStorage.getItem('selah_inv_codigo')
-            window.location.href = codigoPendiente ? `/unirse?codigo=${codigoPendiente}` : '/'
+            debugLog(`DeepLink setSession OK -> ${codigoPendiente ? '/unirse' : '/'}`)
+            window.location.href = codigoPendiente ? conBarraFinal(`/unirse?codigo=${codigoPendiente}`) : '/'
             return
           }
 
@@ -72,7 +76,7 @@ export function DeepLinkHandler() {
           if (esAppLink) {
             try {
               const u = new URL(url)
-              window.location.href = u.pathname + u.search
+              window.location.href = conBarraFinal(u.pathname + u.search)
             } catch { /* ignorar URL malformada */ }
           }
         }
@@ -90,18 +94,25 @@ export function DeepLinkHandler() {
         // recargas (a diferencia de un cierre real de la app), así que sirve
         // para marcar "esta url ya se procesó en esta sesión".
         const launch = await App.getLaunchUrl().catch(() => null)
+        debugLog(`DeepLink getLaunchUrl = ${launch?.url ? launch.url.slice(0, 60) : "null"}`)
         if (launch?.url) {
           const YA_PROCESADA_KEY = 'selah_launch_url_procesada'
           if (sessionStorage.getItem(YA_PROCESADA_KEY) !== launch.url) {
+            debugLog(`DeepLink -> procesando launchUrl (primera vez esta sesion)`)
             sessionStorage.setItem(YA_PROCESADA_KEY, launch.url)
             await procesarUrl(launch.url)
+          } else {
+            debugLog(`DeepLink -> launchUrl ya procesada, se ignora`)
           }
         }
 
         App.addListener('appStateChange', async ({ isActive }) => {
           if (!isActive) return
           const resultado = await conTimeout(supabase.auth.getSession(), 5000)
+          const haySesion = resultado !== "timeout" && !!resultado.data.session
+          debugLog(`DeepLink appStateChange activo: sesion=${haySesion} path=${window.location.pathname}`)
           if (resultado !== "timeout" && resultado.data.session && window.location.pathname === '/login') {
+            debugLog(`DeepLink appStateChange -> window.location='/'`)
             window.location.href = '/'
           }
         })
