@@ -47,9 +47,22 @@ export default function InicioPage() {
   const [servidorActivo, setServidorActivo] = useState<boolean | null>(null)
   const [servidorIp,     setServidorIp]     = useState("")
 
-  const versiculo = VERSICULOS[new Date().getDate() % VERSICULOS.length]
-  const mesActual = new Date().toLocaleDateString("es-ES", { month:"long" })
-  const esDomingo = new Date().getDay() === 0
+  // ✅ El sitio se compila UNA sola vez (npm run build) y esa fecha queda
+  // congelada en el HTML estático desde ese momento. Calcular new Date()
+  // directo acá comparaba esa fecha vieja contra la fecha real del
+  // dispositivo en cada apertura de la app -- apenas pasaba un día desde
+  // el build, esto desincronizaba y "esDomingo" (que decide si aparece
+  // todo un <div>) rompía la hidratación (error #418) en el APK. Arranca
+  // con un valor fijo/seguro y se corrige recién en el cliente, ya montado.
+  const [versiculo, setVersiculo] = useState(VERSICULOS[0])
+  const [mesActual, setMesActual] = useState("")
+  const [esDomingo, setEsDomingo] = useState(false)
+  useEffect(() => {
+    const hoy = new Date()
+    setVersiculo(VERSICULOS[hoy.getDate() % VERSICULOS.length])
+    setMesActual(hoy.toLocaleDateString("es-ES", { month: "long" }))
+    setEsDomingo(hoy.getDay() === 0)
+  }, [])
 
   // Si APK sin IP configurada → mostrar banner, NO redirigir automáticamente
   // El usuario puede navegar libremente y configurar cuando quiera
