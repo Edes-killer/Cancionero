@@ -35,7 +35,9 @@ function LoginContent() {
 
       // ✅ appUrlOpen llega con el token completo → procesarlo aquí directamente
       App.addListener('appUrlOpen', async ({ url }) => {
-        console.log('[Login] 🔗 appUrlOpen recibido')
+        debugLog(`Login appUrlOpen recibido (tiene token=${url.includes('access_token')})`)
+        // ✅ Cerrar el navegador interno apenas volvemos con el callback
+        try { const { Browser } = await import('@capacitor/browser'); await Browser.close() } catch {}
         if (!url.includes('access_token')) return
 
         const hash   = url.includes('#') ? url.split('#')[1] : ''
@@ -46,17 +48,17 @@ function LoginContent() {
         const refresh_token = hP.get('refresh_token') || qP.get('refresh_token')
 
         if (!access_token || !refresh_token) {
-          console.log('[Login] Sin tokens en URL')
+          debugLog(`Login appUrlOpen: sin tokens en la URL`)
           return
         }
 
-        console.log('[Login] Llamando setSession...')
+        debugLog(`Login: llamando setSession...`)
         const { error } = await supabase.auth.setSession({ access_token, refresh_token })
         if (error) {
-          console.error('[Login] Error setSession:', error.message)
+          debugLog(`Login setSession ERROR: ${error.message}`)
           setCargando(false)
         } else {
-          console.log('[Login] ✅ Sesión OK → navegando a /')
+          debugLog(`Login setSession OK -> navega a /`)
           window.location.href = '/'
         }
       })
@@ -105,14 +107,16 @@ function LoginContent() {
       if (!data?.url) throw new Error("Sin URL de OAuth")
 
       if (isCapacitor) {
-        // APK: abrir browser del sistema → DeepLinkHandler captura el callback
-        // ✅ A diferencia de Electron/Web, acá NO navegamos fuera de la página
-        // (el WebView de la app se queda tal cual, solo se abre el navegador
-        // externo aparte) — sin este reset, el botón se quedaba en "Abriendo..."
-        // para siempre si el usuario volvía a la app antes de completar el login
-        // o si el login fallaba/se cancelaba en el navegador externo.
-        console.log('[Login] APK → _system')
-        window.open(data.url, '_system')
+        // ✅ APK: abrir en el navegador INTERNO de la app (@capacitor/browser =
+        // Chrome Custom Tab) en vez del navegador del sistema. Cuando Supabase
+        // redirige de vuelta al esquema propio (com.tuiglesia.cancionero://
+        // auth/callback), Capacitor dispara appUrlOpen y lo capturamos adentro
+        // de la app -- sin pasar por el diálogo "abrir con..." de Android que
+        // se comía el token y dejaba el login sin completar. El listener de
+        // appUrlOpen (arriba) cierra este browser y hace setSession.
+        debugLog(`Login: abriendo OAuth en navegador interno (@capacitor/browser)`)
+        const { Browser } = await import('@capacitor/browser')
+        await Browser.open({ url: data.url })
         setCargando(false)
       } else if (isElectron) {
         // Electron: navegar la misma ventana → Supabase redirige a localhost:3000/auth/callback
