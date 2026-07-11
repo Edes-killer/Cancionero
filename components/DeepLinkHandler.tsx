@@ -81,8 +81,22 @@ export function DeepLinkHandler() {
           await procesarUrl(url)
         })
 
+        // ✅ getLaunchUrl() puede seguir devolviendo la MISMA url en cada
+        // recarga interna del WebView (ej. tras un window.location.href),
+        // no solo en el arranque real de la app -- si esa url traía un
+        // token de sesión, se reprocesaba una y otra vez, cada vez
+        // navegando de nuevo → recarga → se vuelve a leer la misma
+        // getLaunchUrl() → loop infinito. sessionStorage sobrevive a estas
+        // recargas (a diferencia de un cierre real de la app), así que sirve
+        // para marcar "esta url ya se procesó en esta sesión".
         const launch = await App.getLaunchUrl().catch(() => null)
-        if (launch?.url) await procesarUrl(launch.url)
+        if (launch?.url) {
+          const YA_PROCESADA_KEY = 'selah_launch_url_procesada'
+          if (sessionStorage.getItem(YA_PROCESADA_KEY) !== launch.url) {
+            sessionStorage.setItem(YA_PROCESADA_KEY, launch.url)
+            await procesarUrl(launch.url)
+          }
+        }
 
         App.addListener('appStateChange', async ({ isActive }) => {
           if (!isActive) return
