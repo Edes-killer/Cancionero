@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase"
 import { useEffect, useState } from "react"
 import { useApp } from "@/context/AppContext"
 import { getRolEnIglesia } from "@/lib/getIglesia"
-import { navegarSPA, conBarraFinal } from "@/lib/navegar"
+import { navegarSPA } from "@/lib/navegar"
 
 const ROLES_INFO: Record<string, { icon: string; label: string }> = {
   admin:  { icon: "👑", label: "Administrador" },
@@ -133,7 +133,7 @@ export default function Navbar() {
                 )
               })}
               {/* Músicos — visible en desktop también */}
-              <button onClick={() => isCapacitor ? (window.location.href = conBarraFinal("/musicos")) : window.open(`${window.location.origin}/musicos`, "_blank", "noopener")} style={{
+              <button onClick={() => isCapacitor ? navegarSPA(router, "/musicos") : window.open(`${window.location.origin}/musicos`, "_blank", "noopener")} style={{
                 display: "flex", alignItems: "center", gap: 5,
                 padding: "5px 10px", borderRadius: 8,
                 fontSize: 13, fontWeight: 500,
@@ -150,7 +150,7 @@ export default function Navbar() {
 
           {/* ── Músicos (mobile) / Proyector (desktop) ── */}
           {isMobile ? (
-            <button onClick={() => isCapacitor ? (window.location.href = conBarraFinal("/musicos")) : window.open(`${window.location.origin}/musicos`, "_blank", "noopener")} style={{
+            <button onClick={() => isCapacitor ? navegarSPA(router, "/musicos") : window.open(`${window.location.origin}/musicos`, "_blank", "noopener")} style={{
               padding: "5px 8px", borderRadius: 7,
               background: "rgba(251,191,36,0.08)",
               border: "1px solid rgba(251,191,36,0.2)",
@@ -247,7 +247,7 @@ export default function Navbar() {
                 </Link>
               )
             })}
-            <button onClick={() => isCapacitor ? (window.location.href = conBarraFinal("/musicos")) : window.open(`${window.location.origin}/musicos`, "_blank", "noopener")} style={{
+            <button onClick={() => isCapacitor ? navegarSPA(router, "/musicos") : window.open(`${window.location.origin}/musicos`, "_blank", "noopener")} style={{
               display: "flex", alignItems: "center", gap: 10,
               padding: "12px 14px", borderRadius: 10,
               fontSize: 15, color: "rgba(255,255,255,0.4)", fontWeight: 500,

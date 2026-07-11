@@ -1,43 +1,27 @@
 // lib/navegar.ts
-// ✅ Dentro del APK (Capacitor) la app corre desde archivos empaquetados,
-// sin un servidor HTTP real detrás. La navegación del lado del cliente de
-// Next (router.push/router.replace) se queda sin hacer nada ahí -- la URL
-// ni siquiera cambia (confirmado con logs reales de un dispositivo). Fuera
-// de Capacitor (Electron, navegador web) sí hay un servidor real sirviendo
-// la app y router.push/replace funcionan normal.
+// ✅ SIEMPRE navegación SPA del lado del cliente (router.push/replace), en
+// TODOS los entornos incluido el APK (Capacitor).
 //
-// Esta función decide sola: usa navegación dura (window.location) en
-// Capacitor, y la navegación normal de Next en cualquier otro caso.
+// Historia: en algún momento se creyó que router.push no funcionaba dentro
+// de Capacitor y se cambió a navegación dura (window.location). Eso resultó
+// ser un diagnóstico equivocado -- lo que realmente estaba roto entonces era
+// la hidratación de React (que dejaba todo el árbol sin manejadores). Peor
+// aún, la navegación dura destapó un bug fatal: la app se exporta estática
+// (output: export), así que el WebView de Capacitor sirve el "/index.html"
+// raíz para CUALQUIER subruta pedida por window.location (con o sin barra
+// final). Es decir, window.location.replace("/login") cargaba en realidad la
+// pantalla de Inicio, que al no ver sesión redirigía a /login de nuevo... un
+// loop infinito de recargas (confirmado con un diario en pantalla en el
+// dispositivo: path=/login/ pero corriendo el código de Inicio).
+//
+// La navegación SPA no hace recarga de documento, así que nunca toca ese
+// fallback de archivos -- es la única forma correcta de navegar acá. Es lo
+// que hacía la versión que funcionaba (APK del 3 de julio).
 import { debugLog } from "@/lib/debugTrail"
 
-// ✅ El sitio se exporta estático con trailingSlash: true, así que cada ruta
-// vive en "/ruta/index.html" (con barra final). En el WebView de Capacitor
-// no hay servidor que redirija "/ruta" -> "/ruta/": pedir "/login" (sin barra)
-// NO encuentra "/login/index.html" y el WebView sirve el "/index.html" raíz
-// (la pantalla de Inicio) como fallback. Resultado: Inicio corría en la ruta
-// /login, veía que no había sesión, redirigía a /login otra vez, y así en un
-// loop infinito de recargas. Agregar la barra final hace que window.location
-// apunte al archivo correcto.
-export function conBarraFinal(href: string): string {
-  if (!href.startsWith("/")) return href // urls absolutas (ej. OAuth externo): no tocar
-  const m = href.match(/^([^?#]*)([?#].*)?$/)
-  if (!m) return href
-  let ruta = m[1]
-  const resto = m[2] || ""
-  if (ruta && !ruta.endsWith("/")) ruta += "/"
-  return ruta + resto
-}
-
 export function navegarSPA(router: { push: (h: string) => void; replace: (h: string) => void }, href: string, opciones?: { replace?: boolean }) {
-  const esCap = typeof window !== "undefined" && !!(window as any).Capacitor
   // 🔍 DIAGNÓSTICO TEMPORAL
-  debugLog(`navegarSPA -> ${href}${opciones?.replace ? " (replace)" : ""} cap=${esCap} desde=${typeof window !== "undefined" ? window.location.pathname : "?"}`)
-  if (esCap) {
-    const destino = conBarraFinal(href)
-    if (opciones?.replace) window.location.replace(destino)
-    else window.location.href = destino
-    return
-  }
+  debugLog(`navegarSPA(SPA) -> ${href}${opciones?.replace ? " (replace)" : ""} desde=${typeof window !== "undefined" ? window.location.pathname : "?"}`)
   if (opciones?.replace) router.replace(href)
   else router.push(href)
 }
