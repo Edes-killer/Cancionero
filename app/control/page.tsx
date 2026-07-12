@@ -13,6 +13,7 @@ import { io } from "socket.io-client"
 import { getIglesiaId } from "../../lib/getIglesia"
 import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
+import { debugLog as debugLogTmp } from "@/lib/debugTrail"
 import { useApp } from "@/context/AppContext"
 import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk, getPartesCache, setPartesCache } from "@/lib/cache"
 
@@ -89,6 +90,8 @@ interface FondoConfig {
 export default function ControlPage() {
   const { iglesiaId: iglesiaIdCtx, nombreIglesia: nombreIglesiaCtx,
           logoUrl: logoUrlCtx, canciones: cancionesCtx, pinSala, sinConexion } = useApp()
+  // 🔍 DIAGNÓSTICO TEMPORAL -- confirma si la navegacion realmente monta esta pagina
+  useEffect(() => { debugLogTmp("ControlPage MONTADA") }, [])
   const [socket, setSocket] = useState<any>(null)
   const [zoomActual, setZoomActual] = useState(() =>
     typeof window !== "undefined" ? Number(localStorage.getItem("proyector-escala-fuente") || "100") : 100

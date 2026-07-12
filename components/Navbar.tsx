@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase"
 import { useEffect, useState } from "react"
 import { useApp } from "@/context/AppContext"
 import { getRolEnIglesia } from "@/lib/getIglesia"
-import { navegarSPA } from "@/lib/navegar"
+import { navegarSPA, aArchivoIndex, normalizarRuta } from "@/lib/navegar"
 
 const ROLES_INFO: Record<string, { icon: string; label: string }> = {
   admin:  { icon: "👑", label: "Administrador" },
@@ -70,7 +70,8 @@ export default function Navbar() {
 
   useEffect(() => { setMenuAbierto(false) }, [pathname])
 
-  if (RUTAS_SIN_NAVBAR.some(r => pathname.startsWith(r))) return null
+  const rutaActual = normalizarRuta(pathname)
+  if (RUTAS_SIN_NAVBAR.some(r => rutaActual === r || rutaActual.startsWith(r + "/"))) return null
 
   const cerrarSesion = async () => {
     setCerrando(true)
@@ -79,7 +80,7 @@ export default function Navbar() {
   }
 
   const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href)
+    href === "/" ? rutaActual === "/" : rutaActual === href || rutaActual.startsWith(href + "/")
 
   const isCapacitor = typeof window !== "undefined" && (window as any).Capacitor
 
@@ -101,7 +102,7 @@ export default function Navbar() {
         }}>
 
           {/* ── Logo Selah Live ── */}
-          <Link href="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <Link href="/" onClick={e => { if (isCapacitor) { e.preventDefault(); window.location.href = "/" } }} style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             <SelahLogo size={30} />
             {!isMobile && (
               <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
@@ -230,8 +231,10 @@ export default function Navbar() {
                   // afecta el HTML renderizado ni la hidratación.
                   onClick={e => {
                     if (!isCapacitor) return
+                    // ✅ En el APK, navegar al index.html exacto (ver lib/navegar):
+                    // window.location.href = "/control" servía el index raíz.
                     e.preventDefault()
-                    window.location.href = href
+                    window.location.href = aArchivoIndex(href)
                   }}
                   style={{
                     display: "flex", alignItems: "center", gap: 10,
