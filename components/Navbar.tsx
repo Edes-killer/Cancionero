@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase"
 import { useEffect, useState } from "react"
 import { useApp } from "@/context/AppContext"
 import { getRolEnIglesia } from "@/lib/getIglesia"
-import { navegarSPA, aArchivoIndex, normalizarRuta } from "@/lib/navegar"
+import { navegarSPA, normalizarRuta } from "@/lib/navegar"
 
 const ROLES_INFO: Record<string, { icon: string; label: string }> = {
   admin:  { icon: "👑", label: "Administrador" },
@@ -102,7 +102,7 @@ export default function Navbar() {
         }}>
 
           {/* ── Logo Selah Live ── */}
-          <Link href="/" onClick={e => { if (isCapacitor) { e.preventDefault(); window.location.href = "/" } }} style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <Link href="/" onClick={e => { if (isCapacitor) { e.preventDefault(); navegarSPA(router, "/") } }} style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             <SelahLogo size={30} />
             {!isMobile && (
               <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
@@ -230,11 +230,13 @@ export default function Navbar() {
                   // El comportamiento distinto va solo en onClick, que no
                   // afecta el HTML renderizado ni la hidratación.
                   onClick={e => {
+                    // ✅ En el APK usamos router SPA (navegarSPA) en vez de dejar
+                    // que <Link> haga su prefetch/nav propio, para pasar por la
+                    // misma ruta de navegación que el resto de la app.
                     if (!isCapacitor) return
-                    // ✅ En el APK, navegar al index.html exacto (ver lib/navegar):
-                    // window.location.href = "/control" servía el index raíz.
                     e.preventDefault()
-                    window.location.href = aArchivoIndex(href)
+                    setMenuAbierto(false)
+                    navegarSPA(router, href)
                   }}
                   style={{
                     display: "flex", alignItems: "center", gap: 10,

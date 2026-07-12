@@ -50,14 +50,8 @@ export function navegarSPA(
   href: string,
   opciones?: { replace?: boolean }
 ) {
-  if (esCapacitor()) {
-    const destino = aArchivoIndex(href)
-    debugLog(`navegarSPA(APK) -> ${destino} desde=${window.location.pathname}`)
-    if (opciones?.replace) window.location.replace(destino)
-    else window.location.href = destino
-    return
-  }
-  debugLog(`navegarSPA(SPA) -> ${href}${opciones?.replace ? " (replace)" : ""}`)
+  // 🔍 DIAGNÓSTICO TEMPORAL
+  debugLog(`navegarSPA(SPA) -> ${href}${opciones?.replace ? " (replace)" : ""} cap=${esCapacitor()}`)
   if (opciones?.replace) router.replace(href)
   else router.push(href)
 }
