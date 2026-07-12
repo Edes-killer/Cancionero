@@ -1,57 +1,27 @@
 // lib/navegar.ts
-import { debugLog } from "@/lib/debugTrail"
-
-// ──────────────────────────────────────────────────────────────────────────
-//  NAVEGACIÓN EN CAPACITOR (APK) — resumen de lo aprendido a la mala:
+// Navegación entre pantallas. Se usa router.push/replace (SPA de Next) en TODOS
+// los entornos, incluido el APK (Capacitor).
 //
-//  La app se exporta estática (output: export, trailingSlash: true), así que
-//  cada ruta vive en "/ruta/index.html". El WebView de Capacitor:
-//   • NO hace índice de directorio: pedir "/control" o "/control/" por
-//     window.location NO encuentra "/control/index.html" y sirve el
-//     "/index.html" raíz (pantalla de Inicio) como fallback SPA. Eso causaba
-//     un loop infinito de recargas (confirmado en el dispositivo).
-//   • La navegación SPA de Next (router.push/replace) NO cambia de página una
-//     vez que la app ya cargó -- se llama, no tira error, pero no navega
-//     (confirmado: tras "navegarSPA -> /control" no montaba /control ni corría
-//     su AuthProvider). El fetch del RSC no resuelve en este WebView.
-//   • SÍ sirve archivos que existen EXACTAMENTE. "/control/index.html" está en
-//     los assets, así que navegar a esa ruta exacta carga la página correcta.
-//
-//  Por eso, en Capacitor navegamos por window.location al archivo index.html
-//  EXACTO de la subpágina. Fuera de Capacitor (Electron, web) hay un servidor
-//  real y la navegación SPA de Next funciona normal.
-// ──────────────────────────────────────────────────────────────────────────
-
-const esCapacitor = () => typeof window !== "undefined" && !!(window as any).Capacitor
-
-// "/control" -> "/control/index.html" ; "/canciones?x=1" -> "/canciones/index.html?x=1"
-// "/" -> "/" ; conserva query y hash.
-export function aArchivoIndex(href: string): string {
-  if (!href.startsWith("/")) return href // urls absolutas (OAuth externo): no tocar
-  const m = href.match(/^([^?#]*)([?#].*)?$/)
-  if (!m) return href
-  const resto = m[2] || ""
-  let ruta = m[1].replace(/\/+$/, "") // sacar barras finales
-  if (ruta === "") return "/" + resto // raíz
-  return `${ruta}/index.html${resto}`
-}
-
-// Normaliza lo que devuelve usePathname() a una ruta "limpia" para comparar
-// contra rutas conocidas (rutas públicas, gate de roles, resaltado activo):
-// "/control/index.html" -> "/control" ; "/login/" -> "/login" ; "/" -> "/".
-export function normalizarRuta(pathname: string): string {
-  let p = pathname.replace(/\/index\.html$/, "")
-  if (p.length > 1) p = p.replace(/\/+$/, "")
-  return p || "/"
-}
+// Nota histórica: hubo un período en que la navegación SPA no funcionaba dentro
+// del APK. La causa NO era el router sino el plugin CapacitorHttp (que estaba
+// enabled): reemplaza el window.fetch global y el router de Next usa fetch para
+// traer el RSC de cada página. Con CapacitorHttp deshabilitado (ver
+// capacitor.config.ts), router.push/replace funciona normal en el WebView.
 
 export function navegarSPA(
   router: { push: (h: string) => void; replace: (h: string) => void },
   href: string,
   opciones?: { replace?: boolean }
 ) {
-  // 🔍 DIAGNÓSTICO TEMPORAL
-  debugLog(`navegarSPA(SPA) -> ${href}${opciones?.replace ? " (replace)" : ""} cap=${esCapacitor()}`)
   if (opciones?.replace) router.replace(href)
   else router.push(href)
+}
+
+// Normaliza lo que devuelve usePathname() a una ruta "limpia" para comparar
+// contra rutas conocidas (rutas públicas, gate de roles, resaltado activo):
+// "/login/" -> "/login" ; "/" -> "/". (trailingSlash: true en next.config)
+export function normalizarRuta(pathname: string): string {
+  let p = pathname.replace(/\/index\.html$/, "")
+  if (p.length > 1) p = p.replace(/\/+$/, "")
+  return p || "/"
 }

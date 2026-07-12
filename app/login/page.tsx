@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { conTimeout } from "@/lib/timeout"
-import { debugLog } from "@/lib/debugTrail"
 import { establecerSesionUnaVez } from "@/lib/authCallback"
 
 function LoginContent() {
@@ -36,7 +35,6 @@ function LoginContent() {
 
       // ✅ appUrlOpen llega con el token completo → procesarlo aquí directamente
       App.addListener('appUrlOpen', async ({ url }) => {
-        debugLog(`Login appUrlOpen recibido (tiene token=${url.includes('access_token')})`)
         // ✅ Cerrar el navegador interno apenas volvemos con el callback
         try { const { Browser } = await import('@capacitor/browser'); await Browser.close() } catch {}
         if (!url.includes('access_token')) return
@@ -49,17 +47,13 @@ function LoginContent() {
         const refresh_token = hP.get('refresh_token') || qP.get('refresh_token')
 
         if (!access_token || !refresh_token) {
-          debugLog(`Login appUrlOpen: sin tokens en la URL`)
           return
         }
 
-        debugLog(`Login: procesando tokens (single-flight)...`)
         const r = await establecerSesionUnaVez(access_token, refresh_token)
         if (r === "ok") {
-          debugLog(`Login: sesion OK -> navega a /`)
           window.location.href = '/'
         } else {
-          debugLog(`Login: sesion fallo (${r})`)
           setCargando(false)
         }
       })
@@ -69,8 +63,7 @@ function LoginContent() {
         await new Promise(r => setTimeout(r, 1500))
         const resultado = await conTimeout(supabase.auth.getSession(), 5000)
         const session = resultado === "timeout" ? null : resultado.data.session
-        debugLog(`Login appStateChange activo: sesion=${!!session}`)
-        if (session) { debugLog(`Login appStateChange -> window.location='/'`); window.location.href = '/' }
+        if (session) { window.location.href = '/' }
         else setCargando(false)
       })
 
@@ -115,7 +108,6 @@ function LoginContent() {
         // de la app -- sin pasar por el diálogo "abrir con..." de Android que
         // se comía el token y dejaba el login sin completar. El listener de
         // appUrlOpen (arriba) cierra este browser y hace setSession.
-        debugLog(`Login: abriendo OAuth en navegador interno (@capacitor/browser)`)
         const { Browser } = await import('@capacitor/browser')
         await Browser.open({ url: data.url })
         setCargando(false)

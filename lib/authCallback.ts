@@ -1,6 +1,5 @@
 import { supabase } from "@/lib/supabase"
 import { conTimeout } from "@/lib/timeout"
-import { debugLog } from "@/lib/debugTrail"
 
 // ✅ El callback de OAuth (esquema propio com.tuiglesia.cancionero://) dispara
 // el evento appUrlOpen que escuchan TANTO la pantalla de login COMO
@@ -19,18 +18,14 @@ export function establecerSesionUnaVez(
   access_token: string,
   refresh_token: string
 ): Promise<"ok" | "error" | "timeout"> {
-  if (enCurso) {
-    debugLog("authCallback: setSession ya en curso, reusando la misma llamada")
-    return enCurso
-  }
+  if (enCurso) return enCurso
   enCurso = (async () => {
     const r = await conTimeout(
       supabase.auth.setSession({ access_token, refresh_token }),
       8000
     )
-    if (r === "timeout") { debugLog("authCallback: setSession TIMEOUT"); return "timeout" as const }
-    if (r.error) { debugLog(`authCallback: setSession ERROR: ${r.error.message}`); return "error" as const }
-    debugLog("authCallback: setSession OK")
+    if (r === "timeout") return "timeout" as const
+    if (r.error) return "error" as const
     return "ok" as const
   })()
   // ✅ permitir reintento si falló (no dejar cacheado un resultado malo)
