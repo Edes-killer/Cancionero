@@ -2,7 +2,7 @@
 
 import { CSSProperties, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { navegarSPA, aArchivoIndex } from "@/lib/navegar"
+import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId } from "@/lib/getIglesia"
 import { buscarServidorEnRed } from "@/lib/servidor"
@@ -420,9 +420,9 @@ export default function ConfiguracionPage() {
       )
     }
 
-    // Redirigir al login -- aArchivoIndex para que en el APK cargue
-    // /login/index.html y no el index raíz (ver lib/navegar).
-    window.location.href = aArchivoIndex("/login")
+    // Redirigir a la raíz (que siempre carga) -- Inicio ve que no hay sesión
+    // y redirige por SPA a /login con estado limpio.
+    window.location.href = "/"
   }
 
   // ── Fuentes del proyector ────────────────────────────────────────────────
