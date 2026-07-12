@@ -6,7 +6,6 @@ import { supabase } from "@/lib/supabase"
 import { getIglesiaIdCacheOnly, getIglesiaId, getRolEnIglesia } from "@/lib/getIglesia"
 import { navegarSPA, normalizarRuta } from "@/lib/navegar"
 import { conTimeout } from "@/lib/timeout"
-import { debugLog } from "@/lib/debugTrail"
 
 // ✅ Clave compartida con AppContext para el banner de "modo sin conexión"
 export const KEY_MODO_SIN_CONEXION = "selah-modo-sin-conexion"
@@ -44,7 +43,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const requiereLider = RUTAS_SOLO_LIDER.includes(pathnameNormalizado)
 
   useEffect(() => {
-    debugLog(`AuthProvider EFFECT pathname=${pathname} publica=${isPublicRoute} requiereLider=${requiereLider}`)
     // Rutas públicas y callback: nunca bloquear
     if (isPublicRoute) return
 
@@ -74,7 +72,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
             ? { data: { session: null }, error: new Error("timeout esperando getSession()") }
             : resultado
           if (!activo) return
-          debugLog(`AuthProvider getSession intento ${intento}: sesion=${!!data.session} error=${error ? (resultado === "timeout" ? "TIMEOUT" : "si") : "no"}`)
 
           if (data.session) {
             // ✅ Sesión confirmada — si veníamos del modo sin conexión, salir de él
@@ -95,9 +92,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
                   })(),
                   new Promise<"timeout">(resolve => setTimeout(() => resolve("timeout"), 4000))
                 ])
-                debugLog(`AuthProvider rol en ruta lider: ${resultado === "timeout" ? "TIMEOUT" : resultado.rol}`)
                 if (activo && resultado !== "timeout" && resultado.rol === "musico") {
-                  debugLog(`AuthProvider -> redirige a /musicos (rol musico)`)
                   navegarSPA(router, "/musicos", { replace: true }); return
                 }
               } catch { /* si falla la consulta, no bloquear -- mejor no molestar que trabar por un error de red */ }
@@ -127,24 +122,20 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         // con lo que haya en caché en vez de mandarlo a un /login que
         // tampoco podría completar mientras Supabase esté caído.
         if (huboErrorDeRed && getIglesiaIdCacheOnly()) {
-          debugLog(`AuthProvider -> modo sin conexion (hay cache), NO redirige`)
           try { localStorage.setItem(KEY_MODO_SIN_CONEXION, "1") } catch {}
           setSinConexion(true)
           return
         }
 
-        debugLog(`AuthProvider -> redirige a /login (sin sesion, sin cache)`)
         navegarSPA(router, "/login", { replace: true })
       } catch (error) {
         console.error("Error en AuthProvider:", error)
         if (!activo) return
         if (getIglesiaIdCacheOnly()) {
-          debugLog(`AuthProvider catch -> modo sin conexion (hay cache)`)
           try { localStorage.setItem(KEY_MODO_SIN_CONEXION, "1") } catch {}
           setSinConexion(true)
           return
         }
-        debugLog(`AuthProvider catch -> redirige a /login`)
         navegarSPA(router, "/login", { replace: true })
       } finally {
         if (activo) setChecking(false)
@@ -157,11 +148,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     // Esto cubre el caso de login por magic link / OAuth
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (!activo) return
-      debugLog(`AuthProvider onAuthStateChange: ${event} sesion=${!!session}`)
       if (event === "SIGNED_OUT") {
         try { localStorage.removeItem(KEY_MODO_SIN_CONEXION) } catch {}
         setSinConexion(false)
-        debugLog(`AuthProvider SIGNED_OUT -> redirige a /login`)
         navegarSPA(router, "/login", { replace: true })
       }
       if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {

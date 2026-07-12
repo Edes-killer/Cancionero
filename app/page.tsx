@@ -6,7 +6,6 @@ import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId, setIglesiaActivaId } from "@/lib/getIglesia"
 import { conTimeout } from "@/lib/timeout"
-import { debugLog } from "@/lib/debugTrail"
 
 const VERSICULOS = [
   { texto: "Cantad alegres a Dios, habitantes de toda la tierra.", cita: "Salmos 100:1" },
@@ -112,18 +111,15 @@ export default function InicioPage() {
         // quedarse colgado para siempre con datos móviles malos, dejando
         // el spinner de "Cargando..." trabado sin ningún error visible.
         const resultadoSesion = await conTimeout(supabase.auth.getSession(), 5000)
-        debugLog(`Inicio getSession: ${resultadoSesion === "timeout" ? "TIMEOUT" : "sesion=" + !!resultadoSesion.data.session?.user}`)
         if (resultadoSesion === "timeout") { setCargando(false); return }
         const { data: sessionData } = resultadoSesion
-        if (!sessionData.session?.user) { debugLog(`Inicio -> redirige a /login (sin sesion)`); navegarSPA(router, "/login", { replace: true }); return }
+        if (!sessionData.session?.user) { navegarSPA(router, "/login", { replace: true }); return }
         const userId    = sessionData.session.user.id
         const iglesiaId = await getIglesiaId()
-        debugLog(`Inicio getIglesiaId = ${iglesiaId || "null"}`)
 
         if (!iglesiaId) {
           const onbDone = typeof window !== "undefined" && localStorage.getItem("selah-onboarding-ok")
-          if (!onbDone) { debugLog(`Inicio -> redirige a /onboarding`); navegarSPA(router, "/onboarding", { replace: true }); return }
-          debugLog(`Inicio -> sinIglesia (onboarding ya hecho)`)
+          if (!onbDone) { navegarSPA(router, "/onboarding", { replace: true }); return }
           setSinIglesia(true); setCargando(false); return
         }
 

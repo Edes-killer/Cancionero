@@ -3,7 +3,6 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { conTimeout } from '@/lib/timeout'
-import { debugLog } from '@/lib/debugTrail'
 import { navegarSPA } from '@/lib/navegar'
 import { establecerSesionUnaVez } from '@/lib/authCallback'
 
@@ -61,14 +60,12 @@ export function DeepLinkHandler() {
           if (error) { navegarSPA(router, '/login?error=oauth', { replace: true }); return }
 
           if (access_token && refresh_token) {
-            debugLog(`DeepLink procesarUrl: tiene tokens, procesando (single-flight)`)
             const r = await establecerSesionUnaVez(access_token, refresh_token)
-            if (r !== "ok") { debugLog(`DeepLink: sesion fallo (${r}) -> /login`); navegarSPA(router, '/login?error=session', { replace: true }); return }
+            if (r !== "ok") { navegarSPA(router, '/login?error=session', { replace: true }); return }
             // ✅ Si veníamos de aceptar una invitación, volver ahí para
             // terminarla -- antes esto siempre mandaba al home y el código
             // pendiente en localStorage quedaba sin usarse.
             const codigoPendiente = localStorage.getItem('selah_inv_codigo')
-            debugLog(`DeepLink: sesion OK -> ${codigoPendiente ? '/unirse' : '/'}`)
             navegarSPA(router, codigoPendiente ? `/unirse?codigo=${codigoPendiente}` : '/', { replace: true })
             return
           }
@@ -97,15 +94,11 @@ export function DeepLinkHandler() {
         // recargas (a diferencia de un cierre real de la app), así que sirve
         // para marcar "esta url ya se procesó en esta sesión".
         const launch = await App.getLaunchUrl().catch(() => null)
-        debugLog(`DeepLink getLaunchUrl = ${launch?.url ? launch.url.slice(0, 60) : "null"}`)
         if (launch?.url) {
           const YA_PROCESADA_KEY = 'selah_launch_url_procesada'
           if (sessionStorage.getItem(YA_PROCESADA_KEY) !== launch.url) {
-            debugLog(`DeepLink -> procesando launchUrl (primera vez esta sesion)`)
             sessionStorage.setItem(YA_PROCESADA_KEY, launch.url)
             await procesarUrl(launch.url)
-          } else {
-            debugLog(`DeepLink -> launchUrl ya procesada, se ignora`)
           }
         }
 
@@ -115,9 +108,7 @@ export function DeepLinkHandler() {
           const haySesion = resultado !== "timeout" && !!resultado.data.session
           // ✅ normalizar barra final (trailingSlash) -- pathname es "/login/"
           const enLogin = window.location.pathname.replace(/\/$/, "") === '/login'
-          debugLog(`DeepLink appStateChange activo: sesion=${haySesion} path=${window.location.pathname}`)
           if (haySesion && enLogin) {
-            debugLog(`DeepLink appStateChange -> navega a /`)
             navegarSPA(router, '/', { replace: true })
           }
         })
