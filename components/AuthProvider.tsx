@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaIdCacheOnly, getIglesiaId, getRolEnIglesia } from "@/lib/getIglesia"
-import { navegarSPA } from "@/lib/navegar"
+import { navegarSPA, normalizarRuta } from "@/lib/navegar"
 import { conTimeout } from "@/lib/timeout"
 import { debugLog } from "@/lib/debugTrail"
 
@@ -30,8 +30,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
   const publicRoutes = ["/login", "/register", "/proyectar", "/musicos", "/unirse"]
   // ✅ next.config.ts usa trailingSlash: true → usePathname() devuelve "/login/"
-  // con barra final, que no calzaba con las entradas de publicRoutes.
-  const pathnameNormalizado = pathname.length > 1 ? pathname.replace(/\/$/, "") : pathname
+  // con barra final; y en el APK navegamos a "/login/index.html". normalizarRuta
+  // deja ambos como "/login" para comparar contra las rutas conocidas.
+  const pathnameNormalizado = normalizarRuta(pathname)
   const isPublicRoute =
     publicRoutes.includes(pathnameNormalizado) || pathnameNormalizado.startsWith("/auth")
 
@@ -43,6 +44,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const requiereLider = RUTAS_SOLO_LIDER.includes(pathnameNormalizado)
 
   useEffect(() => {
+    debugLog(`AuthProvider EFFECT pathname=${pathname} publica=${isPublicRoute} requiereLider=${requiereLider}`)
     // Rutas públicas y callback: nunca bloquear
     if (isPublicRoute) return
 

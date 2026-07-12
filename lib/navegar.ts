@@ -1,27 +1,63 @@
 // lib/navegar.ts
-// ✅ SIEMPRE navegación SPA del lado del cliente (router.push/replace), en
-// TODOS los entornos incluido el APK (Capacitor).
-//
-// Historia: en algún momento se creyó que router.push no funcionaba dentro
-// de Capacitor y se cambió a navegación dura (window.location). Eso resultó
-// ser un diagnóstico equivocado -- lo que realmente estaba roto entonces era
-// la hidratación de React (que dejaba todo el árbol sin manejadores). Peor
-// aún, la navegación dura destapó un bug fatal: la app se exporta estática
-// (output: export), así que el WebView de Capacitor sirve el "/index.html"
-// raíz para CUALQUIER subruta pedida por window.location (con o sin barra
-// final). Es decir, window.location.replace("/login") cargaba en realidad la
-// pantalla de Inicio, que al no ver sesión redirigía a /login de nuevo... un
-// loop infinito de recargas (confirmado con un diario en pantalla en el
-// dispositivo: path=/login/ pero corriendo el código de Inicio).
-//
-// La navegación SPA no hace recarga de documento, así que nunca toca ese
-// fallback de archivos -- es la única forma correcta de navegar acá. Es lo
-// que hacía la versión que funcionaba (APK del 3 de julio).
 import { debugLog } from "@/lib/debugTrail"
 
-export function navegarSPA(router: { push: (h: string) => void; replace: (h: string) => void }, href: string, opciones?: { replace?: boolean }) {
-  // 🔍 DIAGNÓSTICO TEMPORAL
-  debugLog(`navegarSPA(SPA) -> ${href}${opciones?.replace ? " (replace)" : ""} desde=${typeof window !== "undefined" ? window.location.pathname : "?"}`)
+// ──────────────────────────────────────────────────────────────────────────
+//  NAVEGACIÓN EN CAPACITOR (APK) — resumen de lo aprendido a la mala:
+//
+//  La app se exporta estática (output: export, trailingSlash: true), así que
+//  cada ruta vive en "/ruta/index.html". El WebView de Capacitor:
+//   • NO hace índice de directorio: pedir "/control" o "/control/" por
+//     window.location NO encuentra "/control/index.html" y sirve el
+//     "/index.html" raíz (pantalla de Inicio) como fallback SPA. Eso causaba
+//     un loop infinito de recargas (confirmado en el dispositivo).
+//   • La navegación SPA de Next (router.push/replace) NO cambia de página una
+//     vez que la app ya cargó -- se llama, no tira error, pero no navega
+//     (confirmado: tras "navegarSPA -> /control" no montaba /control ni corría
+//     su AuthProvider). El fetch del RSC no resuelve en este WebView.
+//   • SÍ sirve archivos que existen EXACTAMENTE. "/control/index.html" está en
+//     los assets, así que navegar a esa ruta exacta carga la página correcta.
+//
+//  Por eso, en Capacitor navegamos por window.location al archivo index.html
+//  EXACTO de la subpágina. Fuera de Capacitor (Electron, web) hay un servidor
+//  real y la navegación SPA de Next funciona normal.
+// ──────────────────────────────────────────────────────────────────────────
+
+const esCapacitor = () => typeof window !== "undefined" && !!(window as any).Capacitor
+
+// "/control" -> "/control/index.html" ; "/canciones?x=1" -> "/canciones/index.html?x=1"
+// "/" -> "/" ; conserva query y hash.
+export function aArchivoIndex(href: string): string {
+  if (!href.startsWith("/")) return href // urls absolutas (OAuth externo): no tocar
+  const m = href.match(/^([^?#]*)([?#].*)?$/)
+  if (!m) return href
+  const resto = m[2] || ""
+  let ruta = m[1].replace(/\/+$/, "") // sacar barras finales
+  if (ruta === "") return "/" + resto // raíz
+  return `${ruta}/index.html${resto}`
+}
+
+// Normaliza lo que devuelve usePathname() a una ruta "limpia" para comparar
+// contra rutas conocidas (rutas públicas, gate de roles, resaltado activo):
+// "/control/index.html" -> "/control" ; "/login/" -> "/login" ; "/" -> "/".
+export function normalizarRuta(pathname: string): string {
+  let p = pathname.replace(/\/index\.html$/, "")
+  if (p.length > 1) p = p.replace(/\/+$/, "")
+  return p || "/"
+}
+
+export function navegarSPA(
+  router: { push: (h: string) => void; replace: (h: string) => void },
+  href: string,
+  opciones?: { replace?: boolean }
+) {
+  if (esCapacitor()) {
+    const destino = aArchivoIndex(href)
+    debugLog(`navegarSPA(APK) -> ${destino} desde=${window.location.pathname}`)
+    if (opciones?.replace) window.location.replace(destino)
+    else window.location.href = destino
+    return
+  }
+  debugLog(`navegarSPA(SPA) -> ${href}${opciones?.replace ? " (replace)" : ""}`)
   if (opciones?.replace) router.replace(href)
   else router.push(href)
 }
