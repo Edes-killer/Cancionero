@@ -664,28 +664,17 @@ app.whenReady().then(async () => {
 
   // ── Atajos de teclado globales ────────────────────────────────────────────
   const { globalShortcut } = require("electron")
-  let ultimoEsc = 0
 
-  // ESC — primer toque: toggle alwaysOnTop (permite Alt+Tab)
-  //      — doble toque rápido (<600ms): cierra el proyector
+  // ESC — cierra la pantalla de proyección. Antes un ESC solo cambiaba
+  // "siempre encima" y hacía falta doble ESC para cerrar, lo que se sentía
+  // como que "no cierra". El proyector no es fullscreen real (fullscreen:false),
+  // así que Alt+Tab ya funciona sin necesidad de despinnearlo.
   globalShortcut.register("Escape", () => {
     const wins = require("electron").BrowserWindow.getAllWindows()
     const proyector = wins.find(w => w !== mainWindow && w.getTitle().includes("Proyector"))
     if (!proyector) return
-
-    const ahora = Date.now()
-    if (ahora - ultimoEsc < 600) {
-      // Doble ESC → cerrar proyector
-      proyector.setAlwaysOnTop(false)
-      proyector.close()
-    } else {
-      // Un ESC → toggle alwaysOnTop (para poder usar Alt+Tab o cambiar ventana)
-      const nuevoEstado = !proyector.isAlwaysOnTop()
-      proyector.setAlwaysOnTop(nuevoEstado)
-      // Notificar al usuario con el título
-      proyector.setTitle(nuevoEstado ? "Selah Live — Proyector [fijo]" : "Selah Live — Proyector")
-    }
-    ultimoEsc = ahora
+    proyector.setAlwaysOnTop(false)
+    proyector.close()
   })
 
   // ── Auto-updater ─────────────────────────────────────────────────────────────
