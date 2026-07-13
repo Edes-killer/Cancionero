@@ -6,6 +6,7 @@ import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId } from "@/lib/getIglesia"
 import { buscarServidorEnRed } from "@/lib/servidor"
+import { useConfirm } from "@/components/useConfirm"
 
 // ── Estilos compartidos ──────────────────────────────────────────────────────
 const cardStyle: CSSProperties = {
@@ -19,6 +20,7 @@ const cardStyle: CSSProperties = {
 
 // ── Componente de log de errores ─────────────────────────────────────────────
 function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
+  const { confirmar, ConfirmUI } = useConfirm()
   const [errores, setErrores] = useState<any[]>([])
   const [abierto, setAbierto] = useState(false)
   const [cargando, setCargando] = useState(false)
@@ -41,7 +43,7 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
   useEffect(() => { if (abierto) cargar() }, [abierto, filtroTipo])
 
   const borrarTodos = async () => {
-    if (!confirm("¿Borrar todos los errores registrados?")) return
+    if (!(await confirmar("¿Borrar todos los errores registrados?", { textoOk: "Borrar", peligro: true }))) return
     await supabase.from("errores_log").delete().eq("iglesia_id", iglesiaId)
     setErrores([])
   }
@@ -54,6 +56,7 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
 
   return (
     <div style={cardStyle}>
+      {ConfirmUI}
       <div onClick={() => setAbierto(v => !v)} style={{ cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: abierto ? 14 : 0 }}>
         <h2 style={{ margin:0, fontSize:18, fontWeight:800 }}>🪵 Log de errores</h2>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
@@ -114,6 +117,7 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
 
 export default function ConfiguracionPage() {
   const router = useRouter()
+  const { confirmar, ConfirmUI } = useConfirm()
 
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
@@ -180,7 +184,7 @@ export default function ConfiguracionPage() {
 
   const quitarMiembro = async (userId: string, email: string) => {
     if (!iglesiaId) return
-    if (!confirm(`¿Quitar a "${email}" de esta iglesia? Perderá acceso de inmediato.`)) return
+    if (!(await confirmar(`¿Quitar a "${email}" de esta iglesia? Perderá acceso de inmediato.`, { textoOk: "Quitar", peligro: true }))) return
     setGuardandoMiembro(userId)
     const { error } = await supabase.rpc("quitar_miembro_iglesia", {
       p_iglesia_id: iglesiaId, p_user_id: userId
@@ -764,6 +768,7 @@ export default function ConfiguracionPage() {
       fontFamily: "'Segoe UI', system-ui, sans-serif",
       overflowX: "hidden"
     }}>
+      {ConfirmUI}
 
       {/* Flash mensaje */}
       {flash && (
