@@ -668,9 +668,11 @@ export default function CancionesPage() {
 
   const importarTodo = async () => {
     if (!iglesiaId) return
+    if (sinConexion) { flash("⚠️ Sin conexión con el servidor — no se puede importar ahora"); return }
     setImportando(true)
     const seleccionadas = pptParsed.filter(c => c.seleccionado)
     let ok = 0
+    let primerError = ""
     for (let i = 0; i < seleccionadas.length; i++) {
       const c = seleccionadas[i]
       setImportProgreso(Math.round((i / seleccionadas.length) * 100))
@@ -679,21 +681,32 @@ export default function CancionesPage() {
           titulo: c.titulo, tono: c.tono || null, categoria: c.categoria || "himnario",
           iglesia_id: iglesiaId
         }).select().single()
-        if (error || !data) continue
+        // ✅ Antes esto hacía "continue" en silencio: si el insert fallaba (RLS,
+        // columna faltante, etc.) saltaba la canción sin avisar y al final decía
+        // "importadas" igual. Ahora se guarda el primer error para mostrarlo.
+        if (error || !data) { if (!primerError) primerError = error?.message || "no se pudo crear la canción"; continue }
+        // ✅ texto_letra faltaba acá (sí está en el guardado manual); si la
+        // columna es NOT NULL, el insert de partes fallaba y la canción quedaba
+        // sin letra.
         const partesInsert = c.partes.map((p: any, idx: number) => ({
-          cancion_id: data.id, tipo: p.tipo, texto: p.texto,
+          cancion_id: data.id, tipo: p.tipo, texto: p.texto, texto_letra: p.texto,
           texto_acordes: null, tiene_acordes: false, orden: idx
         }))
-        await supabase.from("partes_cancion").insert(partesInsert)
+        const { error: errorPartes } = await supabase.from("partes_cancion").insert(partesInsert)
+        if (errorPartes) { if (!primerError) primerError = errorPartes.message; continue }
         ok++
-      } catch {}
+      } catch (e: any) {
+        if (!primerError) primerError = e?.message || "error inesperado"
+      }
     }
     setImportProgreso(100)
     setImportando(false)
     setPptParsed([])
     setPanelAbierto("canciones")
     await cargarCanciones(iglesiaId) // ✅ pasar iglesiaId explícito
-    flash(`✅ ${ok} canciones importadas exitosamente`)
+    if (ok > 0 && !primerError) flash(`✅ ${ok} canciones importadas exitosamente`)
+    else if (ok > 0) flash(`⚠️ ${ok} importadas, pero algunas fallaron: ${primerError}`)
+    else flash(`❌ No se pudo importar: ${primerError || "revisa la conexión"}`)
   }
 
   const flash = (msg: string) => {
