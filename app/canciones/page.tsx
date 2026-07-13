@@ -554,18 +554,16 @@ export default function CancionesPage() {
         textoNorm.includes(filenameSinExt) ||
         (lineasPrimera <= 2 && avgLineasResto >= 3 && primeraSlide.length < 80)
 
-      let titulo: string
-      let slidesContenido: string[]
-
-      if (esTituloSlide && slides.length > 1) {
-        // Formato 2: extraer título de la primera slide
-        titulo = primeraSlide.replace(/\n/g, " ").trim()
-        slidesContenido = slides.slice(1)
-      } else {
-        // Formato 1: título desde el nombre del archivo
-        titulo = file.name.replace(/\.pptx?$/i, "").replace(/[-_]/g, " ").trim()
-        slidesContenido = slides
-      }
+      // ✅ Por defecto el título es el NOMBRE DEL ARCHIVO (así organiza el
+      // usuario sus PPT). Antes la heurística de arriba "adivinaba" que la
+      // primera diapositiva era el título y se equivocaba, metiendo la primera
+      // estrofa como título. Ahora se ignora esa detección para el título por
+      // defecto; si un archivo SÍ trae diapositiva de título, el usuario lo
+      // cambia por canción con el botón de formato (cambiarFormato → con-titulo,
+      // que usa _slides). void esTituloSlide para no dejar la variable sin uso.
+      void esTituloSlide
+      const titulo = file.name.replace(/\.pptx?$/i, "").replace(/[-_]/g, " ").trim()
+      const slidesContenido = slides
 
       // ── Detectar tipo de cada parte ────────────────────────────────────
       const TIPOS: Record<string, string> = {
@@ -592,7 +590,7 @@ export default function CancionesPage() {
 
       return {
         titulo, partes, archivo: file.name,
-        formatoDetectado: esTituloSlide ? "con-titulo" : "sin-titulo",
+        formatoDetectado: "sin-titulo",  // título = nombre de archivo por defecto
         _slides: slides  // ✅ guardar slides crudos para poder cambiar formato
       }
     } catch (e) {
