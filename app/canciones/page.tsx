@@ -912,17 +912,9 @@ export default function CancionesPage() {
     setPapeleraCanciones(prev => prev.filter(c => c.id !== id))
   }
 
-  const proyectar = async (c: Cancion) => {
-    if (!socket) return
-    const { data: partes } = await supabase.from("partes_cancion").select("*").eq("cancion_id", c.id).order("orden")
-    const partesConAcordes = (partes || []).map((p: any) => ({
-      ...p,
-      texto: p.texto_acordes ?? p.texto ?? ""
-    }))
-    socket.emit("cargar-cancion", { partes: partesConAcordes, index: 0, titulo: c.titulo, tono: c.tono || "" })
-    socket.emit("cancion-activa", { id: c.id })
-    flash(`▶ Proyectando: ${c.titulo}`)
-  }
+  // ✅ La proyección se maneja solo desde Control (flujo real del culto). Antes
+  // había un botón "▶" acá que emitía por socket aunque no hubiera conexión y
+  // mostraba "Proyectando" sin proyectar nada -- se quitó.
 
   // ── Filtrado ─────────────────────────────────────────────────────────────────
 
@@ -1960,7 +1952,6 @@ export default function CancionesPage() {
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={() => proyectar(c)} style={{ ...btnSuccess, flex: 1, justifyContent: "center" }}>▶</button>
                       <button onClick={() => editarCancion(c)} style={{ ...btnSecondary, flex: 1, justifyContent: "center" }}>✏️</button>
                       {puedeEliminar && (
                         <button onClick={() => eliminarCancion(c.id, c.titulo)} style={{ ...btnDanger, padding: "9px 10px" }}>🗑</button>
@@ -2030,7 +2021,6 @@ export default function CancionesPage() {
 
                     {/* Acciones — compactas en mobile */}
                     <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
-                      <button onClick={() => proyectar(c)} style={{ ...btnSuccess, padding: "8px 10px", fontSize: 13 }}>▶</button>
                       <button onClick={() => editarCancion(c)} style={{ ...btnSecondary, padding: "8px 10px", fontSize: 13 }}>✏️</button>
                       {puedeEliminar && (
                         <button onClick={() => eliminarCancion(c.id, c.titulo)} style={{ ...btnDanger, padding: "8px 10px", fontSize: 13 }}>🗑</button>

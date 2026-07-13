@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
-import { getIglesiaId, setIglesiaActivaId } from "@/lib/getIglesia"
+import { getIglesiaId, setIglesiaActivaId, getRolEnIglesia } from "@/lib/getIglesia"
 import { conTimeout } from "@/lib/timeout"
 
 const VERSICULOS = [
@@ -46,6 +46,9 @@ export default function InicioPage() {
 
   const [servidorActivo, setServidorActivo] = useState<boolean | null>(null)
   const [servidorIp,     setServidorIp]     = useState("")
+  // ✅ Rol propio: para ocultar la tarjeta de Configuración a quien no es admin.
+  // null = todavía no se sabe → no ocultar (el AuthProvider igual bloquea).
+  const [rol, setRol] = useState<string | null>(null)
 
   // ✅ El sitio se compila UNA sola vez (npm run build) y esa fecha queda
   // congelada en el HTML estático desde ese momento. Calcular new Date()
@@ -124,6 +127,10 @@ export default function InicioPage() {
         }
 
         setIglesiaActivaIdState(iglesiaId)
+
+        // ✅ Rol propio en background (para ocultar la tarjeta de Configuración
+        // si no es admin). No bloquea el render.
+        getRolEnIglesia(iglesiaId).then(r => setRol(r)).catch(() => {})
 
         // Datos de iglesia en background (sin bloquear spinner)
         // ✅ .limit(1) evita PGRST116
@@ -309,8 +316,8 @@ export default function InicioPage() {
                 else window.open(`${window.location.origin}/musicos`, "_blank")
               }},
               { icon:"📅", label:"Historial",        sub:"Cultos y estadísticas",        border:"rgba(245,158,11,0.3)", bg:"rgba(245,158,11,0.1)", ibg:"rgba(245,158,11,0.25)",  action:() => navegarSPA(router, "/historial") },
-              { icon:"⚙️", label:"Configuración",  sub:"Iglesia, servidor y ajustes",    border:"rgba(255,255,255,0.08)", bg:"rgba(255,255,255,0.04)", ibg:"rgba(255,255,255,0.07)", action:() => navegarSPA(router, "/configuracion") },
-            ].map(({ icon, label, sub, border, bg, ibg, action }) => (
+              { icon:"⚙️", label:"Configuración",  sub:"Iglesia, servidor y ajustes",    border:"rgba(255,255,255,0.08)", bg:"rgba(255,255,255,0.04)", ibg:"rgba(255,255,255,0.07)", action:() => navegarSPA(router, "/configuracion"), soloAdmin:true },
+            ].filter(t => !(t as any).soloAdmin || rol === null || rol === "admin").map(({ icon, label, sub, border, bg, ibg, action }) => (
               <button key={label} onClick={action} style={{ padding:"16px 14px", borderRadius:14, border:`1px solid ${border}`, background:bg, color:"white", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"flex-start", gap:8 }}>
                 <div style={{ width:40, height:40, borderRadius:11, background:ibg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{icon}</div>
                 <div>

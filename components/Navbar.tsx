@@ -82,6 +82,13 @@ export default function Navbar() {
   const isActive = (href: string) =>
     href === "/" ? rutaActual === "/" : rutaActual === href || rutaActual.startsWith(href + "/")
 
+  // ✅ Configuración es solo para admin (líder y músico no la ven).
+  // Mientras no se sepa el rol (rol === null), se muestran todos para no
+  // ocultar de más; el AuthProvider igual bloquea el acceso real.
+  const linksVisibles = LINKS.filter(l =>
+    l.href === "/configuracion" ? (rol === null || rol === "admin") : true
+  )
+
   const isCapacitor = typeof window !== "undefined" && (window as any).Capacitor
 
   return (
@@ -116,7 +123,7 @@ export default function Navbar() {
           {/* ── Links desktop ── */}
           {!isMobile && (
             <div style={{ display: "flex", alignItems: "center", gap: 2, flex: 1, overflow: "hidden" }}>
-              {LINKS.map(({ href, label, icon }) => {
+              {linksVisibles.map(({ href, label, icon }) => {
                 const activo = isActive(href)
                 return (
                   <Link key={href} href={href} style={{
@@ -214,7 +221,7 @@ export default function Navbar() {
                 <span>{ROLES_INFO[rol].icon}</span>Tu rol: {ROLES_INFO[rol].label}
               </div>
             )}
-            {LINKS.map(({ href, label, icon }) => {
+            {linksVisibles.map(({ href, label, icon }) => {
               const activo = isActive(href)
               return (
                 <Link
