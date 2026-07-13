@@ -270,6 +270,11 @@ export default function CancionesPage() {
   }
   const [guardando, setGuardando] = useState(false)
   const [flashMsg, setFlashMsg] = useState("")
+  // ✅ Modal de confirmación propio (antes se usaba window.confirm, que en
+  // Electron sale con el estilo feo del sistema operativo).
+  const [confirmDialog, setConfirmDialog] = useState<null | {
+    mensaje: string; textoOk: string; peligro: boolean; onOk: () => void
+  }>(null)
 
   // ✅ Detectar mobile para ocultar funciones de escritorio (importar PPT)
   const [isMobile, setIsMobile] = useState(false)
@@ -904,18 +909,23 @@ export default function CancionesPage() {
     editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
   }
 
-  const eliminarCancion = async (id: string, titulo: string) => {
+  const eliminarCancion = (id: string, titulo: string) => {
     if (sinConexion) { flash("⚠️ Sin conexión con el servidor — no se puede eliminar ahora"); return }
-    if (!confirm(`¿Enviar "${titulo}" a la papelera? Podrás restaurarla luego desde ahí.`)) return
-    // ✅ Ya no se borra directo — pasa por una función que verifica en la BD
-    // que el usuario sea lider/admin y solo la marca como eliminada (soft-delete).
-    const { error } = await supabase.rpc("eliminar_cancion_soft", { p_id: id })
-    if (error) { flash(`❌ ${error.message || "No se pudo eliminar"}`); return }
-    if (editandoId === id) resetEditor()
-    flash("🗑️ Enviada a la papelera")
-    await cargarCanciones()
-    partesCacheRef.current.delete(id) // ✅ Invalidar cache de partes
-    eliminarCancionDelCache(id)
+    setConfirmDialog({
+      mensaje: `¿Enviar "${titulo}" a la papelera? Podrás restaurarla luego desde ahí.`,
+      textoOk: "Enviar a papelera", peligro: false,
+      onOk: async () => {
+        // ✅ Ya no se borra directo — pasa por una función que verifica en la BD
+        // que el usuario sea lider/admin y solo la marca como eliminada (soft-delete).
+        const { error } = await supabase.rpc("eliminar_cancion_soft", { p_id: id })
+        if (error) { flash(`❌ ${error.message || "No se pudo eliminar"}`); return }
+        if (editandoId === id) resetEditor()
+        flash("🗑️ Enviada a la papelera")
+        await cargarCanciones()
+        partesCacheRef.current.delete(id) // ✅ Invalidar cache de partes
+        eliminarCancionDelCache(id)
+      }
+    })
   }
 
   const cargarPapelera = async () => {
@@ -940,12 +950,17 @@ export default function CancionesPage() {
     await cargarCanciones()
   }
 
-  const purgarCancion = async (id: string, titulo: string) => {
-    if (!confirm(`¿Eliminar "${titulo}" definitivamente? Esta acción NO se puede deshacer.`)) return
-    const { error } = await supabase.rpc("purgar_cancion", { p_id: id })
-    if (error) { flash(`❌ ${error.message || "No se pudo eliminar"}`); return }
-    flash("🗑️ Eliminada definitivamente")
-    setPapeleraCanciones(prev => prev.filter(c => c.id !== id))
+  const purgarCancion = (id: string, titulo: string) => {
+    setConfirmDialog({
+      mensaje: `¿Eliminar "${titulo}" definitivamente? Esta acción NO se puede deshacer.`,
+      textoOk: "Eliminar definitivamente", peligro: true,
+      onOk: async () => {
+        const { error } = await supabase.rpc("purgar_cancion", { p_id: id })
+        if (error) { flash(`❌ ${error.message || "No se pudo eliminar"}`); return }
+        flash("🗑️ Eliminada definitivamente")
+        setPapeleraCanciones(prev => prev.filter(c => c.id !== id))
+      }
+    })
   }
 
   // ✅ La proyección se maneja solo desde Control (flujo real del culto). Antes
@@ -1306,6 +1321,36 @@ export default function CancionesPage() {
           whiteSpace: "nowrap"
         }}>
           {flashMsg}
+        </div>
+      )}
+
+      {/* ── Modal de confirmación (reemplaza window.confirm) ── */}
+      {confirmDialog && (
+        <div onClick={() => setConfirmDialog(null)} style={{
+          position: "fixed", inset: 0, zIndex: 2000,
+          background: "rgba(0,0,0,0.6)", display: "flex",
+          alignItems: "center", justifyContent: "center", padding: 20
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: colors.surface, border: `1px solid ${colors.border}`,
+            borderRadius: 16, padding: 24, maxWidth: 420, width: "100%",
+            boxShadow: "0 24px 60px rgba(0,0,0,0.5)"
+          }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: colors.text, lineHeight: 1.6, marginBottom: 20 }}>
+              {confirmDialog.mensaje}
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setConfirmDialog(null)} style={{
+                padding: "9px 18px", borderRadius: 10, border: `1px solid ${colors.border}`,
+                background: "transparent", color: colors.text, fontSize: 14, fontWeight: 600, cursor: "pointer"
+              }}>Cancelar</button>
+              <button onClick={() => { const cb = confirmDialog.onOk; setConfirmDialog(null); cb() }} style={{
+                padding: "9px 18px", borderRadius: 10, border: "none",
+                background: confirmDialog.peligro ? "#dc2626" : "#2563eb",
+                color: "white", fontSize: 14, fontWeight: 700, cursor: "pointer"
+              }}>{confirmDialog.textoOk}</button>
+            </div>
+          </div>
         </div>
       )}
 
