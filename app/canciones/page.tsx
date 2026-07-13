@@ -705,8 +705,8 @@ export default function CancionesPage() {
     setPanelAbierto("canciones")
     await cargarCanciones(iglesiaId) // ✅ pasar iglesiaId explícito
     if (ok > 0 && !primerError) flash(`✅ ${ok} canciones importadas exitosamente`)
-    else if (ok > 0) flash(`⚠️ ${ok} importadas, pero algunas fallaron: ${primerError}`)
-    else flash(`❌ No se pudo importar: ${primerError || "revisa la conexión"}`)
+    else if (ok > 0) alert(`⚠️ Se importaron ${ok}, pero otras fallaron.\n\nError:\n${primerError}`)
+    else alert(`❌ No se pudo importar ninguna canción.\n\nError:\n${primerError || "revisa la conexión"}`)
   }
 
   const flash = (msg: string) => {
@@ -807,11 +807,13 @@ export default function CancionesPage() {
 
     if (editandoId) {
       const { error } = await supabase.from("canciones").update(datosCancion).eq("id", editandoId)
-      if (error) { flash("❌ Error actualizando canción"); setGuardando(false); return }
+      if (error) { alert("❌ Error actualizando canción:\n\n" + (error.message || JSON.stringify(error))); setGuardando(false); return }
       await supabase.from("partes_cancion").delete().eq("cancion_id", editandoId)
     } else {
       const { data, error } = await supabase.from("canciones").insert(datosCancion).select().single()
-      if (error || !data) { flash("❌ Error creando canción"); setGuardando(false); return }
+      // 🔍 Mostrar el error REAL (antes solo decía "Error creando canción" sin
+      // detalle). Con esto se ve si es RLS, columna faltante, numero duplicado, etc.
+      if (error || !data) { alert("❌ Error creando canción:\n\n" + (error?.message || "sin datos")); setGuardando(false); return }
       cancionId = data.id
     }
 
@@ -828,7 +830,7 @@ export default function CancionesPage() {
     
 
     const { error: errorPartes } = await supabase.from("partes_cancion").insert(partesInsert)
-    if (errorPartes) { flash("❌ Error guardando partes"); setGuardando(false); return }
+    if (errorPartes) { alert("❌ Error guardando la letra/partes:\n\n" + (errorPartes.message || JSON.stringify(errorPartes))); setGuardando(false); return }
 
     flash(editandoId ? "✅ Canción actualizada" : "✅ Canción guardada")
     resetEditor()

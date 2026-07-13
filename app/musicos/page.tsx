@@ -187,7 +187,7 @@ export default function MusicosPage() {
     try {
       const { data } = await supabase
         .from("partes_cancion")
-        .select("tipo, texto, texto_acordes, tiene_acordes, orden")
+        .select("tipo, texto, texto_letra, texto_acordes, tiene_acordes, orden")
         .eq("cancion_id", cancion.id)
         .order("orden")
       const partes = data || []
@@ -419,11 +419,13 @@ export default function MusicosPage() {
 
   // ── Parte actual ──────────────────────────────────────────────────────────
   const parteActual = partes[index] || null
-  // ✅ FIX: el himnario guarda acordes en texto_acordes (separado de texto)
-  // Prioridad: texto_acordes (si tiene acordes) → texto → texto_letra
-  const textoActual = (parteActual?.tiene_acordes && parteActual?.texto_acordes)
+  // ✅ Con acordes visibles: usar texto_acordes (la letra con los acordes
+  // encima). Con acordes ocultos: usar la LETRA LIMPIA (texto_letra) en vez de
+  // esconder los acordes del texto_acordes -- porque a veces los acordes están
+  // mal o desalineados y la letra sacada de ahí sale distinta a la real.
+  const textoActual = (mostrarAcordes && parteActual?.tiene_acordes && parteActual?.texto_acordes)
   ? parteActual.texto_acordes
-  : parteActual?.texto || parteActual?.texto_letra || ""
+  : parteActual?.texto_letra || parteActual?.texto || ""
   const tipoActual = parteActual?.tipo || ""
   const bloque = detectarFormato(textoActual)
   const totalLineasParte = bloque.length
@@ -1024,8 +1026,8 @@ export default function MusicosPage() {
                 {partesRepo.length === 0 ? (
                   <div style={{ textAlign: "center", opacity: 0.3, paddingTop: 40 }}>Cargando partes...</div>
                 ) : partesRepo.map((parte: any, pi: number) => {
-                  const textoRender = (parte.tiene_acordes && parte.texto_acordes)
-                    ? parte.texto_acordes : parte.texto || ""
+                  const textoRender = (mostrarAcordes && parte.tiene_acordes && parte.texto_acordes)
+                    ? parte.texto_acordes : parte.texto_letra || parte.texto || ""
                   const bloqueRepo = detectarFormato(textoRender)
                   return (
                     <div key={pi} style={{ marginBottom: 28 }}>
