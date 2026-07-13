@@ -317,6 +317,9 @@ export default function CancionesPage() {
   const [convirtiendoPpt, setConvirtiendoPpt] = useState<string | null>(null)  // nombre del archivo que se está convirtiendo
   const [importando, setImportando] = useState(false)
   const [importProgreso, setImportProgreso] = useState(0)
+  // ✅ Import masivo: categoría (texto libre, permite crear una nueva como
+  // "coritos") y tono para aplicar a todas las canciones marcadas de una vez.
+  const [catMasiva, setCatMasiva] = useState("")
 
   const editorRef = useRef<HTMLDivElement>(null)
   // ✅ Cache local de partes para no repetir queries al editor
@@ -671,13 +674,30 @@ export default function CancionesPage() {
     const seleccionadas = pptParsed.filter(c => c.seleccionado)
     let ok = 0
     let primerError = ""
+
+    // ✅ Número correlativo automático: se asigna desde el último número usado
+    // en la iglesia hacia adelante, para que no se dupliquen ni queden sin
+    // número. Se consulta el máximo actual una sola vez.
+    let siguienteNumero = 1
+    try {
+      const { data: maxRow } = await supabase
+        .from("canciones")
+        .select("numero")
+        .eq("iglesia_id", iglesiaId)
+        .not("numero", "is", null)
+        .order("numero", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      siguienteNumero = ((maxRow?.numero as number) || 0) + 1
+    } catch { /* si falla, arranca en 1 */ }
+
     for (let i = 0; i < seleccionadas.length; i++) {
       const c = seleccionadas[i]
       setImportProgreso(Math.round((i / seleccionadas.length) * 100))
       try {
         const { data, error } = await supabase.from("canciones").insert({
           titulo: c.titulo, tono: c.tono || null, categoria: c.categoria || "himnario",
-          iglesia_id: iglesiaId
+          numero: siguienteNumero, iglesia_id: iglesiaId
         }).select().single()
         // ✅ Antes esto hacía "continue" en silencio: si el insert fallaba (RLS,
         // columna faltante, etc.) saltaba la canción sin avisar y al final decía
@@ -693,6 +713,7 @@ export default function CancionesPage() {
         const { error: errorPartes } = await supabase.from("partes_cancion").insert(partesInsert)
         if (errorPartes) { if (!primerError) primerError = errorPartes.message; continue }
         ok++
+        siguienteNumero++  // ✅ siguiente canción toma el número siguiente
       } catch (e: any) {
         if (!primerError) primerError = e?.message || "error inesperado"
       }
@@ -703,13 +724,15 @@ export default function CancionesPage() {
     setPanelAbierto("canciones")
     await cargarCanciones(iglesiaId) // ✅ pasar iglesiaId explícito
     if (ok > 0 && !primerError) flash(`✅ ${ok} canciones importadas exitosamente`)
-    else if (ok > 0) alert(`⚠️ Se importaron ${ok}, pero otras fallaron.\n\nError:\n${primerError}`)
-    else alert(`❌ No se pudo importar ninguna canción.\n\nError:\n${primerError || "revisa la conexión"}`)
+    else if (ok > 0) flash(`⚠️ Se importaron ${ok}, pero otras fallaron: ${primerError}`)
+    else flash(`❌ No se pudo importar: ${primerError || "revisa la conexión"}`)
   }
 
   const flash = (msg: string) => {
     setFlashMsg(msg)
-    setTimeout(() => setFlashMsg(""), 2800)
+    // ✅ Los errores (❌/⚠️) quedan más tiempo para poder leerlos; los éxitos se van rápido.
+    const esError = msg.startsWith("❌") || msg.startsWith("⚠️")
+    setTimeout(() => setFlashMsg(""), esError ? 7000 : 2800)
   }
 
 
@@ -805,13 +828,13 @@ export default function CancionesPage() {
 
     if (editandoId) {
       const { error } = await supabase.from("canciones").update(datosCancion).eq("id", editandoId)
-      if (error) { alert("❌ Error actualizando canción:\n\n" + (error.message || JSON.stringify(error))); setGuardando(false); return }
+      if (error) { flash("❌ Error actualizando: " + (error.message || "intenta de nuevo")); setGuardando(false); return }
       await supabase.from("partes_cancion").delete().eq("cancion_id", editandoId)
     } else {
       const { data, error } = await supabase.from("canciones").insert(datosCancion).select().single()
       // 🔍 Mostrar el error REAL (antes solo decía "Error creando canción" sin
       // detalle). Con esto se ve si es RLS, columna faltante, numero duplicado, etc.
-      if (error || !data) { alert("❌ Error creando canción:\n\n" + (error?.message || "sin datos")); setGuardando(false); return }
+      if (error || !data) { flash("❌ Error creando canción: " + (error?.message || "intenta de nuevo")); setGuardando(false); return }
       cancionId = data.id
     }
 
@@ -828,7 +851,7 @@ export default function CancionesPage() {
     
 
     const { error: errorPartes } = await supabase.from("partes_cancion").insert(partesInsert)
-    if (errorPartes) { alert("❌ Error guardando la letra/partes:\n\n" + (errorPartes.message || JSON.stringify(errorPartes))); setGuardando(false); return }
+    if (errorPartes) { flash("❌ Error guardando la letra: " + (errorPartes.message || "intenta de nuevo")); setGuardando(false); return }
 
     flash(editandoId ? "✅ Canción actualizada" : "✅ Canción guardada")
     resetEditor()
@@ -1347,6 +1370,34 @@ export default function CancionesPage() {
             {/* Preview de canciones parseadas */}
             {pptParsed.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {/* ── Acciones masivas (aplican a todas las marcadas) ── */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.2)", borderRadius: 10, padding: "10px 12px" }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#93c5fd" }}>Aplicar a todas las marcadas:</span>
+                  {/* Tono masivo */}
+                  <select defaultValue="" onChange={e => {
+                    const v = e.target.value
+                    if (v === "__nada__") return
+                    setPptParsed(prev => prev.map(x => x.seleccionado ? { ...x, tono: v === "__sintono__" ? "" : v } : x))
+                    e.target.value = "__nada__"
+                  }} style={{ ...selectStyle, width: 120 }}>
+                    <option value="__nada__">Tono…</option>
+                    <option value="__sintono__">Sin tono</option>
+                    {TONOS.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  {/* Categoría masiva (texto libre → permite crear una nueva) */}
+                  <input value={catMasiva} onChange={e => setCatMasiva(e.target.value)}
+                    placeholder="Categoría (ej: coritos)"
+                    style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, padding: "6px 10px", color: "white", fontSize: 13, width: 170 }} />
+                  <button onClick={() => {
+                    const cat = catMasiva.trim().toLowerCase()
+                    if (!cat) return
+                    setPptParsed(prev => prev.map(x => x.seleccionado ? { ...x, categoria: cat } : x))
+                    flash(`✅ Categoría "${cat}" aplicada a las marcadas`)
+                  }} style={{ ...btnSecondary, fontSize: 12, padding: "6px 12px" }}>
+                    Aplicar categoría
+                  </button>
+                </div>
+
                 {pptParsed.map((c, ci) => (
                   <div key={ci} style={{
                     background: colors.surface, borderRadius: 12,
@@ -1392,6 +1443,10 @@ export default function CancionesPage() {
                         style={{ ...selectStyle, width: 130 }}>
                         <option value="himnario">Himnario</option>
                         {["Alabanza","Adoración","Avivamiento","Comunión","Evangelismo","Gratitud","Ofrenda"].map(cat => <option key={cat} value={cat.toLowerCase()}>{cat}</option>)}
+                        {/* ✅ categoría personalizada (ej: la aplicada masivamente) que no está en la lista fija */}
+                        {c.categoria && !["himnario","alabanza","adoración","avivamiento","comunión","evangelismo","gratitud","ofrenda"].includes(c.categoria) && (
+                          <option value={c.categoria}>{c.categoria}</option>
+                        )}
                       </select>
                       <button onClick={() => setPptParsed(prev => prev.map((x,i) => i===ci ? {...x, expandido: !x.expandido} : x))}
                         style={{ ...btnSecondary, fontSize: 12, padding: "5px 10px" }}>
