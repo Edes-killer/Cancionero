@@ -680,15 +680,17 @@ export default function CancionesPage() {
     let ok = 0
     let primerError = ""
 
-    // ✅ Número correlativo automático: se asigna desde el último número usado
-    // en la iglesia hacia adelante, para que no se dupliquen ni queden sin
-    // número. Se consulta el máximo actual una sola vez.
+    // ✅ Número correlativo automático: continúa desde el último número usado
+    // considerando TANTO el himnario global (iglesia_id null) COMO las
+    // canciones propias de la iglesia. Antes solo miraba las de la iglesia
+    // (que estaba vacía → arrancaba en 1) y chocaba con los números del
+    // himnario. Ahora las nuevas quedan después del último número del himnario.
     let siguienteNumero = 1
     try {
       const { data: maxRow } = await supabase
         .from("canciones")
         .select("numero")
-        .eq("iglesia_id", iglesiaId)
+        .or(`iglesia_id.eq.${iglesiaId},iglesia_id.is.null`)
         .not("numero", "is", null)
         .order("numero", { ascending: false })
         .limit(1)
@@ -701,7 +703,7 @@ export default function CancionesPage() {
       setImportProgreso(Math.round((i / seleccionadas.length) * 100))
       try {
         const { data, error } = await supabase.from("canciones").insert({
-          titulo: c.titulo, tono: c.tono || null, categoria: c.categoria || "himnario",
+          titulo: (c.titulo || "").trim().toUpperCase(), tono: c.tono || null, categoria: c.categoria || "himnario",
           numero: siguienteNumero, iglesia_id: iglesiaId
         }).select().single()
         // ✅ Antes esto hacía "continue" en silencio: si el insert fallaba (RLS,
@@ -821,7 +823,7 @@ export default function CancionesPage() {
     const tonoFinal = normalizarAcorde(tono || detectarTono(textoCompleto) || "")
 
     const datosCancion = {
-      titulo: titulo.trim(),
+      titulo: titulo.trim().toUpperCase(),  // ✅ todos los títulos en mayúscula
       autor: autor.trim() || null,
       tono: tonoFinal || null,
       categoria: categoriaFinal || null,
