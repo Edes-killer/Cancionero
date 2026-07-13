@@ -1,12 +1,10 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
-import { navegarSPA } from "@/lib/navegar"
 import { io } from "socket.io-client"
 import { supabase } from "../../lib/supabase"
 import { getIglesiaId } from "../../lib/getIglesia"
-import { getSocketUrl } from "../../lib/servidor"
+import { getSocketUrl, buscarServidorEnRed } from "../../lib/servidor"
 import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "../../lib/cache"
 import PitchDetector from "@/components/PitchDetector"
 
@@ -17,6 +15,30 @@ export default function MusicosPage() {
   const [tono, setTono] = useState("")
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
+  // ✅ Conexión al servidor DESDE Músicos (un músico no puede entrar a
+  // Configuración, así que necesita conectarse desde su propio módulo).
+  const [panelConexion, setPanelConexion] = useState(false)
+  const [buscandoServidor, setBuscandoServidor] = useState(false)
+  const [ipManual, setIpManual] = useState("")
+  const [msgConexion, setMsgConexion] = useState("")
+  const conectarConIp = (ip: string) => {
+    const limpia = ip.trim()
+    if (!limpia) return
+    localStorage.setItem("servidor_ip", limpia)
+    window.location.reload() // reconecta el socket con la IP nueva
+  }
+  const buscarYConectar = async () => {
+    setBuscandoServidor(true); setMsgConexion("Buscando el computador en la red...")
+    try {
+      const ip = await buscarServidorEnRed(m => setMsgConexion(m))
+      if (ip) { conectarConIp(ip); return }
+      setMsgConexion("No se encontró el computador. Escribe la IP a mano o revisa que Selah Live esté abierto en el PC.")
+    } catch {
+      setMsgConexion("No se pudo buscar. Escribe la IP a mano.")
+    } finally {
+      setBuscandoServidor(false)
+    }
+  }
   const [transposicion, setTransposicion] = useState(0)
   const [mostrarAcordes, setMostrarAcordes] = useState(true)
   const [usarAmericano, setUsarAmericano] = useState(false)
@@ -66,7 +88,6 @@ export default function MusicosPage() {
   // }, [])
 
   // ── Modo: "repertorio" por defecto — funciona siempre sin servidor ────────
-  const router = useRouter()
   const [modo, setModo] = useState<"vivo" | "repertorio">("repertorio")
   const [tunerAbierto, setTunerAbierto] = useState(false)
   const [cancionesRepo, setCancionesRepo] = useState<any[]>([])
@@ -858,15 +879,32 @@ export default function MusicosPage() {
                     ? "Sin internet · Mostrando canciones guardadas"
                     : "Sin conexión al servidor"}
                 </span>
-                <button onClick={() => navegarSPA(router, "/configuracion")} style={{
+                <button onClick={() => setPanelConexion(v => !v)} style={{
                   padding: "4px 10px", borderRadius: 8, border: "1px solid rgba(251,191,36,0.3)",
                   background: "rgba(251,191,36,0.1)", color: "#fbbf24",
                   fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0
                 }}>⚙️ Conectar</button>
               </div>
-              {navigator.onLine && (
-                <div style={{ padding: "0 16px 10px", fontSize: 11, color: "rgba(251,191,36,0.6)", lineHeight: 1.5 }}>
-                  Ve a ⚙️ Configuración → escanea el QR del PC o usa "Buscar automáticamente"
+              {/* ✅ Panel de conexión inline (el músico no va a Configuración) */}
+              {panelConexion && navigator.onLine && (
+                <div style={{ padding: "0 16px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+                  <button onClick={buscarYConectar} disabled={buscandoServidor} style={{
+                    padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(251,191,36,0.3)",
+                    background: "rgba(251,191,36,0.12)", color: "#fbbf24", fontSize: 12, fontWeight: 700,
+                    cursor: buscandoServidor ? "default" : "pointer", opacity: buscandoServidor ? 0.6 : 1, textAlign: "left"
+                  }}>{buscandoServidor ? "🔍 Buscando..." : "🔍 Buscar el computador automáticamente"}</button>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input value={ipManual} onChange={e => setIpManual(e.target.value)}
+                      placeholder="o escribe la IP (ej: 192.168.1.50)"
+                      onKeyDown={e => { if (e.key === "Enter") conectarConIp(ipManual) }}
+                      style={{ flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, padding: "7px 10px", color: "white", fontSize: 12 }}
+                      inputMode="decimal" />
+                    <button onClick={() => conectarConIp(ipManual)} disabled={!ipManual.trim()} style={{
+                      padding: "7px 12px", borderRadius: 8, border: "none", background: "#2563eb", color: "white",
+                      fontSize: 12, fontWeight: 700, cursor: ipManual.trim() ? "pointer" : "default", opacity: ipManual.trim() ? 1 : 0.5
+                    }}>Conectar</button>
+                  </div>
+                  {msgConexion && <div style={{ fontSize: 11, color: "rgba(251,191,36,0.75)", lineHeight: 1.5 }}>{msgConexion}</div>}
                 </div>
               )}
             </div>
