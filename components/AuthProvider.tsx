@@ -35,12 +35,16 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const isPublicRoute =
     publicRoutes.includes(pathnameNormalizado) || pathnameNormalizado.startsWith("/auth")
 
-  // ✅ El rol solo decidía a qué pantalla te mandaba el login al aceptar una
-  // invitación -- pero nada impedía que un "músico" escribiera /configuracion
-  // en la barra de direcciones y entrara igual. Estas rutas quedan
-  // restringidas a líder/admin; un músico es redirigido a /musicos.
-  const RUTAS_SOLO_LIDER = ["/configuracion", "/control", "/canciones"]
-  const requiereLider = RUTAS_SOLO_LIDER.includes(pathnameNormalizado)
+  // ✅ Control de acceso por rol:
+  //  • Músico: solo /musicos (y las rutas públicas). Cualquier ruta protegida
+  //    lo manda a /musicos.
+  //  • Líder de alabanza: puede usar Control, Canciones, Proyección e Historial,
+  //    pero NO Configuración (ajustes de iglesia, miembros, invitaciones).
+  //  • Admin: todo.
+  const RUTAS_SOLO_ADMIN = ["/configuracion"]           // solo admin
+  const RUTAS_SOLO_LIDER = ["/control", "/canciones", "/historial"] // líder + admin
+  const requiereAdmin = RUTAS_SOLO_ADMIN.includes(pathnameNormalizado)
+  const requiereLider = requiereAdmin || RUTAS_SOLO_LIDER.includes(pathnameNormalizado)
 
   useEffect(() => {
     // Rutas públicas y callback: nunca bloquear
@@ -92,8 +96,15 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
                   })(),
                   new Promise<"timeout">(resolve => setTimeout(() => resolve("timeout"), 4000))
                 ])
-                if (activo && resultado !== "timeout" && resultado.rol === "musico") {
-                  navegarSPA(router, "/musicos", { replace: true }); return
+                if (activo && resultado !== "timeout") {
+                  // Músico: fuera de toda ruta protegida → Vista Músicos
+                  if (resultado.rol === "musico") {
+                    navegarSPA(router, "/musicos", { replace: true }); return
+                  }
+                  // Configuración: solo admin → un líder queda fuera, al inicio
+                  if (requiereAdmin && resultado.rol !== "admin") {
+                    navegarSPA(router, "/", { replace: true }); return
+                  }
                 }
               } catch { /* si falla la consulta, no bloquear -- mejor no molestar que trabar por un error de red */ }
             }

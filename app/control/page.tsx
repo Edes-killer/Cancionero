@@ -1511,6 +1511,41 @@ useEffect(() => {
   // Media Session se actualiza desde activarMediaSession() llamado en cada acción
 }, [siguiente, anterior])
 
+// ── Zoom (tamaño de letra del proyector) por delta ────────────────────────
+const cambiarZoom = useCallback((delta: number) => {
+  const v = Math.min(200, Math.max(50, zoomActualRef.current + delta))
+  setZoomActual(v); zoomActualRef.current = v
+  socketRef2.current?.emit("ajustar-zoom", { valor: v })
+  if (typeof window !== "undefined") localStorage.setItem("proyector-escala-fuente", String(v))
+}, [])
+
+// ── Atajos de teclado en Control (escritorio) ─────────────────────────────
+// Espacio / → : siguiente verso   ·   ← : verso anterior
+// + / = : agrandar letra          ·   − : achicar letra
+// No se disparan si estás escribiendo en el buscador (input/textarea).
+useEffect(() => {
+  const onKey = (e: KeyboardEvent) => {
+    const t = e.target as HTMLElement
+    const escribiendo = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
+    if (escribiendo) return
+    switch (e.key) {
+      case " ":
+      case "ArrowRight":
+        e.preventDefault(); siguienteRef.current(); break
+      case "ArrowLeft":
+        e.preventDefault(); anteriorRef.current(); break
+      case "+":
+      case "=":
+        e.preventDefault(); cambiarZoom(+10); break
+      case "-":
+      case "_":
+        e.preventDefault(); cambiarZoom(-10); break
+    }
+  }
+  window.addEventListener("keydown", onKey)
+  return () => window.removeEventListener("keydown", onKey)
+}, [cambiarZoom])
+
 const agregarALista = (cancion: any) => {
   if (listaIdActual) {
     alert("⚠️ Estás editando un culto guardado. Presiona 'Nuevo' para crear otro.")
