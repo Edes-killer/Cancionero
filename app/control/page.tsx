@@ -13,6 +13,7 @@ import { io } from "socket.io-client"
 import { getIglesiaId } from "../../lib/getIglesia"
 import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
+import { useConfirm } from "@/components/useConfirm"
 import { useApp } from "@/context/AppContext"
 import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk, getPartesCache, setPartesCache } from "@/lib/cache"
 
@@ -87,6 +88,14 @@ interface FondoConfig {
 }
 
 export default function ControlPage() {
+  const { confirmar, ConfirmUI } = useConfirm()
+  // ✅ Aviso interno (toast) para reemplazar los flashCtrl() del sistema.
+  const [avisoCtrl, setAvisoCtrl] = useState("")
+  const flashCtrl = (msg: string) => {
+    setAvisoCtrl(msg)
+    const esError = msg.startsWith("❌") || msg.startsWith("⚠️") || msg.startsWith("🔒")
+    window.setTimeout(() => setAvisoCtrl(""), esError ? 6000 : 3000)
+  }
   const { iglesiaId: iglesiaIdCtx, nombreIglesia: nombreIglesiaCtx,
           logoUrl: logoUrlCtx, canciones: cancionesCtx, pinSala, sinConexion } = useApp()
   const [socket, setSocket] = useState<any>(null)
@@ -491,7 +500,7 @@ useEffect(() => {
   })
 
   s.on("pin-invalido", (data: { mensaje?: string }) => {
-    alert("🔒 " + (data?.mensaje || "PIN incorrecto. Verifica en configuración."))
+    flashCtrl("🔒 " + (data?.mensaje || "PIN incorrecto. Verifica en configuración."))
   })
 
   s.on("connect_error", () => {
@@ -1548,7 +1557,7 @@ useEffect(() => {
 
 const agregarALista = (cancion: any) => {
   if (listaIdActual) {
-    alert("⚠️ Estás editando un culto guardado. Presiona 'Nuevo' para crear otro.")
+    flashCtrl("⚠️ Estás editando un culto guardado. Presiona 'Nuevo' para crear otro.")
     return
   }
 
@@ -1665,11 +1674,11 @@ const itemAFila = (item: any, i: number, listaId: string) => ({
 
 const guardarCulto = async () => {
   if (sinConexion) {
-    alert("⚠️ Sin conexión con el servidor — no se puede guardar el culto en este momento. Podés seguir usando las canciones y listas ya guardadas.")
+    flashCtrl("⚠️ Sin conexión con el servidor — no se puede guardar el culto en este momento. Podés seguir usando las canciones y listas ya guardadas.")
     return
   }
   if (lista.length === 0) {
-    alert("No hay elementos en la lista de culto para guardar.")
+    flashCtrl("No hay elementos en la lista de culto para guardar.")
     return
   }
 
@@ -1691,7 +1700,7 @@ const guardarCulto = async () => {
 
     if (deleteError) {
       console.error("Error borrando items antiguos:", deleteError)
-      alert("No se pudieron actualizar los items del culto")
+      flashCtrl("No se pudieron actualizar los items del culto")
       return
     }
 
@@ -1702,12 +1711,12 @@ const guardarCulto = async () => {
 
     if (errorInsert) {
       console.error("Error insertando items:", errorInsert)
-      alert("No se pudieron guardar todos los elementos del culto")
+      flashCtrl("No se pudieron guardar todos los elementos del culto")
       return
     }
 
     setNombreCulto(nombre.trim())
-    alert("✅ Lista de culto actualizada correctamente")
+    flashCtrl("✅ Lista de culto actualizada correctamente")
   } else {
     // CREAR CULTO NUEVO
     const iglesiaId = await getIglesiaIdCached()
@@ -1724,7 +1733,7 @@ const guardarCulto = async () => {
 
     if (error || !data) {
       console.error("Error creando culto:", error)
-      alert("No se pudo crear el culto")
+      flashCtrl("No se pudo crear el culto")
       return
     }
 
@@ -1738,13 +1747,13 @@ const guardarCulto = async () => {
 
     if (errorInsert) {
       console.error("Error insertando items:", errorInsert)
-      alert("El culto se creó, pero falló el guardado de elementos")
+      flashCtrl("El culto se creó, pero falló el guardado de elementos")
       return
     }
 
     setListaIdActual(nuevaId)
     setNombreCulto(nombre.trim())
-    alert("✅ Nueva lista de culto guardada correctamente")
+    flashCtrl("✅ Nueva lista de culto guardada correctamente")
   }
   setNombreCulto(nombre.trim())
   await cargarCultos()
@@ -1756,7 +1765,7 @@ const guardarCulto = async () => {
 
 const guardarCultoComoCopia = async () => {
   if (sinConexion) {
-    alert("⚠️ Sin conexión con el servidor — no se puede guardar el culto en este momento.")
+    flashCtrl("⚠️ Sin conexión con el servidor — no se puede guardar el culto en este momento.")
     return
   }
   const nombreBase = nombreCulto?.trim() || "Culto"
@@ -1776,7 +1785,7 @@ const guardarCultoComoCopia = async () => {
 
   if (error || !data) {
     console.error("Error creando copia:", error)
-    alert("No se pudo crear la copia")
+    flashCtrl("No se pudo crear la copia")
     return
   }
 
@@ -1789,14 +1798,14 @@ const guardarCultoComoCopia = async () => {
 
   if (errorInsert) {
     console.error("Error copiando items:", errorInsert)
-    alert("La copia se creó, pero falló el guardado de elementos")
+    flashCtrl("La copia se creó, pero falló el guardado de elementos")
     return
   }
 
   setListaIdActual(nuevaId)
   setNombreCulto(nombre.trim())
   await cargarCultos()
-  alert("✅ Copia creada")
+  flashCtrl("✅ Copia creada")
 }
 
 const renombrarCulto = async (culto: any) => {
@@ -1810,7 +1819,7 @@ const renombrarCulto = async (culto: any) => {
 
   if (error) {
     console.error("Error renombrando culto:", error)
-    alert("No se pudo renombrar el culto")
+    flashCtrl("No se pudo renombrar el culto")
     return
   }
 
@@ -1819,7 +1828,7 @@ const renombrarCulto = async (culto: any) => {
   }
 
   await cargarCultos()
-  alert("✅ Culto renombrado")
+  flashCtrl("✅ Culto renombrado")
 }
 
 const duplicarCulto = async (culto: any) => {
@@ -1842,7 +1851,7 @@ const duplicarCulto = async (culto: any) => {
 
   if (errorCulto || !nuevoCulto) {
     console.error("Error duplicando culto:", errorCulto)
-    alert("No se pudo crear la copia del culto")
+    flashCtrl("No se pudo crear la copia del culto")
     return
   }
 
@@ -1854,7 +1863,7 @@ const duplicarCulto = async (culto: any) => {
 
   if (errorItems) {
     console.error("Error leyendo items del culto:", errorItems)
-    alert("La copia del culto se creó, pero no se pudieron leer los items")
+    flashCtrl("La copia del culto se creó, pero no se pudieron leer los items")
     return
   }
 
@@ -1879,13 +1888,13 @@ const duplicarCulto = async (culto: any) => {
 
     if (errorInsert) {
       console.error("Error copiando items:", errorInsert)
-      alert("El culto se duplicó, pero falló la copia de elementos")
+      flashCtrl("El culto se duplicó, pero falló la copia de elementos")
       return
     }
   }
 
   await cargarCultos()
-  alert("✅ Culto duplicado")
+  flashCtrl("✅ Culto duplicado")
 }
 
 const cargarCultos = async () => {
@@ -2279,7 +2288,7 @@ const subirImagen = async (file: File) => {
       const { data: archivos } = await supabase.storage
         .from("imagenes-culto").list(iglesiaId, { limit: LIMITE_IMAGENES_NUBE + 1 })
       if ((archivos?.length || 0) >= LIMITE_IMAGENES_NUBE) {
-        alert(`Límite de ${LIMITE_IMAGENES_NUBE} imágenes en nube alcanzado. Elimina alguna para continuar.`)
+        flashCtrl(`Límite de ${LIMITE_IMAGENES_NUBE} imágenes en nube alcanzado. Elimina alguna para continuar.`)
         return null
       }
     }
@@ -2288,13 +2297,13 @@ const subirImagen = async (file: File) => {
       .from("imagenes-culto")
       .upload(ruta, archivoOptimizado, { cacheControl: "3600", upsert: false })
 
-    if (error) { alert(`Error subiendo imagen: ${error.message}`); return null }
+    if (error) { flashCtrl(`Error subiendo imagen: ${error.message}`); return null }
 
     const { data } = supabase.storage.from("imagenes-culto").getPublicUrl(ruta)
     return { url: data.publicUrl, nombre: baseName || "Imagen", local: false }
 
   } catch (e) {
-    console.error(e); alert("Falló la subida de imagen"); return null
+    console.error(e); flashCtrl("Falló la subida de imagen"); return null
   }
 }
 
@@ -2348,7 +2357,7 @@ const subirLogoEspera = async (file: File) => {
 
   const iglesiaId = await getIglesiaIdCached()
   if (!iglesiaId) {
-    alert("No se encontró la iglesia actual")
+    flashCtrl("No se encontró la iglesia actual")
     return
   }
 
@@ -2362,7 +2371,7 @@ const subirLogoEspera = async (file: File) => {
 
   if (error) {
     console.error("Error guardando logo en iglesia:", error)
-    alert("El logo se subió, pero no se pudo guardar en la iglesia")
+    flashCtrl("El logo se subió, pero no se pudo guardar en la iglesia")
     return
   }
 
@@ -2408,7 +2417,7 @@ const proyectarBiblia = async (ref: string) => {
     fondo: fondoCancionActual()  // ✅ Bug 2: enviar fondo al proyector
   })
   } catch (error: any) {
-    alert(error.message || "No se pudo cargar el versículo")
+    flashCtrl(error.message || "No se pudo cargar el versículo")
   }
 }
 
@@ -2429,7 +2438,7 @@ const agregarBibliaALista = async (ref: string) => {
     `✅ Palabra agregada: ${data.referencia}`
   )
   } catch (error: any) {
-    alert(error.message || "No se pudo agregar la cita")
+    flashCtrl(error.message || "No se pudo agregar la cita")
   }
 }
 
@@ -2490,7 +2499,7 @@ const proyectarCuentaRegresiva = () => {
 const proyectarPantallaLogo = () => {
   if (!socket) return
   if (!logoEsperaUrl.trim()) {
-    alert("Primero ingresa la URL del logo o imagen")
+    flashCtrl("Primero ingresa la URL del logo o imagen")
     return
   }
 
@@ -2577,7 +2586,7 @@ const agregarMensajeALista = () => {
 
 const agregarLogoALista = () => {
   if (!logoEsperaUrl.trim()) {
-    alert("Primero carga un logo")
+    flashCtrl("Primero carga un logo")
     return
   }
 
@@ -2600,7 +2609,7 @@ const agregarLogoALista = () => {
 // otro día, no queda una fecha/hora vieja congelada.
 const agregarCuentaRegresivaALista = () => {
   if (!cuentaRegresivaHora) {
-    alert("Primero elige la hora de inicio")
+    flashCtrl("Primero elige la hora de inicio")
     return
   }
   agregarItemAListaConFeedback(
@@ -3376,6 +3385,19 @@ const colorCategoria = (cat?: string): { bg: string; border: string; text: strin
 
 return (
 <>
+{ConfirmUI}
+{avisoCtrl && (
+  <div style={{
+    position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)",
+    zIndex: 4000, maxWidth: "92vw",
+    background: avisoCtrl.startsWith("✅") ? "rgba(34,197,94,0.95)"
+      : (avisoCtrl.startsWith("❌") || avisoCtrl.startsWith("⚠️") || avisoCtrl.startsWith("🔒")) ? "rgba(220,38,38,0.95)"
+      : "rgba(37,99,235,0.95)",
+    color: "white", padding: "10px 20px", borderRadius: 10,
+    fontSize: 14, fontWeight: 600, boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+    fontFamily: "'Segoe UI', system-ui, sans-serif", textAlign: "center"
+  }}>{avisoCtrl}</div>
+)}
 <style>{`
   @keyframes spinCtrl { to { transform: rotate(360deg) } }
   /* Fallback height para browsers sin svh */
@@ -3756,7 +3778,7 @@ return (
     <div style={{ flexShrink: 0, padding: "10px 16px", paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
       <button
         onClick={() => {
-          if (!socket) { alert("Sin conexión al servidor"); return }
+          if (!socket) { flashCtrl("Sin conexión al servidor"); return }
           const cancionId = visorPartes[0]?.cancion_id
           if (cancionId) proyectar(cancionId)
           setVisorAbierto(false)
@@ -3934,8 +3956,8 @@ return (
           }}>▶ Auto</button>
         )}
         {tiemposAprendidos.length > 0 && !autoAvanceActivo && activaId && (
-          <button onClick={() => {
-            if (!window.confirm("¿Borrar tiempos?")) return
+          <button onClick={async () => {
+            if (!(await confirmar("¿Borrar tiempos?", { textoOk: "Borrar", peligro: true }))) return
             try { localStorage.removeItem(`selah-tiempos-${activaId}`) } catch (e) {}
             setTiemposAprendidos([]); tiemposRegistrados.current = []; iniciarAprendizaje()
           }} style={{
@@ -4000,8 +4022,8 @@ return (
           }}>▶ Auto</button>
         )}
         {tiemposAprendidos.length > 0 && !autoAvanceActivo && activaId && (
-          <button onClick={() => {
-            if (!window.confirm("¿Borrar tiempos aprendidos?")) return
+          <button onClick={async () => {
+            if (!(await confirmar("¿Borrar tiempos aprendidos?", { textoOk: "Borrar", peligro: true }))) return
             try { localStorage.removeItem(`selah-tiempos-${activaId}`) } catch (e) {}
             setTiemposAprendidos([]); tiemposRegistrados.current = []; iniciarAprendizaje()
           }} style={{
@@ -4649,7 +4671,7 @@ return (
                                 {/* ✅ Botón eliminar */}
                                 <button onClick={async e => {
                                   e.stopPropagation()
-                                  if (!confirm(`¿Eliminar "${img.nombre}"?`)) return
+                                  if (!(await confirmar(`¿Eliminar "${img.nombre}"?`, { textoOk: "Eliminar", peligro: true }))) return
                                   try {
                                     if (img.local) {
                                       const nombre = img.url.split("/imagenes/").pop()
@@ -4664,7 +4686,7 @@ return (
                                     }
                                     const actualizadas = await cargarGaleriaImagenes()
                                     setGaleriaImagenes(actualizadas)
-                                  } catch(e) { alert("No se pudo eliminar") }
+                                  } catch(e) { flashCtrl("No se pudo eliminar") }
                                 }} style={{
                                   position:"absolute", top:3, right:3,
                                   width:20, height:20, borderRadius:4,
@@ -4950,10 +4972,10 @@ return (
 
                 <button
                   className="ctrl-btn"
-                  onClick={() => {
+                  onClick={async () => {
                     const hayAlgo = lista.length > 0 || partes.length > 0 || !!nombreCulto
                     if (hayAlgo) {
-                      if (!window.confirm("¿Limpiar el control y crear nueva lista?")) return
+                      if (!(await confirmar("¿Limpiar el control y crear nueva lista?", { textoOk: "Limpiar" }))) return
                     }
                     limpiarCultoActual()
                   }}
@@ -5183,7 +5205,7 @@ return (
                     </button>
                     <button className="ctrl-btn"
                       onClick={async () => {
-                        if (!window.confirm("¿Eliminar este culto completo?")) return
+                        if (!(await confirmar("¿Eliminar este culto completo?", { textoOk: "Eliminar", peligro: true }))) return
                         setMenuCultoAbierto(null)
                         await supabase.from("items_lista").delete().eq("lista_id", c.id)
                         await supabase.from("listas_culto").delete().eq("id", c.id)
@@ -5376,7 +5398,7 @@ return (
                 📄
               </button>
               <button className="ctrl-btn"
-                onClick={() => { if (window.confirm("¿Salir del modo edición?")) limpiarCultoActual() }}
+                onClick={async () => { if (await confirmar("¿Salir del modo edición?", { textoOk: "Salir" })) limpiarCultoActual() }}
                 style={{ padding: "5px 10px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.15)", color: "#fca5a5", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
                 ✕
               </button>
@@ -5467,7 +5489,7 @@ return (
                     <button className="ctrl-btn" onClick={() => bajarItemLista(i)} disabled={i === lista.length - 1}
                       style={{ flex: 1, padding: "7px", borderRadius: 8, border: "none", background: "#334155", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: i === lista.length - 1 ? 0.4 : 1 }}>⬇️</button>
                     <button className="ctrl-btn"
-                      onClick={() => { if (window.confirm("¿Eliminar este elemento?")) { eliminarDeLista(i); setMenuItemAbierto(null) } }}
+                      onClick={async () => { if (await confirmar("¿Eliminar este elemento?", { textoOk: "Eliminar", peligro: true })) { eliminarDeLista(i); setMenuItemAbierto(null) } }}
                       style={{ flex: 1, padding: "7px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.15)", color: "#fca5a5", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>🗑️</button>
                   </div>
                 )}

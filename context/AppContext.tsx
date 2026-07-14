@@ -41,6 +41,17 @@ const AppContext = createContext<AppContextType>({
 // no se importa directo para evitar un ciclo de dependencias entre ambos.
 const KEY_MODO_SIN_CONEXION = "selah-modo-sin-conexion"
 
+// ✅ Copy-on-edit: si la iglesia tiene su propia versión de un himno (mismo
+// número), se oculta el himno GLOBAL (iglesia_id null) para no mostrarlo
+// duplicado. Se aplica acá, en la fuente compartida, así Canciones, Control y
+// Músicos ven siempre la versión de la iglesia (con sus acordes).
+function ocultarGlobalesConCopia(lista: any[]): any[] {
+  const propios = new Set(
+    lista.filter(c => c.iglesia_id && c.numero != null).map(c => c.numero)
+  )
+  return lista.filter(c => !(!c.iglesia_id && c.numero != null && propios.has(c.numero)))
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<any>(null)
   const [userId, setUserId] = useState<string | null>(null)
@@ -87,7 +98,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (intento === 1) {
       const cached = await getCancelacionesCache(igId)
       if (cached && cached.canciones.length > 0) {
-        setCanciones(cached.canciones)
+        setCanciones(ocultarGlobalesConCopia(cached.canciones))
         setDesdeCache(true)
         setCargandoCanciones(false)
         yaHabiaCache = true
@@ -133,7 +144,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       console.log(`✅ AppContext canciones desde Supabase: ${todas.length}`)
       marcarSupabaseOk()
-      setCanciones(todas)
+      setCanciones(ocultarGlobalesConCopia(todas))
       setDesdeCache(false)
       await setCancelacionesCache(igId, todas)
     } catch (e: any) {
