@@ -1044,6 +1044,9 @@ export default function CancionesPage() {
       if (titulo.startsWith(q))   return { c, score: 90,  pass: true }
       if (titulo.includes(q))     return { c, score: 70,  pass: true }
       if (categoria.includes(q))  return { c, score: 30,  pass: true }
+      // ✅ Buscar también en la letra (texto_busqueda) — antes no se buscaba
+      // en el contenido, solo en título/número/categoría.
+      if (norm((c as any).texto_busqueda || "").includes(q)) return { c, score: 20, pass: true }
       return { c, score: 0, pass: false }
     })
     .filter(x => x.pass)
@@ -1068,6 +1071,26 @@ export default function CancionesPage() {
       return (a.titulo || "").localeCompare(b.titulo || "")
     })
   }, [canciones, busquedaDebounced, filtroTono, filtroCategoria, filtroConAcordes, filtroSinTono, idsConAcordes, ordenar])
+
+  // ✅ Fragmento de la letra donde coincide la búsqueda, con la parte resaltada.
+  // Solo se muestra cuando la coincidencia NO está en el título (para no repetir).
+  const renderSnippetLetra = (c: Cancion) => {
+    const q = busquedaDebounced.trim().toLowerCase()
+    if (q.length < 2) return null
+    if ((c.titulo || "").toLowerCase().includes(q)) return null // el match ya se ve en el título
+    const texto = (c as any).texto_busqueda || ""
+    const idx = texto.toLowerCase().indexOf(q)
+    if (idx === -1) return null
+    const ini = Math.max(0, idx - 30)
+    const fin = Math.min(texto.length, idx + q.length + 40)
+    return (
+      <div style={{ fontSize: 12, color: colors.textMuted, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {ini > 0 ? "…" : ""}{texto.slice(ini, idx)}
+        <mark style={{ background: "rgba(251,191,36,0.35)", color: "#fde68a", borderRadius: 3, padding: "0 2px" }}>{texto.slice(idx, idx + q.length)}</mark>
+        {texto.slice(idx + q.length, fin)}{fin < texto.length ? "…" : ""}
+      </div>
+    )
+  }
 
   // ── ESTILOS BASE ─────────────────────────────────────────────────────────────
 
@@ -2117,6 +2140,7 @@ export default function CancionesPage() {
                         {c.numero ? <span style={{ color: colors.textMuted, marginRight: 6, fontWeight: 600 }}>{c.numero}.</span> : null}
                         {c.titulo}
                       </div>
+                      {renderSnippetLetra(c)}
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                         {c.categoria && (() => { const col = colorCategoria(c.categoria); return (
                           <span style={{ background: col.bg, color: col.text, border: `1px solid ${col.border}`, borderRadius: 5, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>
@@ -2187,7 +2211,8 @@ export default function CancionesPage() {
                           }}>EN VIVO</span>
                         )}
                       </div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {renderSnippetLetra(c)}
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 3 }}>
                         {c.categoria && (() => { const col = colorCategoria(c.categoria); return (
                           <span style={{ background: col.bg, color: col.text, border: `1px solid ${col.border}`, borderRadius: 5, padding: "1px 7px", fontSize: 11, fontWeight: 600 }}>
                             {c.categoria}
