@@ -320,6 +320,8 @@ export default function CancionesPage() {
   // ✅ Selección múltiple para eliminar en masa
   const [modoSeleccion, setModoSeleccion] = useState(false)
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set())
+  // ✅ Selección múltiple dentro de la papelera
+  const [papeleraSel, setPapeleraSel] = useState<Set<string>>(new Set())
   // ── Importador PPT ───────────────────────────────────────────────────────
   const [pptParsed, setPptParsed] = useState<any[]>([])
   const [convirtiendoPpt, setConvirtiendoPpt] = useState<string | null>(null)  // nombre del archivo que se está convirtiendo
@@ -1002,6 +1004,40 @@ export default function CancionesPage() {
     })
   }
 
+  // ── Papelera: acciones múltiples ──────────────────────────────────────────
+  const togglePapeleraSel = (id: string) => {
+    setPapeleraSel(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+  }
+  const restaurarSeleccionadas = async () => {
+    const ids = Array.from(papeleraSel)
+    if (ids.length === 0) return
+    for (const id of ids) await supabase.rpc("restaurar_cancion", { p_id: id })
+    setPapeleraCanciones(prev => prev.filter(c => !papeleraSel.has(c.id)))
+    setPapeleraSel(new Set())
+    await cargarCanciones()
+    flash(`✅ ${ids.length} restaurada${ids.length === 1 ? "" : "s"}`)
+  }
+  const purgarSeleccionadas = () => {
+    const ids = Array.from(papeleraSel)
+    if (ids.length === 0) return
+    setConfirmDialog({
+      mensaje: `¿Eliminar definitivamente ${ids.length} canción${ids.length === 1 ? "" : "es"}? Esta acción NO se puede deshacer.`,
+      textoOk: `Eliminar ${ids.length} definitivamente`, peligro: true,
+      onOk: async () => {
+        let ok = 0, primerError = ""
+        for (const id of ids) {
+          const { error } = await supabase.rpc("purgar_cancion", { p_id: id })
+          if (error) { if (!primerError) primerError = error.message; continue }
+          ok++
+        }
+        setPapeleraCanciones(prev => prev.filter(c => !papeleraSel.has(c.id)))
+        setPapeleraSel(new Set())
+        if (ok > 0 && !primerError) flash(`🗑️ ${ok} eliminada${ok === 1 ? "" : "s"} definitivamente`)
+        else flash(`⚠️ ${ok} eliminadas${primerError ? `, error: ${primerError}` : ""}`)
+      }
+    })
+  }
+
   // ✅ La proyección se maneja solo desde Control (flujo real del culto). Antes
   // había un botón "▶" acá que emitía por socket aunque no hubiera conexión y
   // mostraba "Proyectando" sin proyectar nada -- se quitó.
@@ -1349,17 +1385,36 @@ export default function CancionesPage() {
                 <div style={{ textAlign: "center", padding: 30, color: colors.textMuted }}>La papelera está vacía.</div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {/* ── Barra de acciones múltiples ── */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                    <button onClick={() => setPapeleraSel(prev => prev.size === papeleraCanciones.length ? new Set() : new Set(papeleraCanciones.map(c => c.id)))}
+                      style={{ ...btnSecondary, fontSize: 12, padding: "5px 10px" }}>
+                      {papeleraSel.size === papeleraCanciones.length ? "Desmarcar todas" : "Marcar todas"}
+                    </button>
+                    {papeleraSel.size > 0 && (
+                      <>
+                        <button onClick={restaurarSeleccionadas} style={{ ...btnSecondary, fontSize: 12, padding: "5px 10px" }}>↩ Restaurar ({papeleraSel.size})</button>
+                        <button onClick={purgarSeleccionadas} style={{ ...btnDanger, fontSize: 12, padding: "5px 10px" }}>🗑 Eliminar ({papeleraSel.size})</button>
+                      </>
+                    )}
+                  </div>
                   {papeleraCanciones.map(c => (
-                    <div key={c.id} style={{
+                    <div key={c.id}
+                      onClick={() => togglePapeleraSel(c.id)}
+                      style={{
                       display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
-                      background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: 10
+                      background: papeleraSel.has(c.id) ? "rgba(37,99,235,0.15)" : colors.bg,
+                      border: `1px solid ${papeleraSel.has(c.id) ? "rgba(59,130,246,0.6)" : colors.border}`,
+                      borderRadius: 10, cursor: "pointer"
                     }}>
+                      <input type="checkbox" readOnly checked={papeleraSel.has(c.id)}
+                        style={{ width: 17, height: 17, flexShrink: 0, cursor: "pointer" }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.titulo}</div>
                         {c.categoria && <div style={{ fontSize: 11, color: colors.textMuted }}>{c.categoria}</div>}
                       </div>
-                      <button onClick={() => restaurarCancion(c.id, c.titulo)} style={{ ...btnSecondary, fontSize: 12, padding: "6px 10px", flexShrink: 0 }}>↩ Restaurar</button>
-                      <button onClick={() => purgarCancion(c.id, c.titulo)} style={{ ...btnDanger, fontSize: 12, padding: "6px 10px", flexShrink: 0 }}>Eliminar definitivo</button>
+                      <button onClick={e => { e.stopPropagation(); restaurarCancion(c.id, c.titulo) }} style={{ ...btnSecondary, fontSize: 12, padding: "6px 10px", flexShrink: 0 }}>↩ Restaurar</button>
+                      <button onClick={e => { e.stopPropagation(); purgarCancion(c.id, c.titulo) }} style={{ ...btnDanger, fontSize: 12, padding: "6px 10px", flexShrink: 0 }}>Eliminar definitivo</button>
                     </div>
                   ))}
                 </div>
