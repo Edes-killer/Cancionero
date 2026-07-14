@@ -317,6 +317,9 @@ export default function CancionesPage() {
   const [activaId, setActivaId] = useState<string | null>(null)
   const [vistaLista, setVistaLista] = useState<"lista" | "grid">("lista")
   const [panelAbierto, setPanelAbierto] = useState<"editor" | "canciones" | "importar">("canciones")
+  // ✅ Selección múltiple para eliminar en masa
+  const [modoSeleccion, setModoSeleccion] = useState(false)
+  const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set())
   // ── Importador PPT ───────────────────────────────────────────────────────
   const [pptParsed, setPptParsed] = useState<any[]>([])
   const [convirtiendoPpt, setConvirtiendoPpt] = useState<string | null>(null)  // nombre del archivo que se está convirtiendo
@@ -926,6 +929,40 @@ export default function CancionesPage() {
         await cargarCanciones()
         partesCacheRef.current.delete(id) // ✅ Invalidar cache de partes
         eliminarCancionDelCache(id)
+      }
+    })
+  }
+
+  // ── Selección múltiple ────────────────────────────────────────────────────
+  const toggleSeleccion = (id: string) => {
+    setSeleccionadas(prev => {
+      const s = new Set(prev)
+      if (s.has(id)) s.delete(id); else s.add(id)
+      return s
+    })
+  }
+  const salirSeleccion = () => { setModoSeleccion(false); setSeleccionadas(new Set()) }
+  const eliminarSeleccionadas = () => {
+    if (sinConexion) { flash("⚠️ Sin conexión con el servidor — no se puede eliminar ahora"); return }
+    const ids = Array.from(seleccionadas)
+    if (ids.length === 0) return
+    setConfirmDialog({
+      mensaje: `¿Enviar ${ids.length} canción${ids.length === 1 ? "" : "es"} a la papelera? Podrás restaurarlas luego desde ahí.`,
+      textoOk: `Enviar ${ids.length} a papelera`, peligro: true,
+      onOk: async () => {
+        let ok = 0, primerError = ""
+        for (const id of ids) {
+          const { error } = await supabase.rpc("eliminar_cancion_soft", { p_id: id })
+          if (error) { if (!primerError) primerError = error.message || "no se pudo"; continue }
+          ok++
+          partesCacheRef.current.delete(id)
+          eliminarCancionDelCache(id)
+        }
+        salirSeleccion()
+        await cargarCanciones()
+        if (ok > 0 && !primerError) flash(`🗑️ ${ok} enviada${ok === 1 ? "" : "s"} a la papelera`)
+        else if (ok > 0) flash(`⚠️ ${ok} enviadas, algunas fallaron: ${primerError}`)
+        else flash(`❌ No se pudo eliminar: ${primerError}`)
       }
     })
   }
@@ -2019,6 +2056,30 @@ export default function CancionesPage() {
               )}
             </div>
 
+            {/* ── Barra de selección múltiple ── */}
+            {puedeEliminar && cancionesFiltradas.length > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+                {!modoSeleccion ? (
+                  <button onClick={() => setModoSeleccion(true)} style={{ ...btnSecondary, fontSize: 13 }}>
+                    ☑️ Seleccionar
+                  </button>
+                ) : (
+                  <>
+                    <button onClick={salirSeleccion} style={{ ...btnSecondary, fontSize: 13 }}>✕ Cancelar</button>
+                    <button
+                      onClick={() => setSeleccionadas(new Set(cancionesFiltradas.map(c => c.id)))}
+                      style={{ ...btnSecondary, fontSize: 13 }}>
+                      Marcar todas ({cancionesFiltradas.length})
+                    </button>
+                    <button onClick={eliminarSeleccionadas} disabled={seleccionadas.size === 0}
+                      style={{ ...btnDanger, fontSize: 13, opacity: seleccionadas.size === 0 ? 0.5 : 1, cursor: seleccionadas.size === 0 ? "default" : "pointer" }}>
+                      🗑 Eliminar {seleccionadas.size > 0 ? `(${seleccionadas.size})` : ""}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Lista */}
             {cancionesFiltradas.length === 0 ? (
               <div style={{
@@ -2037,13 +2098,21 @@ export default function CancionesPage() {
                 gap: 12
               }}>
                 {cancionesFiltradas.map(c => (
-                  <div key={c.id} style={{
-                    background: c.id === activaId ? "rgba(34,197,94,0.12)" : colors.card,
-                    border: `1px solid ${c.id === activaId ? "rgba(34,197,94,0.4)" : colors.border}`,
+                  <div key={c.id}
+                    onClick={modoSeleccion ? () => toggleSeleccion(c.id) : undefined}
+                    style={{
+                    background: seleccionadas.has(c.id) ? "rgba(37,99,235,0.15)" : c.id === activaId ? "rgba(34,197,94,0.12)" : colors.card,
+                    border: `1px solid ${seleccionadas.has(c.id) ? "rgba(59,130,246,0.6)" : c.id === activaId ? "rgba(34,197,94,0.4)" : colors.border}`,
                     borderRadius: 12, padding: "14px 16px",
-                    display: "flex", flexDirection: "column", gap: 10
+                    display: "flex", flexDirection: "column", gap: 10,
+                    cursor: modoSeleccion ? "pointer" : "default"
                   }}>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, display: "flex", gap: 10 }}>
+                      {modoSeleccion && (
+                        <input type="checkbox" readOnly checked={seleccionadas.has(c.id)}
+                          style={{ width: 18, height: 18, flexShrink: 0, marginTop: 2, cursor: "pointer" }} />
+                      )}
+                      <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6, lineHeight: 1.3 }}>
                         {c.numero ? <span style={{ color: colors.textMuted, marginRight: 6, fontWeight: 600 }}>{c.numero}.</span> : null}
                         {c.titulo}
@@ -2065,6 +2134,7 @@ export default function CancionesPage() {
                           </span>
                         )}
                       </div>
+                      </div>
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => editarCancion(c)} style={{ ...btnSecondary, flex: 1, justifyContent: "center" }}>✏️</button>
@@ -2078,14 +2148,21 @@ export default function CancionesPage() {
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {cancionesFiltradas.map(c => (
-                  <div key={c.id} style={{
-                    background: c.id === activaId ? "rgba(34,197,94,0.1)" : colors.card,
-                    border: `1px solid ${c.id === activaId ? "rgba(34,197,94,0.35)" : colors.border}`,
+                  <div key={c.id}
+                    onClick={modoSeleccion ? () => toggleSeleccion(c.id) : undefined}
+                    style={{
+                    background: seleccionadas.has(c.id) ? "rgba(37,99,235,0.15)" : c.id === activaId ? "rgba(34,197,94,0.1)" : colors.card,
+                    border: `1px solid ${seleccionadas.has(c.id) ? "rgba(59,130,246,0.6)" : c.id === activaId ? "rgba(34,197,94,0.35)" : colors.border}`,
                     borderLeft: c.id === activaId ? "3px solid #22c55e" : `3px solid ${colorCategoria(c.categoria).border}`,
                     borderRadius: 10, padding: "13px 16px",
                     display: "flex", alignItems: "center", gap: 12,
-                    transition: "background 0.15s"
+                    transition: "background 0.15s",
+                    cursor: modoSeleccion ? "pointer" : "default"
                   }}>
+                    {modoSeleccion && (
+                      <input type="checkbox" readOnly checked={seleccionadas.has(c.id)}
+                        style={{ width: 18, height: 18, flexShrink: 0, cursor: "pointer" }} />
+                    )}
                     {/* Número */}
                     {c.numero && (
                       <div style={{
