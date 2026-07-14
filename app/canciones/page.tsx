@@ -312,6 +312,9 @@ export default function CancionesPage() {
     setOrdenar(v); localStorage.setItem("canciones-orden", v)
   }
   const [filtroSinTono,    setFiltroSinTono]    = useState(false)
+  // ✅ Filtro "Propias": solo las canciones de la iglesia (creadas o
+  // personalizadas), sin el himnario global (iglesia_id null).
+  const [filtroPropias,    setFiltroPropias]    = useState(false)
 
   useEffect(() => {
     const f = new URLSearchParams(window.location.search).get("filtro") || ""
@@ -1108,6 +1111,7 @@ export default function CancionesPage() {
     .filter(x => !filtroCategoria || x.c.categoria === filtroCategoria)
     .filter(x => !filtroConAcordes || idsConAcordes.includes(x.c.id))
     .filter(x => !filtroSinTono   || !x.c.tono)
+    .filter(x => !filtroPropias   || !!(x.c as any).iglesia_id)
 
     if (q) {
       return scored
@@ -1124,7 +1128,7 @@ export default function CancionesPage() {
       if (na !== nb) return na - nb
       return (a.titulo || "").localeCompare(b.titulo || "")
     })
-  }, [cancionesDedup, busquedaDebounced, filtroTono, filtroCategoria, filtroConAcordes, filtroSinTono, idsConAcordes, ordenar])
+  }, [cancionesDedup, busquedaDebounced, filtroTono, filtroCategoria, filtroConAcordes, filtroSinTono, filtroPropias, idsConAcordes, ordenar])
 
   // ✅ Fragmento de la letra donde coincide la búsqueda, con la parte resaltada.
   // Solo se muestra cuando la coincidencia NO está en el título (para no repetir).
@@ -2045,6 +2049,7 @@ export default function CancionesPage() {
                   {[
                     { id: "con-acordes", label: "🎸 Con acordes", color: "#a855f7", bg: "rgba(168,85,247,0.12)", border: "rgba(168,85,247,0.35)", activo: filtroConAcordes, toggle: () => setFiltroConAcordes(v => !v) },
                     { id: "sin-tono",    label: "⚠️ Sin tono",    color: "#f59e0b", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.35)", activo: filtroSinTono,    toggle: () => setFiltroSinTono(v => !v) },
+                    { id: "propias",     label: "🏠 Propias",     color: "#22c55e", bg: "rgba(34,197,94,0.12)",  border: "rgba(34,197,94,0.35)",  activo: filtroPropias,    toggle: () => setFiltroPropias(v => !v) },
                   ].map(({ id, label, color, bg, border, activo, toggle }) => (
                     <button key={id} onClick={toggle} style={{
                       padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 600,
@@ -2138,8 +2143,8 @@ export default function CancionesPage() {
                     }}>{l}</button>
                   ))}
                 </div>
-                {(busqueda || filtroTono || filtroCategoria || filtroConAcordes || filtroSinTono) && (
-                  <button onClick={() => { setBusqueda(""); setBusquedaDebounced(""); setFiltroTono(""); setFiltroCategoria(""); setFiltroConAcordes(false); setFiltroSinTono(false) }} style={btnSecondary}>
+                {(busqueda || filtroTono || filtroCategoria || filtroConAcordes || filtroSinTono || filtroPropias) && (
+                  <button onClick={() => { setBusqueda(""); setBusquedaDebounced(""); setFiltroTono(""); setFiltroCategoria(""); setFiltroConAcordes(false); setFiltroSinTono(false); setFiltroPropias(false) }} style={btnSecondary}>
                     ✕ Limpiar todos los filtros
                   </button>
                 )}
