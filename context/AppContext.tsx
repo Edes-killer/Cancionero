@@ -45,7 +45,7 @@ const KEY_MODO_SIN_CONEXION = "selah-modo-sin-conexion"
 // número), se oculta el himno GLOBAL (iglesia_id null) para no mostrarlo
 // duplicado. Se aplica acá, en la fuente compartida, así Canciones, Control y
 // Músicos ven siempre la versión de la iglesia (con sus acordes).
-function ocultarGlobalesConCopia(lista: any[]): any[] {
+export function ocultarGlobalesConCopia(lista: any[]): any[] {
   const propios = new Set(
     lista.filter(c => c.iglesia_id && c.numero != null).map(c => c.numero)
   )

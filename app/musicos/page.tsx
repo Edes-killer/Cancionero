@@ -6,6 +6,7 @@ import { supabase } from "../../lib/supabase"
 import { getIglesiaId } from "../../lib/getIglesia"
 import { getSocketUrl, buscarServidorEnRed } from "../../lib/servidor"
 import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "../../lib/cache"
+import { ocultarGlobalesConCopia } from "@/context/AppContext"
 import PitchDetector from "@/components/PitchDetector"
 
 export default function MusicosPage() {
@@ -129,7 +130,7 @@ export default function MusicosPage() {
       if (raw) {
         const cached = JSON.parse(raw)
         if (Array.isArray(cached) && cached.length > 0) {
-          setCancionesRepo(cached)
+          setCancionesRepo(ocultarGlobalesConCopia(cached))
           if (!navigator.onLine) return
         }
       }
@@ -155,7 +156,7 @@ export default function MusicosPage() {
       while (continuar) {
         const { data, error } = await supabase
           .from("canciones")
-          .select("id, titulo, tono, categoria, numero")
+          .select("id, titulo, tono, categoria, numero, iglesia_id")
           .or(filtro)
           .is("eliminado_en", null)
           .order("numero", { ascending: true, nullsFirst: false })
@@ -171,7 +172,7 @@ export default function MusicosPage() {
       if (todas.length > 0) {
         // Invalidar caché viejo cambiando la clave
         const CACHE_KEY_V2 = `selah-repo-canciones-v2-${igId || "global"}`
-        setCancionesRepo(todas)
+        setCancionesRepo(ocultarGlobalesConCopia(todas))
         try { localStorage.setItem(CACHE_KEY_V2, JSON.stringify(todas)) } catch { }
       }
     } catch { marcarSupabaseCaido() }

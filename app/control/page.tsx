@@ -14,7 +14,7 @@ import { getIglesiaId } from "../../lib/getIglesia"
 import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
 import { useConfirm } from "@/components/useConfirm"
-import { useApp } from "@/context/AppContext"
+import { useApp, ocultarGlobalesConCopia } from "@/context/AppContext"
 import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk, getPartesCache, setPartesCache } from "@/lib/cache"
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -765,7 +765,7 @@ const cargarCanciones = async () => {
     if (raw) {
       const { data: cached, ts } = JSON.parse(raw)
       if (Array.isArray(cached) && cached.length > 0) {
-        setCanciones(cached)
+        setCanciones(ocultarGlobalesConCopia(cached))
         _cargarAcordes()
         if (typeof ts === "number" && (Date.now() - ts) < CACHE_TTL_MS) {
           console.log(`📦 Caché: ${cached.length} canciones — reciente, sin refetch`)
@@ -826,7 +826,9 @@ const _fetchCanciones = async (igId: string | null, cacheKey: string, intento = 
   marcarSupabaseOk()
   console.log(`✅ Fetch canciones: ${todas.length} total`)
   if (todas.length > 0) {
-    setCanciones(todas)
+    // ✅ Ocultar el himno global cuando la iglesia tiene su propia versión
+    // (copy-on-edit), igual que en AppContext -- si no, Control lo muestra doble.
+    setCanciones(ocultarGlobalesConCopia(todas))
     try { localStorage.setItem(cacheKey, JSON.stringify({ data: todas, ts: Date.now() })) } catch (e) {}
   }
 }
