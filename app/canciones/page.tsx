@@ -227,6 +227,10 @@ export default function CancionesPage() {
 
   // Editor
   const [editandoId, setEditandoId] = useState<string | null>(null)
+  // ✅ Si el que se está editando es un himno GLOBAL (iglesia_id null): al
+  // guardar no se edita el global (afectaría a todas las iglesias), se crea
+  // una COPIA privada de esta iglesia con los cambios (copy-on-edit).
+  const [editandoEsGlobal, setEditandoEsGlobal] = useState(false)
   const [titulo, setTitulo] = useState("")
   const [autor, setAutor] = useState("")
   const [tono, setTono] = useState("")
@@ -766,6 +770,7 @@ export default function CancionesPage() {
 
   const resetEditor = () => {
     setEditandoId(null)
+    setEditandoEsGlobal(false)
     setTitulo("")
     setAutor("")
     setTono("")
@@ -838,14 +843,15 @@ export default function CancionesPage() {
 
     let cancionId = editandoId
 
-    if (editandoId) {
+    // ✅ Copy-on-edit: si estás editando un himno GLOBAL, NO se toca el global
+    // (afectaría a todas las iglesias). Se crea una copia privada de tu iglesia
+    // con tus cambios/acordes. Desde ahí en adelante tu iglesia usa tu versión.
+    if (editandoId && !editandoEsGlobal) {
       const { error } = await supabase.from("canciones").update(datosCancion).eq("id", editandoId)
       if (error) { flash("❌ Error actualizando: " + (error.message || "intenta de nuevo")); setGuardando(false); return }
       await supabase.from("partes_cancion").delete().eq("cancion_id", editandoId)
     } else {
       const { data, error } = await supabase.from("canciones").insert(datosCancion).select().single()
-      // 🔍 Mostrar el error REAL (antes solo decía "Error creando canción" sin
-      // detalle). Con esto se ve si es RLS, columna faltante, numero duplicado, etc.
       if (error || !data) { flash("❌ Error creando canción: " + (error?.message || "intenta de nuevo")); setGuardando(false); return }
       cancionId = data.id
     }
@@ -865,7 +871,8 @@ export default function CancionesPage() {
     const { error: errorPartes } = await supabase.from("partes_cancion").insert(partesInsert)
     if (errorPartes) { flash("❌ Error guardando la letra: " + (errorPartes.message || "intenta de nuevo")); setGuardando(false); return }
 
-    flash(editandoId ? "✅ Canción actualizada" : "✅ Canción guardada")
+    flash(editandoEsGlobal ? "✅ Se creó tu versión de este himno para tu iglesia"
+      : editandoId ? "✅ Canción actualizada" : "✅ Canción guardada")
     resetEditor()
     await cargarCanciones()
     if (cancionId) {
@@ -891,6 +898,7 @@ export default function CancionesPage() {
     }
 
     setEditandoId(c.id)
+    setEditandoEsGlobal(!c.iglesia_id)  // ✅ null/undefined = himno global
     setTitulo(c.titulo || "")
     setAutor((c as any).autor || "")
     setTono(c.tono || "")
@@ -1049,6 +1057,16 @@ export default function CancionesPage() {
     [canciones]
   )
 
+  // \u2705 Copy-on-edit: si la iglesia tiene su propia versi\u00f3n de un himno (mismo
+  // n\u00famero), se oculta el global para no mostrarlo duplicado \u2014 se ve la versi\u00f3n
+  // de la iglesia (con sus acordes).
+  const cancionesDedup = useMemo(() => {
+    const propios = new Set(
+      canciones.filter(c => (c as any).iglesia_id && c.numero != null).map(c => c.numero)
+    )
+    return canciones.filter(c => !(!(c as any).iglesia_id && c.numero != null && propios.has(c.numero)))
+  }, [canciones])
+
   const cancionesFiltradas = useMemo(() => {
     const norm = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     const q = norm(busquedaDebounced.trim())
@@ -1057,7 +1075,7 @@ export default function CancionesPage() {
     const numParte      = matchNumTexto?.[1] || ""
     const textoParte    = matchNumTexto?.[2] || ""
 
-    const scored = canciones.map(c => {
+    const scored = cancionesDedup.map(c => {
       if (!q) return { c, score: 0, pass: true }
       const titulo   = norm(c.titulo)
       const numero   = String(c.numero || "")
@@ -1106,7 +1124,7 @@ export default function CancionesPage() {
       if (na !== nb) return na - nb
       return (a.titulo || "").localeCompare(b.titulo || "")
     })
-  }, [canciones, busquedaDebounced, filtroTono, filtroCategoria, filtroConAcordes, filtroSinTono, idsConAcordes, ordenar])
+  }, [cancionesDedup, busquedaDebounced, filtroTono, filtroCategoria, filtroConAcordes, filtroSinTono, idsConAcordes, ordenar])
 
   // ✅ Fragmento de la letra donde coincide la búsqueda, con la parte resaltada.
   // Solo se muestra cuando la coincidencia NO está en el título (para no repetir).
