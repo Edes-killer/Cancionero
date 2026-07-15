@@ -745,20 +745,24 @@ app.whenReady().then(async () => {
       // Solo notificar si fue verificación manual
     })
 
-    autoUpdater.on("update-downloaded", () => {
+    autoUpdater.on("update-downloaded", (info) => {
       dialog.showMessageBox(mainWindow, {
         type: "info",
         title: "¡Actualización lista!",
-        message: "Nueva versión descargada.",
-        detail: "La aplicación se cerrará e instalará la actualización automáticamente.",
+        message: `Nueva versión ${info?.version || ""} descargada.`,
+        detail: "Se cerrará Selah Live y se abrirá el instalador. Seguí los pasos en pantalla; si aparece 'archivo en uso', dale Reintentar.",
         buttons: ["Instalar ahora", "Después"],
         defaultId: 0
       }).then(result => {
         if (result.response === 0) {
-          // ✅ Forzar cierre limpio antes de instalar
+          // ✅ Cierre limpio antes de instalar
           app.removeAllListeners("window-all-closed")
           BrowserWindow.getAllWindows().forEach(w => w.destroy())
-          autoUpdater.quitAndInstall(true, true)
+          // ✅ isSilent=false → el instalador corre CON su ventana. A diferencia
+          // del modo silencioso (que fallaba con "Fallo al desinstalar archivos
+          // antiguos" cuando un archivo seguía en uso), el instalador con UI
+          // maneja el "archivo en uso" con reintentos y muestra el progreso.
+          autoUpdater.quitAndInstall(false, true)
         }
       })
     })
