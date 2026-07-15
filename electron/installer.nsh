@@ -9,8 +9,14 @@
 ; a su propio chequeo -- forzamos el cierre de cualquier proceso residual
 ; acá para que ese chequeo ya no encuentre nada y nunca muestre el aviso.
 !macro customInit
+  ; ✅ Matar la app y ESPERAR a que Windows libere los archivos antes de que el
+  ; instalador borre los viejos. Con solo 500ms a veces los archivos seguían en
+  ; uso -> "Fallo al desinstalar archivos antiguos". Dos intentos + más espera
+  ; (por si un proceso auxiliar de Electron reapareció).
   nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /T'
-  Sleep 500
+  Sleep 1200
+  nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /T'
+  Sleep 1200
 !macroend
 
 ; ✅ Al actualizar, el instalador primero corre en silencio el DESINSTALADOR
@@ -20,5 +26,7 @@
 ; instalador nuevo ya tuviera el arreglo de arriba.
 !macro customUnInit
   nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /T'
-  Sleep 500
+  Sleep 1200
+  nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /T'
+  Sleep 1200
 !macroend
