@@ -1086,7 +1086,11 @@ export default function ProyectarPage() {
               </div>
             )
           })()}
-          {!!estadoEspecial.mensaje && <div style={{ fontSize:"clamp(20px,2.4vw,38px)",opacity:.75,fontWeight:600,maxWidth:"85vw" }}>{estadoEspecial.mensaje}</div>}
+          {/* ✅ Al llegar a cero se oculta el mensaje del usuario y solo queda
+              "¡Comenzamos!" -- antes seguía mostrándose el mensaje del conteo. */}
+          {!!estadoEspecial.mensaje && new Date(estadoEspecial.hasta).getTime() > Date.now() && (
+            <div style={{ fontSize:"clamp(20px,2.4vw,38px)",opacity:.75,fontWeight:600,maxWidth:"85vw" }}>{estadoEspecial.mensaje}</div>
+          )}
         </div>
       </>)}
 
