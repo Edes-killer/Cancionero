@@ -911,9 +911,12 @@ export default function ProyectarPage() {
       {/* No necesita render propio — estadoEspecial !== null oculta el texto */}
       {/* y el fondoCss (background) se ve naturalmente */}
 
-      {/* ── Descanso ──────────────────────────────────────────── */}
+      {/* ── Descanso / Pantalla negra ─────────────────────────── */}
+      {/* ✅ Si hay fondo configurado, renderFondoEspecial lo muestra; si NO hay
+          fondo, el fallback es negro PURO (antes era un degradado azul oscuro
+          que no se veía realmente negro). */}
       {estadoEspecial?.tipo === "descanso" && (<>
-        {renderFondoEspecial("radial-gradient(circle at 50% 30%,rgba(10,20,50,.9),#000)")}
+        {renderFondoEspecial("#000")}
         {estadoEspecial.logo_marca_url && (
           <div style={{ position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:2,flexDirection:"column",gap:24 }}>
             <img src={estadoEspecial.logo_marca_url} alt="" style={{ maxWidth:"30vw",maxHeight:"30vh",objectFit:"contain",opacity:.7 }} />
