@@ -1130,6 +1130,13 @@ export default function CancionesPage() {
     })
   }, [cancionesDedup, busquedaDebounced, filtroTono, filtroCategoria, filtroConAcordes, filtroSinTono, filtroPropias, idsConAcordes, ordenar])
 
+  // ✅ Al cambiar búsqueda/filtros/orden, volver arriba del todo (primera fila).
+  const scrollInicialSaltado = useRef(false)
+  useEffect(() => {
+    if (!scrollInicialSaltado.current) { scrollInicialSaltado.current = true; return }
+    window.scrollTo({ top: 0, behavior: "auto" })
+  }, [busquedaDebounced, filtroTono, filtroCategoria, filtroConAcordes, filtroSinTono, filtroPropias, ordenar])
+
   // ✅ Fragmento de la letra donde coincide la búsqueda, con la parte resaltada.
   // Solo se muestra cuando la coincidencia NO está en el título (para no repetir).
   const renderSnippetLetra = (c: Cancion) => {

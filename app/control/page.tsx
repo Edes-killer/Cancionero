@@ -2824,6 +2824,12 @@ const cancionesFiltradas = useMemo(() => {
 const scrollCancionesRef = useRef<HTMLDivElement | null>(null)
 const [scrollTopCanciones, setScrollTopCanciones] = useState(0)
 
+// ✅ Al cambiar la búsqueda/filtros/orden, volver a la primera fila de la lista.
+useEffect(() => {
+  setScrollTopCanciones(0)
+  if (scrollCancionesRef.current) scrollCancionesRef.current.scrollTop = 0
+}, [busquedaDebounced, filtroTono, filtroCategoria, ordenar])
+
 const ALTURA_ITEM_CANCION = 64  // achicado de 88 — más canciones visibles sin scrollear
 const OVERSCAN_CANCIONES = 10   // margen amplio para evitar gaps visibles
 
