@@ -9,7 +9,7 @@ import { supabase } from "../../lib/supabase"
 import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "../../lib/cache"
 import { getIglesiaId, getRolEnIglesia } from "../../lib/getIglesia"
 import { getSocketUrl } from "@/lib/servidor"
-import { useApp } from "@/context/AppContext"
+import { useApp, ocultarGlobalesConCopia } from "@/context/AppContext"
 
 // ─── TIPOS ───────────────────────────────────────────────────────────────────
 
@@ -341,6 +341,13 @@ export default function CancionesPage() {
   const editorRef = useRef<HTMLDivElement>(null)
   // ✅ Cache local de partes para no repetir queries al editor
   const partesCacheRef = useRef<Map<string, any[]>>(new Map())
+  // ✅ Una vez que la lista local se pobló (por contexto o por fetch), NO
+  // volver a sembrarla desde el contexto en cada cambio de cancionesCtx.length.
+  // Antes el efecto de init re-sembraba desde el contexto cada vez que este
+  // cambiaba, PISANDO mutaciones locales recién hechas (p.ej. un borrado): la
+  // canción borrada reaparecía hasta que el contexto se ponía al día "navegando
+  // un rato". Con esto, tras la carga inicial la lista local es la autoritativa.
+  const listaPobladaRef = useRef(false)
   // ✅ Cache de sala para evitar múltiples getIglesiaId() en reconexiones
   const salaRef = useRef<string | null>(null)
   // ✅ El pin_sala en localStorage lo escribe AppContext en segundo plano
@@ -394,9 +401,14 @@ export default function CancionesPage() {
       setIglesiaId(id)
       if (id) getRolEnIglesia(id).then(r => { if (activo) setRol(r) })
 
+      // ✅ Si ya poblamos la lista local antes, no re-sembrar desde el contexto
+      // (pisaría mutaciones locales como borrados/ediciones recién hechos).
+      if (listaPobladaRef.current) { if (activo) setCargando(false); return }
+
       // ✅ Usar canciones del contexto si ya están cargadas (sin query)
       if (cancionesCtx.length > 0) {
         setCanciones(cancionesCtx as Cancion[])
+        listaPobladaRef.current = true
         // Cargar acordes — si hay filtro "con-acordes" activo, esperar antes de mostrar
         // la lista (evita flash de "0 canciones" mientras acordes cargan)
         const acordesPromise = supabase.from("partes_cancion").select("cancion_id").eq("tiene_acordes", true)
@@ -444,7 +456,12 @@ export default function CancionesPage() {
       desde += PAGINA
     }
     marcarSupabaseOk()
-    setCanciones(todas)
+    // ✅ Ocultar el himno global cuando esta iglesia ya tiene su copia (mismo
+    // número). Control, Músicos y AppContext ya lo hacían, pero esta página
+    // hace su propio fetch y NO lo aplicaba: al editar un himno global veías el
+    // global y tu copia duplicados, justo en la pantalla donde se edita.
+    setCanciones(ocultarGlobalesConCopia(todas))
+    listaPobladaRef.current = true
     console.log(`✅ Canciones cargadas: ${todas.length}`)
 
     const { data: conAcordes } = await supabase
@@ -697,9 +714,13 @@ export default function CancionesPage() {
     // canciones propias de la iglesia. Antes solo miraba las de la iglesia
     // (que estaba vacía → arrancaba en 1) y chocaba con los números del
     // himnario. Ahora las nuevas quedan después del último número del himnario.
-    let siguienteNumero = 1
+    // ✅ Si NO se puede determinar el máximo, dejamos numero=null (sin número)
+    // en vez de arrancar en 1: un número bajo chocaría con el himnario global
+    // (mismo número) y el dedup ocultaría los himnos globales como si se hubieran
+    // "borrado". Sin número no choca con nada.
+    let siguienteNumero: number | null = null
     try {
-      const { data: maxRow } = await supabase
+      const { data: maxRow, error } = await supabase
         .from("canciones")
         .select("numero")
         .or(`iglesia_id.eq.${iglesiaId},iglesia_id.is.null`)
@@ -707,8 +728,8 @@ export default function CancionesPage() {
         .order("numero", { ascending: false })
         .limit(1)
         .maybeSingle()
-      siguienteNumero = ((maxRow?.numero as number) || 0) + 1
-    } catch { /* si falla, arranca en 1 */ }
+      if (!error) siguienteNumero = ((maxRow?.numero as number) || 0) + 1
+    } catch { /* si falla, queda sin número (null) */ }
 
     for (let i = 0; i < seleccionadas.length; i++) {
       const c = seleccionadas[i]
@@ -732,7 +753,7 @@ export default function CancionesPage() {
         const { error: errorPartes } = await supabase.from("partes_cancion").insert(partesInsert)
         if (errorPartes) { if (!primerError) primerError = errorPartes.message; continue }
         ok++
-        siguienteNumero++  // ✅ siguiente canción toma el número siguiente
+        if (siguienteNumero != null) siguienteNumero++  // ✅ siguiente canción toma el número siguiente
       } catch (e: any) {
         if (!primerError) primerError = e?.message || "error inesperado"
       }
@@ -745,6 +766,33 @@ export default function CancionesPage() {
     if (ok > 0 && !primerError) flash(`✅ ${ok} canciones importadas exitosamente`)
     else if (ok > 0) flash(`⚠️ Se importaron ${ok}, pero otras fallaron: ${primerError}`)
     else flash(`❌ No se pudo importar: ${primerError || "revisa la conexión"}`)
+  }
+
+  // ✅ Traduce errores crudos de Postgres a algo que un usuario pueda entender y
+  // accionar. Antes llegaban tal cual a pantalla ("violates foreign key
+  // constraint items_lista_cancion_id_fkey..."), que no le dice nada a nadie.
+  const mensajeErrorAmigable = (msg?: string): string => {
+    if (!msg) return "error desconocido"
+    if (msg.includes("items_lista_cancion_id_fkey") || msg.includes("foreign key"))
+      return "está incluida en una o más listas de culto guardadas. Quitala de esas listas (o eliminá el culto) antes de borrarla definitivamente."
+    if (msg.includes("row-level security") || msg.includes("violates row-level"))
+      return "no tenés permiso para hacer esto (los himnos del himnario global no se pueden borrar)."
+    // ✅ Las funciones (eliminar/purgar_cancion) solo "ven" las canciones de tu
+    // iglesia, así que para un himno global responden "canción no encontrada" —
+    // un mensaje engañoso: la canción existe, lo que no se puede es borrarla.
+    if (msg.toLowerCase().includes("no encontrada") || msg.toLowerCase().includes("not found"))
+      return "no se puede borrar: es del himnario global (compartido por todas las iglesias) o no pertenece a tu iglesia."
+    return msg
+  }
+
+  // ✅ Cuántos items de listas de culto usan estas canciones (para avisar antes
+  // de un borrado definitivo que también las saca de los cultos guardados).
+  const contarUsoEnCultos = async (ids: string[]): Promise<number> => {
+    const { count } = await supabase
+      .from("items_lista")
+      .select("id", { count: "exact", head: true })
+      .in("cancion_id", ids)
+    return count || 0
   }
 
   const flash = (msg: string) => {
@@ -874,7 +922,7 @@ export default function CancionesPage() {
     const { error: errorPartes } = await supabase.from("partes_cancion").insert(partesInsert)
     if (errorPartes) { flash("❌ Error guardando la letra: " + (errorPartes.message || "intenta de nuevo")); setGuardando(false); return }
 
-    flash(editandoEsGlobal ? "✅ Se creó tu versión de este himno para tu iglesia"
+    flash(editandoEsGlobal ? "✅ Se creó una copia de este himno para tu iglesia — el himno global quedó sin cambios. Si borrás tu copia, vuelve a aparecer el original."
       : editandoId ? "✅ Canción actualizada" : "✅ Canción guardada")
     resetEditor()
     await cargarCanciones()
@@ -927,10 +975,47 @@ export default function CancionesPage() {
     editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
   }
 
-  const eliminarCancion = (id: string, titulo: string) => {
+  // ✅ Los himnos del himnario global (iglesia_id null) son compartidos por TODAS
+  // las iglesias: nadie los puede borrar. La RLS ya lo impide, pero eso llegaba
+  // como un error crudo de la función ("canción no encontrada"). Acá lo
+  // explicamos antes de intentar.
+  //
+  // Busca en las dos listas (activas y papelera) porque el borrado definitivo se
+  // hace desde la papelera, donde la canción NO está en `canciones`. Y si no la
+  // encuentra en ninguna, devuelve false: no asumir "global" por no encontrarla.
+  const esCancionGlobal = (id: string) => {
+    const c = canciones.find(x => x.id === id) || papeleraCanciones.find(x => x.id === id)
+    return c ? !c.iglesia_id : false
+  }
+
+  // ✅ ¿Esta canción propia es la copia de un himno global (mismo número)? Si lo
+  // es, al borrarla el dedup deja de ocultar el global y este reaparece. Hay que
+  // avisarlo o el usuario cree que "no se borró". Se consulta a la BD porque el
+  // global puede estar oculto justamente por esta copia y no estar en la lista.
+  const tieneGlobalDetras = async (id: string): Promise<boolean> => {
+    const c = canciones.find(x => x.id === id)
+    if (!c || !(c as any).iglesia_id || c.numero == null) return false
+    const { data } = await supabase
+      .from("canciones")
+      .select("id")
+      .is("iglesia_id", null)
+      .eq("numero", c.numero)
+      .is("eliminado_en", null)
+      .limit(1)
+    return !!(data && data.length > 0)
+  }
+
+  const eliminarCancion = async (id: string, titulo: string) => {
     if (sinConexion) { flash("⚠️ Sin conexión con el servidor — no se puede eliminar ahora"); return }
+    if (esCancionGlobal(id)) {
+      flash("⚠️ Este himno es del himnario global (compartido por todas las iglesias) y no se puede borrar. Si querés tu propia versión, editalo: se crea una copia para tu iglesia.")
+      return
+    }
+    const avisoGlobal = await tieneGlobalDetras(id)
+      ? " Ojo: esta es la versión de tu iglesia de un himno del himnario global, así que al borrarla volverá a aparecer el himno global original (con la letra y acordes originales)."
+      : ""
     setConfirmDialog({
-      mensaje: `¿Enviar "${titulo}" a la papelera? Podrás restaurarla luego desde ahí.`,
+      mensaje: `¿Enviar "${titulo}" a la papelera?${avisoGlobal} Podrás restaurarla luego desde ahí.`,
       textoOk: "Enviar a papelera", peligro: false,
       onOk: async () => {
         // ✅ Ya no se borra directo — pasa por una función que verifica en la BD
@@ -957,10 +1042,21 @@ export default function CancionesPage() {
   const salirSeleccion = () => { setModoSeleccion(false); setSeleccionadas(new Set()) }
   const eliminarSeleccionadas = () => {
     if (sinConexion) { flash("⚠️ Sin conexión con el servidor — no se puede eliminar ahora"); return }
-    const ids = Array.from(seleccionadas)
-    if (ids.length === 0) return
+    const todosIds = Array.from(seleccionadas)
+    if (todosIds.length === 0) return
+    // ✅ Los himnos globales no se pueden borrar: los sacamos de la selección en
+    // vez de intentar (fallaría por RLS con un error crudo por cada uno).
+    const ids = todosIds.filter(id => !esCancionGlobal(id))
+    const globales = todosIds.length - ids.length
+    if (ids.length === 0) {
+      flash(`⚠️ ${globales === 1 ? "Ese himno es del himnario global" : `Esos ${globales} himnos son del himnario global`} y no se pueden borrar. Solo podés borrar las canciones propias de tu iglesia.`)
+      return
+    }
+    const avisoGlobales = globales > 0
+      ? ` (se omiten ${globales} del himnario global, que no se pueden borrar)`
+      : ""
     setConfirmDialog({
-      mensaje: `¿Enviar ${ids.length} canción${ids.length === 1 ? "" : "es"} a la papelera? Podrás restaurarlas luego desde ahí.`,
+      mensaje: `¿Enviar ${ids.length} canción${ids.length === 1 ? "" : "es"} a la papelera?${avisoGlobales} Podrás restaurarlas luego desde ahí.`,
       textoOk: `Enviar ${ids.length} a papelera`, peligro: true,
       onOk: async () => {
         let ok = 0, primerError = ""
@@ -1002,13 +1098,21 @@ export default function CancionesPage() {
     await cargarCanciones()
   }
 
-  const purgarCancion = (id: string, titulo: string) => {
+  const purgarCancion = async (id: string, titulo: string) => {
+    if (esCancionGlobal(id)) {
+      flash("⚠️ Este himno es del himnario global (compartido por todas las iglesias) y no se puede borrar.")
+      return
+    }
+    const enCultos = await contarUsoEnCultos([id])
+    const avisoCultos = enCultos > 0
+      ? ` Ojo: está incluida en ${enCultos} elemento${enCultos === 1 ? "" : "s"} de listas de culto guardadas, y también se quitará de ahí.`
+      : ""
     setConfirmDialog({
-      mensaje: `¿Eliminar "${titulo}" definitivamente? Esta acción NO se puede deshacer.`,
+      mensaje: `¿Eliminar "${titulo}" definitivamente? Esta acción NO se puede deshacer.${avisoCultos}`.trim(),
       textoOk: "Eliminar definitivamente", peligro: true,
       onOk: async () => {
         const { error } = await supabase.rpc("purgar_cancion", { p_id: id })
-        if (error) { flash(`❌ ${error.message || "No se pudo eliminar"}`); return }
+        if (error) { flash(`❌ No se pudo eliminar "${titulo}": ${mensajeErrorAmigable(error.message)}`); return }
         flash("🗑️ Eliminada definitivamente")
         setPapeleraCanciones(prev => prev.filter(c => c.id !== id))
       }
@@ -1028,23 +1132,44 @@ export default function CancionesPage() {
     await cargarCanciones()
     flash(`✅ ${ids.length} restaurada${ids.length === 1 ? "" : "s"}`)
   }
-  const purgarSeleccionadas = () => {
-    const ids = Array.from(papeleraSel)
-    if (ids.length === 0) return
+  const purgarSeleccionadas = async () => {
+    const todosIds = Array.from(papeleraSel)
+    if (todosIds.length === 0) return
+    // ✅ Igual que en el borrado a papelera: omitir las globales en vez de
+    // intentar y recibir "canción no encontrada" por cada una.
+    const ids = todosIds.filter(id => !esCancionGlobal(id))
+    const globales = todosIds.length - ids.length
+    if (ids.length === 0) {
+      flash(`⚠️ ${globales === 1 ? "Ese himno es del himnario global" : `Esos ${globales} himnos son del himnario global`} y no se pueden borrar.`)
+      return
+    }
+    const enCultos = await contarUsoEnCultos(ids)
+    const avisoCultos = enCultos > 0
+      ? ` Ojo: hay ${enCultos} elemento${enCultos === 1 ? "" : "s"} de listas de culto guardadas que las usan, y también se quitarán de ahí.`
+      : ""
+    const avisoGlobales = globales > 0
+      ? ` (se omiten ${globales} del himnario global, que no se pueden borrar)`
+      : ""
     setConfirmDialog({
-      mensaje: `¿Eliminar definitivamente ${ids.length} canción${ids.length === 1 ? "" : "es"}? Esta acción NO se puede deshacer.`,
+      mensaje: `¿Eliminar definitivamente ${ids.length} canción${ids.length === 1 ? "" : "es"}?${avisoGlobales} Esta acción NO se puede deshacer.${avisoCultos}`,
       textoOk: `Eliminar ${ids.length} definitivamente`, peligro: true,
       onOk: async () => {
         let ok = 0, primerError = ""
+        const purgadas = new Set<string>()
         for (const id of ids) {
           const { error } = await supabase.rpc("purgar_cancion", { p_id: id })
           if (error) { if (!primerError) primerError = error.message; continue }
           ok++
+          purgadas.add(id)
         }
-        setPapeleraCanciones(prev => prev.filter(c => !papeleraSel.has(c.id)))
+        // ✅ Solo sacar de la lista las que realmente se purgaron: antes se
+        // quitaban TODAS de la vista aunque hubieran fallado, y la canción
+        // "desaparecía" de la papelera sin haberse borrado.
+        setPapeleraCanciones(prev => prev.filter(c => !purgadas.has(c.id)))
         setPapeleraSel(new Set())
         if (ok > 0 && !primerError) flash(`🗑️ ${ok} eliminada${ok === 1 ? "" : "s"} definitivamente`)
-        else flash(`⚠️ ${ok} eliminadas${primerError ? `, error: ${primerError}` : ""}`)
+        else if (ok > 0) flash(`⚠️ Se eliminaron ${ok}, pero otras fallaron: ${mensajeErrorAmigable(primerError)}`)
+        else flash(`❌ No se pudo eliminar: ${mensajeErrorAmigable(primerError)}`)
       }
     })
   }
@@ -1730,6 +1855,24 @@ export default function CancionesPage() {
                 </button>
               )}
             </div>
+
+            {/* ✅ Copy-on-edit: avisar ANTES de guardar que esto no modifica el
+                himno global sino que crea una copia propia. Sin este aviso el
+                usuario no entiende por qué después "no puede borrar" el himno
+                global, ni por qué al borrar su copia reaparece el original. */}
+            {editandoId && editandoEsGlobal && (
+              <div style={{
+                background: "rgba(37,99,235,0.10)",
+                border: "1px solid rgba(59,130,246,0.35)",
+                borderRadius: 12, padding: "12px 14px", marginBottom: 20,
+                fontSize: 13, lineHeight: 1.6, color: colors.text
+              }}>
+                <strong>📖 Este himno es del himnario global</strong> (lo comparten todas las iglesias, por eso no se puede modificar ni borrar).
+                <br />
+                Al guardar se creará <strong>una copia para tu iglesia</strong> con tus cambios, y tu iglesia pasará a usar esa versión.
+                Si más adelante borrás tu copia, vuelve a aparecer el himno global original.
+              </div>
+            )}
 
             {/* ── Metadatos ── */}
             <div style={{

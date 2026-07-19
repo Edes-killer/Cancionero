@@ -223,13 +223,17 @@ export default function ConfiguracionPage() {
   }
 
   const copiarLink = (codigo: string) => {
-    // ✅ Nunca usar window.location.origin — dentro de Electron/Capacitor eso
-    // es "localhost" o un esquema interno, inútil para compartir con alguien
-    // en otro dispositivo. El link de invitación siempre debe apuntar a la
-    // versión pública web (Vercel), que es la única que cualquiera puede abrir.
-    const base = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
-    const link = `${base}/unirse?codigo=${codigo}`
-    navigator.clipboard.writeText(link).then(() => {
+    // ✅ Se comparte el CÓDIGO, no un link. window.location.origin dentro de
+    // Electron/Capacitor es "localhost" (inútil en otro dispositivo), y no hay
+    // garantía de una web pública. El invitado instala la app y entra el código
+    // en "Unirse a una iglesia". Si además hay una web pública configurada
+    // (NEXT_PUBLIC_SITE_URL, no localhost) se agrega el link como comodidad.
+    const site = process.env.NEXT_PUBLIC_SITE_URL || ""
+    const hayWebPublica = site && !/localhost|127\.0\.0\.1/.test(site)
+    const texto = hayWebPublica
+      ? `Te invito a Selah Live 🎵\n\nAbrí este link: ${site}/unirse?codigo=${codigo}\n\nO instalá la app e ingresá el código: ${codigo}`
+      : `Te invito a Selah Live 🎵\n\nInstalá la app e ingresá este código en "Unirse a una iglesia":\n\n${codigo}`
+    navigator.clipboard.writeText(texto).then(() => {
       setLinkCopiado(codigo)
       setTimeout(() => setLinkCopiado(""), 2500)
     })
@@ -1274,17 +1278,18 @@ export default function ConfiguracionPage() {
             {/* Lista de invitaciones activas */}
             {invitaciones.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.45, letterSpacing: "0.06em", textTransform: "uppercase" }}>Links activos</div>
+                <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.45, letterSpacing: "0.06em", textTransform: "uppercase" }}>Códigos activos</div>
                 {invitaciones.map(inv => {
                   const r = ROLES_INV[inv.rol] || ROLES_INV.musico
-                  const link = `${typeof window !== "undefined" ? window.location.origin : ""}/unirse?codigo=${inv.codigo}`
                   const expirado = inv.expira_at && new Date(inv.expira_at) < new Date()
                   return (
                     <div key={inv.id} style={{ padding: "12px 14px", borderRadius: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", gap: 10 }}>
                       <span style={{ fontSize: 20, flexShrink: 0 }}>{r.icon}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 700, fontSize: 13 }}>{r.label}</div>
-                        <div style={{ fontSize: 11, opacity: 0.4, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {/* ✅ El código bien visible: es lo que el invitado ingresa en la app */}
+                        <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: "0.14em", fontFamily: "monospace", margin: "2px 0" }}>{inv.codigo}</div>
+                        <div style={{ fontSize: 11, opacity: 0.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {inv.usos_actuales}/{inv.usos_max} usos · {expirado ? "Expirado" : `Expira ${new Date(inv.expira_at).toLocaleDateString("es-ES", { day: "numeric", month: "short" })}`}
                         </div>
                       </div>
@@ -1303,7 +1308,7 @@ export default function ConfiguracionPage() {
             )}
 
             <div style={{ fontSize: 12, opacity: 0.4, lineHeight: 1.6 }}>
-              El link es válido por 7 días y hasta 20 usos. Compártelo por WhatsApp o correo.
+              El código es válido por 7 días y hasta 20 usos. La persona instala Selah Live e ingresa el código en "Unirse a una iglesia". Compártelo por WhatsApp o correo.
             </div>
           </div>
         </div>

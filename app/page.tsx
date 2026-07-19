@@ -340,9 +340,15 @@ export default function InicioPage() {
                   {servidorActivo ? "Ya puedes proyectar" : "Abre Selah Live en el computador para poder proyectar"}
                 </div>
               </div>
-              <button onClick={() => navegarSPA(router, "/configuracion")} style={{ padding:"5px 12px", borderRadius:7, border:"none", background: servidorActivo?"rgba(34,197,94,0.1)":"rgba(239,68,68,0.15)", color: servidorActivo?"#4ade80":"#fca5a5", fontSize:12, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
-                {servidorActivo ? "Detalles" : "Configurar"}
-              </button>
+              {/* ✅ Solo admin: el botón lleva a Configuración, a la que líder y
+                  músico NO tienen acceso (el AuthProvider los rebota), así que
+                  para ellos "no hacía nada". El operador del PC (admin) es quien
+                  configura el servidor. */}
+              {(rol === null || rol === "admin") && (
+                <button onClick={() => navegarSPA(router, "/configuracion")} style={{ padding:"5px 12px", borderRadius:7, border:"none", background: servidorActivo?"rgba(34,197,94,0.1)":"rgba(239,68,68,0.15)", color: servidorActivo?"#4ade80":"#fca5a5", fontSize:12, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
+                  {servidorActivo ? "Detalles" : "Configurar"}
+                </button>
+              )}
             </div>
           )}
 

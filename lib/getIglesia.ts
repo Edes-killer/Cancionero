@@ -11,6 +11,9 @@ export const setIglesiaActivaId = (iglesiaId: string) => {
 
 // ── Limpiar iglesia activa (al cerrar sesión) ─────────────────────────────────
 export const limpiarIglesiaActivaId = () => {
+  // ✅ También el rol: si no, el próximo usuario que entre en este dispositivo
+  // hereda el rol del anterior (el cache vive en memoria del módulo).
+  limpiarRolCache()
   if (typeof window === "undefined") return
   localStorage.removeItem(KEY_IGLESIA_ACTIVA)
 }
@@ -70,9 +73,15 @@ export const getIglesiaId = async (): Promise<string | null> => {
       if (resultado.session) return guardada
 
       if (!resultado.error && !resultado.timedOut) {
-        // ✅ Confirmado sin ambigüedad: no hay sesion (logout real o nunca
-        // hubo login en este dispositivo) -- ahi si limpiar y re-autenticar.
-        if (typeof window !== "undefined") localStorage.removeItem(KEY_IGLESIA_ACTIVA)
+        // ✅ No hay sesion confirmada -> hay que re-autenticar, pero NO borramos
+        // la iglesia elegida. Antes se borraba acá, y como abajo
+        // _fetchIglesiaDesdeAuth cae en idsPermitidos[0] cuando no hay valor
+        // guardado, el usuario multi-iglesia volvia SIEMPRE a su primera
+        // iglesia: se perdia la que habia seleccionado en el dashboard.
+        // La eleccion es una preferencia, no una credencial: el logout real ya
+        // la limpia explicitamente con limpiarIglesiaActivaId(), y
+        // _fetchIglesiaDesdeAuth igual valida que siga siendo una iglesia del
+        // usuario antes de usarla.
       } else {
         // ✅ Error de red o timeout -- no podemos confirmar nada. Antes esto
         // borraba el cache igual, destruyendo justo el dato que permite
@@ -189,10 +198,17 @@ export const cambiarIglesiaActiva = async (iglesiaId: string): Promise<boolean> 
 // ahora están restringidas a "lider"/"admin" del lado del servidor (RLS +
 // funciones security definer) — esto solo evita mostrar un botón que de
 // todas formas Supabase rechazaría, la verificación real vive en la BD.
-let _rolCache: { iglesiaId: string; rol: string | null } | null = null
+// ✅ El cache incluye el userId. Antes la clave era SOLO la iglesia, así que
+// devolvía el rol de quien hubiera consultado antes en esa iglesia sin importar
+// quién estuviera logueado: al cambiar de usuario (logout -> login como líder o
+// músico) seguías viendo el rol del usuario anterior (típicamente admin), y el
+// menú/las rutas quedaban mal. Tampoco se limpiaba nunca; ahora
+// limpiarRolCache() lo borra en el logout.
+let _rolCache: { iglesiaId: string; userId: string; rol: string | null } | null = null
+
+export const limpiarRolCache = () => { _rolCache = null }
 
 export const getRolEnIglesia = async (iglesiaId: string): Promise<string | null> => {
-  if (_rolCache && _rolCache.iglesiaId === iglesiaId) return _rolCache.rol
   try {
     // ✅ No todos los llamadores envuelven esto en su propio timeout (ej.
     // Navbar/Configuración lo llaman directo) -- se protege acá adentro
@@ -202,6 +218,10 @@ export const getRolEnIglesia = async (iglesiaId: string): Promise<string | null>
     const { data: userData } = resultadoUser
     const userId = userData?.user?.id
     if (!userId) return null
+    // El cache se consulta recién acá: hay que saber QUIÉN pregunta antes de
+    // poder responder con su rol.
+    if (_rolCache && _rolCache.iglesiaId === iglesiaId && _rolCache.userId === userId)
+      return _rolCache.rol
     const resultadoRol = await conTimeout(
       Promise.resolve(supabase.from("usuarios_iglesia").select("rol").eq("iglesia_id", iglesiaId).eq("user_id", userId).single()),
       5000
@@ -209,7 +229,7 @@ export const getRolEnIglesia = async (iglesiaId: string): Promise<string | null>
     if (resultadoRol === "timeout") return null
     const { data } = resultadoRol
     const rol = data?.rol || null
-    _rolCache = { iglesiaId, rol }
+    _rolCache = { iglesiaId, userId, rol }
     return rol
   } catch {
     return null

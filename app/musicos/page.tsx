@@ -22,11 +22,20 @@ export default function MusicosPage() {
   const [buscandoServidor, setBuscandoServidor] = useState(false)
   const [ipManual, setIpManual] = useState("")
   const [msgConexion, setMsgConexion] = useState("")
+  // ✅ Se incrementa para forzar que el socket se vuelva a crear con la IP nueva
+  // (ver el useEffect del socket, que lo tiene en sus dependencias).
+  const [versionConexion, setVersionConexion] = useState(0)
   const conectarConIp = (ip: string) => {
     const limpia = ip.trim()
     if (!limpia) return
     localStorage.setItem("servidor_ip", limpia)
-    window.location.reload() // reconecta el socket con la IP nueva
+    // ✅ Antes esto hacía window.location.reload() para reconectar. En el APK la
+    // app es un export estático: a /musicos se llega por navegación SPA y NO
+    // existe un archivo en esa ruta, así que una recarga dura caía al
+    // index.html y la app arrancaba desde la raíz -> te mandaba al dashboard
+    // justo después de conectar. Ahora se recrea solo el socket, sin recargar.
+    setMsgConexion(`Conectando con ${limpia}...`)
+    setVersionConexion(v => v + 1)
   }
   const buscarYConectar = async () => {
     setBuscandoServidor(true); setMsgConexion("Buscando el computador en la red...")
@@ -248,6 +257,11 @@ export default function MusicosPage() {
   // ── Socket ────────────────────────────────────────────────────────────────
   useEffect(() => {
     let activo = true
+    // ✅ El socket vive acá afuera para poder cerrarlo en el cleanup REAL del
+    // efecto. Antes el `return () => s.disconnect()` estaba dentro del .then(),
+    // así que retornaba del callback de la promesa y no se ejecutaba jamás: el
+    // socket quedaba abierto para siempre (y al recrearlo se acumulaban).
+    let socketLocal: any = null
     const dev = process.env.NODE_ENV === "development"
 
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -255,10 +269,15 @@ export default function MusicosPage() {
       const s = io(getSocketUrl(), {
         auth: { token: session?.access_token || "" }
       })
+      socketLocal = s
 
       s.on("connect", async () => {
         try {
           socketConectadoRef.current = true
+          // ✅ Confirmar y cerrar el panel: antes el "feedback" de que había
+          // conectado era la recarga de la página. Sin recarga hay que avisar.
+          setMsgConexion("✅ Conectado con el computador")
+          setPanelConexion(false)
           if (!salaRef.current) salaRef.current = (await getIglesiaId()) || "global"
           if (!activo) return
           const sala = salaRef.current
@@ -268,6 +287,11 @@ export default function MusicosPage() {
         } catch (err) {
           if (dev) console.error("❌ Error en connect músicos:", err)
         }
+      })
+
+      s.on("connect_error", () => {
+        if (!activo) return
+        setMsgConexion("No se pudo conectar. Revisá que Selah Live esté abierto en el PC y que estén en el mismo WiFi.")
       })
 
     s.on("estado-actual", (estado: any) => {
@@ -293,12 +317,10 @@ export default function MusicosPage() {
     })
 
     s.on("cambiar-parte", (i: number) => setIndex(i))
-
-      return () => { s.disconnect() }
     })
 
-    return () => { activo = false }
-  }, [])
+    return () => { activo = false; socketLocal?.disconnect() }
+  }, [versionConexion])
 
   // ── Supabase Realtime — para músicos fuera del WiFi de la iglesia ─────────
   // ✅ Antes esta suscripción apuntaba a una tabla que nunca se creó (nadie
@@ -340,7 +362,17 @@ export default function MusicosPage() {
           table: "estado_culto",
           filter: `iglesia_id=eq.${igId}`
         }, (payload: any) => { if (activo) aplicarFila(payload.new) })
-        .subscribe()
+        .subscribe((status: string, err: any) => {
+          // ✅ Antes la suscripción fallaba en silencio: si Realtime rechazaba
+          // (RLS, tabla no publicada, etc.) el músico no se enteraba de por qué
+          // "no llega la letra en vivo". Ahora se registra.
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            console.warn("⚠️ Realtime estado_culto:", status, err?.message || "")
+            import("@/lib/Errorlogger").then(({ logError }) =>
+              logError(`Realtime estado_culto ${status}: ${err?.message || ""}`, { tipo: "supabase", pagina: "/musicos" })
+            ).catch(() => {})
+          }
+        })
     }
 
     suscribir()
