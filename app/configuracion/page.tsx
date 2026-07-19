@@ -501,8 +501,12 @@ export default function ConfiguracionPage() {
     cargar()
   }, [router])
 
-  // ── Optimizador de logo: elimina fondo blanco con flood-fill ─────────────────
-  //  ✅ FIX: esta función ahora sí se llama en subirArchivoLogo
+  // ── Optimizador de logo: SOLO redimensiona (ya NO borra el fondo) ────────────
+  //  ✅ Antes hacía un flood-fill que borraba el blanco/claro desde los bordes.
+  //  Eso DAÑABA los logos cuyo blanco es parte del diseño (resplandores, nubes,
+  //  textos sobre blanco): dejaba bordes sucios y comía partes del logo. Los
+  //  logos se muestran SIEMPRE recortados a círculo (dashboard, marca de agua),
+  //  así que el fondo no molesta. Ahora solo se redimensiona y se convierte.
   const optimizarLogoTransparente = (file: File): Promise<File> => {
     return new Promise((resolve, reject) => {
       const img = new Image()
@@ -521,49 +525,10 @@ export default function ConfiguracionPage() {
         canvas.width = newWidth
         canvas.height = newHeight
 
-        const ctx = canvas.getContext("2d", { willReadFrequently: true })
+        const ctx = canvas.getContext("2d")
         if (!ctx) { reject(new Error("No se pudo crear canvas")); return }
 
-        ctx.clearRect(0, 0, newWidth, newHeight)
         ctx.drawImage(img, 0, 0, newWidth, newHeight)
-
-        const imageData = ctx.getImageData(0, 0, newWidth, newHeight)
-        const data = imageData.data
-
-        const esFondoClaro = (x: number, y: number) => {
-          if (x < 0 || y < 0 || x >= newWidth || y >= newHeight) return false
-          const idx = (y * newWidth + x) * 4
-          const r = data[idx], g = data[idx + 1], b = data[idx + 2], a = data[idx + 3]
-          if (a < 10) return true
-          const max = Math.max(r, g, b)
-          const diferencia = max - Math.min(r, g, b)
-          return max > 215 && diferencia < 32
-        }
-
-        const visitado = new Uint8Array(newWidth * newHeight)
-        const cola: Array<[number, number]> = []
-
-        const agregar = (x: number, y: number) => {
-          if (x < 0 || y < 0 || x >= newWidth || y >= newHeight) return
-          const pos = y * newWidth + x
-          if (visitado[pos] || !esFondoClaro(x, y)) return
-          visitado[pos] = 1
-          cola.push([x, y])
-        }
-
-        // Flood-fill desde los 4 bordes para no eliminar blancos internos
-        for (let x = 0; x < newWidth; x++) { agregar(x, 0); agregar(x, newHeight - 1) }
-        for (let y = 0; y < newHeight; y++) { agregar(0, y); agregar(newWidth - 1, y) }
-
-        while (cola.length > 0) {
-          const [x, y] = cola.shift()!
-          const idx = (y * newWidth + x) * 4
-          data[idx + 3] = 0
-          agregar(x + 1, y); agregar(x - 1, y)
-          agregar(x, y + 1); agregar(x, y - 1)
-        }
-
-        ctx.putImageData(imageData, 0, 0)
 
         canvas.toBlob(
           (blob) => {
@@ -903,8 +868,8 @@ export default function ConfiguracionPage() {
                 </div>
                 <div style={{ marginTop: 5, fontSize: 13, opacity: 0.55, lineHeight: 1.4 }}>
                   {logoUrl
-                    ? "Logo activo — se elimina el fondo blanco automáticamente"
-                    : "Sube una imagen PNG, JPG o SVG. Se optimiza automáticamente."}
+                    ? "Logo activo — se muestra recortado en círculo"
+                    : "Sube una imagen PNG, JPG o SVG. Se ajusta el tamaño automáticamente."}
                 </div>
                 {subiendoLogo && (
                   <div style={{ marginTop: 8, fontSize: 12, color: "#93c5fd", fontWeight: 700 }}>
@@ -979,7 +944,7 @@ export default function ConfiguracionPage() {
               opacity: 0.7,
               lineHeight: 1.5
             }}>
-              ℹ️ El logo se muestra en el dashboard y puede usarse en pantallas de espera. El fondo blanco se elimina automáticamente al subir.
+              ℹ️ El logo se muestra en el dashboard y puede usarse en pantallas de espera. Se muestra recortado en círculo, así que podés subirlo con su fondo tal cual (no hace falta quitárselo).
             </div>
           </div>
         </div>
