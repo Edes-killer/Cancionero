@@ -560,6 +560,12 @@ try {
 // ── Ventana principal ─────────────────────────────────────────────────────────
 let mainWindow = null
 let proyectorWin = null  // ✅ referencia directa a la ventana del proyector (para ESC)
+// ✅ Referencias a los servidores embebidos. Mantienen vivo el proceso principal
+// (event loop) aunque se cierren las ventanas -> al actualizar, el .exe seguía
+// en uso y el instalador fallaba con "archivo en uso". Se cierran antes de
+// instalar la actualización.
+let staticServer = null
+let socketServer = null
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -655,8 +661,8 @@ app.whenReady().then(async () => {
   const outDir = path.join(__dirname, "../out")
 
   console.log("🚀 Iniciando Selah Live...")
-  await startStaticServer(outDir, 3000)
-  startSocketServer(4000)
+  staticServer = await startStaticServer(outDir, 3000)
+  socketServer = startSocketServer(4000)
 
   const ip = getLocalIP()
   console.log(`📡 IP local: ${ip}`)
@@ -779,14 +785,21 @@ app.whenReady().then(async () => {
         defaultId: 0
       }).then(result => {
         if (result.response === 0) {
-          // ✅ Cierre limpio antes de instalar
+          // ✅ Cierre limpio antes de instalar. La causa raíz del "archivo en
+          // uso": los servidores embebidos (3000/4000) mantenían VIVO el proceso
+          // principal aunque se cerraran las ventanas, así que el .exe seguía
+          // bloqueado cuando el instalador intentaba reemplazarlo — segundos
+          // después, ya con el usuario clickeando "Instalar". Cerrarlos libera
+          // el event loop para que el proceso muera de verdad.
+          try { socketServer && socketServer.close() } catch (e) {}
+          try { staticServer && staticServer.close() } catch (e) {}
           app.removeAllListeners("window-all-closed")
           BrowserWindow.getAllWindows().forEach(w => w.destroy())
-          // ✅ isSilent=false → el instalador corre CON su ventana. A diferencia
-          // del modo silencioso (que fallaba con "Fallo al desinstalar archivos
-          // antiguos" cuando un archivo seguía en uso), el instalador con UI
-          // maneja el "archivo en uso" con reintentos y muestra el progreso.
           autoUpdater.quitAndInstall(false, true)
+          // ✅ Red de seguridad: si algún handle impide que el proceso salga
+          // (una conexión socket.io colgada, etc.), forzar la salida para soltar
+          // el .exe. El instalador ya es un proceso aparte, no lo afecta.
+          setTimeout(() => { try { app.exit(0) } catch (e) {} }, 3500)
         }
       })
     })
