@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { useEffect, useState } from "react"
 import { useApp } from "@/context/AppContext"
-import { getRolEnIglesia } from "@/lib/getIglesia"
+import { getRolEnIglesia, limpiarIglesiaActivaId } from "@/lib/getIglesia"
 import { navegarSPA, normalizarRuta } from "@/lib/navegar"
 
 const ROLES_INFO: Record<string, { icon: string; label: string }> = {
@@ -76,7 +76,19 @@ export default function Navbar() {
   const cerrarSesion = async () => {
     setCerrando(true)
     await supabase.auth.signOut()
-    navegarSPA(router, "/login")
+    // ✅ Borrar la iglesia activa y el cache de rol. Antes este logout no
+    // limpiaba NADA: el siguiente usuario en este dispositivo heredaba la
+    // iglesia y el rol del anterior (entrabas como líder y la app te trataba
+    // como admin).
+    limpiarIglesiaActivaId()
+    // ✅ Recarga dura en vez de navegación SPA: el rol, las canciones del
+    // contexto y los ids del logger viven en memoria del módulo y sobreviven a
+    // un router.push(). Solo una recarga real garantiza empezar de cero.
+    // Va a "/" y NO a "/login" a propósito: en el APK (export estático) una
+    // carga dura de una subruta puede no resolver a un archivo real. La raíz
+    // siempre resuelve, y sin sesión el AuthProvider manda a /login solo. Es el
+    // mismo patrón que ya usa el logout de Configuración.
+    window.location.href = "/"
   }
 
   const isActive = (href: string) =>

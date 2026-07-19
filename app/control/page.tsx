@@ -14,6 +14,7 @@ import { getIglesiaId } from "../../lib/getIglesia"
 import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
 import { useConfirm } from "@/components/useConfirm"
+import { usePrompt } from "@/components/usePrompt"
 import { useApp, ocultarGlobalesConCopia } from "@/context/AppContext"
 import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk, getPartesCache, setPartesCache } from "@/lib/cache"
 
@@ -89,6 +90,7 @@ interface FondoConfig {
 
 export default function ControlPage() {
   const { confirmar, ConfirmUI } = useConfirm()
+  const { pedirTexto, PromptUI } = usePrompt()
   // ✅ Aviso interno (toast) para reemplazar los flashCtrl() del sistema.
   const [avisoCtrl, setAvisoCtrl] = useState("")
   const flashCtrl = (msg: string) => {
@@ -370,7 +372,6 @@ export default function ControlPage() {
     const fondo = fondoCancionActual()
     socket.emit("cambiar-fondo", fondo)
   }, [fondoCancionUrl, fondoCancionPreset, fondoCancionModo, fondoCancionOscuridad, fondoCancionAjuste])
-  const [modalGuardar, setModalGuardar] = useState(false)
 // ── Preview panel ─────────────────────────────────────────────────
 const [previewCancion, setPreviewCancion] = useState<any>(null)
 const [previewPartes, setPreviewPartes] = useState<any[]>([])
@@ -388,7 +389,6 @@ const [visorTitulo, setVisorTitulo] = useState("")
 const [visorTono, setVisorTono] = useState("")
 const [visorSemitonos, setVisorSemitonos] = useState(0)
 const [visorFormatoAmericano, setVisorFormatoAmericano] = useState(false)
-const [nombreModal, setNombreModal] = useState("")
 const router = useRouter()
 const fondosCancionPreset = [
   {
@@ -1664,7 +1664,8 @@ const itemAFila = (item: any, i: number, listaId: string) => ({
   orden: i,
   cancion_id: item.tipo === "cancion" ? item.id : null,
   tipo: item.tipo,
-  imagen_url: item.tipo === "imagen" ? item.url : null,
+  // ✅ El video reusa la columna imagen_url (guarda su URL igual que la imagen).
+  imagen_url: (item.tipo === "imagen" || item.tipo === "video") ? item.url : null,
   referencia_biblica: item.tipo === "biblia" ? item.referencia : null,
   texto_biblico: item.tipo === "biblia" ? item.texto : null,
   estado_modo: item.tipo === "estado" ? item.modo : null,
@@ -1688,7 +1689,11 @@ const guardarCulto = async () => {
     ? "Actualizar nombre del culto"
     : "Nombre para la nueva lista de culto"
 
-  const nombre = prompt(mensajePrompt, nombreCulto || "")
+  const nombre = await pedirTexto(mensajePrompt, {
+    valorInicial: nombreCulto || "",
+    placeholder: "Nombre del culto...",
+    textoOk: "Guardar"
+  })
   if (!nombre || !nombre.trim()) return
 
   let listaIdFinal = listaIdActual
@@ -1771,8 +1776,10 @@ const guardarCultoComoCopia = async () => {
     return
   }
   const nombreBase = nombreCulto?.trim() || "Culto"
-  const nombre = prompt("Nombre de la copia", `${nombreBase} (copia)`)
-  if (!nombre) return
+  const nombre = await pedirTexto("Nombre de la copia", {
+    valorInicial: `${nombreBase} (copia)`, textoOk: "Crear copia"
+  })
+  if (!nombre || !nombre.trim()) return
 
   const iglesiaId = await getIglesiaIdCached()
 
@@ -1811,7 +1818,9 @@ const guardarCultoComoCopia = async () => {
 }
 
 const renombrarCulto = async (culto: any) => {
-  const nuevoNombre = prompt("Nuevo nombre del culto", culto.nombre || "")
+  const nuevoNombre = await pedirTexto("Nuevo nombre del culto", {
+    valorInicial: culto.nombre || "", textoOk: "Renombrar"
+  })
   if (!nuevoNombre || !nuevoNombre.trim()) return
 
   const { error } = await supabase
@@ -1834,10 +1843,9 @@ const renombrarCulto = async (culto: any) => {
 }
 
 const duplicarCulto = async (culto: any) => {
-  const nuevoNombre = prompt(
-    "Nombre para la copia",
-    `${culto.nombre || "Culto"} (copia)`
-  )
+  const nuevoNombre = await pedirTexto("Nombre para la copia", {
+    valorInicial: `${culto.nombre || "Culto"} (copia)`, textoOk: "Duplicar"
+  })
   if (!nuevoNombre || !nuevoNombre.trim()) return
 
   const iglesiaId = await getIglesiaIdCached()
@@ -1988,11 +1996,11 @@ const cargarListaDesdeBD = async (id: string) => {
   }
 
   const listaOrdenada = items.map(item => {
-    if (item.tipo === "imagen") {
+    if (item.tipo === "imagen" || item.tipo === "video") {
       return {
-        tipo: "imagen",
+        tipo: item.tipo,
         url: item.imagen_url,
-        titulo: nombreImagenAmigable(item.imagen_url, "Imagen")
+        titulo: nombreImagenAmigable(item.imagen_url, item.tipo === "video" ? "Video" : "Imagen")
       }
     }
 
@@ -2048,10 +2056,13 @@ const irAItemLista = async (i: number, alFinal = false) => {
   setIndiceLista(i)
   setIndiceActivoLista(i)
 
-  if (item.tipo === "imagen") {
+  if (item.tipo === "imagen" || item.tipo === "video") {
     setActivaId(null); setPartes([]); setIndex(0); limpiarModoBiblia()
     setAprendiendo(false); detenerAutoAvance(); setEstadoEspecialActivo("")
-    socket.emit("mostrar-imagen", { url: item.url, iglesia: "" })
+    // ✅ El video viaja por el mismo evento con un flag; el proyector renderiza
+    // <video> en loop mudo en vez de <img>. El servidor lo guarda y reenvía en
+    // reconexiones sin cambios (relay genérico de mostrar-imagen).
+    socket.emit("mostrar-imagen", { url: item.url, iglesia: "", video: item.tipo === "video" })
     return
   }
 
@@ -2306,6 +2317,51 @@ const subirImagen = async (file: File) => {
 
   } catch (e) {
     console.error(e); flashCtrl("Falló la subida de imagen"); return null
+  }
+}
+
+// ✅ ¿La URL apunta a un video? (para re-agregar desde la galería con el tipo
+// correcto — un video re-agregado como "imagen" se rompería al proyectar).
+const esUrlVideo = (url: string) => /\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(url || "")
+
+// ✅ Subir un video corto (transición / descanso). A diferencia de la imagen NO
+// se optimiza (se sube tal cual) y siempre va a la nube. El bucket de Supabase
+// debe permitir el tipo video/* y un tamaño suficiente, o el upload falla.
+const subirVideo = async (file: File) => {
+  try {
+    const MAX_MB = 25
+    if (file.size > MAX_MB * 1024 * 1024) {
+      flashCtrl(`El video pesa ${(file.size / 1024 / 1024).toFixed(0)} MB. Máximo ${MAX_MB} MB — usá un clip más corto o de menor resolución.`)
+      return null
+    }
+    const iglesiaId = await getIglesiaIdCached()
+    const baseName = file.name.replace(/\.[^/.]+$/, "").replace(/\s+/g, "_").trim()
+    const ext = (file.name.match(/\.[^/.]+$/)?.[0] || ".mp4").toLowerCase()
+    const nombreArchivo = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`
+    const ruta = iglesiaId ? `${iglesiaId}/${nombreArchivo}` : nombreArchivo
+
+    if (iglesiaId) {
+      const { data: archivos } = await supabase.storage
+        .from("imagenes-culto").list(iglesiaId, { limit: LIMITE_IMAGENES_NUBE + 1 })
+      if ((archivos?.length || 0) >= LIMITE_IMAGENES_NUBE) {
+        flashCtrl(`Límite de ${LIMITE_IMAGENES_NUBE} archivos en nube alcanzado. Elimina alguno para continuar.`)
+        return null
+      }
+    }
+
+    const { error } = await supabase.storage
+      .from("imagenes-culto")
+      .upload(ruta, file, { cacheControl: "3600", upsert: false, contentType: file.type || "video/mp4" })
+
+    if (error) {
+      flashCtrl(`Error subiendo video: ${error.message}. Revisá que el bucket permita video en Supabase.`)
+      return null
+    }
+
+    const { data } = supabase.storage.from("imagenes-culto").getPublicUrl(ruta)
+    return { url: data.publicUrl, nombre: baseName || "Video", local: false }
+  } catch (e) {
+    console.error(e); flashCtrl("Falló la subida del video"); return null
   }
 }
 
@@ -2642,6 +2698,7 @@ const subtituloItemLista = (item: any) => {
   if (item?.tipo === "cancion") return "Canción"
   if (item?.tipo === "biblia") return "Palabra"
   if (item?.tipo === "imagen") return "Imagen"
+  if (item?.tipo === "video") return "Video"
 
   if (item?.tipo === "estado") {
     if (item.modo === "mensaje") return "Mensaje"
@@ -2659,6 +2716,7 @@ const iconoItemLista = (item: any) => {
   if (item?.tipo === "cancion") return "🎵"
   if (item?.tipo === "biblia") return "📖"
   if (item?.tipo === "imagen") return "🖼️"
+  if (item?.tipo === "video") return "🎬"
 
   if (item?.tipo === "estado") {
     if (item.modo === "negro") return "⚫"
@@ -2990,12 +3048,6 @@ useEffect(() => {
   fondoCancionOscuridad,
   fondoCancionAjuste
 ])
-
-const guardarCultoConNombre = async (nombre: string) => {
-  if (!nombre.trim()) return
-  setNombreCulto(nombre.trim())
-  await guardarCulto()
-}
 
 const etiquetaBoton = (texto: string) => {
   return isMobile ? "" : ` ${texto}`
@@ -3394,6 +3446,7 @@ const colorCategoria = (cat?: string): { bg: string; border: string; text: strin
 return (
 <>
 {ConfirmUI}
+{PromptUI}
 {avisoCtrl && (
   <div style={{
     position: "fixed", top: 16, left: "50%", transform: "translateX(-50%)",
@@ -3814,69 +3867,6 @@ return (
     whiteSpace: "nowrap", animation: "toastIn 0.2s ease",
     pointerEvents: "none"
   }}>{mensajeFlash}</div>
-)}
-
-{/* ── Modal guardar culto ─────────────────────────────────────────────────── */}
-{modalGuardar && (
-  <div style={{
-    position: "fixed", inset: 0, zIndex: 999,
-    background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)",
-    display: "flex", alignItems: "center", justifyContent: "center", padding: 20
-  }}>
-    <div style={{
-      background: "#1a2235", border: "1px solid rgba(255,255,255,0.1)",
-      borderRadius: 20, padding: 24, width: "100%", maxWidth: 420,
-      boxShadow: "0 24px 60px rgba(0,0,0,0.5)"
-    }}>
-      <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 16 }}>
-        💾 {listaIdActual ? "Actualizar culto" : "Guardar lista de culto"}
-      </div>
-      <input
-        autoFocus
-        value={nombreModal}
-        onChange={e => setNombreModal(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === "Enter") {
-            setModalGuardar(false)
-            guardarCultoConNombre(nombreModal)
-          }
-          if (e.key === "Escape") setModalGuardar(false)
-        }}
-        placeholder="Nombre del culto..."
-        style={{
-          width: "100%", padding: "12px 14px", borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.1)", background: "#0a1525",
-          color: "white", fontSize: 16, outline: "none", boxSizing: "border-box",
-          marginBottom: 16
-        }}
-      />
-      <div style={{ display: "flex", gap: 10 }}>
-        <button
-          className="ctrl-btn"
-          onClick={() => { setModalGuardar(false); guardarCultoConNombre(nombreModal) }}
-          style={{
-            flex: 1, padding: "12px", borderRadius: 12, border: "none",
-            background: "#2563eb", color: "white", fontWeight: 800,
-            fontSize: 15, cursor: "pointer"
-          }}
-        >
-          Guardar
-        </button>
-        <button
-          className="ctrl-btn"
-          onClick={() => setModalGuardar(false)}
-          style={{
-            padding: "12px 18px", borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.1)",
-            background: "rgba(255,255,255,0.06)", color: "white",
-            fontWeight: 700, fontSize: 15, cursor: "pointer"
-          }}
-        >
-          Cancelar
-        </button>
-      </div>
-    </div>
-  </div>
 )}
 
 <div style={{
@@ -4606,17 +4596,18 @@ return (
                     background:"rgba(255,255,255,0.03)",
                     cursor:"pointer", fontSize:13, fontWeight:600
                   }}>
-                    🖼️ Subir imagen
-                    <input type="file" accept="image/*" style={{ display:"none" }}
+                    🖼️ Subir imagen o video
+                    <input type="file" accept="image/*,video/*" style={{ display:"none" }}
                       onChange={async e => {
                         const inputFile = e.target as HTMLInputElement
                         const file = inputFile.files?.[0]
                         if (!file) return
-                        const resultado = await subirImagen(file)
+                        const esVideo = file.type.startsWith("video/")
+                        const resultado = esVideo ? await subirVideo(file) : await subirImagen(file)
                         if (resultado?.url) {
                           agregarItemAListaConFeedback(
-                            { tipo:"imagen", url:resultado.url, titulo:resultado.nombre },
-                            `✅ Imagen agregada${resultado.local ? " (local)" : " (nube)"}: ${resultado.nombre}`
+                            { tipo: esVideo ? "video" : "imagen", url:resultado.url, titulo:resultado.nombre },
+                            `✅ ${esVideo ? "Video agregado" : "Imagen agregada"}${resultado.local ? " (local)" : " (nube)"}: ${resultado.nombre}`
                           )
                           const imgs = await cargarGaleriaImagenes()
                           setGaleriaImagenes(imgs)
@@ -4671,9 +4662,16 @@ return (
                           <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
                             {galeriaImagenes.map((img, i) => (
                               <div key={i} style={{ position:"relative", aspectRatio:"16/9", borderRadius:8, overflow:"hidden", border:"1px solid rgba(255,255,255,0.08)" }}>
-                                <img src={img.url} alt={img.nombre}
-                                  onClick={() => { agregarItemAListaConFeedback({ tipo:"imagen", url:img.url, titulo:img.nombre }, `✅ ${img.nombre}`); setGaleriaAbierta(false) }}
-                                  style={{ width:"100%", height:"100%", objectFit:"cover", cursor:"pointer" }} />
+                                {esUrlVideo(img.url) ? (
+                                  <video src={img.url} muted playsInline preload="metadata"
+                                    onClick={() => { agregarItemAListaConFeedback({ tipo:"video", url:img.url, titulo:img.nombre }, `✅ ${img.nombre}`); setGaleriaAbierta(false) }}
+                                    style={{ width:"100%", height:"100%", objectFit:"cover", cursor:"pointer" }} />
+                                ) : (
+                                  <img src={img.url} alt={img.nombre}
+                                    onClick={() => { agregarItemAListaConFeedback({ tipo:"imagen", url:img.url, titulo:img.nombre }, `✅ ${img.nombre}`); setGaleriaAbierta(false) }}
+                                    style={{ width:"100%", height:"100%", objectFit:"cover", cursor:"pointer" }} />
+                                )}
+                                {esUrlVideo(img.url) && <span style={{ position:"absolute", top:3, right:3, fontSize:11, background:"rgba(0,0,0,0.7)", borderRadius:3, padding:"1px 4px" }}>🎬</span>}
                                 {img.local && <span style={{ position:"absolute", top:3, left:3, fontSize:9, background:"rgba(0,0,0,0.7)", borderRadius:3, padding:"1px 4px" }}>💾</span>}
                                 <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:"4px 6px", background:"linear-gradient(transparent,rgba(0,0,0,0.7))", fontSize:10, opacity:0.8, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{img.nombre}</div>
                                 {/* ✅ Botón eliminar */}
@@ -4967,10 +4965,7 @@ return (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
                   className="ctrl-btn"
-                  onClick={() => {
-                    setNombreModal(nombreCulto || "")
-                    setModalGuardar(true)
-                  }}
+                  onClick={() => guardarCulto()}
                   style={{
                     flex: 1, padding: "10px 12px", borderRadius: 10, border: "none",
                     background: "#2563eb", color: "white", fontWeight: 700,

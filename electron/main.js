@@ -673,8 +673,25 @@ app.whenReady().then(async () => {
     const wins = require("electron").BrowserWindow.getAllWindows()
     const proyector = wins.find(w => w !== mainWindow && w.getTitle().includes("Proyector"))
     if (!proyector) return
+    // ✅ Si está en pantalla completa real (menú "Pantalla completa"), salir del
+    // fullscreen no alcanzaba: hacía falta un segundo ESC para cerrar y se
+    // sentía como que "no cierra". Ahora cierra directo, sin importar el modo.
+    if (proyector.isFullScreen()) proyector.setFullScreen(false)
     proyector.setAlwaysOnTop(false)
     proyector.close()
+  })
+
+  // ✅ Respaldo más confiable que el globalShortcut: cuando el proyector está en
+  // fullscreen real, Chromium puede quedarse con el primer ESC. Este listener
+  // vive DENTRO de la ventana del proyector y cierra en un solo ESC igual.
+  mainWindow.webContents.on("did-create-window", (win, details) => {
+    if (!details?.url?.includes("/proyectar")) return
+    win.webContents.on("before-input-event", (e, input) => {
+      if (input.type === "keyDown" && input.key === "Escape") {
+        if (win.isFullScreen()) win.setFullScreen(false)
+        win.close()
+      }
+    })
   })
 
   // ── Auto-updater ─────────────────────────────────────────────────────────────

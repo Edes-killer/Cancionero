@@ -385,6 +385,32 @@ export default function ProyectarPage() {
     return () => window.removeEventListener("storage", handle)
   }, [])
 
+  // ✅ Ancho medio de carácter de la fuente ACTUAL, medido de verdad con canvas.
+  // Antes el auto-ajuste usaba un 0.58 fijo (calibrado para una sola fuente):
+  // con Merriweather, que es más ancha, subestimaba el wrap y la letra se
+  // desbordaba (última línea cortada). Se mide con una muestra en MAYÚSCULAS
+  // (la proyección suele ir en mayúsculas, que son más anchas) + un pequeño
+  // margen, así nunca se pasa. Al ser estado, cuando cambia (o cuando las
+  // Google Fonts terminan de cargar) el tamaño se recalcula solo.
+  const [factorAncho, setFactorAncho] = useState(0.58)
+  useEffect(() => {
+    if (typeof document === "undefined") return
+    let vivo = true
+    const medir = () => {
+      try {
+        const ctx = document.createElement("canvas").getContext("2d")
+        if (!ctx || !vivo) return
+        ctx.font = `700 100px ${FUENTES[familiaFuente] || FUENTES["system"]}`
+        const muestra = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ ÁÉÍÓÚ"
+        const f = (ctx.measureText(muestra).width / muestra.length / 100) * 1.03
+        if (f > 0.2 && f < 1.2) setFactorAncho(f)
+      } catch {}
+    }
+    medir()
+    ;(document as any).fonts?.ready?.then(medir)
+    return () => { vivo = false }
+  }, [familiaFuente])
+
   // Escuchar modo limpio desde control
   useEffect(() => {
     const handle = () => setModoLimpio(localStorage.getItem("proyector-modo-limpio") === "1")
@@ -397,6 +423,10 @@ export default function ProyectarPage() {
   const [titulo, setTitulo] = useState("")
   const [biblia, setBiblia] = useState<any>(null)
   const [imagen, setImagen] = useState<string | null>(null)
+  // ✅ Cuando el "ítem imagen" es en realidad un video (transición/descanso), se
+  // renderiza <video> en loop mudo en vez de <img>. El flag viaja dentro del
+  // mismo evento mostrar-imagen, así reusa toda la infra de imagen.
+  const [imagenEsVideo, setImagenEsVideo] = useState(false)
   const [tono, setTono] = useState("")
   const [paginaBiblia, setPaginaBiblia] = useState(0)
   const [iglesia, setIglesia] = useState("")
@@ -569,7 +599,8 @@ export default function ProyectarPage() {
       if (estado.tipo === "imagen") {
         const d = estado.data || {}
         limpiarPantalla(true) // preservar fondo
-        if (d?.url) precargarImagen(d.url)
+        setImagenEsVideo(!!d.video)
+        if (d?.url && !d.video) precargarImagen(d.url)
         setImagen(d.url); setIglesia(d.iglesia || ""); return
       }
       if (estado.tipo === "biblia") {
@@ -609,7 +640,8 @@ export default function ProyectarPage() {
         // Preservar fondo: solo limpiar partes/titulo/biblia
         setEstadoEspecial(null); setBiblia(null)
         setPartes([]); setTitulo(""); setTono(""); setIndex(0); setPaginaBiblia(0)
-        if (data?.url) precargarImagen(data.url)
+        setImagenEsVideo(!!data?.video)
+        if (data?.url && !data?.video) precargarImagen(data.url)
         setImagen(data.url); setIglesia(data.iglesia || "")
       })
     })
@@ -785,7 +817,7 @@ export default function ProyectarPage() {
   // ✅ Binary search: máximo font que cabe verticalmente considerando wrap real
   // Monotónico: a mayor zoom, el resultado solo puede subir o quedarse igual
   const capParaFs = (fs: number): number => {
-    const cpp        = Math.max(1, Math.floor(screenW / (fs * 0.58)))
+    const cpp        = Math.max(1, Math.floor(screenW / (fs * factorAncho)))
     const totalLines = lineasCancion.reduce((s, l) => s + Math.max(1, Math.ceil(l.length / cpp)), 0)
     const lh         = totalLines >= 12 ? 1.0 : totalLines >= 9 ? 1.04 : totalLines >= 6 ? 1.08 : 1.12
     return Math.floor(altC / (totalLines * lh))
@@ -934,10 +966,17 @@ export default function ProyectarPage() {
         </div>
       </>)}
 
-      {/* ── Imagen ────────────────────────────────────────────── */}
+      {/* ── Imagen / Video ────────────────────────────────────── */}
       {!estadoEspecial && imagen && (
-        <div style={{ width:"100vw",height:"100vh",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",zIndex:2 }}>
-          <img src={imagen} alt="" style={{ width:"100vw",height:"100vh",objectFit:"contain",display:"block" }} />
+        <div style={{ width:"100vw",height:"100vh",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",zIndex:2,background:"#000" }}>
+          {imagenEsVideo ? (
+            // ✅ Loop mudo: transición / descanso de pantalla. key={imagen} fuerza
+            // recrear el <video> al cambiar de clip (si no, reusa el anterior).
+            <video key={imagen} src={imagen} autoPlay loop muted playsInline
+              style={{ width:"100vw",height:"100vh",objectFit:"contain",display:"block" }} />
+          ) : (
+            <img src={imagen} alt="" style={{ width:"100vw",height:"100vh",objectFit:"contain",display:"block" }} />
+          )}
         </div>
       )}
 

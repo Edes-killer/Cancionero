@@ -85,6 +85,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => { window.removeEventListener("storage", leer); clearInterval(intervalo) }
   }, [])
 
+  // ✅ Capturador GLOBAL de errores → errores_log. Antes el logger existía pero
+  // casi nadie lo llamaba (solo 1 lugar en Control), así que la lista de logs
+  // salía vacía aunque hubiera errores. Esto registra cualquier error no
+  // controlado y cualquier promesa rechazada de toda la app. (logError se
+  // ignora solo en modo development; en la app compilada sí escribe.)
+  useEffect(() => {
+    let ultimoMsg = ""; let ultimoTs = 0
+    const registrar = (msg: string, detalle: Record<string, any>) => {
+      const ahora = Date.now()
+      // Anti-spam: mismo mensaje en < 3s se ignora (evita loops de error).
+      if (msg === ultimoMsg && ahora - ultimoTs < 3000) return
+      ultimoMsg = msg; ultimoTs = ahora
+      import("@/lib/Errorlogger").then(({ logError }) =>
+        logError(msg.slice(0, 500), { tipo: "general", detalle })
+      ).catch(() => {})
+    }
+    const onError = (e: ErrorEvent) =>
+      registrar(e.message || "error", { archivo: e.filename, linea: e.lineno })
+    const onRejection = (e: PromiseRejectionEvent) => {
+      const r: any = e.reason
+      registrar(r?.message || String(r) || "promesa rechazada", {})
+    }
+    window.addEventListener("error", onError)
+    window.addEventListener("unhandledrejection", onRejection)
+    return () => {
+      window.removeEventListener("error", onError)
+      window.removeEventListener("unhandledrejection", onRejection)
+    }
+  }, [])
+
   // ✅ Flags para evitar cargas duplicadas
   const yaCargadoRef = useRef(false)
   const cargandoRef = useRef(false)
