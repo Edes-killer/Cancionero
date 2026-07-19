@@ -281,8 +281,12 @@ export default function MusicosPage() {
           if (!salaRef.current) salaRef.current = (await getIglesiaId()) || "global"
           if (!activo) return
           const sala = salaRef.current
+          // ✅ Enviar el PIN de sala compartido (igual que Canciones/Control):
+          // si la iglesia tiene PIN, un músico que no lo mandara quedaba
+          // rechazado en silencio. Se lee del cache que escribe AppContext.
+          const pin = (typeof window !== "undefined" && localStorage.getItem("selah-sala-pin")) || undefined
           // ✅ No cambiar a modo cargando — el repertorio ya está visible
-          s.emit("unirse-sala", { sala, pantalla: "musicos" })
+          s.emit("unirse-sala", { sala, pantalla: "musicos", pin })
           s.emit("get-estado")
         } catch (err) {
           if (dev) console.error("❌ Error en connect músicos:", err)
@@ -292,6 +296,12 @@ export default function MusicosPage() {
       s.on("connect_error", () => {
         if (!activo) return
         setMsgConexion("No se pudo conectar. Revisá que Selah Live esté abierto en el PC y que estén en el mismo WiFi.")
+      })
+
+      // ✅ Rechazo por PIN visible (antes era silencioso en Músicos).
+      s.on("pin-invalido", (data: { mensaje?: string }) => {
+        if (!activo) return
+        setMsgConexion("🔒 " + (data?.mensaje || "PIN de sala incorrecto. Pedile el PIN al encargado."))
       })
 
     s.on("estado-actual", (estado: any) => {

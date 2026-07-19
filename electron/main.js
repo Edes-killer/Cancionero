@@ -559,6 +559,7 @@ try {
 
 // ── Ventana principal ─────────────────────────────────────────────────────────
 let mainWindow = null
+let proyectorWin = null  // ✅ referencia directa a la ventana del proyector (para ESC)
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -669,28 +670,34 @@ app.whenReady().then(async () => {
   // "siempre encima" y hacía falta doble ESC para cerrar, lo que se sentía
   // como que "no cierra". El proyector no es fullscreen real (fullscreen:false),
   // así que Alt+Tab ya funciona sin necesidad de despinnearlo.
+  // ✅ Guardamos la referencia de la ventana del proyector directamente. Antes
+  // se la buscaba por título ("Proyector"), pero layout.tsx pone
+  // document.title = "Selah Live" al cargar la página, así que getTitle() ya no
+  // contenía "Proyector" y el ESC NO encontraba la ventana → no cerraba (ni
+  // fullscreen ni normal). Por URL/referencia es infalible.
+  const cerrarProyector = (win) => {
+    if (!win || win.isDestroyed()) return
+    if (win.isFullScreen()) win.setFullScreen(false)
+    win.setAlwaysOnTop(false)
+    win.close()
+  }
+
   globalShortcut.register("Escape", () => {
     const wins = require("electron").BrowserWindow.getAllWindows()
-    const proyector = wins.find(w => w !== mainWindow && w.getTitle().includes("Proyector"))
-    if (!proyector) return
-    // ✅ Si está en pantalla completa real (menú "Pantalla completa"), salir del
-    // fullscreen no alcanzaba: hacía falta un segundo ESC para cerrar y se
-    // sentía como que "no cierra". Ahora cierra directo, sin importar el modo.
-    if (proyector.isFullScreen()) proyector.setFullScreen(false)
-    proyector.setAlwaysOnTop(false)
-    proyector.close()
+    const proyector = proyectorWin && !proyectorWin.isDestroyed()
+      ? proyectorWin
+      : wins.find(w => w !== mainWindow && (w.webContents.getURL() || "").includes("/proyectar"))
+    cerrarProyector(proyector)
   })
 
-  // ✅ Respaldo más confiable que el globalShortcut: cuando el proyector está en
-  // fullscreen real, Chromium puede quedarse con el primer ESC. Este listener
-  // vive DENTRO de la ventana del proyector y cierra en un solo ESC igual.
+  // ✅ Respaldo cuando el proyector tiene foco (p.ej. en fullscreen real, donde
+  // Chromium puede quedarse con el primer ESC): un listener dentro de la ventana.
   mainWindow.webContents.on("did-create-window", (win, details) => {
     if (!details?.url?.includes("/proyectar")) return
+    proyectorWin = win
+    win.on("closed", () => { if (proyectorWin === win) proyectorWin = null })
     win.webContents.on("before-input-event", (e, input) => {
-      if (input.type === "keyDown" && input.key === "Escape") {
-        if (win.isFullScreen()) win.setFullScreen(false)
-        win.close()
-      }
+      if (input.type === "keyDown" && input.key === "Escape") cerrarProyector(win)
     })
   })
 

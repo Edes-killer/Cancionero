@@ -386,6 +386,13 @@ export default function CancionesPage() {
     s.on("disconnect", () => setSocketConectado(false))
     s.on("connect_error", () => setSocketConectado(false))
     s.on("reconnect", () => setSocketConectado(true))
+    // ✅ Antes el rechazo por PIN era silencioso acá (solo Control lo mostraba):
+    // el usuario no entendía por qué no se conectaba. Se mantiene la misma
+    // lógica del servidor, solo se hace visible el error.
+    s.on("pin-invalido", (data: { mensaje?: string }) => {
+      setSocketConectado(false)
+      flash("🔒 " + (data?.mensaje || "PIN de sala incorrecto. Verificalo en Configuración."))
+    })
     s.on("cancion-activa", (data: any) => setActivaId(data.id))
     setSocket(s)
     return () => { s.disconnect() }
