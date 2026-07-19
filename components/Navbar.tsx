@@ -51,12 +51,27 @@ export default function Navbar() {
   const [menuAbierto, setMenuAbierto] = useState(false)
   const [cerrando, setCerrando] = useState(false)
   const [rol, setRol] = useState<string | null>(null)
+  // ✅ Indicador de sin internet. La app funciona igual offline (con la caché),
+  // que está bien, pero el usuario no tenía forma de SABER que está sin conexión.
+  // Arranca en true para no marcar "offline" por un instante en el primer render.
+  const [online, setOnline] = useState(true)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 700)
     check()
     window.addEventListener("resize", check)
     return () => window.removeEventListener("resize", check)
+  }, [])
+
+  useEffect(() => {
+    const sync = () => setOnline(navigator.onLine)
+    sync()
+    window.addEventListener("online", sync)
+    window.addEventListener("offline", sync)
+    return () => {
+      window.removeEventListener("online", sync)
+      window.removeEventListener("offline", sync)
+    }
   }, [])
 
   // ✅ Sugerido por el usuario: mostrar el rol propio (admin/lider/musico)
@@ -131,6 +146,20 @@ export default function Navbar() {
               </div>
             )}
           </Link>
+
+          {/* ✅ Badge de sin conexión: la app sigue andando con la caché, pero
+              avisa que está offline (antes se veía igual que con internet). */}
+          {!online && (
+            <div title="Sin conexión a internet — usando datos guardados" style={{
+              display: "flex", alignItems: "center", gap: 5, flexShrink: 0,
+              padding: "4px 9px", borderRadius: 999,
+              background: "rgba(202,138,4,0.16)", border: "1px solid rgba(234,179,8,0.35)",
+              color: "#fcd34d", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap"
+            }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#eab308", flexShrink: 0 }} />
+              {isMobile ? "Offline" : "Sin conexión"}
+            </div>
+          )}
 
           {/* ── Links desktop ── */}
           {!isMobile && (
