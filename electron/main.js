@@ -567,6 +567,77 @@ let proyectorWin = null  // ✅ referencia directa a la ventana del proyector (p
 let staticServer = null
 let socketServer = null
 
+// ── Ventana de progreso de actualización ──────────────────────────────────────
+// ✅ El usuario debe VER que se está actualizando y cuánto falta. Antes todo
+// pasaba invisible y la app se cerraba de golpe.
+let ventanaProgreso = null
+
+function mostrarVentanaProgreso(version) {
+  if (ventanaProgreso && !ventanaProgreso.isDestroyed()) return ventanaProgreso
+  ventanaProgreso = new BrowserWindow({
+    width: 440, height: 200,
+    resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
+    alwaysOnTop: true, frame: false, backgroundColor: "#0b1220", show: false,
+    skipTaskbar: false, title: "Actualizando Selah Live",
+    webPreferences: { contextIsolation: true, nodeIntegration: false }
+  })
+
+  const html = `<!doctype html><meta charset="utf-8">
+<style>
+  body{margin:0;font-family:'Segoe UI',system-ui,sans-serif;background:#0b1220;color:#fff;
+       height:100vh;display:flex;flex-direction:column;justify-content:center;padding:0 28px;box-sizing:border-box;
+       -webkit-app-region:drag;user-select:none}
+  .t{font-size:16px;font-weight:800;margin-bottom:4px}
+  .s{font-size:12px;opacity:.6;margin-bottom:16px}
+  .bar{height:10px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden}
+  .fill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#3b82f6,#6366f1);transition:width .25s}
+  .row{display:flex;justify-content:space-between;margin-top:10px;font-size:12px;opacity:.75}
+  .pct{font-weight:800;opacity:1}
+</style>
+<div class="t">⬇️ Descargando actualización${version ? " " + version : ""}</div>
+<div class="s">Selah Live se reiniciará solo al terminar. No cierres la aplicación.</div>
+<div class="bar"><div class="fill" id="f"></div></div>
+<div class="row"><span id="d">Iniciando descarga...</span><span class="pct" id="p">0%</span></div>
+<div class="row"><span id="t2"></span><span></span></div>
+<script>
+  window.setProgreso = function(pct, detalle, tiempo){
+    document.getElementById('f').style.width = pct + '%'
+    document.getElementById('p').textContent = pct + '%'
+    document.getElementById('d').textContent = detalle || ''
+    document.getElementById('t2').textContent = tiempo || ''
+  }
+  window.setInstalando = function(){
+    document.querySelector('.t').textContent = '⚙️ Instalando actualización'
+    document.querySelector('.s').textContent = 'Esto toma unos segundos. Selah Live se abrirá sola al terminar.'
+    document.getElementById('f').style.width = '100%'
+    document.getElementById('p').textContent = ''
+    document.getElementById('d').textContent = 'Reemplazando archivos...'
+    document.getElementById('t2').textContent = ''
+  }
+</script>`
+
+  ventanaProgreso.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html))
+  ventanaProgreso.once("ready-to-show", () => {
+    if (ventanaProgreso && !ventanaProgreso.isDestroyed()) ventanaProgreso.show()
+  })
+  return ventanaProgreso
+}
+
+function actualizarProgreso(pct, detalle, tiempo) {
+  if (!ventanaProgreso || ventanaProgreso.isDestroyed()) return
+  ventanaProgreso.webContents
+    .executeJavaScript(`window.setProgreso(${pct}, ${JSON.stringify(detalle || "")}, ${JSON.stringify(tiempo || "")})`)
+    .catch(() => {})
+}
+
+function cerrarVentanaProgreso() {
+  try {
+    if (ventanaProgreso && !ventanaProgreso.isDestroyed()) ventanaProgreso.destroy()
+  } catch (e) {}
+  ventanaProgreso = null
+  try { mainWindow && !mainWindow.isDestroyed() && mainWindow.setProgressBar(-1) } catch (e) {}
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -762,13 +833,26 @@ app.whenReady().then(async () => {
     })
 
     autoUpdater.on("update-available", (info) => {
-      dialog.showMessageBox(mainWindow, {
-        type: "info",
-        title: "Nueva versión disponible",
-        message: `Selah Live ${info.version} está disponible`,
-        detail: "La actualización se descargará en segundo plano. Te avisaremos cuando esté lista.",
-        buttons: ["OK"]
-      })
+      // ✅ Ventana de progreso visible: el usuario tiene que SABER que se está
+      // actualizando y cuánto falta. Antes la descarga era invisible y la app
+      // simplemente se cerraba de golpe, lo que asusta.
+      mostrarVentanaProgreso(info?.version || "")
+    })
+
+    autoUpdater.on("download-progress", (p) => {
+      const pct = Math.round(p?.percent || 0)
+      const mb = (n) => (n / 1024 / 1024).toFixed(0)
+      const velocidad = (p?.bytesPerSecond || 0) / 1024 / 1024
+      // Tiempo restante estimado
+      const restanteSeg = velocidad > 0
+        ? Math.max(0, ((p.total - p.transferred) / 1024 / 1024) / velocidad)
+        : 0
+      const tiempo = restanteSeg > 90
+        ? `~${Math.ceil(restanteSeg / 60)} min restantes`
+        : restanteSeg > 0 ? `~${Math.ceil(restanteSeg)} seg restantes` : ""
+      actualizarProgreso(pct, `${mb(p.transferred)} de ${mb(p.total)} MB · ${velocidad.toFixed(1)} MB/s`, tiempo)
+      // Barra de progreso en el ícono de la barra de tareas
+      try { mainWindow && !mainWindow.isDestroyed() && mainWindow.setProgressBar(pct / 100) } catch (e) {}
     })
 
     autoUpdater.on("update-not-available", () => {
@@ -780,11 +864,18 @@ app.whenReady().then(async () => {
         type: "info",
         title: "¡Actualización lista!",
         message: `Nueva versión ${info?.version || ""} descargada.`,
-        detail: "Se cerrará Selah Live y se abrirá el instalador. Sigue los pasos en pantalla; si aparece 'archivo en uso', espera unos segundos y haz clic en Reintentar.",
+        detail: "Se cerrará Selah Live, verás el progreso de la instalación (unos segundos) y la app se abrirá sola al terminar.",
         buttons: ["Instalar ahora", "Después"],
         defaultId: 0
       }).then(result => {
+        if (result.response !== 0) { cerrarVentanaProgreso(); return }
         if (result.response === 0) {
+          // ✅ Mostrar "Instalando..." mientras corre el instalador, para que el
+          // usuario sepa qué está pasando y no crea que la app se colgó.
+          try {
+            const v = mostrarVentanaProgreso("")
+            v.webContents.executeJavaScript("window.setInstalando()").catch(() => {})
+          } catch (e) {}
           // ✅ Cierre limpio antes de instalar. La causa raíz del "archivo en
           // uso": los servidores embebidos (3000/4000) mantenían VIVO el proceso
           // principal aunque se cerraran las ventanas, así que el .exe seguía
@@ -794,12 +885,15 @@ app.whenReady().then(async () => {
           try { socketServer && socketServer.close() } catch (e) {}
           try { staticServer && staticServer.close() } catch (e) {}
           app.removeAllListeners("window-all-closed")
-          BrowserWindow.getAllWindows().forEach(w => w.destroy())
-          // ✅ oneClick + isSilent=true: el instalador oneClick sobreescribe en
-          // el lugar sin diálogos ni pantalla de "para quién instalar", y no
-          // corre el flujo de desinstalación asistida que fallaba. isForceRunAfter
-          // relanza la app al terminar.
-          autoUpdater.quitAndInstall(true, true)
+          // ✅ Cerrar todas MENOS la ventana de progreso, para que el usuario
+          // siga viendo "Instalando..." hasta que el proceso termine.
+          BrowserWindow.getAllWindows().forEach(w => {
+            if (w !== ventanaProgreso) { try { w.destroy() } catch (e) {} }
+          })
+          // ✅ isSilent=false: el instalador oneClick muestra su propia ventana
+          // de progreso. Antes iba silencioso y la app simplemente desaparecía
+          // sin explicación. isForceRunAfter relanza la app al terminar.
+          autoUpdater.quitAndInstall(false, true)
           // ✅ Forzar la salida RÁPIDO: el cierre "elegante" no bastaba (handles
           // de socket.io/servidor mantenían el proceso vivo y el instalador
           // encontraba la app corriendo a mitad de instalación). 3.5s era
@@ -814,6 +908,19 @@ app.whenReady().then(async () => {
 
     autoUpdater.on("error", (err) => {
       console.log("Auto-updater error:", err?.message)
+      // ✅ Si falla la descarga/actualización, cerrar la ventana de progreso
+      // (si no, se quedaría colgada en pantalla para siempre) y avisar.
+      const estabaVisible = !!(ventanaProgreso && !ventanaProgreso.isDestroyed())
+      cerrarVentanaProgreso()
+      if (estabaVisible && mainWindow && !mainWindow.isDestroyed()) {
+        dialog.showMessageBox(mainWindow, {
+          type: "warning",
+          title: "No se pudo actualizar",
+          message: "Hubo un problema al descargar la actualización.",
+          detail: "Puedes seguir usando Selah Live normalmente. Vuelve a intentarlo más tarde desde Configuración.",
+          buttons: ["OK"]
+        }).catch(() => {})
+      }
     })
   } catch (e) {
     console.log("electron-updater no disponible:", e?.message)
