@@ -391,7 +391,7 @@ export default function CancionesPage() {
     // lógica del servidor, solo se hace visible el error.
     s.on("pin-invalido", (data: { mensaje?: string }) => {
       setSocketConectado(false)
-      flash("🔒 " + (data?.mensaje || "PIN de sala incorrecto. Verificalo en Configuración."))
+      flash("🔒 " + (data?.mensaje || "PIN de sala incorrecto. Verifícalo en Configuración."))
     })
     s.on("cancion-activa", (data: any) => setActivaId(data.id))
     setSocket(s)
@@ -781,9 +781,9 @@ export default function CancionesPage() {
   const mensajeErrorAmigable = (msg?: string): string => {
     if (!msg) return "error desconocido"
     if (msg.includes("items_lista_cancion_id_fkey") || msg.includes("foreign key"))
-      return "está incluida en una o más listas de culto guardadas. Quitala de esas listas (o eliminá el culto) antes de borrarla definitivamente."
+      return "está incluida en una o más listas de culto guardadas. Quítala de esas listas (o elimina el culto) antes de borrarla definitivamente."
     if (msg.includes("row-level security") || msg.includes("violates row-level"))
-      return "no tenés permiso para hacer esto (los himnos del himnario global no se pueden borrar)."
+      return "no tienes permiso para hacer esto (los himnos del himnario global no se pueden borrar)."
     // ✅ Las funciones (eliminar/purgar_cancion) solo "ven" las canciones de tu
     // iglesia, así que para un himno global responden "canción no encontrada" —
     // un mensaje engañoso: la canción existe, lo que no se puede es borrarla.
@@ -1015,7 +1015,7 @@ export default function CancionesPage() {
   const eliminarCancion = async (id: string, titulo: string) => {
     if (sinConexion) { flash("⚠️ Sin conexión con el servidor — no se puede eliminar ahora"); return }
     if (esCancionGlobal(id)) {
-      flash("⚠️ Este himno es del himnario global (compartido por todas las iglesias) y no se puede borrar. Si querés tu propia versión, editalo: se crea una copia para tu iglesia.")
+      flash("⚠️ Este himno es del himnario global (compartido por todas las iglesias) y no se puede borrar. Si quieres tu propia versión, edítalo: se crea una copia para tu iglesia.")
       return
     }
     const avisoGlobal = await tieneGlobalDetras(id)
@@ -1056,7 +1056,7 @@ export default function CancionesPage() {
     const ids = todosIds.filter(id => !esCancionGlobal(id))
     const globales = todosIds.length - ids.length
     if (ids.length === 0) {
-      flash(`⚠️ ${globales === 1 ? "Ese himno es del himnario global" : `Esos ${globales} himnos son del himnario global`} y no se pueden borrar. Solo podés borrar las canciones propias de tu iglesia.`)
+      flash(`⚠️ ${globales === 1 ? "Ese himno es del himnario global" : `Esos ${globales} himnos son del himnario global`} y no se pueden borrar. Solo puedes borrar las canciones propias de tu iglesia.`)
       return
     }
     const avisoGlobales = globales > 0

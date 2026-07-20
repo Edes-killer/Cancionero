@@ -2354,7 +2354,7 @@ const subirVideo = async (file: File) => {
       .upload(ruta, file, { cacheControl: "3600", upsert: false, contentType: file.type || "video/mp4" })
 
     if (error) {
-      flashCtrl(`Error subiendo video: ${error.message}. Revisá que el bucket permita video en Supabase.`)
+      flashCtrl(`Error subiendo video: ${error.message}. Revisa que el bucket permita video en Supabase.`)
       return null
     }
 

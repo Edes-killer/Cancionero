@@ -295,13 +295,13 @@ export default function MusicosPage() {
 
       s.on("connect_error", () => {
         if (!activo) return
-        setMsgConexion("No se pudo conectar. Revisá que Selah Live esté abierto en el PC y que estén en el mismo WiFi.")
+        setMsgConexion("No se pudo conectar. Revisa que Selah Live esté abierto en el PC y que estén en la misma red WiFi.")
       })
 
       // ✅ Rechazo por PIN visible (antes era silencioso en Músicos).
       s.on("pin-invalido", (data: { mensaje?: string }) => {
         if (!activo) return
-        setMsgConexion("🔒 " + (data?.mensaje || "PIN de sala incorrecto. Pedile el PIN al encargado."))
+        setMsgConexion("🔒 " + (data?.mensaje || "PIN de sala incorrecto. Pídele el PIN al encargado."))
       })
 
     s.on("estado-actual", (estado: any) => {
