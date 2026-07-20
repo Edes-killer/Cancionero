@@ -1,32 +1,32 @@
-; ✅ Arregla el falso "No se puede cerrar Selah Live" que muestra el
-; instalador de electron-builder incluso cuando el Administrador de tareas
-; no muestra nada corriendo. El chequeo interno de electron-builder busca
-; procesos cuya ruta empiece en $INSTDIR vía PowerShell/tasklist, y falla
-; en falso si queda un proceso auxiliar de Electron (GPU/crashpad handler)
-; que no terminó junto con la ventana principal.
-;
-; customInit corre al inicio de .onInit, ANTES de que el instalador llegue
-; a su propio chequeo -- forzamos el cierre de cualquier proceso residual
-; acá para que ese chequeo ya no encuentre nada y nunca muestre el aviso.
-!macro customInit
-  ; ✅ Matar la app y ESPERAR a que Windows libere los archivos antes de que el
-  ; instalador borre los viejos. Con solo 500ms a veces los archivos seguían en
-  ; uso -> "Fallo al desinstalar archivos antiguos". Dos intentos + más espera
-  ; (por si un proceso auxiliar de Electron reapareció).
+; ✅ Mata TODOS los procesos de Selah Live y espera a que Windows libere los
+; archivos antes de que el instalador los toque. Historial: con 2 intentos +
+; 2.4s a veces el proceso (o un helper de Electron: GPU/utility/crashpad) seguía
+; vivo o con handles abiertos a mitad de instalación -> "Fallo al desinstalar
+; archivos antiguos" / "No se puede cerrar Selah Live" con la barra ya avanzada.
+; Ahora: varios intentos, por nombre de macro Y por nombre fijo (por si la macro
+; no resolviera), con más espera total para que se liberen los handles.
+!macro matarSelahLive
   nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /T'
-  Sleep 1200
+  Sleep 800
+  nsExec::Exec 'taskkill /F /IM "Selah Live.exe" /T'
+  Sleep 800
   nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /T'
-  Sleep 1200
+  Sleep 800
+  nsExec::Exec 'taskkill /F /IM "Selah Live.exe" /T'
+  ; Espera final más larga: aunque el proceso ya murió, Windows tarda en soltar
+  ; los handles de los .dll/.exe mapeados; sin esto el copiado fallaba igual.
+  Sleep 3000
 !macroend
 
-; ✅ Al actualizar, el instalador primero corre en silencio el DESINSTALADOR
-; VIEJO ya instalado (uninstallOldVersion) -- ese es un .exe aparte, con su
-; propio chequeo de "¿está corriendo?" al inicio (customUnInit, no
-; customInit). Sin este macro, el aviso seguía saliendo ahí aunque el
-; instalador nuevo ya tuviera el arreglo de arriba.
+; customInit corre al inicio de .onInit del instalador NUEVO, ANTES de su propio
+; chequeo de "¿app corriendo?" y ANTES de desinstalar la versión vieja. Si acá
+; matamos todo, los pasos siguientes ya no encuentran la app viva.
+!macro customInit
+  !insertmacro matarSelahLive
+!macroend
+
+; customUnInit corre al inicio del DESINSTALADOR viejo (que el instalador nuevo
+; ejecuta para quitar la versión anterior).
 !macro customUnInit
-  nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /T'
-  Sleep 1200
-  nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /T'
-  Sleep 1200
+  !insertmacro matarSelahLive
 !macroend

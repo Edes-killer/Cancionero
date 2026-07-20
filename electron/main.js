@@ -796,10 +796,14 @@ app.whenReady().then(async () => {
           app.removeAllListeners("window-all-closed")
           BrowserWindow.getAllWindows().forEach(w => w.destroy())
           autoUpdater.quitAndInstall(false, true)
-          // ✅ Red de seguridad: si algún handle impide que el proceso salga
-          // (una conexión socket.io colgada, etc.), forzar la salida para soltar
-          // el .exe. El instalador ya es un proceso aparte, no lo afecta.
-          setTimeout(() => { try { app.exit(0) } catch (e) {} }, 3500)
+          // ✅ Forzar la salida RÁPIDO: el cierre "elegante" no bastaba (handles
+          // de socket.io/servidor mantenían el proceso vivo y el instalador
+          // encontraba la app corriendo a mitad de instalación). 3.5s era
+          // demasiado tarde: el instalador ya había chequeado. app.exit(0) mata
+          // el proceso de una; el instalador ya es un proceso aparte, no le
+          // afecta. El grueso del arreglo igual vive en installer.nsh (mata la
+          // app desde el instalador nuevo antes de tocar archivos).
+          setTimeout(() => { try { app.exit(0) } catch (e) {} }, 1000)
         }
       })
     })
