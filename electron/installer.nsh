@@ -1,32 +1,49 @@
-; ✅ Mata TODOS los procesos de Selah Live y espera a que Windows libere los
-; archivos antes de que el instalador los toque. Historial: con 2 intentos +
-; 2.4s a veces el proceso (o un helper de Electron: GPU/utility/crashpad) seguía
-; vivo o con handles abiertos a mitad de instalación -> "Fallo al desinstalar
-; archivos antiguos" / "No se puede cerrar Selah Live" con la barra ya avanzada.
-; Ahora: varios intentos, por nombre de macro Y por nombre fijo (por si la macro
-; no resolviera), con más espera total para que se liberen los handles.
+; ══════════════════════════════════════════════════════════════════════════════
+; ARREGLO DEL "Fallo al desinstalar archivos antiguos de la aplicación.: 2"
+;
+; Causa raíz (encontrada leyendo el código de electron-builder):
+;   templates/nsis/include/allowOnlyOneInstallerInstance.nsh -> _CHECK_APP_RUNNING
+;   detecta la app buscando procesos cuya RUTA empiece en $INSTDIR. Selah Live
+;   corre con ~5 procesos (principal + GPU + helpers de Electron). El chequeo
+;   los mata y reintenta, pero solo 2 veces; si todavía detecta alguno hace:
+;       MessageBox MB_RETRYCANCEL ... /SD IDCANCEL IDRETRY loop
+;       Quit
+;   En modo silencioso (que es como corre el auto-update) ese MessageBox se
+;   auto-responde CANCELAR -> Quit sin pasar por quitSuccess -> el desinstalador
+;   sale con EXIT CODE 2 -> el instalador muestra "Fallo al desinstalar
+;   archivos antiguos.: 2" y aborta toda la actualización.
+;
+;   Encima, ese chequeo corre en un.onInit ANTES de customUnInit, así que el
+;   taskkill que teníamos ahí llegaba siempre tarde.
+;
+; Solución: electron-builder permite REEMPLAZAR ese chequeo definiendo
+; customCheckAppRunning (ver CHECK_APP_RUNNING: si el macro existe, usa el
+; nuestro en vez del suyo). El nuestro mata a la fuerza y NUNCA aborta.
+; Se usa tanto en el instalador como en el desinstalador.
+; ══════════════════════════════════════════════════════════════════════════════
 !macro matarSelahLive
   nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /T'
   Sleep 800
   nsExec::Exec 'taskkill /F /IM "Selah Live.exe" /T'
   Sleep 800
   nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /T'
-  Sleep 800
-  nsExec::Exec 'taskkill /F /IM "Selah Live.exe" /T'
-  ; Espera final más larga: aunque el proceso ya murió, Windows tarda en soltar
-  ; los handles de los .dll/.exe mapeados; sin esto el copiado fallaba igual.
-  Sleep 3000
+  ; Espera final: aunque los procesos ya murieron, Windows tarda en soltar los
+  ; handles de los .exe/.dll mapeados en memoria.
+  Sleep 2500
 !macroend
 
-; customInit corre al inicio de .onInit del instalador NUEVO, ANTES de su propio
-; chequeo de "¿app corriendo?" y ANTES de desinstalar la versión vieja. Si acá
-; matamos todo, los pasos siguientes ya no encuentran la app viva.
+; ✅ Reemplaza el chequeo de "app corriendo" de electron-builder. Nunca hace
+; Quit, así que nunca genera el exit code 2 que abortaba la actualización.
+!macro customCheckAppRunning
+  !insertmacro matarSelahLive
+!macroend
+
+; Refuerzo: al inicio del instalador nuevo (antes de desinstalar la vieja).
 !macro customInit
   !insertmacro matarSelahLive
 !macroend
 
-; customUnInit corre al inicio del DESINSTALADOR viejo (que el instalador nuevo
-; ejecuta para quitar la versión anterior).
+; Refuerzo: al inicio del desinstalador viejo.
 !macro customUnInit
   !insertmacro matarSelahLive
 !macroend
