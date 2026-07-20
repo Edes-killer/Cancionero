@@ -1,49 +1,73 @@
 ; ══════════════════════════════════════════════════════════════════════════════
 ; ARREGLO DEL "Fallo al desinstalar archivos antiguos de la aplicación.: 2"
 ;
-; Causa raíz (encontrada leyendo el código de electron-builder):
-;   templates/nsis/include/allowOnlyOneInstallerInstance.nsh -> _CHECK_APP_RUNNING
-;   detecta la app buscando procesos cuya RUTA empiece en $INSTDIR. Selah Live
-;   corre con ~5 procesos (principal + GPU + helpers de Electron). El chequeo
-;   los mata y reintenta, pero solo 2 veces; si todavía detecta alguno hace:
-;       MessageBox MB_RETRYCANCEL ... /SD IDCANCEL IDRETRY loop
-;       Quit
-;   En modo silencioso (que es como corre el auto-update) ese MessageBox se
-;   auto-responde CANCELAR -> Quit sin pasar por quitSuccess -> el desinstalador
-;   sale con EXIT CODE 2 -> el instalador muestra "Fallo al desinstalar
-;   archivos antiguos.: 2" y aborta toda la actualización.
+; CAUSA REAL (leída del código de electron-builder, templates/nsis/):
 ;
-;   Encima, ese chequeo corre en un.onInit ANTES de customUnInit, así que el
-;   taskkill que teníamos ahí llegaba siempre tarde.
+; 1) uninstaller.nsh (líneas ~164-180): cuando es una ACTUALIZACIÓN
+;    (${isUpdated}), el desinstalador NO borra los archivos: llama a
+;    un.atomicRMDir, que intenta MOVER/RENOMBRAR cada archivo de $INSTDIR a
+;    una carpeta temporal. Si UN SOLO archivo está ocupado (p.ej. el .exe de
+;    la app, que Windows mantiene mapeado en memoria un rato tras cerrarla):
+;        DetailPrint "File is busy, aborting: $R0"
+;        Abort `Can't rename "$INSTDIR" ...`
+;    Ese Abort sale SIN pasar por quitSuccess -> el desinstalador devuelve
+;    EXIT CODE 2 (ver common.nsh: "# avoid exit code 2").
 ;
-; Solución: electron-builder permite REEMPLAZAR ese chequeo definiendo
-; customCheckAppRunning (ver CHECK_APP_RUNNING: si el macro existe, usa el
-; nuestro en vez del suyo). El nuestro mata a la fuerza y NUNCA aborta.
-; Se usa tanto en el instalador como en el desinstalador.
+; 2) installUtil.nsh (handleUninstallResult): el instalador ve ese 2 y hace
+;    MessageBox "$(uninstallFailed): $R0" + SetErrorLevel 2 + Quit
+;    -> aborta TODA la actualización. Eso es lo que veía el usuario.
+;
+; SOLUCIÓN (dos frentes):
+;   A) customUnInstallCheck / customUnInstallCheckCurrentUser -> hacen que
+;      handleUninstallResult RETORNE antes del chequeo de error, o sea que el
+;      instalador nuevo IGNORA el fallo del desinstalador viejo y sigue
+;      instalando (sobreescribe los archivos igual). Esto vive en el instalador
+;      NUEVO, así que aplica de inmediato, sin esperar otra versión.
+;   B) customRemoveFiles -> reemplaza el atomicRMDir que aborta por un borrado
+;      normal que NO aborta. Así los desinstaladores futuros dejan de fallar.
 ; ══════════════════════════════════════════════════════════════════════════════
+
 !macro matarSelahLive
   nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /T'
   Sleep 800
   nsExec::Exec 'taskkill /F /IM "Selah Live.exe" /T'
   Sleep 800
   nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /T'
-  ; Espera final: aunque los procesos ya murieron, Windows tarda en soltar los
-  ; handles de los .exe/.dll mapeados en memoria.
+  ; Windows tarda en soltar los .exe/.dll mapeados aunque el proceso ya murió.
   Sleep 2500
 !macroend
 
-; ✅ Reemplaza el chequeo de "app corriendo" de electron-builder. Nunca hace
-; Quit, así que nunca genera el exit code 2 que abortaba la actualización.
+; ── A) El instalador NO debe abortar si el desinstalador viejo falla ──────────
+; handleUninstallResult retorna apenas inserta estos macros, salteándose el
+; MessageBox de error y el SetErrorLevel 2 + Quit.
+!macro customUnInstallCheck
+  DetailPrint "Continuando con la instalación (limpieza de la versión anterior omitida)."
+!macroend
+
+!macro customUnInstallCheckCurrentUser
+  DetailPrint "Continuando con la instalación (limpieza de la versión anterior omitida)."
+!macroend
+
+; ── B) Borrado de archivos que NO aborta ─────────────────────────────────────
+; Reemplaza el bloque atomicRMDir/Abort del desinstalador.
+!macro customRemoveFiles
+  ; un.onInit hace SetOutPath $INSTDIR, lo que deja la carpeta "en uso" por el
+  ; propio desinstalador. Hay que salir antes de intentar borrarla.
+  SetOutPath $TEMP
+  !insertmacro matarSelahLive
+  ; RMDir /r borra lo que puede y sigue; NO aborta si algo quedó ocupado.
+  RMDir /r "$INSTDIR"
+!macroend
+
+; ── Reemplaza el chequeo de "app corriendo" (nunca aborta) ───────────────────
 !macro customCheckAppRunning
   !insertmacro matarSelahLive
 !macroend
 
-; Refuerzo: al inicio del instalador nuevo (antes de desinstalar la vieja).
 !macro customInit
   !insertmacro matarSelahLive
 !macroend
 
-; Refuerzo: al inicio del desinstalador viejo.
 !macro customUnInit
   !insertmacro matarSelahLive
 !macroend
