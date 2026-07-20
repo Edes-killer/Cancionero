@@ -231,7 +231,7 @@ export default function ConfiguracionPage() {
     const site = process.env.NEXT_PUBLIC_SITE_URL || ""
     const hayWebPublica = site && !/localhost|127\.0\.0\.1/.test(site)
     const texto = hayWebPublica
-      ? `Te invito a Selah Live 🎵\n\nAbrí este link: ${site}/unirse?codigo=${codigo}\n\nO instalá la app e ingresá el código: ${codigo}`
+      ? `Te invito a Selah Live 🎵\n\nAbre este enlace: ${site}/unirse?codigo=${codigo}\n\nO instala la app e ingresa el código: ${codigo}`
       : `Te invito a Selah Live 🎵\n\nInstalá la app e ingresá este código en "Unirse a una iglesia":\n\n${codigo}`
     navigator.clipboard.writeText(texto).then(() => {
       setLinkCopiado(codigo)
@@ -944,7 +944,7 @@ export default function ConfiguracionPage() {
               opacity: 0.7,
               lineHeight: 1.5
             }}>
-              ℹ️ El logo se muestra en el dashboard y puede usarse en pantallas de espera. Se muestra recortado en círculo, así que podés subirlo con su fondo tal cual (no hace falta quitárselo).
+              ℹ️ El logo se muestra en el dashboard y puede usarse en pantallas de espera. Se muestra recortado en círculo, así que puedes subirlo con su fondo tal cual (no hace falta quitárselo).
             </div>
           </div>
         </div>
