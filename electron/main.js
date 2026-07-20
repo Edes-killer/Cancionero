@@ -780,7 +780,7 @@ app.whenReady().then(async () => {
         type: "info",
         title: "¡Actualización lista!",
         message: `Nueva versión ${info?.version || ""} descargada.`,
-        detail: "Se cerrará Selah Live y se abrirá el instalador. Seguí los pasos en pantalla; si aparece 'archivo en uso', dale Reintentar.",
+        detail: "Se cerrará Selah Live y se abrirá el instalador. Sigue los pasos en pantalla; si aparece 'archivo en uso', espera unos segundos y haz clic en Reintentar.",
         buttons: ["Instalar ahora", "Después"],
         defaultId: 0
       }).then(result => {
@@ -795,7 +795,11 @@ app.whenReady().then(async () => {
           try { staticServer && staticServer.close() } catch (e) {}
           app.removeAllListeners("window-all-closed")
           BrowserWindow.getAllWindows().forEach(w => w.destroy())
-          autoUpdater.quitAndInstall(false, true)
+          // ✅ oneClick + isSilent=true: el instalador oneClick sobreescribe en
+          // el lugar sin diálogos ni pantalla de "para quién instalar", y no
+          // corre el flujo de desinstalación asistida que fallaba. isForceRunAfter
+          // relanza la app al terminar.
+          autoUpdater.quitAndInstall(true, true)
           // ✅ Forzar la salida RÁPIDO: el cierre "elegante" no bastaba (handles
           // de socket.io/servidor mantenían el proceso vivo y el instalador
           // encontraba la app corriendo a mitad de instalación). 3.5s era

@@ -14,12 +14,12 @@
     { "from": "data/biblia", "to": "data/biblia" }
   ],
   "nsis": {
-    "oneClick": false,
+    "oneClick": true,
     "perMachine": false,
     "installerIcon": "assets/icon.ico",
     "uninstallerIcon": "assets/icon.ico",
-    "allowToChangeInstallationDirectory": false,
     "deleteAppDataOnUninstall": false,
+    "runAfterFinish": true,
     "include": "electron/installer.nsh"
   },
   "win": {
