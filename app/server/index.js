@@ -199,7 +199,8 @@ io.on("connection", socket => {
     const sala = salaDe(socket)
     const est  = estadosPorSala[sala]
     if (est?.tipo === "cancion") { est.data.index = index; guardarEstadoSala(sala, est) }
-    io.to(sala).emit("cambiar-parte", index)
+    // ✅ A los demás, no al emisor: evita eco y sincroniza otros controles.
+    socket.broadcast.to(sala).emit("cambiar-parte", index)
     // ✅ Sincronizar índice en Supabase también
     if (supabaseAdmin) {
       supabaseAdmin.from("estado_culto")
@@ -226,7 +227,7 @@ io.on("connection", socket => {
     const sala = salaDe(socket)
     const est  = estadosPorSala[sala]
     if (est?.tipo === "biblia") { est.data.pagina = pagina; guardarEstadoSala(sala, est) }
-    io.to(sala).emit("cambiar-pagina-biblia", pagina)
+    socket.broadcast.to(sala).emit("cambiar-pagina-biblia", pagina)
   })
 
   socket.on("mostrar-estado", data => {

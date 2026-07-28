@@ -316,6 +316,13 @@ export default function ProyectarPage() {
     if (typeof window === "undefined") return "system"
     return localStorage.getItem("proyector-font-family") || "system"
   })
+  // ✅ Color de la letra proyectada. Configurable para cuando el data proyector
+  // está borroso o hay mucha luz: un color más contrastado (amarillo, cian) se
+  // lee mejor que el blanco. Por defecto blanco puro.
+  const [colorLetra, setColorLetra] = useState<string>(() => {
+    if (typeof window === "undefined") return "#ffffff"
+    return localStorage.getItem("proyector-color-letra") || "#ffffff"
+  })
   const [modoLimpio, setModoLimpio] = useState<boolean>(() => {
     if (typeof window === "undefined") return false
     return localStorage.getItem("proyector-modo-limpio") === "1"
@@ -380,6 +387,7 @@ export default function ProyectarPage() {
     const handle = () => {
       setEscalaFuente(Number(localStorage.getItem("proyector-escala-fuente") || "100"))
       setFamiliaFuente(localStorage.getItem("proyector-font-family") || "system")
+      setColorLetra(localStorage.getItem("proyector-color-letra") || "#ffffff")
     }
     window.addEventListener("storage", handle)
     return () => window.removeEventListener("storage", handle)
@@ -1070,7 +1078,7 @@ export default function ProyectarPage() {
             )}
           </div>
           <div style={{ flex:1,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",padding:"0 2vw" }}>
-            <div style={{ maxWidth:"92vw", maxHeight: modoLimpio ? "96vh" : "68vh", overflow:"hidden", fontFamily:FUENTES[familiaFuente]||FUENTES["system"], fontSize:fsCancion, lineHeight:lhCancion, wordBreak:"break-word", overflowWrap:"anywhere", whiteSpace:"pre-line", textAlign:"center" }}>
+            <div style={{ maxWidth:"92vw", maxHeight: modoLimpio ? "96vh" : "68vh", overflow:"hidden", fontFamily:FUENTES[familiaFuente]||FUENTES["system"], fontSize:fsCancion, lineHeight:lhCancion, color:colorLetra, wordBreak:"break-word", overflowWrap:"anywhere", whiteSpace:"pre-line", textAlign:"center" }}>
               {textoCancion}
             </div>
           </div>

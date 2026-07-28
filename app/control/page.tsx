@@ -115,6 +115,9 @@ export default function ControlPage() {
   const [familiaFuenteCtrl, setFamiliaFuenteCtrl] = useState(() =>
     typeof window !== "undefined" ? localStorage.getItem("proyector-font-family") || "system" : "system"
   )
+  const [colorLetraCtrl, setColorLetraCtrl] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("proyector-color-letra") || "#ffffff" : "#ffffff"
+  )
   const [galeriaImagenes, setGaleriaImagenes] = useState<{url:string,nombre:string,local:boolean}[]>([])
   const [galeriaAbierta, setGaleriaAbierta] = useState(false)
   const [cargandoGaleria, setCargandoGaleria] = useState(false)
@@ -558,6 +561,20 @@ useEffect(() => {
   s.on("control-siguiente", onSiguiente)
   s.on("control-anterior", onAnterior)
 
+  // ✅ Sincronizar cuando OTRO dispositivo (otro Control: Electron ↔ APK) avanza.
+  // Antes Control emitía cambiar-parte pero NO lo escuchaba, así que dos
+  // controles se desincronizaban: al avanzar en uno, el otro quedaba pegado en
+  // su índice viejo y al retomar saltaba mal. El servidor emite cambiar-parte
+  // solo a los DEMÁS (no al emisor), así que esto nunca hace eco de uno mismo.
+  const onCambiarParteRemoto = (i: number) => {
+    if (typeof i === "number" && i >= 0) setIndex(i)
+  }
+  const onCambiarPaginaRemoto = (p: number) => {
+    if (typeof p === "number" && p >= 0) setPaginaBibliaActual(p)
+  }
+  s.on("cambiar-parte", onCambiarParteRemoto)
+  s.on("cambiar-pagina-biblia", onCambiarPaginaRemoto)
+
   setSocket(s)
 
   // ✅ Reconexión automática al volver al foco (bloqueo/desbloqueo, cambio de app)
@@ -592,6 +609,8 @@ useEffect(() => {
     document.removeEventListener("visibilitychange", reconectar)
     s.off("control-siguiente", onSiguiente)
     s.off("control-anterior", onAnterior)
+    s.off("cambiar-parte", onCambiarParteRemoto)
+    s.off("cambiar-pagina-biblia", onCambiarPaginaRemoto)
     s.disconnect()
   }
 }, [])
@@ -3464,27 +3483,31 @@ return (
   /* Fallback height para browsers sin svh */
   html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; }
   @keyframes toastIn  { from { opacity:0; transform:translateY(-10px) } to { opacity:1; transform:translateY(0) } }
-  /* Scrollbar global desktop */
+  /* ✅ Scrollbar más gruesa: 6px era muy fina para agarrarla con el mousepad. */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 13px;
+  height: 13px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.22);
   border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.38);
+  background-clip: padding-box;
 }
 
-#scroll-canciones::-webkit-scrollbar { width: 6px }
-  #scroll-canciones::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); border-radius: 999px }
-  #scroll-canciones::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 999px }
-  #scroll-lista::-webkit-scrollbar { width: 6px }
-  #scroll-lista::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); border-radius: 999px }
-  #scroll-lista::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 999px }
+#scroll-canciones::-webkit-scrollbar { width: 13px }
+  #scroll-canciones::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 999px }
+  #scroll-canciones::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 999px; border: 3px solid transparent; background-clip: padding-box }
+  #scroll-lista::-webkit-scrollbar { width: 13px }
+  #scroll-lista::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 999px }
+  #scroll-lista::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 999px; border: 3px solid transparent; background-clip: padding-box }
   .ctrl-btn { transition: opacity 0.15s, transform 0.1s }
   .ctrl-btn:active { transform: scale(0.95) }
   .ctrl-btn:disabled { opacity: 0.4 !important; cursor: not-allowed }
@@ -4068,8 +4091,27 @@ return (
     fontSize: isMobile ? 12 : 13,
     fontWeight: 700, opacity: 0.85,
     textAlign: "center",
-    display: "flex", alignItems: "center", justifyContent: "center", gap: 8
+    display: "flex", alignItems: "center", justifyContent: "center", gap: 8, flexWrap: "wrap"
   }}>
+    {/* ✅ Nombre de la canción activa + número + tono, para dar más detalle en el
+        panel (antes solo mostraba la parte, ej. "Verso 2"). Solo para canciones,
+        no para Biblia/estados. */}
+    {tituloActual && partes.length > 0 && !estadoEspecialActivo && paginasBiblia.length === 0 && (() => {
+      const c = canciones.find(x => x.id === activaId) as any
+      return (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <span style={{ color: "#93c5fd", fontWeight: 800 }}>
+            🎵 {c?.numero ? `${c.numero}. ` : ""}{tituloActual}
+          </span>
+          {c?.tono && (
+            <span style={{ fontSize: isMobile ? 10 : 11, fontWeight: 700, padding: "1px 7px", borderRadius: 99, background: "rgba(255,255,255,0.07)", opacity: 0.8 }}>
+              Tono: {c.tono}
+            </span>
+          )}
+          <span style={{ opacity: 0.35 }}>·</span>
+        </span>
+      )
+    })()}
     {etiquetaParteControl}
     {aprendiendo && !autoAvanceActivo && tiemposAprendidos.length === 0 && (
       <span style={{
@@ -4793,6 +4835,35 @@ return (
                         <span style={{ fontSize: 16, fontFamily: FUENTES_MAP[f.id], fontWeight: 700, flexShrink: 0 }}>Aa</span>
                         <span style={{ fontSize: 11, opacity: activa ? 1 : 0.6, fontWeight: activa ? 700 : 400 }}>{f.label}</span>
                       </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* ✅ Color de letra: útil cuando el proyector está borroso o hay
+                  mucha luz — un color contrastado se lee mejor que el blanco. */}
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 11, opacity: 0.35, marginBottom: 6 }}>Color de letra</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {[
+                    { id: "#ffffff", label: "Blanco" },
+                    { id: "#fff8e1", label: "Blanco cálido" },
+                    { id: "#ffff33", label: "Amarillo" },
+                    { id: "#7dfcff", label: "Cian" },
+                    { id: "#a3ff7d", label: "Verde" },
+                  ].map(c => {
+                    const activo = colorLetraCtrl.toLowerCase() === c.id
+                    return (
+                      <button key={c.id} title={c.label} onClick={() => {
+                        setColorLetraCtrl(c.id)
+                        localStorage.setItem("proyector-color-letra", c.id)
+                        window.dispatchEvent(new Event("storage"))
+                      }} style={{
+                        width: 38, height: 38, borderRadius: 10, cursor: "pointer",
+                        background: c.id,
+                        border: `2px solid ${activo ? "#3b82f6" : "rgba(255,255,255,0.15)"}`,
+                        boxShadow: activo ? "0 0 0 2px rgba(59,130,246,0.3)" : "none",
+                      }} />
                     )
                   })}
                 </div>

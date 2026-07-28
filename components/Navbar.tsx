@@ -21,7 +21,8 @@ const LINKS = [
   { href: "/configuracion", label: "Config",    icon: "⚙️"  },
 ]
 
-const RUTAS_SIN_NAVBAR = ["/proyectar", "/musicos", "/login", "/register", "/unirse"]
+// ✅ /bienvenido es la landing pública: lleva su propia barra, no la de la app.
+const RUTAS_SIN_NAVBAR = ["/proyectar", "/musicos", "/login", "/register", "/unirse", "/bienvenido"]
 
 // ── Logo Selah Live ──────────────────────────────────────────────────────────
 const SelahLogo = ({ size = 30 }: { size?: number }) => (
