@@ -436,7 +436,10 @@ try {
         estado.data.index = index
         guardarEstadoSala(sala, estado)
       }
-      io.to(sala).emit("cambiar-parte", index)
+      // ✅ A los DEMÁS, no al emisor: así el Control que avanzó no recibe eco de
+      // su propio cambio, pero el proyector, los músicos y OTROS controles
+      // (Electron ↔ APK) sí se sincronizan.
+      socket.broadcast.to(sala).emit("cambiar-parte", index)
       if (sala !== "global") {
         fetch(`${SUPABASE_URL}/rest/v1/estado_culto?iglesia_id=eq.${sala}`, {
           method: "PATCH",
@@ -469,7 +472,9 @@ try {
         estado.data.pagina = pagina
         guardarEstadoSala(sala, estado)
       }
-      io.to(sala).emit("cambiar-pagina-biblia", pagina)
+      // ✅ A los demás (mismo motivo que cambiar-parte): sincroniza otros
+      // controles/proyector sin hacer eco al emisor.
+      socket.broadcast.to(sala).emit("cambiar-pagina-biblia", pagina)
     })
 
     socket.on("mostrar-estado", (data) => {

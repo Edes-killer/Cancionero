@@ -27,7 +27,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     catch { /* ignorar */ }
   }, [])
 
-  const publicRoutes = ["/login", "/register", "/proyectar", "/musicos", "/unirse"]
+  // ✅ /bienvenido es la landing pública (marketing): tiene que verse sin sesión.
+  const publicRoutes = ["/login", "/register", "/proyectar", "/musicos", "/unirse", "/bienvenido"]
   // ✅ next.config.ts usa trailingSlash: true → usePathname() devuelve "/login/"
   // con barra final; y en el APK navegamos a "/login/index.html". normalizarRuta
   // deja ambos como "/login" para comparar contra las rutas conocidas.
@@ -42,7 +43,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   //    pero NO Configuración (ajustes de iglesia, miembros, invitaciones).
   //  • Admin: todo.
   const RUTAS_SOLO_ADMIN = ["/configuracion"]           // solo admin
-  const RUTAS_SOLO_LIDER = ["/control", "/canciones", "/historial"] // líder + admin
+  const RUTAS_SOLO_LIDER = ["/control", "/canciones", "/historial", "/transmision"] // líder + admin
   const requiereAdmin = RUTAS_SOLO_ADMIN.includes(pathnameNormalizado)
   const requiereLider = requiereAdmin || RUTAS_SOLO_LIDER.includes(pathnameNormalizado)
 
