@@ -3259,24 +3259,13 @@ const etiquetaParteControl = (() => {
   }
 
   if (partes.length > 0) {
-    const parteActual = partes[index]
-    const tipo = parteActual?.tipo || "Parte"
-
-    let nombreParte = tipo
-
-    if (tipo === "Verso") {
-      let numeroVerso = 0
-
-      for (let i = 0; i <= index; i++) {
-        if (partes[i]?.tipo === "Verso") {
-          numeroVerso++
-        }
-      }
-
-      nombreParte = `Verso ${numeroVerso}`
-    }
-
-    return `🎵 ${nombreParte} • Parte ${index + 1} de ${partes.length}`
+    // ✅ El coro no cuenta en la numeración: "Parte 1, Coro, Parte 2".
+    const tipo = partes[index]?.tipo || "Parte"
+    if (/coro|estribillo|chorus/i.test(tipo)) return "🎵 Coro"
+    let n = 0
+    for (let i = 0; i <= index; i++) if (!/coro|estribillo|chorus/i.test(partes[i]?.tipo || "")) n++
+    const totalPartes = partes.filter(p => !/coro|estribillo|chorus/i.test(p?.tipo || "")).length
+    return `🎵 Parte ${n} de ${totalPartes}`
   }
 
   if (indiceActivoLista !== null && lista[indiceActivoLista]) {
@@ -3285,6 +3274,9 @@ const etiquetaParteControl = (() => {
 
   return "Sin proyección activa"
 })()
+
+// ✅ ¿La parte activa es el coro? Para resaltarlo en el indicador con color.
+const parteActualEsCoro = partes.length > 0 && /coro|estribillo|chorus/i.test(partes[index]?.tipo || "")
 
 const container: CSSProperties = {
   minHeight: "100vh",
@@ -4193,7 +4185,10 @@ return (
         </span>
       )
     })()}
-    {etiquetaParteControl}
+    {/* ✅ El coro resaltado en ámbar para verlo de un vistazo */}
+    <span style={{ color: parteActualEsCoro ? "#fbbf24" : undefined, fontWeight: parteActualEsCoro ? 900 : undefined }}>
+      {etiquetaParteControl}
+    </span>
     {aprendiendo && !autoAvanceActivo && tiemposAprendidos.length === 0 && (
       <span style={{
         fontSize: 9, padding: "1px 5px", borderRadius: 4,
