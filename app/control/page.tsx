@@ -393,6 +393,46 @@ const [previewModoMusico, setPreviewModoMusico] = useState(false)
 const [tabDerechaMobile, setTabDerechaMobile] = useState<"lista"|"preview">("lista")
 const [bottomSheetAbierto, setBottomSheetAbierto] = useState(false)
 const [previewHabilitado, setPreviewHabilitado] = useState(true)
+// ── Vista previa FLOTANTE (arrastrable, siempre visible en escritorio) ────────
+const [previewPos, setPreviewPos] = useState<{ x: number; y: number } | null>(null)
+const [previewMinimizado, setPreviewMinimizado] = useState(false)
+const arrastrePreviewRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
+const previewPosRef = useRef<{ x: number; y: number } | null>(null)
+
+// Posición inicial (esquina inferior derecha) y recuperar la guardada.
+useEffect(() => {
+  if (typeof window === "undefined") return
+  let p: { x: number; y: number }
+  try {
+    const g = localStorage.getItem("selah-preview-pos")
+    p = g ? JSON.parse(g) : { x: window.innerWidth - 372, y: window.innerHeight - 430 }
+  } catch { p = { x: window.innerWidth - 372, y: window.innerHeight - 430 } }
+  previewPosRef.current = p
+  setPreviewPos(p)
+}, [])
+
+const moverPreview = (e: MouseEvent) => {
+  const a = arrastrePreviewRef.current
+  if (!a) return
+  const ANCHO = 356, ALTO = 120
+  const x = Math.min(Math.max(4, a.ox + (e.clientX - a.sx)), window.innerWidth - ANCHO)
+  const y = Math.min(Math.max(4, a.oy + (e.clientY - a.sy)), window.innerHeight - ALTO)
+  previewPosRef.current = { x, y }
+  setPreviewPos({ x, y })
+}
+const soltarPreview = () => {
+  arrastrePreviewRef.current = null
+  document.removeEventListener("mousemove", moverPreview)
+  document.removeEventListener("mouseup", soltarPreview)
+  try { if (previewPosRef.current) localStorage.setItem("selah-preview-pos", JSON.stringify(previewPosRef.current)) } catch {}
+}
+const iniciarArrastrePreview = (e: React.MouseEvent) => {
+  const p = previewPosRef.current
+  if (!p) return
+  arrastrePreviewRef.current = { sx: e.clientX, sy: e.clientY, ox: p.x, oy: p.y }
+  document.addEventListener("mousemove", moverPreview)
+  document.addEventListener("mouseup", soltarPreview)
+}
 // ── Visor Mobile Fullscreen ──────────────────────────────────────────
 const [visorAbierto, setVisorAbierto] = useState(false)
 const [visorPartes, setVisorPartes] = useState<any[]>([])
@@ -5395,35 +5435,49 @@ return (
         </div>
       )}
 
-      {/* ── PANEL VISTA PREVIA ─────────────────────────────────────────── */}
-      {(!isMobile) && (
+      {/* ── PANEL VISTA PREVIA — FLOTANTE y arrastrable (siempre visible) ──── */}
+      {(!isMobile && previewHabilitado && previewPos) && (
         <div style={{
-          background: "rgba(17,27,46,0.95)", border: "1px solid rgba(255,255,255,0.08)",
-          borderRadius: 16, overflow: "hidden", minWidth: 0, width: "100%"
+          position: "fixed", left: previewPos.x, top: previewPos.y, width: 356, zIndex: 400,
+          background: "rgba(17,27,46,0.98)", border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: 14, overflow: "hidden", boxShadow: "0 22px 55px rgba(0,0,0,0.55)",
+          backdropFilter: "blur(8px)"
         }}>
-          {/* Header preview */}
-          <div style={{
-            padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,0.06)",
-            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8
+          {/* Header = manija para arrastrar */}
+          <div onMouseDown={iniciarArrastrePreview} style={{
+            padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+            cursor: "move", userSelect: "none", background: "rgba(255,255,255,0.03)"
           }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: 15, color: "white", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: previewCancion ? 1 : 0.4 }}>
-                {previewCancion ? previewCancion.titulo : "Selecciona una canción"}
+            <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ opacity: 0.35, fontSize: 13, flexShrink: 0 }}>⠿</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: 14, color: "white", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: previewCancion ? 1 : 0.4 }}>
+                  {previewCancion ? previewCancion.titulo : "Vista previa"}
+                </div>
+                {previewCancion?.tono && (
+                  <div style={{ fontSize: 11, color: "#86efac", fontWeight: 600 }}>Tono {previewCancion.tono}</div>
+                )}
               </div>
-              {previewCancion?.tono && (
-                <div style={{ fontSize: 12, color: "#86efac", marginTop: 2, fontWeight: 600 }}>Tono {previewCancion.tono}</div>
-              )}
             </div>
-            {previewCancion && (
-              <div style={{ display: "flex", gap: 4 }}>
-                {/* Botón abrir visor */}
-                <button onClick={() => abrirVisor(previewCancion)} style={{
+            <div style={{ display: "flex", gap: 4, flexShrink: 0 }} onMouseDown={e => e.stopPropagation()}>
+              {previewCancion && (
+                <button onClick={() => abrirVisor(previewCancion)} title="Pantalla completa" style={{
                   padding: "3px 8px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)",
                   background: "rgba(255,255,255,0.06)", color: "white", fontSize: 11, fontWeight: 700, cursor: "pointer"
                 }}>⛶</button>
-              </div>
-            )}
+              )}
+              <button onClick={() => setPreviewMinimizado(m => !m)} title={previewMinimizado ? "Expandir" : "Minimizar"} style={{
+                padding: "3px 9px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)",
+                background: "rgba(255,255,255,0.06)", color: "white", fontSize: 12, fontWeight: 800, cursor: "pointer"
+              }}>{previewMinimizado ? "▢" : "—"}</button>
+              <button onClick={() => setPreviewHabilitado(false)} title="Cerrar (reabrir con 👁 Vista previa)" style={{
+                padding: "3px 9px", borderRadius: 7, border: "1px solid rgba(239,68,68,0.2)",
+                background: "rgba(239,68,68,0.1)", color: "#fca5a5", fontSize: 12, fontWeight: 800, cursor: "pointer"
+              }}>✕</button>
+            </div>
           </div>
+          {!previewMinimizado && (<>
 
           {/* Navegación partes */}
           {previewPartes.length > 0 && (
@@ -5486,6 +5540,7 @@ return (
               }}>+</button>
             </div>
           )}
+          </>)}
         </div>
       )}
 
