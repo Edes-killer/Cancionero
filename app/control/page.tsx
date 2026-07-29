@@ -195,9 +195,11 @@ export default function ControlPage() {
   const [intercalarCoro, setIntercalarCoro] = useState(false)
   // ✅ Botón "Ir al Coro" — guarda la posición del verso para volver después
   const [versoDespuesCoro, setVersoDespuesCoro] = useState<number | null>(null)
-  // ✅ Historial de partes para que "anterior" funcione bien con el coro
-  // intercalado (la secuencia no es lineal, hay que poder deshacer paso a paso).
-  const historialParteRef = useRef<number[]>([])
+  // ✅ Posición dentro de la secuencia de reproducción del coro intercalado.
+  // La secuencia (ej. V→C→V→C) se construye a demanda; este puntero marca en qué
+  // paso vamos, para que "siguiente"/"anterior" avancen/retrocedan por la
+  // secuencia real (que NO es lineal y donde el coro aparece varias veces).
+  const posSecuenciaRef = useRef(0)
   const [inputBiblia, setInputBiblia] = useState("")
   const [indiceActivoLista, setIndiceActivoLista] = useState<number | null>(null)
   const [paginasBiblia, setPaginasBiblia] = useState<string[]>([])
@@ -642,11 +644,10 @@ useEffect(() => {
   logoEsperaUrlRef.current = logoEsperaUrl
 }, [lista, indiceLista, index, partes, paginasBiblia, paginaBibliaActual, loopCoro, nombreIglesia, logoEsperaUrl])
 
-// ✅ Al cambiar de canción, reiniciar el historial de partes y el verso pendiente
-// del coro intercalado (si no, el "anterior" arrastraría la secuencia anterior).
+// ✅ Al cambiar de canción, reiniciar el puntero de la secuencia del coro
+// intercalado (si no, arrastraría la posición de la canción anterior).
 useEffect(() => {
-  historialParteRef.current = []
-  setVersoDespuesCoro(null)
+  posSecuenciaRef.current = 0
 }, [activaId])
 
 useEffect(() => {
@@ -1426,54 +1427,53 @@ const detenerAutoAvance = () => {
   setContadorAuto(0)
 }
 
-// ── Cálculo de la próxima parte (respeta "repetir coro entre versos") ────────
-// Devuelve el índice de la siguiente parte, o null si no hay más DENTRO de la
-// canción. Con intercalarCoro apagado (o sin coro) es avance lineal normal.
+// ── Repetir coro entre versos ────────────────────────────────────────────────
 const esParteCoro = (p: any) => /coro|estribillo|chorus/i.test(p?.tipo || "")
-const calcSiguienteParte = (): number | null => {
-  const idxCoro = partes.findIndex(esParteCoro)
 
-  if (!intercalarCoro || idxCoro === -1) {
+// Construye la SECUENCIA de reproducción. Con intercalarCoro activo y con coro,
+// intercala el coro después de cada verso, sin importar dónde esté el coro en la
+// canción (al principio, medio o final): [V,C,V,V] → V→C→V→C→V→C. Sin coro o con
+// el modo apagado, es la secuencia lineal 0,1,2,...
+const construirSecuenciaCoro = (): number[] => {
+  const idxCoro = partes.findIndex(esParteCoro)
+  if (!intercalarCoro || idxCoro === -1) return partes.map((_, i) => i)
+  const versos = partes.map((_, i) => i).filter(i => !esParteCoro(partes[i]))
+  const seq: number[] = []
+  for (const v of versos) { seq.push(v); seq.push(idxCoro) }
+  return seq
+}
+
+// Resincroniza el puntero con el índice actual (por clics directos o sync entre
+// controles): busca la ocurrencia del índice preferiblemente hacia adelante.
+const resyncPos = (seq: number[]): number => {
+  let pos = posSecuenciaRef.current
+  if (seq[pos] === index) return pos
+  for (let i = Math.max(0, pos); i < seq.length; i++) if (seq[i] === index) return i
+  for (let i = 0; i < seq.length; i++) if (seq[i] === index) return i
+  return 0
+}
+
+// Devuelve el índice de la siguiente parte, o null si no hay más en la canción.
+const calcSiguienteParte = (): number | null => {
+  if (!intercalarCoro || partes.findIndex(esParteCoro) === -1) {
     if (loopCoro && esCoro) return null   // loop del coro activo: quedarse
     return index < partes.length - 1 ? index + 1 : null
   }
-
-  if (esParteCoro(partes[index])) {
-    // En el coro → volver al verso pendiente que guardamos al entrar. El verso
-    // pendiente SIEMPRE está antes del coro (por eso el < idxCoro): así una
-    // parte posterior al coro (un puente) nunca se confunde con un verso, que
-    // antes causaba un bucle infinito Puente → Coro → Puente.
-    if (versoDespuesCoro != null && versoDespuesCoro < idxCoro && !esParteCoro(partes[versoDespuesCoro])) {
-      const v = versoDespuesCoro
-      setVersoDespuesCoro(null)
-      return v
-    }
-    // Ya no quedan versos → seguir tras el coro (o fin de la canción)
-    return index < partes.length - 1 ? index + 1 : null
-  }
-
-  // Verso = parte NO-coro que está ANTES del coro → ir al coro y recordar el
-  // próximo verso (también antes del coro).
-  if (index < idxCoro) {
-    let siguienteVerso: number | null = null
-    for (let i = index + 1; i < idxCoro; i++) {
-      if (!esParteCoro(partes[i])) { siguienteVerso = i; break }
-    }
-    setVersoDespuesCoro(siguienteVerso)
-    return idxCoro
-  }
-
-  // Parte que NO es coro y está DESPUÉS del coro (puente, tag final) → avance
-  // lineal normal, sin volver al coro (evita el bucle).
-  return index < partes.length - 1 ? index + 1 : null
+  const seq = construirSecuenciaCoro()
+  const pos = resyncPos(seq)
+  if (pos < seq.length - 1) { posSecuenciaRef.current = pos + 1; return seq[pos + 1] }
+  return null
 }
-// Retrocede: con coro intercalado usa el historial (secuencia no lineal).
+
+// Retrocede un paso por la secuencia (o lineal si el modo está apagado).
 const calcAnteriorParte = (): number | null => {
-  if (intercalarCoro && historialParteRef.current.length > 0) {
-    const prev = historialParteRef.current.pop()
-    return prev ?? null
+  if (!intercalarCoro || partes.findIndex(esParteCoro) === -1) {
+    return index > 0 ? index - 1 : null
   }
-  return index > 0 ? index - 1 : null
+  const seq = construirSecuenciaCoro()
+  const pos = resyncPos(seq)
+  if (pos > 0) { posSecuenciaRef.current = pos - 1; return seq[pos - 1] }
+  return null
 }
 
 const siguiente = async () => {
@@ -1493,7 +1493,6 @@ const siguiente = async () => {
   if (indiceLista === null) {
     const nuevo = calcSiguienteParte()
     if (nuevo !== null) {
-      historialParteRef.current.push(index)
       registrarCambioParte(activaId || undefined)
       setIndex(nuevo)
       socket.emit("cambiar-parte", nuevo)
@@ -1518,7 +1517,6 @@ const siguiente = async () => {
   if (itemActual?.tipo === "cancion") {
     const nuevo = calcSiguienteParte()
     if (nuevo !== null) {
-      historialParteRef.current.push(index)
       registrarCambioParte(activaId || undefined)
       setIndex(nuevo)
       socket.emit("cambiar-parte", nuevo)
@@ -1573,7 +1571,7 @@ const anterior = async () => {
   }
 
   // Canción dentro de la lista
-  if (itemActual?.tipo === "cancion" && (index > 0 || historialParteRef.current.length > 0)) {
+  if (itemActual?.tipo === "cancion" && (index > 0 || posSecuenciaRef.current > 0)) {
     const nuevo = calcAnteriorParte()
     if (nuevo !== null) {
       setIndex(nuevo)
