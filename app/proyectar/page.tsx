@@ -844,11 +844,11 @@ export default function ProyectarPage() {
 
   const etiquetaParte = (() => {
     if (!parteActual?.tipo) return ""
-    if (parteActual.tipo === "Verso") {
-      let n = 0; for (let i = 0; i <= index; i++) if (partes[i]?.tipo === "Verso") n++
-      return `Verso ${n}`
-    }
-    return parteActual.tipo === "Coro" ? "Coro" : parteActual.tipo === "Puente" ? "Puente" : parteActual.tipo
+    // ✅ El coro no cuenta en la numeración: "Parte 1, Coro, Parte 2".
+    if (/coro|estribillo|chorus/i.test(parteActual.tipo)) return "Coro"
+    let n = 0
+    for (let i = 0; i <= index; i++) if (!/coro|estribillo|chorus/i.test(partes[i]?.tipo || "")) n++
+    return `Parte ${n}`
   })()
 
   const precargarImagen = (url: string) => {
@@ -1032,15 +1032,16 @@ export default function ProyectarPage() {
               <div style={{ display:"flex",alignItems:"center",justifyContent:"center",gap:"clamp(4px,0.5vw,8px)" }}>
                 {partes.map((p, i) => {
                   const activo = i === index
-                  // Calcular nombre de la parte activa (mismo criterio que etiquetaParte)
+                  // ✅ El coro se marca en ámbar (se distingue de los versos) y NO
+                  // cuenta en la numeración: las partes van "Parte 1, Coro, Parte 2".
+                  const esCoroP = /coro|estribillo|chorus/i.test(p?.tipo || "")
                   let label = ""
                   if (activo) {
-                    if (p?.tipo === "Verso") {
+                    if (esCoroP) label = "Coro"
+                    else {
                       let n = 0
-                      for (let j = 0; j <= i; j++) if (partes[j]?.tipo === "Verso") n++
-                      label = `Verso ${n}`
-                    } else {
-                      label = p?.tipo || `Parte ${i + 1}`
+                      for (let j = 0; j <= i; j++) if (!/coro|estribillo|chorus/i.test(partes[j]?.tipo || "")) n++
+                      label = `Parte ${n}`
                     }
                   }
                   return (
@@ -1051,8 +1052,10 @@ export default function ProyectarPage() {
                         minWidth: activo ? "auto" : "clamp(10px,1.2vw,20px)",
                         padding: activo ? "clamp(4px,0.5vw,8px) clamp(14px,1.6vw,26px)" : "0",
                         borderRadius: "999px",
-                        background: activo ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.18)",
-                        border: activo ? "1px solid rgba(255,255,255,0.2)" : "none",
+                        background: activo
+                          ? (esCoroP ? "rgba(251,191,36,0.20)" : "rgba(255,255,255,0.14)")
+                          : (esCoroP ? "rgba(251,191,36,0.6)"  : "rgba(255,255,255,0.18)"),
+                        border: activo ? `1px solid ${esCoroP ? "rgba(251,191,36,0.5)" : "rgba(255,255,255,0.2)"}` : "none",
                         transition: "all 0.38s cubic-bezier(.4,0,.2,1)",
                         display: "flex",
                         alignItems: "center",
@@ -1064,9 +1067,9 @@ export default function ProyectarPage() {
                       {activo && label && (
                         <span style={{
                           fontSize: "clamp(13px,1.3vw,20px)",
-                          fontWeight: 700,
-                          color: "white",
-                          opacity: 0.75,
+                          fontWeight: 800,
+                          color: esCoroP ? "#fbbf24" : "white",
+                          opacity: esCoroP ? 1 : 0.75,
                           letterSpacing: "0.05em",
                           whiteSpace: "nowrap",
                         }}>{label}</span>
@@ -1083,8 +1086,11 @@ export default function ProyectarPage() {
             </div>
           </div>
           <div style={{ display:"flex",flexDirection:"column",alignItems:"center",gap:4,minHeight: modoLimpio ? 0 : 42,justifyContent:"center" }}>
-            {tono    && !modoLimpio && <div style={{ fontSize:"clamp(13px,1.25vw,20px)",opacity:.48,fontWeight:600 }}>Tono: {tono}</div>}
-            {iglesia && !modoLimpio && <div style={{ fontSize:"clamp(12px,1.1vw,18px)",opacity:.38 }}>{iglesia}</div>}
+            {/* ✅ Más visibles: en algunas iglesias el data es borroso o hay
+                mucha luz y no se leían. Más opacidad, algo más grandes y con
+                sombra para que resalten sobre cualquier fondo. */}
+            {tono    && !modoLimpio && <div style={{ fontSize:"clamp(15px,1.5vw,24px)",opacity:.9,fontWeight:800,color:"#fde68a",textShadow:"0 2px 6px rgba(0,0,0,0.7)" }}>Tono: {tono}</div>}
+            {iglesia && !modoLimpio && <div style={{ fontSize:"clamp(13px,1.3vw,20px)",opacity:.72,fontWeight:600,textShadow:"0 2px 6px rgba(0,0,0,0.7)" }}>{iglesia}</div>}
           </div>
         </div>
       )}
