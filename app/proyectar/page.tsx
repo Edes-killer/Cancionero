@@ -1089,7 +1089,7 @@ export default function ProyectarPage() {
             {/* ✅ Más visibles: en algunas iglesias el data es borroso o hay
                 mucha luz y no se leían. Más opacidad, algo más grandes y con
                 sombra para que resalten sobre cualquier fondo. */}
-            {tono    && !modoLimpio && <div style={{ fontSize:"clamp(15px,1.5vw,24px)",opacity:.9,fontWeight:800,color:"#fde68a",textShadow:"0 2px 6px rgba(0,0,0,0.7)" }}>Tono: {tono}</div>}
+            {tono    && !modoLimpio && <div style={{ fontSize:"clamp(15px,1.5vw,24px)",opacity:.95,fontWeight:800,color:"#ffffff",textShadow:"0 2px 6px rgba(0,0,0,0.7)" }}>Tono: {tono}</div>}
             {iglesia && !modoLimpio && <div style={{ fontSize:"clamp(13px,1.3vw,20px)",opacity:.72,fontWeight:600,textShadow:"0 2px 6px rgba(0,0,0,0.7)" }}>{iglesia}</div>}
           </div>
         </div>
@@ -1152,7 +1152,7 @@ export default function ProyectarPage() {
 
       {/* ── Logo marca agua ───────────────────────────────────── */}
       {logoMarcaUrl && !estadoEspecial && !imagen && !modoLimpio && (
-        <div style={{ position:"fixed",bottom:18,right:18,width:68,height:68,borderRadius:999,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",zIndex:30 }}>
+        <div style={{ position:"fixed",bottom:22,right:22,width:"clamp(90px,7vw,130px)",height:"clamp(90px,7vw,130px)",borderRadius:999,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",zIndex:30 }}>
           <img src={logoMarcaUrl} alt="" style={{ width:"100%",height:"100%",objectFit:"cover",borderRadius:999 }} />
         </div>
       )}
