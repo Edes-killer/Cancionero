@@ -10,6 +10,7 @@ import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } fro
 import { getIglesiaId, getRolEnIglesia } from "../../lib/getIglesia"
 import { getSocketUrl } from "@/lib/servidor"
 import { useApp, ocultarGlobalesConCopia } from "@/context/AppContext"
+import { limitesDe } from "@/lib/planes"
 
 // ─── TIPOS ───────────────────────────────────────────────────────────────────
 
@@ -208,7 +209,7 @@ const VistaPrevia = ({ texto, formato }: { texto: string; formato: string }) => 
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 
 export default function CancionesPage() {
-  const { iglesiaId: iglesiaIdCtx, canciones: cancionesCtx,
+  const { iglesiaId: iglesiaIdCtx, canciones: cancionesCtx, plan,
         actualizarCancion: actualizarCtx, eliminarCancionDelCache, sinConexion } = useApp()
   const [socket, setSocket] = useState<any>(null)
   const [socketConectado, setSocketConectado] = useState<boolean | null>(null)
@@ -708,11 +709,37 @@ export default function CancionesPage() {
     }))
   }
 
+  // ✅ Cuenta las canciones PROPIAS de la iglesia (el himnario global no cuenta
+  // para el límite del plan).
+  const contarCancionesPropias = async (igId: string): Promise<number> => {
+    const { count } = await supabase.from("canciones")
+      .select("id", { count: "exact", head: true })
+      .eq("iglesia_id", igId)
+      .is("eliminado_en", null)
+    return count || 0
+  }
+
   const importarTodo = async () => {
     if (!iglesiaId) return
     if (sinConexion) { flash("⚠️ Sin conexión con el servidor — no se puede importar ahora"); return }
     setImportando(true)
-    const seleccionadas = pptParsed.filter(c => c.seleccionado)
+    let seleccionadas = pptParsed.filter(c => c.seleccionado)
+    let recortadasPorPlan = 0
+    // ✅ Límite de canciones del plan: importar solo hasta el cupo disponible.
+    const limiteCanc = limitesDe(plan).canciones
+    if (Number.isFinite(limiteCanc)) {
+      const actuales = await contarCancionesPropias(iglesiaId)
+      const disponibles = limiteCanc - actuales
+      if (disponibles <= 0) {
+        setImportando(false)
+        flash(`❌ Alcanzaste el límite de ${limiteCanc} canciones del plan Gratis. Elimina alguna o pasa a Pro para canciones ilimitadas.`)
+        return
+      }
+      if (seleccionadas.length > disponibles) {
+        recortadasPorPlan = seleccionadas.length - disponibles
+        seleccionadas = seleccionadas.slice(0, disponibles)
+      }
+    }
     let ok = 0
     let primerError = ""
 
@@ -770,7 +797,10 @@ export default function CancionesPage() {
     setPptParsed([])
     setPanelAbierto("canciones")
     await cargarCanciones(iglesiaId) // ✅ pasar iglesiaId explícito
-    if (ok > 0 && !primerError) flash(`✅ ${ok} canciones importadas exitosamente`)
+    const notaPlan = recortadasPorPlan > 0
+      ? ` (${recortadasPorPlan} no entraron por el límite del plan Gratis — pasa a Pro para canciones ilimitadas)`
+      : ""
+    if (ok > 0 && !primerError) flash(`✅ ${ok} canciones importadas${notaPlan}`)
     else if (ok > 0) flash(`⚠️ Se importaron ${ok}, pero otras fallaron: ${primerError}`)
     else flash(`❌ No se pudo importar: ${primerError || "revisa la conexión"}`)
   }
@@ -885,6 +915,15 @@ export default function CancionesPage() {
   const guardarCancion = async () => {
     if (sinConexion) { flash("⚠️ Sin conexión con el servidor — no se puede guardar ahora"); return }
     if (!titulo.trim()) { flash("⚠️ El título es obligatorio"); return }
+    // ✅ Límite del plan: solo cuando se AGREGA una canción propia (crear nueva,
+    // o crear la copia de un himno global). Editar una propia no suma al cupo.
+    if ((!editandoId || editandoEsGlobal) && iglesiaId) {
+      const limite = limitesDe(plan).canciones
+      if (Number.isFinite(limite) && (await contarCancionesPropias(iglesiaId)) >= limite) {
+        flash(`❌ Alcanzaste el límite de ${limite} canciones del plan Gratis. Elimina alguna o pasa a Pro para canciones ilimitadas.`)
+        return
+      }
+    }
     setGuardando(true)
 
     const textoCompleto = partes.map(p => p.texto).join(" ")

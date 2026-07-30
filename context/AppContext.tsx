@@ -12,6 +12,7 @@ interface AppContextType {
   nombreIglesia: string
   logoUrl: string
   localidad: string
+  plan: string
   canciones: any[]
   cargandoCanciones: boolean
   errorCanciones: string | null
@@ -26,7 +27,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType>({
   session: null, userId: null,
-  iglesiaId: null, nombreIglesia: "", logoUrl: "", localidad: "",
+  iglesiaId: null, nombreIglesia: "", logoUrl: "", localidad: "", plan: "gratis",
   canciones: [], cargandoCanciones: false, errorCanciones: null,
   recargarCanciones: async () => {},
   actualizarCancion: async () => {},
@@ -59,6 +60,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [nombreIglesia, setNombreIglesia] = useState("")
   const [logoUrl, setLogoUrl] = useState("")
   const [localidad, setLocalidad] = useState("")
+  const [plan, setPlan] = useState<string>("gratis")  // ✅ plan de la iglesia (freemium)
   const [canciones, setCanciones] = useState<any[]>([])
   const [cargandoCanciones, setCargandoCanciones] = useState(false)
   const [errorCanciones, setErrorCanciones] = useState<string | null>(null)
@@ -240,7 +242,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Iglesia (nombre/logo) en paralelo — si falla no bloquea las canciones
       Promise.resolve(
         supabase.from("iglesias")
-          .select("nombre, logo_url, localidad, pin_sala")
+          .select("nombre, logo_url, localidad, pin_sala, plan")
           .eq("id", igId).single()
       ).then(({ data, error }) => {
           if (!error && data) {
@@ -248,6 +250,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             setLogoUrl(data.logo_url || "")
             setLocalidad(data.localidad || "")
             setPinSala(data.pin_sala || null)
+            setPlan((data as any).plan || "gratis")
             if (data.pin_sala) localStorage.setItem("selah-sala-pin", data.pin_sala)
             else localStorage.removeItem("selah-sala-pin")
           }
@@ -315,7 +318,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       session, userId,
-      iglesiaId, nombreIglesia, logoUrl, localidad,
+      iglesiaId, nombreIglesia, logoUrl, localidad, plan,
       canciones, cargandoCanciones, errorCanciones,
       recargarCanciones, actualizarCancion, eliminarCancionDelCache,
       desdeCache, pinSala, listo, sinConexion,
