@@ -1679,10 +1679,16 @@ useEffect(() => {
   return () => window.removeEventListener("keydown", onKey)
 }, [cambiarZoom])
 
-const agregarALista = (cancion: any) => {
+const agregarALista = async (cancion: any) => {
+  // ✅ Antes bloqueaba de plano al editar un culto guardado. Ahora se permite
+  // modificarlo (se actualiza al guardar), con una confirmación para no hacerlo
+  // sin querer. Si prefieren no tocar el guardado, cancelan y usan "Nuevo".
   if (listaIdActual) {
-    flashCtrl("⚠️ Estás editando un culto guardado. Presiona 'Nuevo' para crear otro.")
-    return
+    const ok = await confirmar(
+      `Estás usando un culto guardado. ¿Agregar "${cancion.titulo}" a este culto? Se actualizará al guardar.`,
+      { textoOk: "Agregar al culto" }
+    )
+    if (!ok) return
   }
 
   const existe = lista.some(c => c.id === cancion.id)
@@ -5435,6 +5441,17 @@ return (
         </div>
       )}
 
+      {/* ✅ Botón para REABRIR el flotante cuando está cerrado (en escritorio no
+          existía forma de reabrirlo: el toggle era solo mobile). */}
+      {!isMobile && !previewHabilitado && (
+        <button onClick={() => setPreviewHabilitado(true)} title="Mostrar la vista previa en vivo" style={{
+          position: "fixed", bottom: 18, right: 18, zIndex: 400,
+          padding: "10px 16px", borderRadius: 999, border: "1px solid rgba(59,130,246,0.4)",
+          background: "rgba(37,99,235,0.9)", color: "white", fontWeight: 800, fontSize: 13,
+          cursor: "pointer", boxShadow: "0 10px 30px rgba(0,0,0,0.4)"
+        }}>👁 Vista previa</button>
+      )}
+
       {/* ── PANEL VISTA PREVIA — FLOTANTE y arrastrable (siempre visible) ──── */}
       {(!isMobile && previewHabilitado && previewPos) && (
         <div style={{
@@ -5452,21 +5469,20 @@ return (
             <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ opacity: 0.35, fontSize: 13, flexShrink: 0 }}>⠿</span>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 800, fontSize: 14, color: "white", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: previewCancion ? 1 : 0.4 }}>
-                  {previewCancion ? previewCancion.titulo : "Vista previa"}
+                <div style={{ fontWeight: 800, fontSize: 14, color: "white", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: tituloActual ? 1 : 0.4 }}>
+                  {tituloActual || "Vista previa en vivo"}
                 </div>
-                {previewCancion?.tono && (
-                  <div style={{ fontSize: 11, color: "#86efac", fontWeight: 600 }}>Tono {previewCancion.tono}</div>
-                )}
+                <div style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 8, marginTop: 1 }}>
+                  {(partes.length > 0 || paginasBiblia.length > 0 || estadoEspecialActivo) && (
+                    <span style={{ color: "#4ade80", fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ width: 6, height: 6, borderRadius: 999, background: "#4ade80" }} />EN VIVO
+                    </span>
+                  )}
+                  {(() => { const t = (canciones.find((c: any) => c.id === activaId) as any)?.tono; return t ? <span style={{ color: "#86efac", fontWeight: 600 }}>Tono {t}</span> : null })()}
+                </div>
               </div>
             </div>
             <div style={{ display: "flex", gap: 4, flexShrink: 0 }} onMouseDown={e => e.stopPropagation()}>
-              {previewCancion && (
-                <button onClick={() => abrirVisor(previewCancion)} title="Pantalla completa" style={{
-                  padding: "3px 8px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)",
-                  background: "rgba(255,255,255,0.06)", color: "white", fontSize: 11, fontWeight: 700, cursor: "pointer"
-                }}>⛶</button>
-              )}
               <button onClick={() => setPreviewMinimizado(m => !m)} title={previewMinimizado ? "Expandir" : "Minimizar"} style={{
                 padding: "3px 9px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)",
                 background: "rgba(255,255,255,0.06)", color: "white", fontSize: 12, fontWeight: 800, cursor: "pointer"
@@ -5477,70 +5493,39 @@ return (
               }}>✕</button>
             </div>
           </div>
-          {!previewMinimizado && (<>
-
-          {/* Navegación partes */}
-          {previewPartes.length > 0 && (
-            <div style={{
-              display: "flex", gap: 4, padding: "8px 12px", overflowX: "auto",
-              borderBottom: "1px solid rgba(255,255,255,0.04)"
-            }}>
-              {previewPartes.map((p, i) => (
-                <button key={i} onClick={() => setPreviewIndex(i)} style={{
-                  padding: "4px 10px", borderRadius: 6, border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
-                  background: previewIndex === i ? "#2563eb" : "rgba(255,255,255,0.07)",
-                  color: previewIndex === i ? "white" : "rgba(255,255,255,0.5)"
-                }}>{p.tipo || `Parte ${i+1}`}</button>
-              ))}
+          {/* ✅ Espejo EN VIVO de lo que se está proyectando: muestra la parte
+              actual (partes[index]) con su etiqueta, y sigue al operador cuando
+              avanza. Así ve en el PC lo mismo que la congregación, sin mirar el
+              proyector. */}
+          {!previewMinimizado && (
+            <div style={{ padding: "12px 14px", minHeight: 140, maxHeight: 320, overflowY: "auto" }}>
+              {partes.length > 0 ? (() => {
+                const parte = partes[index]
+                if (!parte) return null
+                const textoBase = parte.texto || parte.texto_acordes || ""
+                const limpio = textoBase.split("\n")
+                  .map((l: string) => l.replace(/\[[^\]]+\]/g, "").trim())
+                  .filter((l: string) => {
+                    if (!l) return false
+                    const tokens = l.split(/\s+/)
+                    return !tokens.every((t: string) =>
+                      t.match(/^(Do#?|Reb?|Re#?|Mib?|Mi|Fa#?|Solb?|Sol#?|Lab?|La#?|Sib?|Si|[A-G])(b|#)?(m|maj|min|sus|dim|aug|add)?\d*(\/[A-G])?$/)
+                    )
+                  })
+                  .join("\n")
+                return (<>
+                  <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 8, letterSpacing: "0.04em", color: parteActualEsCoro ? "#fbbf24" : "#93c5fd" }}>
+                    {etiquetaParteControl}
+                  </div>
+                  <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", margin: 0, fontSize: 14, lineHeight: 1.7, fontWeight: 500, color: "white" }}>{limpio.trim()}</pre>
+                </>)
+              })() : (
+                <div style={{ opacity: 0.4, fontSize: 13, textAlign: "center", paddingTop: 24 }}>
+                  {estadoEspecialActivo || (paginasBiblia.length > 0 ? "📖 Palabra proyectada" : "Nada proyectándose todavía")}
+                </div>
+              )}
             </div>
           )}
-
-          {/* Contenido preview */}
-          <div style={{ padding: "12px 14px", minHeight: isMobile ? 120 : 180, maxHeight: isMobile ? 220 : 320, overflowY: "auto" }}>
-            {!previewCancion ? (
-              <div style={{ opacity: 0.3, fontSize: 13, textAlign: "center", paddingTop: 32 }}>
-                Haz clic en una canción para ver la letra
-              </div>
-            ) : previewPartes.length === 0 ? (
-              <div style={{ opacity: 0.4, fontSize: 12 }}>Cargando...</div>
-            ) : (() => {
-              const parte = previewPartes[previewIndex]
-              if (!parte) return null
-              // ✅ Siempre texto limpio — sin acordes, sin toggle
-              const textoBase = parte.texto || parte.texto_acordes || ""
-              const limpio = textoBase.split("\n")
-                .map((l: string) => l.replace(/\[[^\]]+\]/g, "").trim())
-                .filter((l: string) => {
-                  if (!l) return false
-                  const tokens = l.split(/\s+/)
-                  return !tokens.every((t: string) =>
-                    t.match(/^(Do#?|Reb?|Re#?|Mib?|Mi|Fa#?|Solb?|Sol#?|Lab?|La#?|Sib?|Si|[A-G])(b|#)?(m|maj|min|sus|dim|aug|add)?\d*(\/[A-G])?$/)
-                  )
-                })
-                .join("\n")
-              return <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", margin: 0, fontSize: 14, lineHeight: 1.75, fontWeight: 500 }}>{limpio.trim()}</pre>
-            })()}
-          </div>
-
-          {/* Acciones rápidas */}
-          {previewCancion && (
-            <div style={{
-              padding: "8px 12px", borderTop: "1px solid rgba(255,255,255,0.04)",
-              display: "flex", gap: 6
-            }}>
-              <button onClick={() => proyectar(previewCancion.id)} style={{
-                flex: 1, padding: "8px", borderRadius: 9, border: "none",
-                background: socket ? "#2563eb" : "rgba(255,255,255,0.07)",
-                color: "white", fontWeight: 700, fontSize: 13, cursor: socket ? "pointer" : "not-allowed",
-                opacity: socket ? 1 : 0.5
-              }}>▶ Proyectar</button>
-              <button onClick={() => agregarALista(previewCancion)} style={{
-                padding: "8px 12px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.1)",
-                background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer"
-              }}>+</button>
-            </div>
-          )}
-          </>)}
         </div>
       )}
 
