@@ -91,9 +91,18 @@ export default function UnirsePage() {
     const { data: ya } = await supabase.from("usuarios_iglesia")
       .select("id").eq("user_id", userId).eq("iglesia_id", inv.iglesia_id).limit(1)
     if (!ya?.length) {
-      await supabase.from("usuarios_iglesia").insert({
+      const { error: errIns } = await supabase.from("usuarios_iglesia").insert({
         user_id: userId, iglesia_id: inv.iglesia_id, rol: inv.rol
       })
+      if (errIns) {
+        // ✅ El trigger de la base rechaza si se alcanzó el límite de usuarios
+        // del plan (mensaje "Límite de usuarios..."). Se muestra amigable.
+        const msg = /l[íi]mite de usuarios/i.test(errIns.message || "")
+          ? "Esta iglesia alcanzó el límite de usuarios de su plan. El administrador debe pasar a Pro para sumar más personas."
+          : `No se pudo unir a la iglesia: ${errIns.message || "intenta de nuevo"}`
+        setError(msg); setEnviando(false)
+        return
+      }
       await supabase.from("invitaciones")
         .update({ usos_actuales: (inv.usos_actuales || 0) + 1 }).eq("id", inv.id)
     }

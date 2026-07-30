@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabase"
 import { getIglesiaId } from "@/lib/getIglesia"
 import { buscarServidorEnRed } from "@/lib/servidor"
 import { useConfirm } from "@/components/useConfirm"
+import { useApp } from "@/context/AppContext"
+import { limitesDe, nombrePlan, esIlimitado } from "@/lib/planes"
 
 // ── Estilos compartidos ──────────────────────────────────────────────────────
 const cardStyle: CSSProperties = {
@@ -124,6 +126,7 @@ export default function ConfiguracionPage() {
   const [subiendoLogo, setSubiendoLogo] = useState(false)
   const [confirmarQuitar, setConfirmarQuitar] = useState(false)
 
+  const { plan } = useApp()  // ✅ plan de la iglesia (freemium)
   const [iglesiaId, setIglesiaId] = useState("")
   const [nombre, setNombre] = useState("")
   const [localidad, setLocalidad] = useState("")
@@ -773,6 +776,34 @@ export default function ConfiguracionPage() {
             ← Volver al inicio
           </button>
         </div>
+
+        {/* ── Plan de la iglesia ── */}
+        {(() => {
+          const lim = limitesDe(plan)
+          const cupo = (n: number) => esIlimitado(n) ? "ilimitado" : String(n)
+          const esGratis = (plan || "gratis") === "gratis"
+          return (
+            <div style={{ ...card, padding: "18px 22px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap",
+              border: esGratis ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(245,158,11,0.35)" }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.5, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>Plan actual</div>
+                <div style={{ fontSize: 22, fontWeight: 900, display: "flex", alignItems: "center", gap: 10 }}>
+                  {nombrePlan(plan)}
+                  {!esGratis && <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 10px", borderRadius: 99, background: "rgba(245,158,11,0.15)", color: "#fbbf24" }}>⭐ ACTIVO</span>}
+                </div>
+                <div style={{ fontSize: 12.5, opacity: 0.55, marginTop: 6, lineHeight: 1.6 }}>
+                  {cupo(lim.canciones)} canciones · {cupo(lim.videosNube)} video{lim.videosNube === 1 ? "" : "s"} + {cupo(lim.imagenesNube)} imágenes en nube · {cupo(lim.usuarios)} usuarios
+                </div>
+              </div>
+              {esGratis && (
+                <a href="https://selah-live.vercel.app/bienvenido" target="_blank" rel="noopener noreferrer" style={{
+                  padding: "10px 18px", borderRadius: 10, background: "#f59e0b", color: "#241a04",
+                  fontWeight: 800, fontSize: 13.5, textDecoration: "none", whiteSpace: "nowrap"
+                }}>⭐ Pasar a Pro</a>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Grid principal */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "18px" }}>

@@ -8,6 +8,7 @@ import { TOUR_CONTROL } from "@/lib/tours"
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { logCatch } from "@/lib/Errorlogger"
 import { getSocketUrl } from "@/lib/servidor"
+import { limitesDe } from "@/lib/planes"
 import { supabase } from "@/lib/supabase"
 import { io } from "socket.io-client"
 import { getIglesiaId } from "../../lib/getIglesia"
@@ -99,7 +100,7 @@ export default function ControlPage() {
     window.setTimeout(() => setAvisoCtrl(""), esError ? 6000 : 3000)
   }
   const { iglesiaId: iglesiaIdCtx, nombreIglesia: nombreIglesiaCtx,
-          logoUrl: logoUrlCtx, canciones: cancionesCtx, pinSala, sinConexion } = useApp()
+          logoUrl: logoUrlCtx, canciones: cancionesCtx, pinSala, sinConexion, plan } = useApp()
   const [socket, setSocket] = useState<any>(null)
   const [zoomActual, setZoomActual] = useState(() =>
     typeof window !== "undefined" ? Number(localStorage.getItem("proyector-escala-fuente") || "100") : 100
@@ -2398,7 +2399,18 @@ useEffect(() => {
   return () => clearInterval(intervalo)
 }, [autoPlay, index, partes])
 
-const LIMITE_IMAGENES_NUBE = 20
+// ✅ Cuenta la multimedia en la nube de la iglesia separando video/imagen por
+// extensión (para los límites del plan: 1 video + 10 imágenes en el Gratis).
+// La multimedia LOCAL (en el PC) no cuenta — es ilimitada.
+const contarMediaNube = async (iglesiaId: string): Promise<{ videos: number; imagenes: number }> => {
+  const { data } = await supabase.storage.from("imagenes-culto").list(iglesiaId, { limit: 300 })
+  let videos = 0, imagenes = 0
+  for (const f of (data || [])) {
+    if (esUrlVideo(f.name)) videos++
+    else imagenes++
+  }
+  return { videos, imagenes }
+}
 
 const subirImagen = async (file: File) => {
   try {
@@ -2424,13 +2436,15 @@ const subirImagen = async (file: File) => {
     // ✅ En web/APK: subir a Supabase con carpeta por iglesia
     const ruta = iglesiaId ? `${iglesiaId}/${nombreArchivo}` : nombreArchivo
 
-    // Verificar límite
+    // ✅ Límite de imágenes en nube del plan
     if (iglesiaId) {
-      const { data: archivos } = await supabase.storage
-        .from("imagenes-culto").list(iglesiaId, { limit: LIMITE_IMAGENES_NUBE + 1 })
-      if ((archivos?.length || 0) >= LIMITE_IMAGENES_NUBE) {
-        flashCtrl(`Límite de ${LIMITE_IMAGENES_NUBE} imágenes en nube alcanzado. Elimina alguna para continuar.`)
-        return null
+      const limite = limitesDe(plan).imagenesNube
+      if (Number.isFinite(limite)) {
+        const { imagenes } = await contarMediaNube(iglesiaId)
+        if (imagenes >= limite) {
+          flashCtrl(`Alcanzaste el límite de ${limite} imágenes en la nube del plan Gratis. Guárdalas en el PC (ilimitado) 💻 o pasa a Pro para nube ampliada ⭐`)
+          return null
+        }
       }
     }
 
@@ -2468,12 +2482,15 @@ const subirVideo = async (file: File) => {
     const nombreArchivo = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`
     const ruta = iglesiaId ? `${iglesiaId}/${nombreArchivo}` : nombreArchivo
 
+    // ✅ Límite de videos en nube del plan
     if (iglesiaId) {
-      const { data: archivos } = await supabase.storage
-        .from("imagenes-culto").list(iglesiaId, { limit: LIMITE_IMAGENES_NUBE + 1 })
-      if ((archivos?.length || 0) >= LIMITE_IMAGENES_NUBE) {
-        flashCtrl(`Límite de ${LIMITE_IMAGENES_NUBE} archivos en nube alcanzado. Elimina alguno para continuar.`)
-        return null
+      const limite = limitesDe(plan).videosNube
+      if (Number.isFinite(limite)) {
+        const { videos } = await contarMediaNube(iglesiaId)
+        if (videos >= limite) {
+          flashCtrl(`Alcanzaste el límite de ${limite} video${limite === 1 ? "" : "s"} en la nube del plan Gratis. Pasa a Pro para nube ampliada ⭐`)
+          return null
+        }
       }
     }
 
