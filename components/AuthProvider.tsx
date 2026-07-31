@@ -53,6 +53,16 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
     let activo = true
 
+    // ✅ Web vs. app: en la web pública, un visitante sin sesión que cae en la
+    // raíz "/" debe ver la landing de marketing (/bienvenido), no el login.
+    // En la app (Electron / Capacitor) el destino sigue siendo /login.
+    // Detección por marcadores propios, no por el UA (que "Electron" genérico
+    // podría falsear): Capacitor en el APK, window.electron (nuestro puente de
+    // preload) en la app de escritorio.
+    const esApp = typeof window !== "undefined" &&
+      (!!(window as any).Capacitor || !!(window as any).electron)
+    const destinoAnonimo = (!esApp && pathnameNormalizado === "/") ? "/bienvenido" : "/login"
+
     const checkSession = async () => {
       const MAX_INTENTOS = 4
       try {
@@ -139,7 +149,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           return
         }
 
-        navegarSPA(router, "/login", { replace: true })
+        navegarSPA(router, destinoAnonimo, { replace: true })
       } catch (error) {
         console.error("Error en AuthProvider:", error)
         if (!activo) return
@@ -148,7 +158,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           setSinConexion(true)
           return
         }
-        navegarSPA(router, "/login", { replace: true })
+        navegarSPA(router, destinoAnonimo, { replace: true })
       } finally {
         if (activo) setChecking(false)
       }
