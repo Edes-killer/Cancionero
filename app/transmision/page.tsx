@@ -20,8 +20,9 @@ export default function TransmisionPage() {
   const [cfg, setCfg] = useState<ConfigOBS>(CONFIG_OBS_DEFAULT)
   const [estado, setEstado] = useState<EstadoOBS>({
     conectado: false, transmitiendo: false, grabando: false,
-    escenaActual: "", escenas: [], error: null,
+    escenaActual: "", escenas: [], fuentes: [], audios: [], error: null,
   })
+  const [preview, setPreview] = useState<string | null>(null)
   const [conectando, setConectando] = useState(false)
   const [mostrarAjustes, setMostrarAjustes] = useState(false)
   const gestorRef = useRef<GestorOBS | null>(null)
@@ -31,6 +32,21 @@ export default function TransmisionPage() {
     gestorRef.current = new GestorOBS(setEstado)
     return () => { gestorRef.current?.desconectar() }
   }, [])
+
+  // Vista previa en vivo: pedirle a OBS una foto de la escena al aire cada ~1.2s.
+  useEffect(() => {
+    if (!estado.conectado) { setPreview(null); return }
+    let vivo = true
+    let timer: ReturnType<typeof setTimeout>
+    const tick = async () => {
+      const img = await gestorRef.current?.capturarEscena(560)
+      if (!vivo) return
+      if (img) setPreview(img)
+      timer = setTimeout(tick, 1200)
+    }
+    tick()
+    return () => { vivo = false; clearTimeout(timer) }
+  }, [estado.conectado, estado.escenaActual])
 
   const conectar = async () => {
     setConectando(true)
@@ -136,6 +152,42 @@ export default function TransmisionPage() {
         {/* Conectado: control */}
         {estado.conectado && (
           <>
+            {/* Vista previa en vivo de la escena al aire */}
+            <div style={{ marginBottom: 18 }}>
+              <div style={{
+                position: "relative", borderRadius: 16, overflow: "hidden",
+                border: `1px solid ${C.borde}`, background: "#000", aspectRatio: "16 / 9",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                {preview ? (
+                  <img src={preview} alt="Escena al aire"
+                    style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+                ) : (
+                  <div style={{ color: C.tenue, fontSize: 13 }}>Cargando vista previa…</div>
+                )}
+                {/* Etiqueta AL AIRE / escena actual */}
+                <div style={{
+                  position: "absolute", top: 10, left: 10, display: "flex", alignItems: "center", gap: 8,
+                  padding: "5px 11px", borderRadius: 99, fontSize: 11.5, fontWeight: 800,
+                  background: estado.transmitiendo ? "rgba(220,38,38,.85)" : "rgba(0,0,0,.55)",
+                  color: "#fff", backdropFilter: "blur(4px)",
+                }}>
+                  <span style={{
+                    width: 8, height: 8, borderRadius: 99,
+                    background: estado.transmitiendo ? "#fff" : "#4ade80",
+                    boxShadow: estado.transmitiendo ? "0 0 6px #fff" : "none",
+                  }} />
+                  {estado.transmitiendo ? "AL AIRE" : "VISTA PREVIA"}
+                </div>
+                {estado.escenaActual && (
+                  <div style={{
+                    position: "absolute", bottom: 10, left: 10, padding: "4px 10px", borderRadius: 8,
+                    fontSize: 12, fontWeight: 700, background: "rgba(0,0,0,.55)", color: "#fff", backdropFilter: "blur(4px)",
+                  }}>🎬 {estado.escenaActual}</div>
+                )}
+              </div>
+            </div>
+
             {/* Transmisión / grabación */}
             <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, padding: 20, marginBottom: 18 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
@@ -182,6 +234,75 @@ export default function TransmisionPage() {
               )}
             </div>
 
+            {/* Fuentes de la escena al aire */}
+            <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, padding: 20, marginTop: 18 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 4 }}>Fuentes de “{estado.escenaActual || "—"}”</div>
+              <div style={{ fontSize: 12.5, color: C.tenue, marginBottom: 16 }}>Muestra u oculta la cámara, el logo, un banner…</div>
+              {estado.fuentes.length === 0 ? (
+                <div style={{ color: C.tenue, fontSize: 14, padding: "6px 0" }}>Esta escena no tiene fuentes.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {estado.fuentes.map(f => (
+                    <div key={f.id} style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                      padding: "11px 14px", borderRadius: 12, background: C.panel2, border: `1px solid ${C.borde}`,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        <span style={{ fontSize: 16 }}>{iconoFuente(f.tipo)}</span>
+                        <span style={{
+                          fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                          color: f.visible ? C.texto : C.tenue,
+                        }}>{f.nombre}</span>
+                      </div>
+                      <button onClick={() => gestorRef.current?.alternarFuente(f.id, !f.visible)}
+                        aria-label={f.visible ? "Ocultar" : "Mostrar"}
+                        style={{
+                          position: "relative", width: 46, height: 26, borderRadius: 99, border: "none", cursor: "pointer",
+                          background: f.visible ? C.verde : "rgba(255,255,255,0.14)", transition: "background .15s", flexShrink: 0,
+                        }}>
+                        <span style={{
+                          position: "absolute", top: 3, left: f.visible ? 23 : 3, width: 20, height: 20, borderRadius: 99,
+                          background: "#fff", transition: "left .15s",
+                        }} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Audio */}
+            <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, padding: 20, marginTop: 18 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 4 }}>Audio</div>
+              <div style={{ fontSize: 12.5, color: C.tenue, marginBottom: 16 }}>Silencia o activa micrófonos y sonido.</div>
+              {estado.audios.length === 0 ? (
+                <div style={{ color: C.tenue, fontSize: 14, padding: "6px 0" }}>No se detectaron fuentes de audio.</div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
+                  {estado.audios.map(a => (
+                    <button key={a.nombre} onClick={() => gestorRef.current?.alternarSilencio(a.nombre)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 11, textAlign: "left",
+                        padding: "13px 14px", borderRadius: 12, cursor: "pointer",
+                        background: a.silenciado ? "rgba(220,38,38,0.12)" : C.panel2,
+                        border: `1.5px solid ${a.silenciado ? "rgba(220,38,38,0.4)" : C.borde}`,
+                      }}>
+                      <span style={{ fontSize: 18 }}>{a.silenciado ? "🔇" : "🔊"}</span>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{
+                          fontSize: 13.5, fontWeight: 700, color: a.silenciado ? "#fca5a5" : C.texto,
+                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                        }}>{a.nombre}</div>
+                        <div style={{ fontSize: 11, color: a.silenciado ? "#fca5a5" : C.tenue, fontWeight: 700 }}>
+                          {a.silenciado ? "SILENCIADO" : "Activo"}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div style={{ marginTop: 18, display: "flex", justifyContent: "flex-end" }}>
               <button onClick={desconectar} style={boton({ background: "transparent", color: C.tenue, border: `1px solid ${C.borde}` })}>
                 Desconectar de OBS
@@ -192,6 +313,21 @@ export default function TransmisionPage() {
       </div>
     </div>
   )
+}
+
+// Un emoji según el tipo de fuente de OBS, para reconocerla de un vistazo.
+function iconoFuente(tipo: string): string {
+  const t = (tipo || "").toLowerCase()
+  if (t.includes("dshow") || t.includes("v4l2") || t.includes("av_capture") || t.includes("video_capture")) return "📷" // cámara
+  if (t.includes("window_capture") || t.includes("monitor_capture") || t.includes("screen") || t.includes("display")) return "🖥️"
+  if (t.includes("browser")) return "🌐"
+  if (t.includes("image") || t.includes("logo")) return "🖼️"
+  if (t.includes("text") || t.includes("freetype") || t.includes("gdiplus")) return "🅰️"
+  if (t.includes("ffmpeg") || t.includes("vlc") || t.includes("media")) return "🎞️"
+  if (t.includes("color")) return "🎨"
+  if (t.includes("group")) return "🗂️"
+  if (t.includes("wasapi") || t.includes("coreaudio") || t.includes("pulse") || t.includes("audio")) return "🔊"
+  return "▫️"
 }
 
 const inputEstilo: React.CSSProperties = {
