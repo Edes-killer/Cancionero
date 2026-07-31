@@ -116,7 +116,14 @@ export default function InicioPage() {
         const resultadoSesion = await conTimeout(supabase.auth.getSession(), 5000)
         if (resultadoSesion === "timeout") { setCargando(false); return }
         const { data: sessionData } = resultadoSesion
-        if (!sessionData.session?.user) { navegarSPA(router, "/login", { replace: true }); return }
+        if (!sessionData.session?.user) {
+          // En la web pública, un visitante sin sesión ve la landing de
+          // marketing; en la app (Electron/APK) va directo al login.
+          const esApp = typeof window !== "undefined" &&
+            (!!(window as any).Capacitor || !!(window as any).electron)
+          navegarSPA(router, esApp ? "/login" : "/bienvenido", { replace: true })
+          return
+        }
         const userId    = sessionData.session.user.id
         const iglesiaId = await getIglesiaId()
 
