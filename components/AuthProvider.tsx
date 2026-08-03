@@ -43,7 +43,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   //    pero NO Configuración (ajustes de iglesia, miembros, invitaciones).
   //  • Admin: todo.
   const RUTAS_SOLO_ADMIN = ["/configuracion"]           // solo admin
-  const RUTAS_SOLO_LIDER = ["/control", "/canciones", "/historial", "/transmision"] // líder + admin
+  const RUTAS_SOLO_LIDER = ["/control", "/canciones", "/historial", "/transmision", "/en-vivo"] // líder + admin
   const requiereAdmin = RUTAS_SOLO_ADMIN.includes(pathnameNormalizado)
   const requiereLider = requiereAdmin || RUTAS_SOLO_LIDER.includes(pathnameNormalizado)
 

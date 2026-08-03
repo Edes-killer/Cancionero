@@ -1,5 +1,5 @@
 try { require("dotenv").config() } catch(e) {}
-const { app, BrowserWindow, shell, Menu, ipcMain, dialog } = require("electron")
+const { app, BrowserWindow, shell, Menu, ipcMain, dialog, session } = require("electron")
 const path = require("path")
 const http = require("http")
 const { Server } = require("socket.io")
@@ -659,6 +659,14 @@ function createWindow() {
     },
     show: false, // Esperar a que esté listo para mostrar
   })
+
+  // ✅ Permitir cámara y micrófono para la Transmisión en vivo. Sin esto,
+  // getUserMedia queda bloqueado en la app empaquetada y la cámara no abre.
+  try {
+    session.defaultSession.setPermissionRequestHandler((_wc, permiso, permitir) => {
+      permitir(permiso === "media" || permiso === "camera" || permiso === "microphone")
+    })
+  } catch (e) { console.error("No se pudo configurar permisos de medios:", e) }
 
   // Menú simplificado
   Menu.setApplicationMenu(Menu.buildFromTemplate([
