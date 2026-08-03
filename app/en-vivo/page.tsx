@@ -39,7 +39,7 @@ export default function EnVivoPage() {
   // Contenido que se está proyectando (espejo por socket)
   const [titulo, setTitulo] = useState("")
   const [tono, setTono] = useState("")
-  const [partes, setPartes] = useState<string[]>([])
+  const [partes, setPartes] = useState<any[]>([]) // cada parte es un objeto { texto_letra|texto, tipo }
   const [index, setIndex] = useState(0)
   const [logoUrl, setLogoUrl] = useState("")
   const [conectadoSala, setConectadoSala] = useState(false)
@@ -52,7 +52,7 @@ export default function EnVivoPage() {
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as string[], index: 0, mostrar: true })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, mostrar: true })
   useEffect(() => {
     contenidoRef.current = { titulo, tono, partes, index, mostrar: mostrarLetra }
   }, [titulo, tono, partes, index, mostrarLetra])
@@ -171,34 +171,39 @@ export default function EnVivoPage() {
     if (!canvas || !ctx) return
 
     const dibujar = () => {
-      const v = videoRef.current
-      // Fondo negro
-      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, ANCHO, ALTO)
+      // Blindado: un error acá NO debe matar el bucle (antes lo mataba y se
+      // congelaba todo). Pase lo que pase, re-agendamos el siguiente fotograma.
+      try {
+        const v = videoRef.current
+        // Fondo negro
+        ctx.fillStyle = "#000"; ctx.fillRect(0, 0, ANCHO, ALTO)
 
-      // Cámara con recorte "cover"
-      if (v && v.videoWidth > 0) {
-        const escala = Math.max(ANCHO / v.videoWidth, ALTO / v.videoHeight)
-        const w = v.videoWidth * escala, h = v.videoHeight * escala
-        ctx.drawImage(v, (ANCHO - w) / 2, (ALTO - h) / 2, w, h)
+        // Cámara con recorte "cover"
+        if (v && v.videoWidth > 0) {
+          const escala = Math.max(ANCHO / v.videoWidth, ALTO / v.videoHeight)
+          const w = v.videoWidth * escala, h = v.videoHeight * escala
+          ctx.drawImage(v, (ANCHO - w) / 2, (ALTO - h) / 2, w, h)
+        }
+
+        const cont = contenidoRef.current
+
+        // Marca de agua: logo arriba a la derecha
+        const logo = logoImgRef.current
+        if (logo) {
+          const lw = 118, lh = logo.height * (lw / logo.width)
+          ctx.globalAlpha = 0.9
+          ctx.drawImage(logo, ANCHO - lw - 34, 30, lw, lh)
+          ctx.globalAlpha = 1
+        }
+
+        // Rótulo inferior con la letra que se está proyectando
+        const parte = cont.mostrar ? limpiarLetra(cont.partes[cont.index]) : ""
+        if (parte.trim()) {
+          dibujarRotuloInferior(ctx, parte, cont.titulo, cont.tono)
+        }
+      } catch (e) {
+        console.error("Error dibujando fotograma:", e)
       }
-
-      const cont = contenidoRef.current
-
-      // Marca de agua: logo arriba a la derecha
-      const logo = logoImgRef.current
-      if (logo) {
-        const lw = 118, lh = logo.height * (lw / logo.width)
-        ctx.globalAlpha = 0.9
-        ctx.drawImage(logo, ANCHO - lw - 34, 30, lw, lh)
-        ctx.globalAlpha = 1
-      }
-
-      // Rótulo inferior con la letra que se está proyectando
-      const parte = cont.mostrar ? (cont.partes[cont.index] || "") : ""
-      if (parte.trim()) {
-        dibujarRotuloInferior(ctx, parte, cont.titulo, cont.tono)
-      }
-
       rafRef.current = requestAnimationFrame(dibujar)
     }
     rafRef.current = requestAnimationFrame(dibujar)
@@ -299,6 +304,19 @@ export default function EnVivoPage() {
       </div>
     </div>
   )
+}
+
+// Extrae la letra de una parte (que es un objeto) y la limpia: quita HTML,
+// acordes entre corchetes y normaliza saltos/espacios. Prefiere texto_letra.
+function limpiarLetra(p: any): string {
+  const raw = p?.texto_letra || p?.texto || ""
+  if (typeof raw !== "string") return ""
+  return raw
+    .replace(/<[^>]*>/g, " ")     // etiquetas HTML
+    .replace(/\[[^\]]*\]/g, "")   // acordes: [Do], [Sol], etc.
+    .replace(/\\n|\/n/g, "\n")    // saltos escapados
+    .replace(/\r/g, "")
+    .split("\n").map((l: string) => l.replace(/\s+/g, " ").trim()).filter(Boolean).join("\n")
 }
 
 // ── Dibujo del rótulo inferior con la letra ────────────────────────────────────
