@@ -86,7 +86,11 @@ export default function EnVivoPage() {
         if (cancelado) { stream.getTracks().forEach(t => t.stop()); return }
 
         streamRef.current = stream
-        if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play().catch(() => {}) }
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          videoRef.current.muted = true // asegurar autoplay sin bloqueo del navegador
+          await videoRef.current.play().catch(() => {})
+        }
         setPermiso("ok")
 
         // Con permiso ya concedido, las etiquetas de los dispositivos aparecen
@@ -246,8 +250,12 @@ export default function EnVivoPage() {
           )}
         </div>
 
-        {/* Video oculto que alimenta el lienzo */}
-        <video ref={videoRef} muted playsInline style={{ display: "none" }} />
+        {/* Video que alimenta el lienzo. NO usar display:none: con eso el
+            navegador no decodifica los fotogramas (videoWidth queda en 0 y no
+            se dibuja la cámara). Se oculta pero se mantiene renderizado. */}
+        <video ref={videoRef} autoPlay muted playsInline
+          onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
+          style={{ position: "absolute", width: 2, height: 2, opacity: 0, pointerEvents: "none", left: 0, top: 0 }} />
 
         {/* Controles */}
         <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, padding: 20, marginTop: 18 }}>
