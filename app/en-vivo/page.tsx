@@ -43,6 +43,55 @@ export default function EnVivoPage() {
   const [mensajeVivo, setMensajeVivo] = useState("")
   const [mostrarMensaje, setMostrarMensaje] = useState(false)
 
+  // Personalización (guardada en el equipo)
+  const [colorLetra, setColorLetra] = useState("#ffffff")
+  const [logoPos, setLogoPos] = useState<{ x: number; y: number }>({ x: ANCHO - 168 - 30, y: 26 })
+  const [logoTam, setLogoTam] = useState(168)
+  useEffect(() => {
+    try {
+      const c = localStorage.getItem("en-vivo-color-letra"); if (c) setColorLetra(c)
+      const t = localStorage.getItem("en-vivo-logo-tam"); if (t) setLogoTam(Number(t) || 168)
+      const p = localStorage.getItem("en-vivo-logo-pos"); if (p) setLogoPos(JSON.parse(p))
+    } catch {}
+  }, [])
+  const guardarColor = (c: string) => { setColorLetra(c); try { localStorage.setItem("en-vivo-color-letra", c) } catch {} }
+  const cambiarLogoTam = (t: number) => { setLogoTam(t); try { localStorage.setItem("en-vivo-logo-tam", String(t)) } catch {} }
+
+  // Arrastrar el logo en la vista previa (para posicionarlo / tapar la marca de Iriun)
+  const logoPosRef = useRef(logoPos)
+  useEffect(() => { logoPosRef.current = logoPos }, [logoPos])
+  const arrastreRef = useRef<{ dx: number; dy: number } | null>(null)
+  const coordsCanvas = (e: React.PointerEvent) => {
+    const c = canvasRef.current!
+    const r = c.getBoundingClientRect()
+    return { x: (e.clientX - r.left) * (ANCHO / r.width), y: (e.clientY - r.top) * (ALTO / r.height) }
+  }
+  const onLogoDown = (e: React.PointerEvent) => {
+    const logo = logoImgRef.current
+    if (!logo || escena === "letra") return // el logo movible es de las escenas con cámara
+    const { x, y } = coordsCanvas(e)
+    const lw = logoTam, lh = logo.height * (lw / logo.width)
+    if (x >= logoPos.x && x <= logoPos.x + lw && y >= logoPos.y && y <= logoPos.y + lh) {
+      arrastreRef.current = { dx: x - logoPos.x, dy: y - logoPos.y }
+      try { (e.target as HTMLElement).setPointerCapture(e.pointerId) } catch {}
+    }
+  }
+  const onLogoMove = (e: React.PointerEvent) => {
+    if (!arrastreRef.current) return
+    const logo = logoImgRef.current
+    const lw = logoTam, lh = logo ? logo.height * (lw / logo.width) : lw
+    const { x, y } = coordsCanvas(e)
+    setLogoPos({
+      x: Math.max(0, Math.min(ANCHO - lw, x - arrastreRef.current.dx)),
+      y: Math.max(0, Math.min(ALTO - lh, y - arrastreRef.current.dy)),
+    })
+  }
+  const onLogoUp = () => {
+    if (!arrastreRef.current) return
+    arrastreRef.current = null
+    try { localStorage.setItem("en-vivo-logo-pos", JSON.stringify(logoPosRef.current)) } catch {}
+  }
+
   // Datos de la iglesia (logo + nombre) desde la configuración, no del socket:
   // así el logo nuevo que subes en Config se refleja al tiro.
   const { logoUrl: logoIglesia, nombreIglesia } = useApp()
@@ -83,11 +132,11 @@ export default function EnVivoPage() {
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "" })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168 })
   useEffect(() => {
     const bibliaTexto = biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : ""
-    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "" }
-  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo])
+    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam }
+  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam])
 
   // ── Cargar la imagen proyectada (para la escena de contenido) ───────────────
   useEffect(() => {
@@ -314,7 +363,7 @@ export default function EnVivoPage() {
           if (imagen) {
             dibujarImagenContenida(ctx, imagen)
           } else if (textoContenido.trim()) {
-            dibujarDiapositivaLetra(ctx, textoContenido)
+            dibujarDiapositivaLetra(ctx, textoContenido, cont.color)
           } else {
             dibujarEspera(ctx, cont.nombre, logo)
           }
@@ -326,18 +375,18 @@ export default function EnVivoPage() {
             const w = v.videoWidth * escala, h = v.videoHeight * escala
             ctx.drawImage(v, (ANCHO - w) / 2, (ALTO - h) / 2, w, h)
           }
-          // Logo marca de agua (arriba a la derecha) — grande para que se note
-          if (logo && logo.width > 0) {
-            const lw = 168, lh = logo.height * (lw / logo.width)
-            ctx.globalAlpha = 0.95
-            ctx.drawImage(logo, ANCHO - lw - 30, 26, lw, lh)
-            ctx.globalAlpha = 1
-          }
           // Nombre de la iglesia (centrado arriba, elegante)
           dibujarNombreCentrado(ctx, cont.nombre)
           // Contenido abajo solo en "camara-letra" (letra o versículo)
           if (cont.escena === "camara-letra" && textoContenido.trim()) {
-            dibujarRotuloInferior(ctx, textoContenido, tituloContenido, tonoContenido, hayMensaje ? 84 : 0)
+            dibujarRotuloInferior(ctx, textoContenido, tituloContenido, tonoContenido, hayMensaje ? 84 : 0, cont.color)
+          }
+          // Logo movible/redimensionable (se dibuja al final para tapar la marca)
+          if (logo && logo.width > 0) {
+            const lw = cont.logoTam, lh = logo.height * (lw / logo.width)
+            ctx.globalAlpha = 0.97
+            ctx.drawImage(logo, cont.logoPos.x, cont.logoPos.y, lw, lh)
+            ctx.globalAlpha = 1
           }
         }
 
@@ -438,7 +487,9 @@ export default function EnVivoPage() {
       <div style={{ maxWidth: 920, margin: "0 auto", padding: "24px" }}>
         {/* Vista previa (lo que saldría al aire) */}
         <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", border: `1px solid ${C.borde}`, background: "#000", aspectRatio: "16 / 9" }}>
-          <canvas ref={canvasRef} width={ANCHO} height={ALTO} style={{ width: "100%", height: "100%", display: "block" }} />
+          <canvas ref={canvasRef} width={ANCHO} height={ALTO}
+            onPointerDown={onLogoDown} onPointerMove={onLogoMove} onPointerUp={onLogoUp}
+            style={{ width: "100%", height: "100%", display: "block", cursor: escena === "letra" ? "default" : "grab", touchAction: "none" }} />
           {/* etiqueta: vista previa o EN VIVO con cronómetro */}
           <div style={{ position: "absolute", top: 10, left: 10, display: "flex", alignItems: "center", gap: 8, padding: "5px 11px", borderRadius: 99, fontSize: 11.5, fontWeight: 800, color: "#fff", backdropFilter: "blur(4px)", background: txEstado === "vivo" ? "rgba(220,38,38,.85)" : "rgba(0,0,0,.55)" }}>
             <span style={{ width: 8, height: 8, borderRadius: 99, background: txEstado === "vivo" ? "#fff" : "#4ade80", boxShadow: txEstado === "vivo" ? "0 0 6px #fff" : "none" }} />
@@ -531,6 +582,34 @@ export default function EnVivoPage() {
                 })}>
                 {mostrarMensaje ? "Ocultar" : "Mostrar"}
               </button>
+            </div>
+          </div>
+
+          {/* Personalización */}
+          <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.borde}` }}>
+            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Personalización</div>
+
+            {/* Color de la letra */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+              <span style={{ fontSize: 12.5, color: C.tenue, minWidth: 90 }}>Color de letra</span>
+              {[["#ffffff", "Blanco"], ["#fde68a", "Cálido"], ["#fbbf24", "Amarillo"], ["#67e8f9", "Cian"], ["#86efac", "Verde"]].map(([col, nom]) => (
+                <button key={col} onClick={() => guardarColor(col)} title={nom}
+                  style={{ width: 30, height: 30, borderRadius: 8, cursor: "pointer", background: col,
+                    border: colorLetra === col ? `3px solid ${C.azul}` : "2px solid rgba(255,255,255,0.2)" }} />
+              ))}
+              <input type="color" value={colorLetra} onChange={e => guardarColor(e.target.value)}
+                title="Color personalizado" style={{ width: 34, height: 30, borderRadius: 8, border: "none", background: "transparent", cursor: "pointer" }} />
+            </div>
+
+            {/* Tamaño del logo */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12.5, color: C.tenue, minWidth: 90 }}>Tamaño del logo</span>
+              <input type="range" min={70} max={380} value={logoTam} onChange={e => cambiarLogoTam(Number(e.target.value))}
+                style={{ flex: 1, minWidth: 160, accentColor: C.azul }} />
+              <span style={{ fontSize: 12, color: C.suave, width: 46, textAlign: "right" }}>{logoTam}px</span>
+            </div>
+            <div style={{ fontSize: 12, color: C.tenue, marginTop: 10 }}>
+              💡 Arrastra el <strong style={{ color: C.suave }}>logo</strong> en la vista previa para moverlo (útil para tapar la marca de Iriun). Se guarda solo.
             </div>
           </div>
         </div>
@@ -658,19 +737,20 @@ function limpiarTexto(texto: string): string {
 
 // ── Dibujo del rótulo inferior con la letra ────────────────────────────────────
 // offsetY: cuánto subir el rótulo (para dejar espacio al mensaje en vivo abajo).
-function dibujarRotuloInferior(ctx: CanvasRenderingContext2D, texto: string, titulo: string, tono: string, offsetY = 0) {
+function dibujarRotuloInferior(ctx: CanvasRenderingContext2D, texto: string, titulo: string, tono: string, offsetY = 0, color = "#ffffff") {
   const BASE = ALTO - offsetY
-  // Preparar las líneas (respetando saltos del texto + ajuste por ancho)
   const maxAncho = ANCHO - 160
-  const tamano = 44
-  ctx.font = `700 ${tamano}px 'Segoe UI', system-ui, sans-serif`
-  const lineas: string[] = []
-  for (const bruto of texto.split("\n")) {
-    const linea = bruto.trim()
-    if (!linea) continue
-    lineas.push(...ajustarLinea(ctx, linea, maxAncho))
+  const envolver = (t: number) => {
+    ctx.font = `700 ${t}px 'Segoe UI', system-ui, sans-serif`
+    const ls: string[] = []
+    for (const bruto of texto.split("\n")) { const l = bruto.trim(); if (l) ls.push(...ajustarLinea(ctx, l, maxAncho)) }
+    return ls
   }
-  const mostradas = lineas.slice(0, 4) // no saturar la pantalla
+  // Achicar la fuente hasta que TODO quepa (bloque ≤ ~50% de la pantalla).
+  const maxBloque = ALTO * 0.5
+  let tamano = 44
+  let mostradas = envolver(tamano)
+  while (mostradas.length * tamano * 1.28 > maxBloque && tamano > 24) { tamano -= 3; mostradas = envolver(tamano) }
   const alturaLinea = tamano * 1.28
   const padY = 34
   const altoBloque = mostradas.length * alturaLinea + padY * 2
@@ -698,8 +778,8 @@ function dibujarRotuloInferior(ctx: CanvasRenderingContext2D, texto: string, tit
   ctx.shadowColor = "rgba(0,0,0,0.85)"
   ctx.shadowBlur = 8
   let y = BASE - altoBloque + padY + tamano
+  ctx.fillStyle = color
   for (const l of mostradas) {
-    ctx.fillStyle = "#ffffff"
     ctx.fillText(l, ANCHO / 2, y)
     y += alturaLinea
   }
@@ -746,9 +826,10 @@ function dibujarImagenContenida(ctx: CanvasRenderingContext2D, img: HTMLImageEle
   ctx.drawImage(img, (ANCHO - w) / 2, (ALTO - h) / 2, w, h)
 }
 
-// Letra grande centrada para la escena "Letra".
-function dibujarDiapositivaLetra(ctx: CanvasRenderingContext2D, texto: string) {
-  const maxAncho = ANCHO - 220
+// Letra grande centrada para la escena "Proyección". Se achica sola hasta que
+// TODO el texto quepa en el área (nunca se corta).
+function dibujarDiapositivaLetra(ctx: CanvasRenderingContext2D, texto: string, color = "#ffffff") {
+  const maxAncho = ANCHO - 200
   const brutas = texto.split("\n").map(b => b.trim()).filter(Boolean)
   const medir = (t: number) => {
     ctx.font = `700 ${t}px 'Segoe UI', system-ui, sans-serif`
@@ -756,17 +837,17 @@ function dibujarDiapositivaLetra(ctx: CanvasRenderingContext2D, texto: string) {
     for (const b of brutas) ls.push(...ajustarLinea(ctx, b, maxAncho))
     return ls
   }
-  let tamano = 60
+  const areaTop = 132, areaAlto = ALTO - 46 - areaTop
+  let tamano = 64
   let lineas = medir(tamano)
-  while (lineas.length > 6 && tamano > 34) { tamano -= 6; lineas = medir(tamano) }
-  lineas = lineas.slice(0, 8)
+  // Achicar hasta que todas las líneas quepan en alto (mínimo 22px)
+  while (lineas.length * tamano * 1.3 > areaAlto && tamano > 22) { tamano -= 3; lineas = medir(tamano) }
   const alturaLinea = tamano * 1.3
   const totalH = lineas.length * alturaLinea
-  const centro = 130 + (ALTO - 130) / 2
-  let y = centro - totalH / 2 + tamano
+  let y = areaTop + (areaAlto - totalH) / 2 + tamano
   ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"
   ctx.shadowColor = "rgba(0,0,0,0.7)"; ctx.shadowBlur = 10
-  ctx.fillStyle = "#ffffff"
+  ctx.fillStyle = color
   ctx.font = `700 ${tamano}px 'Segoe UI', system-ui, sans-serif`
   for (const l of lineas) { ctx.fillText(l, ANCHO / 2, y); y += alturaLinea }
   ctx.shadowBlur = 0
