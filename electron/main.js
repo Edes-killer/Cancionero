@@ -793,6 +793,11 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      // ✅ No frenar el dibujo cuando la ventana está en segundo plano. Sin
+      // esto, al poner Facebook adelante, requestAnimationFrame se ralentiza y
+      // la Transmisión en vivo cae a ~5fps (video entrecortado y la plataforma
+      // corta). Con esto la composición sigue a fps pleno aunque no tenga foco.
+      backgroundThrottling: false,
     },
     show: false, // Esperar a que esté listo para mostrar
   })
