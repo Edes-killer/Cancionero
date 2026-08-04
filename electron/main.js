@@ -20,6 +20,57 @@ try {
   }
 } catch (e) { console.error("ffmpeg-static no disponible:", e) }
 let ffmpegProc = null
+let encoderElegido = null // se cachea el primer encoder que funcione en este PC
+
+// Probar si un encoder realmente arranca en ESTE PC (no basta con que exista;
+// h264_qsv puede estar listado pero fallar sin GPU Intel utilizable).
+function probarEncoder(enc) {
+  return new Promise(resolve => {
+    let listo = false
+    const finalizar = ok => { if (!listo) { listo = true; resolve(ok) } }
+    try {
+      const p = spawn(ffmpegPath, [
+        "-hide_banner", "-loglevel", "error",
+        "-f", "lavfi", "-i", "testsrc=size=640x360:rate=15",
+        "-t", "0.3", "-c:v", enc, "-f", "null", "-",
+      ])
+      p.on("error", () => finalizar(false))
+      p.on("close", code => finalizar(code === 0))
+      setTimeout(() => { try { p.kill("SIGKILL") } catch {} finalizar(false) }, 5000)
+    } catch { finalizar(false) }
+  })
+}
+
+// Elegir el mejor encoder disponible: hardware primero (liviano para el i3),
+// software (libx264) como último recurso siempre disponible.
+async function elegirEncoder() {
+  if (encoderElegido) return encoderElegido
+  for (const enc of ["h264_qsv", "h264_mf"]) {
+    if (await probarEncoder(enc)) { encoderElegido = enc; break }
+  }
+  if (!encoderElegido) encoderElegido = "libx264"
+  console.log("🎬 Encoder de transmisión:", encoderElegido)
+  return encoderElegido
+}
+
+// Argumentos de ffmpeg según el encoder. En todos: keyframe cada ~2s y AAC.
+function construirArgsFFmpeg(encoder, rtmpUrl) {
+  const base = ["-hide_banner", "-loglevel", "error", "-fflags", "+genpts", "-i", "pipe:0"]
+  let video
+  if (encoder === "h264_qsv") {
+    video = ["-c:v", "h264_qsv", "-b:v", "2500k", "-maxrate", "2500k", "-bufsize", "5000k", "-g", "60", "-look_ahead", "0"]
+  } else if (encoder === "h264_mf") {
+    video = ["-c:v", "h264_mf", "-b:v", "2500k", "-g", "60"]
+  } else {
+    video = [
+      "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-pix_fmt", "yuv420p",
+      "-g", "60", "-keyint_min", "60", "-force_key_frames", "expr:gte(t,n_forced*2)",
+      "-b:v", "2500k", "-maxrate", "2500k", "-bufsize", "5000k",
+    ]
+  }
+  const audio = ["-c:a", "aac", "-b:a", "128k", "-ar", "44100"]
+  return [...base, ...video, ...audio, "-max_muxing_queue_size", "1024", "-f", "flv", rtmpUrl]
+}
 
 function registrarIPCTransmision() {
   // Iniciar: levanta ffmpeg leyendo webm por stdin y empujando a RTMP.
@@ -29,23 +80,8 @@ function registrarIPCTransmision() {
       if (!rtmpUrl || !/^rtmps?:\/\//i.test(rtmpUrl)) return { ok: false, error: "La dirección de transmisión no es válida." }
       if (ffmpegProc) { try { ffmpegProc.kill("SIGKILL") } catch {} ffmpegProc = null }
 
-      const args = [
-        "-hide_banner", "-loglevel", "error",
-        "-fflags", "+genpts",
-        "-i", "pipe:0",
-        "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency",
-        "-pix_fmt", "yuv420p",
-        // Cuadros a ritmo constante de 30fps (rellena/descarta para no variar)
-        "-r", "30", "-fps_mode", "cfr",
-        // Keyframe cada 2s POR TIEMPO real (no por nº de cuadros): Facebook/
-        // YouTube lo exigen; si el PC baja de fps, por cuadros se pasaría de 2s
-        // y la plataforma corta. Por tiempo siempre llega a tiempo.
-        "-g", "60", "-keyint_min", "60", "-force_key_frames", "expr:gte(t,n_forced*2)",
-        "-b:v", "2500k", "-maxrate", "2500k", "-bufsize", "5000k",
-        "-c:a", "aac", "-b:a", "128k", "-ar", "44100",
-        "-max_muxing_queue_size", "1024",
-        "-f", "flv", rtmpUrl,
-      ]
+      const encoder = await elegirEncoder()
+      const args = construirArgsFFmpeg(encoder, rtmpUrl)
       const proc = spawn(ffmpegPath, args, { stdio: ["pipe", "ignore", "pipe"] })
       ffmpegProc = proc
 
@@ -57,7 +93,7 @@ function registrarIPCTransmision() {
       proc.on("close", code => { enviar("transmision:estado", { estado: "terminado", code }); if (ffmpegProc === proc) ffmpegProc = null })
       proc.stdin.on("error", () => {}) // evitar crash si RTMP corta el pipe
 
-      return { ok: true }
+      return { ok: true, encoder }
     } catch (e) { return { ok: false, error: e.message || String(e) } }
   })
 
