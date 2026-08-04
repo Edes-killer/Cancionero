@@ -145,6 +145,10 @@ function registrarIPCTransmision() {
 }
 registrarIPCTransmision()
 
+// Calentar la detección de encoder unos segundos tras arrancar, para que al
+// dar "Salir en vivo" ya esté elegido (conecta más rápido). Se cachea en memoria.
+if (ffmpegPath) setTimeout(() => { elegirEncoder().catch(() => {}) }, 4000)
+
 // ✅ Single instance lock — necesario para que NSIS pueda cerrar la app al actualizar
 const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
