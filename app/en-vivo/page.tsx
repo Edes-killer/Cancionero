@@ -44,6 +44,18 @@ export default function EnVivoPage() {
   const [logoUrl, setLogoUrl] = useState("")
   const [conectadoSala, setConectadoSala] = useState(false)
 
+  // Transmisión (Incremento 2)
+  const [esEscritorio, setEsEscritorio] = useState(false)
+  const [destino, setDestino] = useState<"facebook" | "youtube" | "custom">("facebook")
+  const [claveTx, setClaveTx] = useState("")
+  const [urlCustom, setUrlCustom] = useState("")
+  const [txEstado, setTxEstado] = useState<"idle" | "conectando" | "vivo" | "error">("idle")
+  const [errorTx, setErrorTx] = useState<string | null>(null)
+  const [segundos, setSegundos] = useState(0)
+  const recRef = useRef<MediaRecorder | null>(null)
+  const txEstadoRef = useRef(txEstado)
+  useEffect(() => { txEstadoRef.current = txEstado }, [txEstado])
+
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -164,6 +176,43 @@ export default function EnVivoPage() {
     return () => { activo = false; s.disconnect() }
   }, [])
 
+  // ── Transmisión: detectar escritorio + escuchar estado/logs de ffmpeg ───────
+  useEffect(() => {
+    const tx = (window as any).transmision
+    setEsEscritorio(!!tx)
+    if (!tx) return
+    const offEstado = tx.onEstado((d: any) => {
+      // ffmpeg terminó/erró mientras creíamos estar al aire → avisar
+      if (d?.estado === "error" || d?.estado === "terminado") {
+        if (txEstadoRef.current === "vivo" || txEstadoRef.current === "conectando") {
+          try { recRef.current?.stop() } catch {}
+          recRef.current = null
+          setTxEstado("error")
+          setErrorTx(d?.error || (d?.code ? "La transmisión se cortó. Revisa la clave y tu conexión." : "La transmisión terminó inesperadamente."))
+        }
+      }
+    })
+    const offLog = tx.onLog((m: string) => {
+      const linea = (m || "").trim()
+      if (linea) setErrorTx(prev => (txEstadoRef.current === "conectando" ? linea : prev))
+    })
+    return () => { offEstado?.(); offLog?.() }
+  }, [])
+
+  // Cargar la clave guardada al cambiar de plataforma
+  useEffect(() => {
+    if (destino === "custom") return
+    try { setClaveTx(localStorage.getItem(`en-vivo-clave-${destino}`) || "") } catch {}
+  }, [destino])
+
+  // Cronómetro mientras está al aire
+  useEffect(() => {
+    if (txEstado !== "vivo") return
+    setSegundos(0)
+    const t = setInterval(() => setSegundos(s => s + 1), 1000)
+    return () => clearInterval(t)
+  }, [txEstado])
+
   // ── Bucle de composición: cámara + letra + logo → lienzo ────────────────────
   useEffect(() => {
     const canvas = canvasRef.current
@@ -212,6 +261,59 @@ export default function EnVivoPage() {
 
   const reintentar = () => { setErrorCam(null); setPermiso("pidiendo"); setReintento(n => n + 1) }
 
+  const construirUrlRtmp = (): string => {
+    if (destino === "custom") return urlCustom.trim()
+    const k = claveTx.trim()
+    if (!k) return ""
+    if (destino === "facebook") return "rtmps://live-api-s.facebook.com:443/rtmp/" + k
+    return "rtmp://a.rtmp.youtube.com/live2/" + k
+  }
+
+  const salirEnVivo = async () => {
+    setErrorTx(null)
+    const tx = (window as any).transmision
+    if (!tx) { setErrorTx("Esto solo funciona en la app de escritorio de Selah Live."); return }
+    const rtmpUrl = construirUrlRtmp()
+    if (!rtmpUrl) { setErrorTx(destino === "custom" ? "Pega la URL RTMP completa." : "Pega la clave de transmisión de tu plataforma."); return }
+    if (!canvasRef.current || !streamRef.current) { setErrorTx("La cámara aún no está lista."); return }
+
+    // Recordar la clave para la próxima
+    try { if (destino !== "custom") localStorage.setItem(`en-vivo-clave-${destino}`, claveTx.trim()) } catch {}
+
+    setTxEstado("conectando")
+    const mime = ["video/webm;codecs=vp8,opus", "video/webm;codecs=vp9,opus", "video/webm"]
+      .find(m => (window as any).MediaRecorder?.isTypeSupported?.(m)) || "video/webm"
+
+    const res = await tx.iniciar({ rtmpUrl })
+    if (!res?.ok) { setTxEstado("error"); setErrorTx(res?.error || "No se pudo iniciar la transmisión."); return }
+
+    try {
+      const salida = new MediaStream([
+        ...(canvasRef.current.captureStream(30).getVideoTracks()),
+        ...(streamRef.current.getAudioTracks()),
+      ])
+      const rec = new MediaRecorder(salida, { mimeType: mime, videoBitsPerSecond: 2_500_000, audioBitsPerSecond: 128_000 })
+      rec.ondataavailable = async ev => {
+        if (ev.data && ev.data.size) {
+          try { tx.enviarChunk(new Uint8Array(await ev.data.arrayBuffer())) } catch {}
+        }
+      }
+      rec.start(250) // enviar trozos cada 250ms
+      recRef.current = rec
+      setTxEstado("vivo")
+    } catch (e: any) {
+      setTxEstado("error"); setErrorTx("No se pudo capturar el video: " + (e?.message || ""))
+      try { await tx.detener() } catch {}
+    }
+  }
+
+  const terminar = async () => {
+    try { recRef.current?.stop() } catch {}
+    recRef.current = null
+    try { await (window as any).transmision?.detener() } catch {}
+    setTxEstado("idle"); setErrorTx(null); setSegundos(0)
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: C.fondo, color: C.texto, fontFamily: "'Segoe UI', system-ui, sans-serif", padding: "0 0 60px" }}>
       {/* Encabezado */}
@@ -235,10 +337,10 @@ export default function EnVivoPage() {
         {/* Vista previa (lo que saldría al aire) */}
         <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", border: `1px solid ${C.borde}`, background: "#000", aspectRatio: "16 / 9" }}>
           <canvas ref={canvasRef} width={ANCHO} height={ALTO} style={{ width: "100%", height: "100%", display: "block" }} />
-          {/* etiqueta */}
-          <div style={{ position: "absolute", top: 10, left: 10, display: "flex", alignItems: "center", gap: 8, padding: "5px 11px", borderRadius: 99, fontSize: 11.5, fontWeight: 800, background: "rgba(0,0,0,.55)", color: "#fff", backdropFilter: "blur(4px)" }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: "#4ade80" }} />
-            VISTA PREVIA
+          {/* etiqueta: vista previa o EN VIVO con cronómetro */}
+          <div style={{ position: "absolute", top: 10, left: 10, display: "flex", alignItems: "center", gap: 8, padding: "5px 11px", borderRadius: 99, fontSize: 11.5, fontWeight: 800, color: "#fff", backdropFilter: "blur(4px)", background: txEstado === "vivo" ? "rgba(220,38,38,.85)" : "rgba(0,0,0,.55)" }}>
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: txEstado === "vivo" ? "#fff" : "#4ade80", boxShadow: txEstado === "vivo" ? "0 0 6px #fff" : "none" }} />
+            {txEstado === "vivo" ? `EN VIVO · ${fmtTiempo(segundos)}` : "VISTA PREVIA"}
           </div>
           {permiso !== "ok" && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 14, background: "rgba(6,13,26,.82)", textAlign: "center", padding: 24 }}>
@@ -297,9 +399,77 @@ export default function EnVivoPage() {
           </div>
         </div>
 
-        {/* Nota del próximo incremento */}
-        <div style={{ marginTop: 18, background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.25)", borderRadius: 14, padding: "14px 16px", fontSize: 13, color: C.suave }}>
-          <strong style={{ color: C.texto }}>Próximo paso:</strong> el botón <strong style={{ color: C.texto }}>“Salir en vivo”</strong> para transmitir esta vista a tu Página de Facebook o YouTube. Por ahora puedes probar la cámara, elegir la entrada de audio y ver cómo se ve la letra sobre la imagen.
+        {/* Salir en vivo */}
+        <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, padding: 20, marginTop: 18 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 4 }}>Salir en vivo</div>
+          <div style={{ fontSize: 12.5, color: C.tenue, marginBottom: 16 }}>Transmite esta vista directo a tu plataforma.</div>
+
+          {!esEscritorio ? (
+            <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 12, padding: "12px 14px", fontSize: 13, color: C.suave }}>
+              Transmitir en vivo funciona solo en la <strong style={{ color: C.texto }}>app de escritorio</strong> de Selah Live (aquí en el navegador puedes probar la cámara y la letra, pero no salir al aire).
+            </div>
+          ) : (txEstado === "vivo" || txEstado === "conectando") ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ width: 12, height: 12, borderRadius: 99, background: txEstado === "vivo" ? "#f87171" : "#fbbf24", boxShadow: txEstado === "vivo" ? "0 0 8px #f87171" : "none" }} />
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: txEstado === "vivo" ? "#f87171" : "#fbbf24" }}>
+                    {txEstado === "vivo" ? `AL AIRE · ${fmtTiempo(segundos)}` : "Conectando…"}
+                  </div>
+                  <div style={{ fontSize: 12, color: C.tenue }}>{nombreDestino(destino)}</div>
+                </div>
+              </div>
+              <button onClick={terminar} style={botonBase({ background: C.rojo, color: "#fff" })}>■ Terminar transmisión</button>
+            </div>
+          ) : (
+            <>
+              {/* Selector de plataforma */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+                {([["facebook", "📘 Facebook"], ["youtube", "▶️ YouTube"], ["custom", "🔗 Otra (RTMP)"]] as const).map(([id, txt]) => (
+                  <button key={id} onClick={() => setDestino(id)} style={{
+                    padding: "9px 14px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13.5,
+                    background: destino === id ? "rgba(37,99,235,0.2)" : C.panel2,
+                    border: `1.5px solid ${destino === id ? C.azul : C.borde}`,
+                    color: destino === id ? "#93c5fd" : C.texto,
+                  }}>{txt}</button>
+                ))}
+              </div>
+
+              {destino === "custom" ? (
+                <label style={{ fontSize: 12.5, color: C.tenue, display: "block" }}>
+                  URL RTMP completa
+                  <input value={urlCustom} onChange={e => setUrlCustom(e.target.value)} placeholder="rtmp://servidor/app/clave" style={selectEstilo} />
+                </label>
+              ) : (
+                <label style={{ fontSize: 12.5, color: C.tenue, display: "block" }}>
+                  Clave de transmisión de {nombreDestino(destino)}
+                  <input value={claveTx} onChange={e => setClaveTx(e.target.value)} placeholder="Pega aquí tu clave de transmisión" style={selectEstilo} />
+                </label>
+              )}
+
+              <div style={{ fontSize: 12, color: C.tenue, margin: "10px 2px 16px" }}>
+                {destino === "facebook" && "En Facebook: crea una transmisión en tu Página → Live Producer → copia la “Clave de transmisión”."}
+                {destino === "youtube" && "En YouTube: Estudio → Transmitir en vivo → copia la “Clave de transmisión”."}
+                {destino === "custom" && "Pega la URL RTMP/RTMPS completa que te da tu plataforma (incluyendo la clave al final)."}
+              </div>
+
+              <button onClick={salirEnVivo} disabled={permiso !== "ok"}
+                style={botonBase({ background: C.rojo, color: "#fff", width: "100%", padding: "14px", opacity: permiso !== "ok" ? 0.5 : 1 })}>
+                ● Salir en vivo
+              </button>
+            </>
+          )}
+
+          {errorTx && (
+            <div style={{ marginTop: 14, background: "rgba(220,38,38,.1)", border: "1px solid rgba(220,38,38,.3)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#fca5a5", wordBreak: "break-word" }}>
+              ⚠️ {errorTx}
+            </div>
+          )}
+        </div>
+
+        {/* Aviso de conexión */}
+        <div style={{ marginTop: 14, fontSize: 12, color: C.tenue, textAlign: "center", lineHeight: 1.6 }}>
+          Para una transmisión estable, conéctate por <strong style={{ color: C.suave }}>cable de red</strong> (no WiFi) y con buena subida de internet.
         </div>
       </div>
     </div>
@@ -378,6 +548,16 @@ function ajustarLinea(ctx: CanvasRenderingContext2D, texto: string, maxAncho: nu
   }
   if (actual) out.push(actual)
   return out
+}
+
+function fmtTiempo(s: number): string {
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), seg = s % 60
+  const mm = String(m).padStart(2, "0"), ss = String(seg).padStart(2, "0")
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
+}
+
+function nombreDestino(d: string): string {
+  return d === "facebook" ? "Facebook" : d === "youtube" ? "YouTube" : "RTMP personalizado"
 }
 
 function botonBase(extra: React.CSSProperties): React.CSSProperties {
