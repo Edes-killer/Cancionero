@@ -34,9 +34,16 @@ function registrarIPCTransmision() {
         "-fflags", "+genpts",
         "-i", "pipe:0",
         "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency",
-        "-pix_fmt", "yuv420p", "-r", "30", "-g", "60",
+        "-pix_fmt", "yuv420p",
+        // Cuadros a ritmo constante de 30fps (rellena/descarta para no variar)
+        "-r", "30", "-fps_mode", "cfr",
+        // Keyframe cada 2s POR TIEMPO real (no por nº de cuadros): Facebook/
+        // YouTube lo exigen; si el PC baja de fps, por cuadros se pasaría de 2s
+        // y la plataforma corta. Por tiempo siempre llega a tiempo.
+        "-g", "60", "-keyint_min", "60", "-force_key_frames", "expr:gte(t,n_forced*2)",
         "-b:v", "2500k", "-maxrate", "2500k", "-bufsize", "5000k",
         "-c:a", "aac", "-b:a", "128k", "-ar", "44100",
+        "-max_muxing_queue_size", "1024",
         "-f", "flv", rtmpUrl,
       ]
       const proc = spawn(ffmpegPath, args, { stdio: ["pipe", "ignore", "pipe"] })
