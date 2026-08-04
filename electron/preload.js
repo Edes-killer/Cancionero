@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("electron", {
 contextBridge.exposeInMainWorld("transmision", {
   iniciar: (opts) => ipcRenderer.invoke("transmision:iniciar", opts),
   detener: () => ipcRenderer.invoke("transmision:detener"),
+  abrirLog: () => ipcRenderer.invoke("transmision:abrirLog"),
   enviarChunk: (chunk) => ipcRenderer.send("transmision:chunk", chunk),
   onEstado: (cb) => {
     const h = (_e, d) => cb(d)

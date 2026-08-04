@@ -52,6 +52,7 @@ export default function EnVivoPage() {
   const [txEstado, setTxEstado] = useState<"idle" | "conectando" | "vivo" | "error">("idle")
   const [errorTx, setErrorTx] = useState<string | null>(null)
   const [segundos, setSegundos] = useState(0)
+  const [logsTx, setLogsTx] = useState<string[]>([])
   const recRef = useRef<MediaRecorder | null>(null)
   const txEstadoRef = useRef(txEstado)
   useEffect(() => { txEstadoRef.current = txEstado }, [txEstado])
@@ -184,18 +185,24 @@ export default function EnVivoPage() {
     const tx = (window as any).transmision
     setEsEscritorio(!!tx)
     if (!tx) return
+    const agregarLog = (linea: string) => {
+      const l = (linea || "").trim()
+      if (l) setLogsTx(prev => [...prev, ...l.split("\n").map(x => x.trim()).filter(Boolean)].slice(-60))
+    }
     const offEstado = tx.onEstado((d: any) => {
+      agregarLog(d?.estado === "error" ? `⛔ error de proceso: ${d?.error || ""}` : `■ ffmpeg terminó (código ${d?.code})`)
       // ffmpeg terminó/erró mientras creíamos estar al aire → avisar
       if (d?.estado === "error" || d?.estado === "terminado") {
         if (txEstadoRef.current === "vivo" || txEstadoRef.current === "conectando") {
           try { recRef.current?.stop() } catch {}
           recRef.current = null
           setTxEstado("error")
-          setErrorTx(d?.error || (d?.code ? "La transmisión se cortó. Revisa la clave y tu conexión." : "La transmisión terminó inesperadamente."))
+          setErrorTx(d?.error || (d?.code ? "La transmisión se cortó. Revisa los detalles técnicos más abajo." : "La transmisión terminó inesperadamente."))
         }
       }
     })
     const offLog = tx.onLog((m: string) => {
+      agregarLog(m)
       const linea = (m || "").trim()
       if (linea) setErrorTx(prev => (txEstadoRef.current === "conectando" ? linea : prev))
     })
@@ -283,6 +290,7 @@ export default function EnVivoPage() {
     // Recordar la clave para la próxima
     try { if (destino !== "custom") localStorage.setItem(`en-vivo-clave-${destino}`, claveTx.trim()) } catch {}
 
+    setLogsTx([])
     setTxEstado("conectando")
     const mime = ["video/webm;codecs=vp8,opus", "video/webm;codecs=vp9,opus", "video/webm"]
       .find(m => (window as any).MediaRecorder?.isTypeSupported?.(m)) || "video/webm"
@@ -467,6 +475,24 @@ export default function EnVivoPage() {
             <div style={{ marginTop: 14, background: "rgba(220,38,38,.1)", border: "1px solid rgba(220,38,38,.3)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#fca5a5", wordBreak: "break-word" }}>
               ⚠️ {errorTx}
             </div>
+          )}
+
+          {/* Detalles técnicos (para diagnóstico) */}
+          {esEscritorio && logsTx.length > 0 && (
+            <details style={{ marginTop: 14 }}>
+              <summary style={{ cursor: "pointer", fontSize: 12.5, color: C.suave, fontWeight: 700 }}>🔧 Detalles técnicos (para soporte)</summary>
+              <div style={{ marginTop: 10, background: "#0a1120", border: `1px solid ${C.borde}`, borderRadius: 10, padding: "10px 12px", maxHeight: 180, overflow: "auto" }}>
+                <pre style={{ margin: 0, fontSize: 11, lineHeight: 1.5, color: "#c7d2e5", whiteSpace: "pre-wrap", wordBreak: "break-word", fontFamily: "ui-monospace, Consolas, monospace" }}>
+                  {logsTx.join("\n")}
+                </pre>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <button onClick={() => { navigator.clipboard?.writeText(logsTx.join("\n")).catch(() => {}) }}
+                  style={botonBase({ background: "rgba(255,255,255,0.06)", color: C.texto, padding: "7px 12px", fontSize: 12.5 })}>📋 Copiar</button>
+                <button onClick={() => (window as any).transmision?.abrirLog?.()}
+                  style={botonBase({ background: "rgba(255,255,255,0.06)", color: C.texto, padding: "7px 12px", fontSize: 12.5 })}>📂 Abrir registro completo</button>
+              </div>
+            </details>
           )}
         </div>
 
