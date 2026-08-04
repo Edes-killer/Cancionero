@@ -34,7 +34,7 @@ export default function EnVivoPage() {
   const [micros, setMicros] = useState<Disp[]>([])
   const [camaraId, setCamaraId] = useState<string>("")
   const [camara2Id, setCamara2Id] = useState<string>("") // 2da cámara (opcional)
-  const [camaraActiva, setCamaraActiva] = useState<1 | 2>(1) // cuál está al aire
+  const [camaraActiva, setCamaraActiva] = useState<1 | 2 | "ambas">(1) // cuál está al aire
   const [microId, setMicroId] = useState<string>("")
   const [permiso, setPermiso] = useState<"pidiendo" | "ok" | "denegado">("pidiendo")
   const [errorCam, setErrorCam] = useState<string | null>(null)
@@ -49,50 +49,24 @@ export default function EnVivoPage() {
   const [colorLetra, setColorLetra] = useState("#ffffff")
   const [logoPos, setLogoPos] = useState<{ x: number; y: number }>({ x: ANCHO - 168 - 30, y: 26 })
   const [logoTam, setLogoTam] = useState(168)
+  const [logoAspecto, setLogoAspecto] = useState(1) // alto/ancho del logo
+  // Recuadro de la Cámara 2 (PiP) — objeto movible/redimensionable
+  const [pipPos, setPipPos] = useState<{ x: number; y: number }>({ x: ANCHO - 360 - 40, y: ALTO - 202 - 40 })
+  const [pipTam, setPipTam] = useState(360) // ancho; el alto es 16:9
   useEffect(() => {
     try {
       const c = localStorage.getItem("en-vivo-color-letra"); if (c) setColorLetra(c)
       const t = localStorage.getItem("en-vivo-logo-tam"); if (t) setLogoTam(Number(t) || 168)
       const p = localStorage.getItem("en-vivo-logo-pos"); if (p) setLogoPos(JSON.parse(p))
+      const pip = localStorage.getItem("en-vivo-pip"); if (pip) { const o = JSON.parse(pip); if (o.pos) setPipPos(o.pos); if (o.tam) setPipTam(o.tam) }
     } catch {}
   }, [])
   const guardarColor = (c: string) => { setColorLetra(c); try { localStorage.setItem("en-vivo-color-letra", c) } catch {} }
-  const cambiarLogoTam = (t: number) => { setLogoTam(t); try { localStorage.setItem("en-vivo-logo-tam", String(t)) } catch {} }
+  const cambiarLogoTam = (t: number) => { setLogoTam(t) }
+  // Guardar posiciones/tamaños (con leve retardo para no escribir en cada píxel)
+  useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-logo-pos", JSON.stringify(logoPos)); localStorage.setItem("en-vivo-logo-tam", String(logoTam)) } catch {} }, 300); return () => clearTimeout(t) }, [logoPos, logoTam])
+  useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-pip", JSON.stringify({ pos: pipPos, tam: pipTam })) } catch {} }, 300); return () => clearTimeout(t) }, [pipPos, pipTam])
 
-  // Arrastrar el logo en la vista previa (para posicionarlo / tapar la marca de Iriun)
-  const logoPosRef = useRef(logoPos)
-  useEffect(() => { logoPosRef.current = logoPos }, [logoPos])
-  const arrastreRef = useRef<{ dx: number; dy: number } | null>(null)
-  const coordsCanvas = (e: React.PointerEvent) => {
-    const c = canvasRef.current!
-    const r = c.getBoundingClientRect()
-    return { x: (e.clientX - r.left) * (ANCHO / r.width), y: (e.clientY - r.top) * (ALTO / r.height) }
-  }
-  const onLogoDown = (e: React.PointerEvent) => {
-    const logo = logoImgRef.current
-    if (!logo || escena === "letra") return // el logo movible es de las escenas con cámara
-    const { x, y } = coordsCanvas(e)
-    const lw = logoTam, lh = logo.height * (lw / logo.width)
-    if (x >= logoPos.x && x <= logoPos.x + lw && y >= logoPos.y && y <= logoPos.y + lh) {
-      arrastreRef.current = { dx: x - logoPos.x, dy: y - logoPos.y }
-      try { (e.target as HTMLElement).setPointerCapture(e.pointerId) } catch {}
-    }
-  }
-  const onLogoMove = (e: React.PointerEvent) => {
-    if (!arrastreRef.current) return
-    const logo = logoImgRef.current
-    const lw = logoTam, lh = logo ? logo.height * (lw / logo.width) : lw
-    const { x, y } = coordsCanvas(e)
-    setLogoPos({
-      x: Math.max(0, Math.min(ANCHO - lw, x - arrastreRef.current.dx)),
-      y: Math.max(0, Math.min(ALTO - lh, y - arrastreRef.current.dy)),
-    })
-  }
-  const onLogoUp = () => {
-    if (!arrastreRef.current) return
-    arrastreRef.current = null
-    try { localStorage.setItem("en-vivo-logo-pos", JSON.stringify(logoPosRef.current)) } catch {}
-  }
 
   // Datos de la iglesia (logo + nombre) desde la configuración, no del socket:
   // así el logo nuevo que subes en Config se refleja al tiro.
@@ -136,11 +110,11 @@ export default function EnVivoPage() {
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360 })
   useEffect(() => {
     const bibliaTexto = biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : ""
-    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva }
-  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva])
+    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam }
+  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam])
 
   // ── Cargar la imagen proyectada (para la escena de contenido) ───────────────
   useEffect(() => {
@@ -157,7 +131,7 @@ export default function EnVivoPage() {
     if (!logoUrl) { logoImgRef.current = null; return }
     const img = new Image()
     img.crossOrigin = "anonymous" // necesario para no "manchar" el lienzo al transmitir
-    img.onload = () => { logoImgRef.current = img }
+    img.onload = () => { logoImgRef.current = img; setLogoAspecto(img.height / img.width || 1) }
     img.onerror = () => { logoImgRef.current = null }
     img.src = logoUrl
   }, [logoUrl])
@@ -230,7 +204,7 @@ export default function EnVivoPage() {
     if (!camara2Id) {
       stream2Ref.current?.getTracks().forEach(t => t.stop()); stream2Ref.current = null
       if (video2Ref.current) video2Ref.current.srcObject = null
-      setCamaraActiva(a => (a === 2 ? 1 : a)) // si estaba al aire, volver a la 1
+      setCamaraActiva(1) // sin cámara 2, volver a la 1
       return
     }
     const iniciar = async () => {
@@ -412,6 +386,18 @@ export default function EnVivoPage() {
             const w = v.videoWidth * escala, h = v.videoHeight * escala
             ctx.drawImage(v, (ANCHO - w) / 2, (ALTO - h) / 2, w, h)
           }
+          // Cámara 2 como recuadro (PiP) cuando el modo es "ambas".
+          if (cont.camaraActiva === "ambas" && v2 && v2.videoWidth > 0) {
+            const { x, y } = cont.pipPos, pw = cont.pipTam, ph = pw * 9 / 16
+            ctx.save()
+            redondear(ctx, x, y, pw, ph, 12); ctx.clip()
+            const es = Math.max(pw / v2.videoWidth, ph / v2.videoHeight)
+            const w = v2.videoWidth * es, h = v2.videoHeight * es
+            ctx.drawImage(v2, x + (pw - w) / 2, y + (ph - h) / 2, w, h)
+            ctx.restore()
+            ctx.strokeStyle = "rgba(255,255,255,0.9)"; ctx.lineWidth = 3
+            redondear(ctx, x, y, pw, ph, 12); ctx.stroke()
+          }
           // Nombre de la iglesia (centrado arriba, elegante)
           dibujarNombreCentrado(ctx, cont.nombre)
           // Contenido abajo solo en "camara-letra" (letra o versículo)
@@ -525,8 +511,24 @@ export default function EnVivoPage() {
         {/* Vista previa (lo que saldría al aire) */}
         <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", border: `1px solid ${C.borde}`, background: "#000", aspectRatio: "16 / 9" }}>
           <canvas ref={canvasRef} width={ANCHO} height={ALTO}
-            onPointerDown={onLogoDown} onPointerMove={onLogoMove} onPointerUp={onLogoUp}
-            style={{ width: "100%", height: "100%", display: "block", cursor: escena === "letra" ? "default" : "grab", touchAction: "none" }} />
+            style={{ width: "100%", height: "100%", display: "block" }} />
+
+          {/* Editor: manijas para mover/redimensionar objetos (solo escenas con
+              cámara). Es HTML sobre el lienzo → NO sale al aire. */}
+          {escena !== "letra" && (
+            <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+              {logoImgRef.current && (
+                <ObjetoEditable etiqueta="Logo" pos={logoPos} w={logoTam} h={logoTam * logoAspecto}
+                  minW={60} maxW={520}
+                  onChange={(p, w) => { setLogoPos(p); setLogoTam(Math.round(w)) }} />
+              )}
+              {camaraActiva === "ambas" && camara2Id && (
+                <ObjetoEditable etiqueta="Cámara 2" pos={pipPos} w={pipTam} h={pipTam * 9 / 16}
+                  minW={160} maxW={900}
+                  onChange={(p, w) => { setPipPos(p); setPipTam(Math.round(w)) }} />
+              )}
+            </div>
+          )}
           {/* etiqueta: vista previa o EN VIVO con cronómetro */}
           <div style={{ position: "absolute", top: 10, left: 10, display: "flex", alignItems: "center", gap: 8, padding: "5px 11px", borderRadius: 99, fontSize: 11.5, fontWeight: 800, color: "#fff", backdropFilter: "blur(4px)", background: txEstado === "vivo" ? "rgba(220,38,38,.85)" : "rgba(0,0,0,.55)" }}>
             <span style={{ width: 8, height: 8, borderRadius: 99, background: txEstado === "vivo" ? "#fff" : "#4ade80", boxShadow: txEstado === "vivo" ? "0 0 6px #fff" : "none" }} />
@@ -587,11 +589,11 @@ export default function EnVivoPage() {
           {camara2Id && (
             <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.borde}` }}>
               <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Cámara al aire</div>
-              <div style={{ fontSize: 12, color: C.tenue, marginBottom: 12 }}>Cambia entre cámaras en vivo — el audio no se corta.</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                {([[1, "🎥 Cámara 1"], [2, "📱 Cámara 2"]] as const).map(([n, txt]) => (
-                  <button key={n} onClick={() => setCamaraActiva(n)} style={{
-                    padding: "13px 10px", borderRadius: 12, cursor: "pointer", fontWeight: 800, fontSize: 14,
+              <div style={{ fontSize: 12, color: C.tenue, marginBottom: 12 }}>Cambia en vivo (el audio no se corta). “Ambas” pone la Cámara 2 como recuadro movible.</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                {([[1, "🎥 Cámara 1"], [2, "📱 Cámara 2"], ["ambas", "🎥+📱 Ambas"]] as const).map(([n, txt]) => (
+                  <button key={String(n)} onClick={() => setCamaraActiva(n)} style={{
+                    padding: "13px 8px", borderRadius: 12, cursor: "pointer", fontWeight: 800, fontSize: 13.5,
                     background: camaraActiva === n ? "rgba(220,38,38,0.16)" : C.panel2,
                     border: `1.5px solid ${camaraActiva === n ? C.rojo : C.borde}`,
                     color: camaraActiva === n ? "#fca5a5" : C.texto,
@@ -773,6 +775,51 @@ export default function EnVivoPage() {
           Para una transmisión estable, conéctate por <strong style={{ color: C.suave }}>cable de red</strong> (no WiFi) y con buena subida de internet.
         </div>
       </div>
+    </div>
+  )
+}
+
+// Recuadro editable (mover + redimensionar) sobre la vista previa. Es HTML, no
+// se dibuja en el lienzo → las manijas NO salen al aire. Coordenadas en el
+// espacio del lienzo (1280×720); se posiciona en % del contenedor.
+function ObjetoEditable({ pos, w, h, onChange, etiqueta, minW = 60, maxW = ANCHO }: {
+  pos: { x: number; y: number }; w: number; h: number
+  onChange: (p: { x: number; y: number }, w: number) => void
+  etiqueta: string; minW?: number; maxW?: number
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const est = useRef<{ modo: "mover" | "escalar"; px: number; py: number; x: number; y: number; w: number } | null>(null)
+  const rectCont = () => ref.current?.parentElement?.getBoundingClientRect()
+
+  const iniciar = (modo: "mover" | "escalar") => (e: React.PointerEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    est.current = { modo, px: e.clientX, py: e.clientY, x: pos.x, y: pos.y, w }
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch {}
+  }
+  const mover = (e: React.PointerEvent) => {
+    if (!est.current) return
+    const r = rectCont(); if (!r) return
+    const dx = (e.clientX - est.current.px) * (ANCHO / r.width)
+    const dy = (e.clientY - est.current.py) * (ALTO / r.height)
+    if (est.current.modo === "mover") {
+      onChange({ x: Math.max(0, Math.min(ANCHO - w, est.current.x + dx)), y: Math.max(0, Math.min(ALTO - h, est.current.y + dy)) }, w)
+    } else {
+      onChange(pos, Math.max(minW, Math.min(maxW, est.current.w + dx)))
+    }
+  }
+  const soltar = (e: React.PointerEvent) => { est.current = null; try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId) } catch {} }
+
+  return (
+    <div ref={ref} onPointerDown={iniciar("mover")} onPointerMove={mover} onPointerUp={soltar}
+      style={{
+        position: "absolute", left: `${pos.x / ANCHO * 100}%`, top: `${pos.y / ALTO * 100}%`,
+        width: `${w / ANCHO * 100}%`, height: `${h / ALTO * 100}%`,
+        border: "1.5px dashed rgba(147,197,253,0.95)", borderRadius: 6, cursor: "move",
+        boxSizing: "border-box", pointerEvents: "auto", touchAction: "none",
+      }}>
+      <span style={{ position: "absolute", top: -19, left: 0, fontSize: 10, fontWeight: 700, color: "#93c5fd", background: "rgba(0,0,0,0.55)", padding: "1px 6px", borderRadius: 4, whiteSpace: "nowrap" }}>{etiqueta}</span>
+      <div onPointerDown={iniciar("escalar")} onPointerMove={mover} onPointerUp={soltar}
+        style={{ position: "absolute", right: -9, bottom: -9, width: 18, height: 18, borderRadius: 5, background: "#2563eb", border: "2px solid #fff", cursor: "nwse-resize", touchAction: "none" }} />
     </div>
   )
 }
