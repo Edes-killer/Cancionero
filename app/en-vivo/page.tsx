@@ -39,6 +39,10 @@ export default function EnVivoPage() {
   const [escena, setEscena] = useState<Escena>("camara-letra")
   const [reintento, setReintento] = useState(0)
 
+  // Mensaje en vivo (banner que el operador escribe y muestra sobre todo)
+  const [mensajeVivo, setMensajeVivo] = useState("")
+  const [mostrarMensaje, setMostrarMensaje] = useState(false)
+
   // Datos de la iglesia (logo + nombre) desde la configuración, no del socket:
   // así el logo nuevo que subes en Config se refleja al tiro.
   const { logoUrl: logoIglesia, nombreIglesia } = useApp()
@@ -79,11 +83,11 @@ export default function EnVivoPage() {
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "" })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "" })
   useEffect(() => {
     const bibliaTexto = biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : ""
-    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "" }
-  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia])
+    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "" }
+  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo])
 
   // ── Cargar la imagen proyectada (para la escena de contenido) ───────────────
   useEffect(() => {
@@ -302,8 +306,10 @@ export default function EnVivoPage() {
 
         ctx.fillStyle = "#000"; ctx.fillRect(0, 0, ANCHO, ALTO)
 
+        const hayMensaje = !!cont.mensaje
+
         if (esLetra) {
-          // Escena "Letra/Contenido": diapositiva con fondo, SIN cámara.
+          // Escena "Proyección": diapositiva con fondo, SIN cámara.
           dibujarFondoBrandeado(ctx)
           if (imagen) {
             dibujarImagenContenida(ctx, imagen)
@@ -327,13 +333,16 @@ export default function EnVivoPage() {
             ctx.drawImage(logo, ANCHO - lw - 30, 26, lw, lh)
             ctx.globalAlpha = 1
           }
-          // Nombre de la iglesia (arriba a la izquierda, elegante)
-          dibujarNombreIglesia(ctx, cont.nombre)
+          // Nombre de la iglesia (centrado arriba, elegante)
+          dibujarNombreCentrado(ctx, cont.nombre)
           // Contenido abajo solo en "camara-letra" (letra o versículo)
           if (cont.escena === "camara-letra" && textoContenido.trim()) {
-            dibujarRotuloInferior(ctx, textoContenido, tituloContenido, tonoContenido)
+            dibujarRotuloInferior(ctx, textoContenido, tituloContenido, tonoContenido, hayMensaje ? 84 : 0)
           }
         }
+
+        // Mensaje en vivo: banner abajo, sobre todas las escenas.
+        if (hayMensaje) dibujarMensaje(ctx, cont.mensaje)
       } catch (e) {
         console.error("Error dibujando fotograma:", e)
       }
@@ -492,7 +501,7 @@ export default function EnVivoPage() {
               {([
                 ["camara", "🎥 Cámara", "Solo la cámara"],
                 ["camara-letra", "🎥 + 📝 Letra", "Letra sobre la cámara"],
-                ["letra", "📝 Letra", "Diapositiva, sin cámara"],
+                ["letra", "📺 Proyección", "Letra, imagen o versículo"],
               ] as const).map(([id, txt, sub]) => (
                 <button key={id} onClick={() => setEscena(id)} style={{
                   padding: "12px 10px", borderRadius: 12, cursor: "pointer", textAlign: "center",
@@ -504,6 +513,24 @@ export default function EnVivoPage() {
                   <div style={{ fontSize: 10.5, color: escena === id ? "#93c5fd" : C.tenue, marginTop: 3 }}>{sub}</div>
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Mensaje en vivo */}
+          <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.borde}` }}>
+            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Mensaje en vivo</div>
+            <div style={{ fontSize: 12, color: C.tenue, marginBottom: 12 }}>Un texto que aparece abajo, sobre cualquier escena (ej. “Bienvenidos”, “Ofrenda por transferencia…”).</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <input value={mensajeVivo} onChange={e => setMensajeVivo(e.target.value)}
+                placeholder="Escribe el mensaje…"
+                style={{ ...selectEstilo, marginTop: 0, flex: 1, minWidth: 200 }} />
+              <button onClick={() => setMostrarMensaje(v => !v)} disabled={!mensajeVivo.trim() && !mostrarMensaje}
+                style={botonBase({
+                  background: mostrarMensaje ? C.rojo : C.verde, color: "#fff",
+                  opacity: (!mensajeVivo.trim() && !mostrarMensaje) ? 0.5 : 1,
+                })}>
+                {mostrarMensaje ? "Ocultar" : "Mostrar"}
+              </button>
             </div>
           </div>
         </div>
@@ -630,7 +657,9 @@ function limpiarTexto(texto: string): string {
 }
 
 // ── Dibujo del rótulo inferior con la letra ────────────────────────────────────
-function dibujarRotuloInferior(ctx: CanvasRenderingContext2D, texto: string, titulo: string, tono: string) {
+// offsetY: cuánto subir el rótulo (para dejar espacio al mensaje en vivo abajo).
+function dibujarRotuloInferior(ctx: CanvasRenderingContext2D, texto: string, titulo: string, tono: string, offsetY = 0) {
+  const BASE = ALTO - offsetY
   // Preparar las líneas (respetando saltos del texto + ajuste por ancho)
   const maxAncho = ANCHO - 160
   const tamano = 44
@@ -647,11 +676,11 @@ function dibujarRotuloInferior(ctx: CanvasRenderingContext2D, texto: string, tit
   const altoBloque = mostradas.length * alturaLinea + padY * 2
 
   // Degradado inferior para legibilidad
-  const grad = ctx.createLinearGradient(0, ALTO - altoBloque - 60, 0, ALTO)
+  const grad = ctx.createLinearGradient(0, BASE - altoBloque - 60, 0, BASE)
   grad.addColorStop(0, "rgba(0,0,0,0)")
   grad.addColorStop(1, "rgba(0,0,0,0.78)")
   ctx.fillStyle = grad
-  ctx.fillRect(0, ALTO - altoBloque - 60, ANCHO, altoBloque + 60)
+  ctx.fillRect(0, BASE - altoBloque - 60, ANCHO, altoBloque + 60)
 
   // Título + tono (arriba del rótulo)
   if (titulo) {
@@ -659,7 +688,7 @@ function dibujarRotuloInferior(ctx: CanvasRenderingContext2D, texto: string, tit
     ctx.fillStyle = "rgba(255,255,255,0.72)"
     ctx.textAlign = "center"
     const etiqueta = tono ? `${titulo.toUpperCase()}  ·  ${tono}` : titulo.toUpperCase()
-    ctx.fillText(etiqueta, ANCHO / 2, ALTO - altoBloque - 6)
+    ctx.fillText(etiqueta, ANCHO / 2, BASE - altoBloque - 6)
   }
 
   // Letra
@@ -668,7 +697,7 @@ function dibujarRotuloInferior(ctx: CanvasRenderingContext2D, texto: string, tit
   ctx.textBaseline = "alphabetic"
   ctx.shadowColor = "rgba(0,0,0,0.85)"
   ctx.shadowBlur = 8
-  let y = ALTO - altoBloque + padY + tamano
+  let y = BASE - altoBloque + padY + tamano
   for (const l of mostradas) {
     ctx.fillStyle = "#ffffff"
     ctx.fillText(l, ANCHO / 2, y)
@@ -792,21 +821,47 @@ function dibujarCabecera(ctx: CanvasRenderingContext2D, nombre: string, titulo: 
   ctx.restore()
 }
 
-// Nombre de la iglesia arriba-izquierda para las escenas con cámara (pastilla).
-function dibujarNombreIglesia(ctx: CanvasRenderingContext2D, nombre: string) {
+// Nombre de la iglesia centrado arriba, elegante (línea de acento ámbar debajo).
+function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string) {
   if (!nombre) return
   ctx.save()
-  ctx.font = "700 26px 'Segoe UI', system-ui, sans-serif"
   const texto = nombre.toUpperCase()
+  const y = 52
+  ctx.textAlign = "center"; ctx.textBaseline = "middle"
+  ctx.font = "700 30px 'Segoe UI', system-ui, sans-serif"
+  try { (ctx as any).letterSpacing = "3px" } catch {}
+  ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = 10
+  ctx.fillStyle = "rgba(255,255,255,0.96)"
+  ctx.fillText(texto, ANCHO / 2, y)
   const w = ctx.measureText(texto).width
-  const px = 34, py = 28, h = 46
-  ctx.fillStyle = "rgba(0,0,0,0.42)"
-  redondear(ctx, px, py, w + 50, h, 23); ctx.fill()
+  try { (ctx as any).letterSpacing = "0px" } catch {}
+  ctx.shadowBlur = 0
+  // Línea de acento ámbar debajo del nombre
+  const lineaW = Math.min(w * 0.5, 130)
   ctx.fillStyle = C.ambar
-  redondear(ctx, px + 16, py + 13, 5, h - 26, 2.5); ctx.fill()
-  ctx.fillStyle = "rgba(255,255,255,0.95)"
-  ctx.textAlign = "left"; ctx.textBaseline = "middle"
-  ctx.fillText(texto, px + 32, py + h / 2 + 1)
+  redondear(ctx, ANCHO / 2 - lineaW / 2, y + 24, lineaW, 4, 2); ctx.fill()
+  ctx.restore()
+}
+
+// Mensaje en vivo: banner inferior sobre todas las escenas.
+function dibujarMensaje(ctx: CanvasRenderingContext2D, texto: string) {
+  ctx.save()
+  const h = 72, y = ALTO - h
+  // Fondo del banner
+  const g = ctx.createLinearGradient(0, y, 0, ALTO)
+  g.addColorStop(0, "rgba(120,53,15,0.92)"); g.addColorStop(1, "rgba(146,64,14,0.92)")
+  ctx.fillStyle = g; ctx.fillRect(0, y, ANCHO, h)
+  // Línea de acento arriba
+  ctx.fillStyle = C.ambar; ctx.fillRect(0, y, ANCHO, 4)
+  // Texto (ajustado a una línea; si es muy largo se achica)
+  let tam = 32
+  ctx.textAlign = "center"; ctx.textBaseline = "middle"
+  ctx.fillStyle = "#fff"
+  const maxW = ANCHO - 120
+  ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif`
+  while (ctx.measureText(texto).width > maxW && tam > 18) { tam -= 2; ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif` }
+  ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 6
+  ctx.fillText(texto, ANCHO / 2, y + h / 2 + 2)
   ctx.restore()
 }
 
