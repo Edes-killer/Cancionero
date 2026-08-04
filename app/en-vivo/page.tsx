@@ -49,6 +49,8 @@ export default function EnVivoPage() {
   const [partes, setPartes] = useState<any[]>([]) // cada parte es un objeto { texto_letra|texto, tipo }
   const [index, setIndex] = useState(0)
   const [imagenUrl, setImagenUrl] = useState<string | null>(null) // imagen proyectada (no video)
+  const [biblia, setBiblia] = useState<any>(null)                 // versículo proyectado
+  const [paginaBiblia, setPaginaBiblia] = useState(0)
   const [logoSocket, setLogoSocket] = useState("")
   const [conectadoSala, setConectadoSala] = useState(false)
 
@@ -77,10 +79,11 @@ export default function EnVivoPage() {
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "" })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "" })
   useEffect(() => {
-    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia }
-  }, [titulo, tono, partes, index, escena, nombreIglesia])
+    const bibliaTexto = biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : ""
+    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "" }
+  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia])
 
   // ── Cargar la imagen proyectada (para la escena de contenido) ───────────────
   useEffect(() => {
@@ -173,17 +176,22 @@ export default function EnVivoPage() {
     const s = io(getSocketUrl(), { reconnection: true, reconnectionAttempts: 10, reconnectionDelay: 1000 })
 
     const aplicarCancion = (d: any) => {
-      setImagenUrl(null)
+      setImagenUrl(null); setBiblia(null)
       setPartes(d.partes || []); setIndex(d.index || 0)
       setTitulo(d.titulo || ""); setTono(d.tono || "")
       if (d.logo_marca_url) setLogoSocket(d.logo_marca_url)
     }
     const aplicarImagen = (d: any) => {
       // Solo imágenes (no videos): el video no se puede dibujar en el lienzo aquí.
-      setPartes([]); setTitulo(""); setTono(""); setIndex(0)
+      setPartes([]); setTitulo(""); setTono(""); setIndex(0); setBiblia(null)
       setImagenUrl(d?.video ? null : (d?.url || null))
     }
-    const limpiar = () => { setPartes([]); setTitulo(""); setTono(""); setIndex(0); setImagenUrl(null) }
+    const aplicarBiblia = (d: any) => {
+      setPartes([]); setTitulo(""); setTono(""); setIndex(0); setImagenUrl(null)
+      setBiblia(d || null); setPaginaBiblia(d?.pagina || 0)
+      if (d?.logo_marca_url) setLogoSocket(d.logo_marca_url)
+    }
+    const limpiar = () => { setPartes([]); setTitulo(""); setTono(""); setIndex(0); setImagenUrl(null); setBiblia(null) }
 
     s.on("connect", async () => {
       if (!activo) return
@@ -198,12 +206,14 @@ export default function EnVivoPage() {
       if (!activo) return
       if (estado.tipo === "cancion") aplicarCancion(estado.data || {})
       else if (estado.tipo === "imagen") aplicarImagen(estado.data || {})
-      else limpiar() // biblia / estado especial: por ahora sin contenido
+      else if (estado.tipo === "biblia") aplicarBiblia(estado.data || {})
+      else limpiar() // estado especial (cuenta regresiva, mensaje): por ahora sin contenido
     })
     s.on("cargar-cancion", (d: any) => { if (activo) aplicarCancion(d || {}) })
     s.on("cambiar-parte", (i: number) => { if (activo) setIndex(i) })
     s.on("mostrar-imagen", (d: any) => { if (activo) aplicarImagen(d || {}) })
-    s.on("mostrar-biblia", () => { if (activo) limpiar() })
+    s.on("mostrar-biblia", (d: any) => { if (activo) aplicarBiblia(d || {}) })
+    s.on("cambiar-pagina-biblia", (p: number) => { if (activo) setPaginaBiblia(p) })
     s.on("mostrar-estado", () => { if (activo) limpiar() })
 
     return () => { activo = false; s.disconnect() }
@@ -266,22 +276,27 @@ export default function EnVivoPage() {
         const v = videoRef.current
         const logo = logoImgRef.current
         const imagen = imagenImgRef.current
-        const parte = limpiarLetra(cont.partes[cont.index])
         const esLetra = cont.escena === "letra"
+
+        // Contenido activo: prioridad imagen > biblia > letra de canción.
+        const hayBiblia = !!cont.bibliaTexto.trim()
+        const textoContenido = hayBiblia ? cont.bibliaTexto : limpiarLetra(cont.partes[cont.index])
+        const tituloContenido = hayBiblia ? cont.bibliaRef : cont.titulo
+        const tonoContenido = hayBiblia ? "" : cont.tono
 
         ctx.fillStyle = "#000"; ctx.fillRect(0, 0, ANCHO, ALTO)
 
         if (esLetra) {
-          // Escena "Letra": diapositiva con fondo, SIN cámara.
+          // Escena "Letra/Contenido": diapositiva con fondo, SIN cámara.
           dibujarFondoBrandeado(ctx)
           if (imagen) {
             dibujarImagenContenida(ctx, imagen)
-          } else if (parte.trim()) {
-            dibujarDiapositivaLetra(ctx, parte)
+          } else if (textoContenido.trim()) {
+            dibujarDiapositivaLetra(ctx, textoContenido)
           } else {
             dibujarEspera(ctx, cont.nombre, logo)
           }
-          dibujarCabecera(ctx, cont.nombre, cont.titulo, cont.tono, logo)
+          dibujarCabecera(ctx, cont.nombre, tituloContenido, tonoContenido, logo)
         } else {
           // Escenas con cámara ("camara" y "camara-letra").
           if (v && v.videoWidth > 0) {
@@ -289,18 +304,18 @@ export default function EnVivoPage() {
             const w = v.videoWidth * escala, h = v.videoHeight * escala
             ctx.drawImage(v, (ANCHO - w) / 2, (ALTO - h) / 2, w, h)
           }
-          // Logo marca de agua (arriba a la derecha)
-          if (logo) {
-            const lw = 108, lh = logo.height * (lw / logo.width)
-            ctx.globalAlpha = 0.9
-            ctx.drawImage(logo, ANCHO - lw - 34, 28, lw, lh)
+          // Logo marca de agua (arriba a la derecha) — grande para que se note
+          if (logo && logo.width > 0) {
+            const lw = 168, lh = logo.height * (lw / logo.width)
+            ctx.globalAlpha = 0.95
+            ctx.drawImage(logo, ANCHO - lw - 30, 26, lw, lh)
             ctx.globalAlpha = 1
           }
-          // Nombre de la iglesia (abajo a la izquierda, elegante)
+          // Nombre de la iglesia (arriba a la izquierda, elegante)
           dibujarNombreIglesia(ctx, cont.nombre)
-          // Letra abajo solo en "camara-letra"
-          if (cont.escena === "camara-letra" && parte.trim()) {
-            dibujarRotuloInferior(ctx, parte, cont.titulo, cont.tono)
+          // Contenido abajo solo en "camara-letra" (letra o versículo)
+          if (cont.escena === "camara-letra" && textoContenido.trim()) {
+            dibujarRotuloInferior(ctx, textoContenido, tituloContenido, tonoContenido)
           }
         }
       } catch (e) {
@@ -450,7 +465,10 @@ export default function EnVivoPage() {
               <div style={{ fontSize: 14, fontWeight: 700 }}>Escena al aire</div>
               <div style={{ fontSize: 12, color: C.tenue }}>
                 {conectadoSala
-                  ? (titulo ? `Proyectando: ${titulo}${tono ? ` · ${tono}` : ""}` : imagenUrl ? "Proyectando una imagen" : "Sin proyección activa")
+                  ? (biblia?.referencia ? `Proyectando: ${biblia.referencia}`
+                    : titulo ? `Proyectando: ${titulo}${tono ? ` · ${tono}` : ""}`
+                    : imagenUrl ? "Proyectando una imagen"
+                    : "Sin proyección activa")
                   : "Conectando con la proyección…"}
               </div>
             </div>
@@ -582,6 +600,19 @@ function limpiarLetra(p: any): string {
     .split("\n").map((l: string) => l.replace(/\s+/g, " ").trim()).filter(Boolean).join("\n")
 }
 
+// Limpia texto suelto (versículo bíblico): quita HTML/acordes y lo deja en un
+// solo párrafo (el ajuste por ancho lo reparte en líneas).
+function limpiarTexto(texto: string): string {
+  if (typeof texto !== "string") return ""
+  return texto
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\[[^\]]*\]/g, "")
+    .replace(/\\n|\/n/g, " ")
+    .replace(/\r?\n|\r/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
 // ── Dibujo del rótulo inferior con la letra ────────────────────────────────────
 function dibujarRotuloInferior(ctx: CanvasRenderingContext2D, texto: string, titulo: string, tono: string) {
   // Preparar las líneas (respetando saltos del texto + ajuste por ancho)
@@ -700,8 +731,8 @@ function dibujarDiapositivaLetra(ctx: CanvasRenderingContext2D, texto: string) {
 function dibujarEspera(ctx: CanvasRenderingContext2D, nombre: string, logo: HTMLImageElement | null) {
   let cy = ALTO / 2
   if (logo && logo.width > 0) {
-    const lw = 180, lh = logo.height * (lw / logo.width)
-    ctx.globalAlpha = 0.95
+    const lw = 260, lh = logo.height * (lw / logo.width)
+    ctx.globalAlpha = 0.97
     ctx.drawImage(logo, (ANCHO - lw) / 2, cy - lh - 20, lw, lh)
     ctx.globalAlpha = 1
     cy += 12
@@ -720,14 +751,14 @@ function dibujarCabecera(ctx: CanvasRenderingContext2D, nombre: string, titulo: 
   ctx.save()
   ctx.shadowColor = "rgba(0,0,0,0.55)"; ctx.shadowBlur = 8
   ctx.textBaseline = "middle"
-  const yc = 52
+  const yc = 58
   let x = 40
   if (logo && logo.width > 0) {
-    const lh = 52, lw = logo.width * (lh / logo.height)
-    ctx.globalAlpha = 0.95
+    const lh = 72, lw = logo.width * (lh / logo.height)
+    ctx.globalAlpha = 0.97
     ctx.drawImage(logo, x, yc - lh / 2, lw, lh)
     ctx.globalAlpha = 1
-    x += lw + 16
+    x += lw + 18
   }
   if (nombre) {
     ctx.textAlign = "left"
