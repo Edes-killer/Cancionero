@@ -58,15 +58,18 @@ function construirArgsFFmpeg(encoder, rtmpUrl) {
   // -loglevel warning + stats cada 5s: vemos problemas reales (cortes,
   // "Broken pipe", "Connection reset") y si el PC va al día (speed≈1.0x).
   const base = ["-hide_banner", "-loglevel", "warning", "-stats", "-stats_period", "5", "-fflags", "+genpts", "-i", "pipe:0"]
+  // Keyframe cada 2s POR TIEMPO real: aunque el PC entregue pocos fps, el
+  // keyframe llega a tiempo y la plataforma no corta (era la causa de los cortes).
+  const kf = ["-force_key_frames", "expr:gte(t,n_forced*2)"]
   let video
   if (encoder === "h264_qsv") {
-    video = ["-c:v", "h264_qsv", "-b:v", "2500k", "-maxrate", "2500k", "-bufsize", "5000k", "-g", "60", "-look_ahead", "0"]
+    video = ["-c:v", "h264_qsv", "-b:v", "2500k", "-maxrate", "2500k", "-bufsize", "5000k", "-g", "60", "-look_ahead", "0", ...kf]
   } else if (encoder === "h264_mf") {
-    video = ["-c:v", "h264_mf", "-b:v", "2500k", "-g", "60"]
+    video = ["-c:v", "h264_mf", "-b:v", "2500k", "-g", "60", ...kf]
   } else {
     video = [
       "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-pix_fmt", "yuv420p",
-      "-g", "60", "-keyint_min", "60", "-force_key_frames", "expr:gte(t,n_forced*2)",
+      "-g", "60", "-keyint_min", "60", ...kf,
       "-b:v", "2500k", "-maxrate", "2500k", "-bufsize", "5000k",
     ]
   }

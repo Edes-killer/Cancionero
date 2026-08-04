@@ -292,8 +292,16 @@ export default function EnVivoPage() {
 
     setLogsTx([])
     setTxEstado("conectando")
-    const mime = ["video/webm;codecs=vp8,opus", "video/webm;codecs=vp9,opus", "video/webm"]
-      .find(m => (window as any).MediaRecorder?.isTypeSupported?.(m)) || "video/webm"
+    // Preferir H264 (lo puede comprimir la tarjeta gráfica → más fps en el i3);
+    // VP8 es por software y ahoga los PC lentos (~10fps). ffmpeg lee cualquiera.
+    const mime = [
+      "video/x-matroska;codecs=avc1,opus",
+      "video/mp4;codecs=avc1,mp4a.40.2",
+      "video/webm;codecs=h264,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm",
+    ].find(m => (window as any).MediaRecorder?.isTypeSupported?.(m)) || "video/webm"
+    setLogsTx(prev => [...prev, `▶ formato de captura: ${mime}`])
 
     const res = await tx.iniciar({ rtmpUrl })
     if (!res?.ok) { setTxEstado("error"); setErrorTx(res?.error || "No se pudo iniciar la transmisión."); return }
