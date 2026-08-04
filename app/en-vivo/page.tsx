@@ -33,6 +33,8 @@ export default function EnVivoPage() {
   const [camaras, setCamaras] = useState<Disp[]>([])
   const [micros, setMicros] = useState<Disp[]>([])
   const [camaraId, setCamaraId] = useState<string>("")
+  const [camara2Id, setCamara2Id] = useState<string>("") // 2da cámara (opcional)
+  const [camaraActiva, setCamaraActiva] = useState<1 | 2>(1) // cuál está al aire
   const [microId, setMicroId] = useState<string>("")
   const [permiso, setPermiso] = useState<"pidiendo" | "ok" | "denegado">("pidiendo")
   const [errorCam, setErrorCam] = useState<string | null>(null)
@@ -124,19 +126,21 @@ export default function EnVivoPage() {
   useEffect(() => { txEstadoRef.current = txEstado }, [txEstado])
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const video2Ref = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)   // cámara 1 (trae el audio)
+  const stream2Ref = useRef<MediaStream | null>(null)  // cámara 2 (solo video)
   const logoImgRef = useRef<HTMLImageElement | null>(null)
   const imagenImgRef = useRef<HTMLImageElement | null>(null)
   const rafRef = useRef<number>(0)
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168 })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 })
   useEffect(() => {
     const bibliaTexto = biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : ""
-    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam }
-  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam])
+    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva }
+  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva])
 
   // ── Cargar la imagen proyectada (para la escena de contenido) ───────────────
   useEffect(() => {
@@ -220,8 +224,39 @@ export default function EnVivoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camaraId, microId, reintento])
 
-  // Detener la cámara al salir de la pantalla
-  useEffect(() => () => { streamRef.current?.getTracks().forEach(t => t.stop()) }, [])
+  // ── Cámara 2 (opcional, solo video) — para multicámara ──────────────────────
+  useEffect(() => {
+    let cancelado = false
+    if (!camara2Id) {
+      stream2Ref.current?.getTracks().forEach(t => t.stop()); stream2Ref.current = null
+      if (video2Ref.current) video2Ref.current.srcObject = null
+      setCamaraActiva(a => (a === 2 ? 1 : a)) // si estaba al aire, volver a la 1
+      return
+    }
+    const iniciar = async () => {
+      try {
+        stream2Ref.current?.getTracks().forEach(t => t.stop())
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: camara2Id }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        })
+        if (cancelado) { stream.getTracks().forEach(t => t.stop()); return }
+        stream2Ref.current = stream
+        if (video2Ref.current) {
+          video2Ref.current.srcObject = stream
+          video2Ref.current.muted = true
+          await video2Ref.current.play().catch(() => {})
+        }
+      } catch (e) { console.error("getUserMedia cámara 2:", e) }
+    }
+    iniciar()
+    return () => { cancelado = true }
+  }, [camara2Id, reintento])
+
+  // Detener las cámaras al salir de la pantalla
+  useEffect(() => () => {
+    streamRef.current?.getTracks().forEach(t => t.stop())
+    stream2Ref.current?.getTracks().forEach(t => t.stop())
+  }, [])
 
   // Refrescar la lista cuando conectas/desconectas una cámara (o el celular por
   // app puente) sin tener que reabrir la pantalla.
@@ -342,7 +377,9 @@ export default function EnVivoPage() {
       // congelaba todo). Pase lo que pase, re-agendamos el siguiente fotograma.
       try {
         const cont = contenidoRef.current
-        const v = videoRef.current
+        // Cámara al aire (1 o 2). Si la 2 no está lista, cae a la 1.
+        const v2 = video2Ref.current
+        const v = (cont.camaraActiva === 2 && v2 && v2.videoWidth > 0) ? v2 : videoRef.current
         const logo = logoImgRef.current
         const imagen = imagenImgRef.current
         const esLetra = cont.escena === "letra"
@@ -516,18 +553,28 @@ export default function EnVivoPage() {
         <video ref={videoRef} autoPlay muted playsInline
           onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
           style={{ position: "absolute", width: 2, height: 2, opacity: 0, pointerEvents: "none", left: 0, top: 0 }} />
+        <video ref={video2Ref} autoPlay muted playsInline
+          onLoadedMetadata={() => video2Ref.current?.play().catch(() => {})}
+          style={{ position: "absolute", width: 2, height: 2, opacity: 0, pointerEvents: "none", left: 0, top: 0 }} />
 
         {/* Controles */}
         <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, padding: 20, marginTop: 18 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <label style={{ fontSize: 12.5, color: C.tenue }}>
-              🎥 Cámara
-              <select value={camaraId} onChange={e => setCamaraId(e.target.value)} style={selectEstilo}>
+              🎥 Cámara 1
+              <select value={camaraId} onChange={e => { const val = e.target.value; setCamaraId(val); if (val === camara2Id) setCamara2Id("") }} style={selectEstilo}>
                 {camaras.length === 0 && <option value="">(sin cámaras)</option>}
                 {camaras.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
               </select>
             </label>
             <label style={{ fontSize: 12.5, color: C.tenue }}>
+              📱 Cámara 2 (opcional)
+              <select value={camara2Id} onChange={e => setCamara2Id(e.target.value)} style={selectEstilo}>
+                <option value="">(ninguna)</option>
+                {camaras.filter(c => c.id !== camaraId).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+            </label>
+            <label style={{ fontSize: 12.5, color: C.tenue, gridColumn: "1 / -1" }}>
               🎙️ Micrófono / entrada de audio
               <select value={microId} onChange={e => setMicroId(e.target.value)} style={selectEstilo}>
                 {micros.length === 0 && <option value="">(sin micrófonos)</option>}
@@ -535,6 +582,27 @@ export default function EnVivoPage() {
               </select>
             </label>
           </div>
+
+          {/* Cambio de cámara en vivo (solo si hay 2da cámara) */}
+          {camara2Id && (
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.borde}` }}>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Cámara al aire</div>
+              <div style={{ fontSize: 12, color: C.tenue, marginBottom: 12 }}>Cambia entre cámaras en vivo — el audio no se corta.</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {([[1, "🎥 Cámara 1"], [2, "📱 Cámara 2"]] as const).map(([n, txt]) => (
+                  <button key={n} onClick={() => setCamaraActiva(n)} style={{
+                    padding: "13px 10px", borderRadius: 12, cursor: "pointer", fontWeight: 800, fontSize: 14,
+                    background: camaraActiva === n ? "rgba(220,38,38,0.16)" : C.panel2,
+                    border: `1.5px solid ${camaraActiva === n ? C.rojo : C.borde}`,
+                    color: camaraActiva === n ? "#fca5a5" : C.texto,
+                  }}>
+                    {camaraActiva === n && <span style={{ fontSize: 10, display: "block", fontWeight: 800, marginBottom: 2 }}>● AL AIRE</span>}
+                    {txt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.borde}` }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
