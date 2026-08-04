@@ -170,6 +170,22 @@ export default function EnVivoPage() {
   // Detener la cámara al salir de la pantalla
   useEffect(() => () => { streamRef.current?.getTracks().forEach(t => t.stop()) }, [])
 
+  // Refrescar la lista cuando conectas/desconectas una cámara (o el celular por
+  // app puente) sin tener que reabrir la pantalla.
+  useEffect(() => {
+    const md = navigator.mediaDevices
+    if (!md?.addEventListener) return
+    const actualizar = async () => {
+      try {
+        const ds = await md.enumerateDevices()
+        setCamaras(ds.filter(d => d.kind === "videoinput").map((d, i) => ({ id: d.deviceId, label: d.label || `Cámara ${i + 1}` })))
+        setMicros(ds.filter(d => d.kind === "audioinput").map((d, i) => ({ id: d.deviceId, label: d.label || `Micrófono ${i + 1}` })))
+      } catch {}
+    }
+    md.addEventListener("devicechange", actualizar)
+    return () => md.removeEventListener("devicechange", actualizar)
+  }, [])
+
   // ── Espejo del contenido proyectado (mismo socket que /proyectar) ───────────
   useEffect(() => {
     let activo = true
