@@ -8,6 +8,73 @@ const net = require("net")
 const os = require("os")
 const { spawn } = require("child_process")
 
+// ── Transmisión en vivo (Incremento 2): canvas+audio (webm) → ffmpeg → RTMP ──
+// ffmpeg va empaquetado (ffmpeg-static). En la app empaquetada el binario se
+// desempaqueta del asar (ver asarUnpack en electron-builder.json), por eso hay
+// que corregir la ruta de app.asar → app.asar.unpacked.
+let ffmpegPath = null
+try {
+  ffmpegPath = require("ffmpeg-static")
+  if (ffmpegPath && ffmpegPath.includes("app.asar") && !ffmpegPath.includes("app.asar.unpacked")) {
+    ffmpegPath = ffmpegPath.replace("app.asar", "app.asar.unpacked")
+  }
+} catch (e) { console.error("ffmpeg-static no disponible:", e) }
+let ffmpegProc = null
+
+function registrarIPCTransmision() {
+  // Iniciar: levanta ffmpeg leyendo webm por stdin y empujando a RTMP.
+  ipcMain.handle("transmision:iniciar", async (_e, { rtmpUrl } = {}) => {
+    try {
+      if (!ffmpegPath) return { ok: false, error: "No se encontró ffmpeg dentro de la app." }
+      if (!rtmpUrl || !/^rtmps?:\/\//i.test(rtmpUrl)) return { ok: false, error: "La dirección de transmisión no es válida." }
+      if (ffmpegProc) { try { ffmpegProc.kill("SIGKILL") } catch {} ffmpegProc = null }
+
+      const args = [
+        "-hide_banner", "-loglevel", "error",
+        "-fflags", "+genpts",
+        "-i", "pipe:0",
+        "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency",
+        "-pix_fmt", "yuv420p", "-r", "30", "-g", "60",
+        "-b:v", "2500k", "-maxrate", "2500k", "-bufsize", "5000k",
+        "-c:a", "aac", "-b:a", "128k", "-ar", "44100",
+        "-f", "flv", rtmpUrl,
+      ]
+      const proc = spawn(ffmpegPath, args, { stdio: ["pipe", "ignore", "pipe"] })
+      ffmpegProc = proc
+
+      const enviar = (canal, dato) => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(canal, dato)
+      }
+      proc.stderr.on("data", d => { const m = d.toString(); console.error("[ffmpeg]", m); enviar("transmision:log", m) })
+      proc.on("error", err => { enviar("transmision:estado", { estado: "error", error: err.message }); if (ffmpegProc === proc) ffmpegProc = null })
+      proc.on("close", code => { enviar("transmision:estado", { estado: "terminado", code }); if (ffmpegProc === proc) ffmpegProc = null })
+      proc.stdin.on("error", () => {}) // evitar crash si RTMP corta el pipe
+
+      return { ok: true }
+    } catch (e) { return { ok: false, error: e.message || String(e) } }
+  })
+
+  // Cada trozo de video/audio que llega del renderer → stdin de ffmpeg.
+  ipcMain.on("transmision:chunk", (_e, chunk) => {
+    try {
+      if (ffmpegProc && ffmpegProc.stdin && ffmpegProc.stdin.writable) ffmpegProc.stdin.write(Buffer.from(chunk))
+    } catch { /* el cierre/error del proceso lo maneja */ }
+  })
+
+  // Detener: cerrar stdin para que ffmpeg termine limpio; forzar si se demora.
+  ipcMain.handle("transmision:detener", async () => {
+    try {
+      if (ffmpegProc) {
+        const p = ffmpegProc; ffmpegProc = null
+        try { p.stdin.end() } catch {}
+        setTimeout(() => { try { p.kill("SIGKILL") } catch {} }, 1500)
+      }
+      return { ok: true }
+    } catch (e) { return { ok: false, error: e.message } }
+  })
+}
+registrarIPCTransmision()
+
 // ✅ Single instance lock — necesario para que NSIS pueda cerrar la app al actualizar
 const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
