@@ -123,12 +123,15 @@ export default function EnVivoPage() {
         if (nombre === "NotAllowedError" || nombre === "SecurityError") {
           setPermiso("denegado")
           setErrorCam("No diste permiso a la cámara/micrófono. Actívalo y vuelve a intentar.")
+        } else if (nombre === "NotReadableError" || nombre === "TrackStartError" || nombre === "AbortError") {
+          setPermiso("denegado")
+          setErrorCam("La cámara o el micrófono están siendo usados por otra aplicación (por ejemplo Facebook Live Producer, una videollamada, u otra ventana de Selah). Ciérrala y reintenta.")
         } else if (nombre === "NotFoundError" || nombre === "OverconstrainedError") {
           setPermiso("denegado")
           setErrorCam("No se encontró la cámara seleccionada. Conecta una cámara y reintenta.")
         } else {
           setPermiso("denegado")
-          setErrorCam("No se pudo abrir la cámara. " + (e?.message || ""))
+          setErrorCam("No se pudo abrir la cámara. " + (nombre ? nombre + ": " : "") + (e?.message || ""))
         }
       }
     }
