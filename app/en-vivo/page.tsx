@@ -12,6 +12,9 @@ import { io } from "socket.io-client"
 import { navegarSPA } from "@/lib/navegar"
 import { getSocketUrl } from "@/lib/servidor"
 import { getIglesiaId } from "@/lib/getIglesia"
+import { useApp } from "@/context/AppContext"
+
+type Escena = "camara" | "camara-letra" | "letra"
 
 const C = {
   fondo: "#060d1a", panel: "#111b2e", panel2: "#0d1626",
@@ -33,16 +36,24 @@ export default function EnVivoPage() {
   const [microId, setMicroId] = useState<string>("")
   const [permiso, setPermiso] = useState<"pidiendo" | "ok" | "denegado">("pidiendo")
   const [errorCam, setErrorCam] = useState<string | null>(null)
-  const [mostrarLetra, setMostrarLetra] = useState(true)
+  const [escena, setEscena] = useState<Escena>("camara-letra")
   const [reintento, setReintento] = useState(0)
+
+  // Datos de la iglesia (logo + nombre) desde la configuración, no del socket:
+  // así el logo nuevo que subes en Config se refleja al tiro.
+  const { logoUrl: logoIglesia, nombreIglesia } = useApp()
 
   // Contenido que se está proyectando (espejo por socket)
   const [titulo, setTitulo] = useState("")
   const [tono, setTono] = useState("")
   const [partes, setPartes] = useState<any[]>([]) // cada parte es un objeto { texto_letra|texto, tipo }
   const [index, setIndex] = useState(0)
-  const [logoUrl, setLogoUrl] = useState("")
+  const [imagenUrl, setImagenUrl] = useState<string | null>(null) // imagen proyectada (no video)
+  const [logoSocket, setLogoSocket] = useState("")
   const [conectadoSala, setConectadoSala] = useState(false)
+
+  // El logo: preferir el de la config; si no hay, el que llegue por socket.
+  const logoUrl = logoIglesia || logoSocket
 
   // Transmisión (Incremento 2)
   const [esEscritorio, setEsEscritorio] = useState(false)
@@ -61,14 +72,25 @@ export default function EnVivoPage() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const logoImgRef = useRef<HTMLImageElement | null>(null)
+  const imagenImgRef = useRef<HTMLImageElement | null>(null)
   const rafRef = useRef<number>(0)
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, mostrar: true })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "" })
   useEffect(() => {
-    contenidoRef.current = { titulo, tono, partes, index, mostrar: mostrarLetra }
-  }, [titulo, tono, partes, index, mostrarLetra])
+    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia }
+  }, [titulo, tono, partes, index, escena, nombreIglesia])
+
+  // ── Cargar la imagen proyectada (para la escena de contenido) ───────────────
+  useEffect(() => {
+    if (!imagenUrl) { imagenImgRef.current = null; return }
+    const img = new Image()
+    img.crossOrigin = "anonymous"
+    img.onload = () => { imagenImgRef.current = img }
+    img.onerror = () => { imagenImgRef.current = null }
+    img.src = imagenUrl
+  }, [imagenUrl])
 
   // ── Cargar el logo de la iglesia (para la marca de agua) ────────────────────
   useEffect(() => {
@@ -151,11 +173,17 @@ export default function EnVivoPage() {
     const s = io(getSocketUrl(), { reconnection: true, reconnectionAttempts: 10, reconnectionDelay: 1000 })
 
     const aplicarCancion = (d: any) => {
+      setImagenUrl(null)
       setPartes(d.partes || []); setIndex(d.index || 0)
       setTitulo(d.titulo || ""); setTono(d.tono || "")
-      setLogoUrl(d.logo_marca_url || "")
+      if (d.logo_marca_url) setLogoSocket(d.logo_marca_url)
     }
-    const limpiar = () => { setPartes([]); setTitulo(""); setTono(""); setIndex(0) }
+    const aplicarImagen = (d: any) => {
+      // Solo imágenes (no videos): el video no se puede dibujar en el lienzo aquí.
+      setPartes([]); setTitulo(""); setTono(""); setIndex(0)
+      setImagenUrl(d?.video ? null : (d?.url || null))
+    }
+    const limpiar = () => { setPartes([]); setTitulo(""); setTono(""); setIndex(0); setImagenUrl(null) }
 
     s.on("connect", async () => {
       if (!activo) return
@@ -169,11 +197,12 @@ export default function EnVivoPage() {
     s.on("estado-actual", (estado: any) => {
       if (!activo) return
       if (estado.tipo === "cancion") aplicarCancion(estado.data || {})
-      else limpiar() // imagen / biblia / estado especial: sin letra por ahora
+      else if (estado.tipo === "imagen") aplicarImagen(estado.data || {})
+      else limpiar() // biblia / estado especial: por ahora sin contenido
     })
     s.on("cargar-cancion", (d: any) => { if (activo) aplicarCancion(d || {}) })
     s.on("cambiar-parte", (i: number) => { if (activo) setIndex(i) })
-    s.on("mostrar-imagen", () => { if (activo) limpiar() })
+    s.on("mostrar-imagen", (d: any) => { if (activo) aplicarImagen(d || {}) })
     s.on("mostrar-biblia", () => { if (activo) limpiar() })
     s.on("mostrar-estado", () => { if (activo) limpiar() })
 
@@ -233,32 +262,46 @@ export default function EnVivoPage() {
       // Blindado: un error acá NO debe matar el bucle (antes lo mataba y se
       // congelaba todo). Pase lo que pase, re-agendamos el siguiente fotograma.
       try {
+        const cont = contenidoRef.current
         const v = videoRef.current
-        // Fondo negro
+        const logo = logoImgRef.current
+        const imagen = imagenImgRef.current
+        const parte = limpiarLetra(cont.partes[cont.index])
+        const esLetra = cont.escena === "letra"
+
         ctx.fillStyle = "#000"; ctx.fillRect(0, 0, ANCHO, ALTO)
 
-        // Cámara con recorte "cover"
-        if (v && v.videoWidth > 0) {
-          const escala = Math.max(ANCHO / v.videoWidth, ALTO / v.videoHeight)
-          const w = v.videoWidth * escala, h = v.videoHeight * escala
-          ctx.drawImage(v, (ANCHO - w) / 2, (ALTO - h) / 2, w, h)
-        }
-
-        const cont = contenidoRef.current
-
-        // Marca de agua: logo arriba a la derecha
-        const logo = logoImgRef.current
-        if (logo) {
-          const lw = 118, lh = logo.height * (lw / logo.width)
-          ctx.globalAlpha = 0.9
-          ctx.drawImage(logo, ANCHO - lw - 34, 30, lw, lh)
-          ctx.globalAlpha = 1
-        }
-
-        // Rótulo inferior con la letra que se está proyectando
-        const parte = cont.mostrar ? limpiarLetra(cont.partes[cont.index]) : ""
-        if (parte.trim()) {
-          dibujarRotuloInferior(ctx, parte, cont.titulo, cont.tono)
+        if (esLetra) {
+          // Escena "Letra": diapositiva con fondo, SIN cámara.
+          dibujarFondoBrandeado(ctx)
+          if (imagen) {
+            dibujarImagenContenida(ctx, imagen)
+          } else if (parte.trim()) {
+            dibujarDiapositivaLetra(ctx, parte)
+          } else {
+            dibujarEspera(ctx, cont.nombre, logo)
+          }
+          dibujarCabecera(ctx, cont.nombre, cont.titulo, cont.tono, logo)
+        } else {
+          // Escenas con cámara ("camara" y "camara-letra").
+          if (v && v.videoWidth > 0) {
+            const escala = Math.max(ANCHO / v.videoWidth, ALTO / v.videoHeight)
+            const w = v.videoWidth * escala, h = v.videoHeight * escala
+            ctx.drawImage(v, (ANCHO - w) / 2, (ALTO - h) / 2, w, h)
+          }
+          // Logo marca de agua (arriba a la derecha)
+          if (logo) {
+            const lw = 108, lh = logo.height * (lw / logo.width)
+            ctx.globalAlpha = 0.9
+            ctx.drawImage(logo, ANCHO - lw - 34, 28, lw, lh)
+            ctx.globalAlpha = 1
+          }
+          // Nombre de la iglesia (abajo a la izquierda, elegante)
+          dibujarNombreIglesia(ctx, cont.nombre)
+          // Letra abajo solo en "camara-letra"
+          if (cont.escena === "camara-letra" && parte.trim()) {
+            dibujarRotuloInferior(ctx, parte, cont.titulo, cont.tono)
+          }
         }
       } catch (e) {
         console.error("Error dibujando fotograma:", e)
@@ -402,19 +445,32 @@ export default function EnVivoPage() {
             </label>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.borde}` }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>Mostrar la letra sobre la cámara</div>
-              <div style={{ fontSize: 12, color: C.tenue, marginTop: 2 }}>
+          <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.borde}` }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>Escena al aire</div>
+              <div style={{ fontSize: 12, color: C.tenue }}>
                 {conectadoSala
-                  ? (titulo ? `Proyectando: ${titulo}${tono ? ` · Tono ${tono}` : ""}` : "Esperando a que proyectes una canción…")
+                  ? (titulo ? `Proyectando: ${titulo}${tono ? ` · ${tono}` : ""}` : imagenUrl ? "Proyectando una imagen" : "Sin proyección activa")
                   : "Conectando con la proyección…"}
               </div>
             </div>
-            <button onClick={() => setMostrarLetra(v => !v)} aria-label="Mostrar/ocultar letra"
-              style={{ position: "relative", width: 50, height: 28, borderRadius: 99, border: "none", cursor: "pointer", background: mostrarLetra ? C.verde : "rgba(255,255,255,0.14)", flexShrink: 0 }}>
-              <span style={{ position: "absolute", top: 3, left: mostrarLetra ? 25 : 3, width: 22, height: 22, borderRadius: 99, background: "#fff", transition: "left .15s" }} />
-            </button>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+              {([
+                ["camara", "🎥 Cámara", "Solo la cámara"],
+                ["camara-letra", "🎥 + 📝 Letra", "Letra sobre la cámara"],
+                ["letra", "📝 Letra", "Diapositiva, sin cámara"],
+              ] as const).map(([id, txt, sub]) => (
+                <button key={id} onClick={() => setEscena(id)} style={{
+                  padding: "12px 10px", borderRadius: 12, cursor: "pointer", textAlign: "center",
+                  background: escena === id ? "rgba(37,99,235,0.2)" : C.panel2,
+                  border: `1.5px solid ${escena === id ? C.azul : C.borde}`,
+                  color: escena === id ? "#93c5fd" : C.texto,
+                }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800 }}>{txt}</div>
+                  <div style={{ fontSize: 10.5, color: escena === id ? "#93c5fd" : C.tenue, marginTop: 3 }}>{sub}</div>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -585,6 +641,126 @@ function ajustarLinea(ctx: CanvasRenderingContext2D, texto: string, maxAncho: nu
   }
   if (actual) out.push(actual)
   return out
+}
+
+function redondear(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.arcTo(x + w, y, x + w, y + h, r)
+  ctx.arcTo(x + w, y + h, x, y + h, r)
+  ctx.arcTo(x, y + h, x, y, r)
+  ctx.arcTo(x, y, x + w, y, r)
+  ctx.closePath()
+}
+
+// Fondo oscuro con un leve brillo, para la escena "Letra" (sin cámara).
+function dibujarFondoBrandeado(ctx: CanvasRenderingContext2D) {
+  const g = ctx.createLinearGradient(0, 0, 0, ALTO)
+  g.addColorStop(0, "#0b1626"); g.addColorStop(1, "#050b16")
+  ctx.fillStyle = g; ctx.fillRect(0, 0, ANCHO, ALTO)
+  const r = ctx.createRadialGradient(ANCHO / 2, ALTO * 0.36, 40, ANCHO / 2, ALTO * 0.36, ANCHO * 0.72)
+  r.addColorStop(0, "rgba(37,99,235,0.10)"); r.addColorStop(1, "rgba(37,99,235,0)")
+  ctx.fillStyle = r; ctx.fillRect(0, 0, ANCHO, ALTO)
+}
+
+// Imagen "contain" centrada (letterbox) sobre el fondo.
+function dibujarImagenContenida(ctx: CanvasRenderingContext2D, img: HTMLImageElement) {
+  const escala = Math.min(ANCHO / img.width, ALTO / img.height)
+  const w = img.width * escala, h = img.height * escala
+  ctx.drawImage(img, (ANCHO - w) / 2, (ALTO - h) / 2, w, h)
+}
+
+// Letra grande centrada para la escena "Letra".
+function dibujarDiapositivaLetra(ctx: CanvasRenderingContext2D, texto: string) {
+  const maxAncho = ANCHO - 220
+  const brutas = texto.split("\n").map(b => b.trim()).filter(Boolean)
+  const medir = (t: number) => {
+    ctx.font = `700 ${t}px 'Segoe UI', system-ui, sans-serif`
+    const ls: string[] = []
+    for (const b of brutas) ls.push(...ajustarLinea(ctx, b, maxAncho))
+    return ls
+  }
+  let tamano = 60
+  let lineas = medir(tamano)
+  while (lineas.length > 6 && tamano > 34) { tamano -= 6; lineas = medir(tamano) }
+  lineas = lineas.slice(0, 8)
+  const alturaLinea = tamano * 1.3
+  const totalH = lineas.length * alturaLinea
+  const centro = 130 + (ALTO - 130) / 2
+  let y = centro - totalH / 2 + tamano
+  ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"
+  ctx.shadowColor = "rgba(0,0,0,0.7)"; ctx.shadowBlur = 10
+  ctx.fillStyle = "#ffffff"
+  ctx.font = `700 ${tamano}px 'Segoe UI', system-ui, sans-serif`
+  for (const l of lineas) { ctx.fillText(l, ANCHO / 2, y); y += alturaLinea }
+  ctx.shadowBlur = 0
+}
+
+// Diapositiva de espera (nada proyectado): logo + nombre centrados.
+function dibujarEspera(ctx: CanvasRenderingContext2D, nombre: string, logo: HTMLImageElement | null) {
+  let cy = ALTO / 2
+  if (logo && logo.width > 0) {
+    const lw = 180, lh = logo.height * (lw / logo.width)
+    ctx.globalAlpha = 0.95
+    ctx.drawImage(logo, (ANCHO - lw) / 2, cy - lh - 20, lw, lh)
+    ctx.globalAlpha = 1
+    cy += 12
+  }
+  if (nombre) {
+    ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"
+    ctx.fillStyle = "rgba(255,255,255,0.9)"
+    ctx.font = "700 40px 'Segoe UI', system-ui, sans-serif"
+    ctx.fillText(nombre.toUpperCase(), ANCHO / 2, cy + 34)
+  }
+}
+
+// Cabecera (esquinas) para la escena "Letra": logo + nombre a la izquierda,
+// título · tono a la derecha. Con sombra para leerse sobre cualquier fondo.
+function dibujarCabecera(ctx: CanvasRenderingContext2D, nombre: string, titulo: string, tono: string, logo: HTMLImageElement | null) {
+  ctx.save()
+  ctx.shadowColor = "rgba(0,0,0,0.55)"; ctx.shadowBlur = 8
+  ctx.textBaseline = "middle"
+  const yc = 52
+  let x = 40
+  if (logo && logo.width > 0) {
+    const lh = 52, lw = logo.width * (lh / logo.height)
+    ctx.globalAlpha = 0.95
+    ctx.drawImage(logo, x, yc - lh / 2, lw, lh)
+    ctx.globalAlpha = 1
+    x += lw + 16
+  }
+  if (nombre) {
+    ctx.textAlign = "left"
+    ctx.fillStyle = "rgba(255,255,255,0.92)"
+    ctx.font = "700 26px 'Segoe UI', system-ui, sans-serif"
+    ctx.fillText(nombre.toUpperCase(), x, yc)
+  }
+  if (titulo) {
+    ctx.textAlign = "right"
+    ctx.fillStyle = C.ambar
+    ctx.font = "700 22px 'Segoe UI', system-ui, sans-serif"
+    const et = tono ? `${titulo.toUpperCase()}  ·  ${tono}` : titulo.toUpperCase()
+    ctx.fillText(et, ANCHO - 40, yc)
+  }
+  ctx.restore()
+}
+
+// Nombre de la iglesia arriba-izquierda para las escenas con cámara (pastilla).
+function dibujarNombreIglesia(ctx: CanvasRenderingContext2D, nombre: string) {
+  if (!nombre) return
+  ctx.save()
+  ctx.font = "700 26px 'Segoe UI', system-ui, sans-serif"
+  const texto = nombre.toUpperCase()
+  const w = ctx.measureText(texto).width
+  const px = 34, py = 28, h = 46
+  ctx.fillStyle = "rgba(0,0,0,0.42)"
+  redondear(ctx, px, py, w + 50, h, 23); ctx.fill()
+  ctx.fillStyle = C.ambar
+  redondear(ctx, px + 16, py + 13, 5, h - 26, 2.5); ctx.fill()
+  ctx.fillStyle = "rgba(255,255,255,0.95)"
+  ctx.textAlign = "left"; ctx.textBaseline = "middle"
+  ctx.fillText(texto, px + 32, py + h / 2 + 1)
+  ctx.restore()
 }
 
 function fmtTiempo(s: number): string {
