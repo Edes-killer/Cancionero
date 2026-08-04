@@ -55,7 +55,9 @@ async function elegirEncoder() {
 
 // Argumentos de ffmpeg según el encoder. En todos: keyframe cada ~2s y AAC.
 function construirArgsFFmpeg(encoder, rtmpUrl) {
-  const base = ["-hide_banner", "-loglevel", "error", "-fflags", "+genpts", "-i", "pipe:0"]
+  // -loglevel warning + stats cada 5s: vemos problemas reales (cortes,
+  // "Broken pipe", "Connection reset") y si el PC va al día (speed≈1.0x).
+  const base = ["-hide_banner", "-loglevel", "warning", "-stats", "-stats_period", "5", "-fflags", "+genpts", "-i", "pipe:0"]
   let video
   if (encoder === "h264_qsv") {
     video = ["-c:v", "h264_qsv", "-b:v", "2500k", "-maxrate", "2500k", "-bufsize", "5000k", "-g", "60", "-look_ahead", "0"]
@@ -72,6 +74,15 @@ function construirArgsFFmpeg(encoder, rtmpUrl) {
   return [...base, ...video, ...audio, "-max_muxing_queue_size", "1024", "-f", "flv", rtmpUrl]
 }
 
+function rutaLogTransmision() {
+  try { return path.join(app.getPath("userData"), "transmision.log") }
+  catch { return path.join(os.tmpdir(), "selah-transmision.log") }
+}
+
+// ✅ Matar ffmpeg si la app se cierra mientras transmite: si no, queda huérfano
+// empujando a Facebook y el siguiente intento choca con "límite de streams".
+app.on("before-quit", () => { if (ffmpegProc) { try { ffmpegProc.kill("SIGKILL") } catch {} ffmpegProc = null } })
+
 function registrarIPCTransmision() {
   // Iniciar: levanta ffmpeg leyendo webm por stdin y empujando a RTMP.
   ipcMain.handle("transmision:iniciar", async (_e, { rtmpUrl } = {}) => {
@@ -85,12 +96,19 @@ function registrarIPCTransmision() {
       const proc = spawn(ffmpegPath, args, { stdio: ["pipe", "ignore", "pipe"] })
       ffmpegProc = proc
 
+      // Registro a archivo para diagnóstico (el usuario puede mandárnoslo).
+      try {
+        const cab = `\n===== ${new Date().toLocaleString()} · encoder=${encoder} =====\nffmpeg ${args.join(" ")}\n`
+        fs.appendFileSync(rutaLogTransmision(), cab)
+      } catch {}
+      const aLog = (txt) => { try { fs.appendFileSync(rutaLogTransmision(), txt) } catch {} }
+
       const enviar = (canal, dato) => {
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(canal, dato)
       }
-      proc.stderr.on("data", d => { const m = d.toString(); console.error("[ffmpeg]", m); enviar("transmision:log", m) })
-      proc.on("error", err => { enviar("transmision:estado", { estado: "error", error: err.message }); if (ffmpegProc === proc) ffmpegProc = null })
-      proc.on("close", code => { enviar("transmision:estado", { estado: "terminado", code }); if (ffmpegProc === proc) ffmpegProc = null })
+      proc.stderr.on("data", d => { const m = d.toString(); console.error("[ffmpeg]", m); aLog(m); enviar("transmision:log", m) })
+      proc.on("error", err => { aLog(`\n[error de proceso] ${err.message}\n`); enviar("transmision:estado", { estado: "error", error: err.message }); if (ffmpegProc === proc) ffmpegProc = null })
+      proc.on("close", code => { aLog(`\n[ffmpeg terminó con código ${code}]\n`); enviar("transmision:estado", { estado: "terminado", code }); if (ffmpegProc === proc) ffmpegProc = null })
       proc.stdin.on("error", () => {}) // evitar crash si RTMP corta el pipe
 
       return { ok: true, encoder }
@@ -114,6 +132,12 @@ function registrarIPCTransmision() {
       }
       return { ok: true }
     } catch (e) { return { ok: false, error: e.message } }
+  })
+
+  // Abrir el archivo de registro para diagnóstico.
+  ipcMain.handle("transmision:abrirLog", async () => {
+    try { await shell.openPath(rutaLogTransmision()); return { ok: true } }
+    catch (e) { return { ok: false, error: e.message } }
   })
 }
 registrarIPCTransmision()
