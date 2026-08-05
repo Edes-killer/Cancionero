@@ -80,6 +80,7 @@ export default function EnVivoPage() {
   const [imagenUrl, setImagenUrl] = useState<string | null>(null) // imagen proyectada (no video)
   const [biblia, setBiblia] = useState<any>(null)                 // versículo proyectado
   const [paginaBiblia, setPaginaBiblia] = useState(0)
+  const [estadoEsp, setEstadoEsp] = useState<any>(null)           // pantalla especial (cuenta regresiva, mensaje, descanso…)
   const [logoSocket, setLogoSocket] = useState("")
   const [conectadoSala, setConectadoSala] = useState(false)
 
@@ -106,15 +107,16 @@ export default function EnVivoPage() {
   const stream2Ref = useRef<MediaStream | null>(null)  // cámara 2 (solo video)
   const logoImgRef = useRef<HTMLImageElement | null>(null)
   const imagenImgRef = useRef<HTMLImageElement | null>(null)
+  const espImgRef = useRef<HTMLImageElement | null>(null) // imagen/logo de la pantalla especial
   const rafRef = useRef<number>(0)
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360 })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any })
   useEffect(() => {
     const bibliaTexto = biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : ""
-    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam }
-  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam])
+    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp }
+  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp])
 
   // ── Cargar la imagen proyectada (para la escena de contenido) ───────────────
   useEffect(() => {
@@ -125,6 +127,17 @@ export default function EnVivoPage() {
     img.onerror = () => { imagenImgRef.current = null }
     img.src = imagenUrl
   }, [imagenUrl])
+
+  // ── Cargar la imagen/logo de la pantalla especial (logo/descanso) ───────────
+  useEffect(() => {
+    const url = estadoEsp?.url || estadoEsp?.logo_marca_url
+    if (!url) { espImgRef.current = null; return }
+    const img = new Image()
+    img.crossOrigin = "anonymous"
+    img.onload = () => { espImgRef.current = img }
+    img.onerror = () => { espImgRef.current = null }
+    img.src = url
+  }, [estadoEsp])
 
   // ── Cargar el logo de la iglesia (para la marca de agua) ────────────────────
   useEffect(() => {
@@ -254,22 +267,27 @@ export default function EnVivoPage() {
     const s = io(getSocketUrl(), { reconnection: true, reconnectionAttempts: 10, reconnectionDelay: 1000 })
 
     const aplicarCancion = (d: any) => {
-      setImagenUrl(null); setBiblia(null)
+      setImagenUrl(null); setBiblia(null); setEstadoEsp(null)
       setPartes(d.partes || []); setIndex(d.index || 0)
       setTitulo(d.titulo || ""); setTono(d.tono || "")
       if (d.logo_marca_url) setLogoSocket(d.logo_marca_url)
     }
     const aplicarImagen = (d: any) => {
       // Solo imágenes (no videos): el video no se puede dibujar en el lienzo aquí.
-      setPartes([]); setTitulo(""); setTono(""); setIndex(0); setBiblia(null)
+      setPartes([]); setTitulo(""); setTono(""); setIndex(0); setBiblia(null); setEstadoEsp(null)
       setImagenUrl(d?.video ? null : (d?.url || null))
     }
     const aplicarBiblia = (d: any) => {
-      setPartes([]); setTitulo(""); setTono(""); setIndex(0); setImagenUrl(null)
+      setPartes([]); setTitulo(""); setTono(""); setIndex(0); setImagenUrl(null); setEstadoEsp(null)
       setBiblia(d || null); setPaginaBiblia(d?.pagina || 0)
       if (d?.logo_marca_url) setLogoSocket(d.logo_marca_url)
     }
-    const limpiar = () => { setPartes([]); setTitulo(""); setTono(""); setIndex(0); setImagenUrl(null); setBiblia(null) }
+    const aplicarEstado = (d: any) => {
+      setPartes([]); setTitulo(""); setTono(""); setIndex(0); setImagenUrl(null); setBiblia(null)
+      setEstadoEsp(d || null)
+      if (d?.logo_marca_url) setLogoSocket(d.logo_marca_url)
+    }
+    const limpiar = () => { setPartes([]); setTitulo(""); setTono(""); setIndex(0); setImagenUrl(null); setBiblia(null); setEstadoEsp(null) }
 
     s.on("connect", async () => {
       if (!activo) return
@@ -285,14 +303,15 @@ export default function EnVivoPage() {
       if (estado.tipo === "cancion") aplicarCancion(estado.data || {})
       else if (estado.tipo === "imagen") aplicarImagen(estado.data || {})
       else if (estado.tipo === "biblia") aplicarBiblia(estado.data || {})
-      else limpiar() // estado especial (cuenta regresiva, mensaje): por ahora sin contenido
+      else if (estado.tipo === "estado") aplicarEstado(estado.data || {})
+      else limpiar()
     })
     s.on("cargar-cancion", (d: any) => { if (activo) aplicarCancion(d || {}) })
     s.on("cambiar-parte", (i: number) => { if (activo) setIndex(i) })
     s.on("mostrar-imagen", (d: any) => { if (activo) aplicarImagen(d || {}) })
     s.on("mostrar-biblia", (d: any) => { if (activo) aplicarBiblia(d || {}) })
     s.on("cambiar-pagina-biblia", (p: number) => { if (activo) setPaginaBiblia(p) })
-    s.on("mostrar-estado", () => { if (activo) limpiar() })
+    s.on("mostrar-estado", (d: any) => { if (activo) aplicarEstado(d || {}) })
 
     return () => { activo = false; s.disconnect() }
   }, [])
@@ -371,14 +390,16 @@ export default function EnVivoPage() {
         if (esLetra) {
           // Escena "Proyección": diapositiva con fondo, SIN cámara.
           dibujarFondoBrandeado(ctx)
-          if (imagen) {
+          if (cont.estadoEsp) {
+            dibujarEstadoEspecial(ctx, cont.estadoEsp, espImgRef.current || logo, cont.nombre, cont.color)
+          } else if (imagen) {
             dibujarImagenContenida(ctx, imagen)
           } else if (textoContenido.trim()) {
             dibujarDiapositivaLetra(ctx, textoContenido, cont.color)
           } else {
             dibujarEspera(ctx, cont.nombre, logo)
           }
-          dibujarCabecera(ctx, cont.nombre, tituloContenido, tonoContenido, logo)
+          if (!cont.estadoEsp) dibujarCabecera(ctx, cont.nombre, tituloContenido, tonoContenido, logo)
         } else {
           // Escenas con cámara ("camara" y "camara-letra").
           if (v && v.videoWidth > 0) {
@@ -611,7 +632,8 @@ export default function EnVivoPage() {
               <div style={{ fontSize: 14, fontWeight: 700 }}>Escena al aire</div>
               <div style={{ fontSize: 12, color: C.tenue }}>
                 {conectadoSala
-                  ? (biblia?.referencia ? `Proyectando: ${biblia.referencia}`
+                  ? (estadoEsp ? `Proyectando: ${nombreEstado(estadoEsp.tipo)}`
+                    : biblia?.referencia ? `Proyectando: ${biblia.referencia}`
                     : titulo ? `Proyectando: ${titulo}${tono ? ` · ${tono}` : ""}`
                     : imagenUrl ? "Proyectando una imagen"
                     : "Sin proyección activa")
@@ -986,6 +1008,66 @@ function dibujarEspera(ctx: CanvasRenderingContext2D, nombre: string, logo: HTML
   }
 }
 
+// Pantalla especial (cuenta regresiva, mensaje, logo, descanso, espera) en la
+// escena Proyección. Se dibuja sobre el fondo brandeado.
+function dibujarEstadoEspecial(ctx: CanvasRenderingContext2D, esp: any, img: HTMLImageElement | null, nombre: string, color: string) {
+  const t = esp?.tipo
+  ctx.textAlign = "center"; ctx.textBaseline = "middle"
+
+  if (t === "cuenta-regresiva") {
+    const seg = Math.max(0, Math.floor((new Date(esp.hasta).getTime() - Date.now()) / 1000))
+    const pad = (n: number) => String(n).padStart(2, "0")
+    const h = Math.floor(seg / 3600), m = Math.floor((seg % 3600) / 60), s = seg % 60
+    const texto = seg > 0 ? (h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`) : "¡Comenzamos!"
+    ctx.fillStyle = color
+    ctx.font = `900 ${seg > 0 ? 190 : 96}px 'Segoe UI', system-ui, sans-serif`
+    ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = 14
+    ctx.fillText(texto, ANCHO / 2, ALTO / 2 - (esp.mensaje && seg > 0 ? 40 : 0))
+    ctx.shadowBlur = 0
+    if (esp.mensaje && seg > 0) {
+      ctx.fillStyle = "rgba(255,255,255,0.78)"
+      ctx.font = "600 36px 'Segoe UI', system-ui, sans-serif"
+      ctx.fillText(String(esp.mensaje).slice(0, 90), ANCHO / 2, ALTO / 2 + 130)
+    }
+    return
+  }
+
+  if ((t === "logo" || t === "descanso") && img && img.width > 0) {
+    const maxW = 460, maxH = 320
+    const es = Math.min(maxW / img.width, maxH / img.height)
+    const w = img.width * es, h = img.height * es
+    ctx.globalAlpha = t === "descanso" ? 0.72 : 0.97
+    ctx.drawImage(img, (ANCHO - w) / 2, ALTO / 2 - h / 2 - 30, w, h)
+    ctx.globalAlpha = 1
+    const sub = esp.titulo || esp.iglesia || nombre || ""
+    if (sub) {
+      ctx.fillStyle = "rgba(255,255,255,0.85)"
+      ctx.font = "700 34px 'Segoe UI', system-ui, sans-serif"
+      ctx.fillText(String(sub).slice(0, 60), ANCHO / 2, ALTO / 2 + 190)
+    }
+    return
+  }
+
+  // mensaje / espera (y respaldo): título grande + subtítulo
+  const titulo = esp.titulo || (t === "espera" ? "Espere un momento" : "")
+  const sub = esp.subtitulo || esp.mensaje || ""
+  if (titulo) {
+    ctx.fillStyle = color
+    ctx.font = "900 68px 'Segoe UI', system-ui, sans-serif"
+    ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = 10
+    // ajuste simple por ancho
+    const lineas = ajustarLinea(ctx, String(titulo), ANCHO - 200).slice(0, 4)
+    let y = ALTO / 2 - (lineas.length - 1) * 44 - (sub ? 30 : 0)
+    for (const l of lineas) { ctx.fillText(l, ANCHO / 2, y); y += 88 }
+    ctx.shadowBlur = 0
+  }
+  if (sub) {
+    ctx.fillStyle = "rgba(255,255,255,0.7)"
+    ctx.font = "600 32px 'Segoe UI', system-ui, sans-serif"
+    ctx.fillText(String(sub).slice(0, 120), ANCHO / 2, ALTO / 2 + 150)
+  }
+}
+
 // Cabecera (esquinas) para la escena "Letra": logo + nombre a la izquierda,
 // título · tono a la derecha. Con sombra para leerse sobre cualquier fondo.
 function dibujarCabecera(ctx: CanvasRenderingContext2D, nombre: string, titulo: string, tono: string, logo: HTMLImageElement | null) {
@@ -1069,6 +1151,15 @@ function fmtTiempo(s: number): string {
 
 function nombreDestino(d: string): string {
   return d === "facebook" ? "Facebook" : d === "youtube" ? "YouTube" : "RTMP personalizado"
+}
+
+function nombreEstado(t: string): string {
+  return t === "cuenta-regresiva" ? "Cuenta regresiva"
+    : t === "mensaje" ? "Mensaje"
+    : t === "logo" ? "Logo"
+    : t === "descanso" ? "Descanso"
+    : t === "espera" ? "Pantalla de espera"
+    : "Pantalla especial"
 }
 
 function botonBase(extra: React.CSSProperties): React.CSSProperties {
