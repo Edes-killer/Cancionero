@@ -54,7 +54,9 @@ async function elegirEncoder() {
 }
 
 // Argumentos de ffmpeg según el encoder. En todos: keyframe cada ~2s y AAC.
-function construirArgsFFmpeg(encoder, rtmpUrl) {
+// rtmpUrls: 1 destino → -f flv; varios → muxer "tee" (codifica una vez y empuja
+// a todas las plataformas a la vez). onfail=ignore: si una cae, las otras siguen.
+function construirArgsFFmpeg(encoder, rtmpUrls) {
   // -loglevel warning + stats cada 5s: vemos problemas reales (cortes,
   // "Broken pipe", "Connection reset") y si el PC va al día (speed≈1.0x).
   const base = ["-hide_banner", "-loglevel", "warning", "-stats", "-stats_period", "5", "-fflags", "+genpts", "-i", "pipe:0"]
@@ -74,7 +76,12 @@ function construirArgsFFmpeg(encoder, rtmpUrl) {
     ]
   }
   const audio = ["-c:a", "aac", "-b:a", "128k", "-ar", "44100"]
-  return [...base, ...video, ...audio, "-max_muxing_queue_size", "1024", "-f", "flv", rtmpUrl]
+  const comun = [...base, ...video, ...audio, "-max_muxing_queue_size", "1024"]
+  if (rtmpUrls.length === 1) return [...comun, "-f", "flv", rtmpUrls[0]]
+  // Varios destinos: un solo encode → muxer tee a todas las plataformas.
+  // -flags +global_header es necesario para que el tee escriba la cabecera.
+  const spec = rtmpUrls.map(u => `[f=flv:onfail=ignore]${u}`).join("|")
+  return [...comun, "-flags", "+global_header", "-map", "0:v", "-map", "0:a", "-f", "tee", spec]
 }
 
 function rutaLogTransmision() {
@@ -88,14 +95,16 @@ app.on("before-quit", () => { if (ffmpegProc) { try { ffmpegProc.kill("SIGKILL")
 
 function registrarIPCTransmision() {
   // Iniciar: levanta ffmpeg leyendo webm por stdin y empujando a RTMP.
-  ipcMain.handle("transmision:iniciar", async (_e, { rtmpUrl } = {}) => {
+  ipcMain.handle("transmision:iniciar", async (_e, { rtmpUrl, rtmpUrls } = {}) => {
     try {
       if (!ffmpegPath) return { ok: false, error: "No se encontró ffmpeg dentro de la app." }
-      if (!rtmpUrl || !/^rtmps?:\/\//i.test(rtmpUrl)) return { ok: false, error: "La dirección de transmisión no es válida." }
+      // Acepta un arreglo (multiplataforma) o una sola URL (compatibilidad).
+      const urls = (Array.isArray(rtmpUrls) ? rtmpUrls : [rtmpUrl]).filter(u => typeof u === "string" && /^rtmps?:\/\//i.test(u))
+      if (urls.length === 0) return { ok: false, error: "No hay ninguna dirección de transmisión válida." }
       if (ffmpegProc) { try { ffmpegProc.kill("SIGKILL") } catch {} ffmpegProc = null }
 
       const encoder = await elegirEncoder()
-      const args = construirArgsFFmpeg(encoder, rtmpUrl)
+      const args = construirArgsFFmpeg(encoder, urls)
       const proc = spawn(ffmpegPath, args, { stdio: ["pipe", "ignore", "pipe"] })
       ffmpegProc = proc
 
