@@ -77,7 +77,8 @@ export default function EnVivoPage() {
   const [tono, setTono] = useState("")
   const [partes, setPartes] = useState<any[]>([]) // cada parte es un objeto { texto_letra|texto, tipo }
   const [index, setIndex] = useState(0)
-  const [imagenUrl, setImagenUrl] = useState<string | null>(null) // imagen proyectada (no video)
+  const [imagenUrl, setImagenUrl] = useState<string | null>(null) // imagen proyectada
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)   // animación corta muda proyectada
   const [biblia, setBiblia] = useState<any>(null)                 // versículo proyectado
   const [paginaBiblia, setPaginaBiblia] = useState(0)
   const [estadoEsp, setEstadoEsp] = useState<any>(null)           // pantalla especial (cuenta regresiva, mensaje, descanso…)
@@ -108,15 +109,16 @@ export default function EnVivoPage() {
   const logoImgRef = useRef<HTMLImageElement | null>(null)
   const imagenImgRef = useRef<HTMLImageElement | null>(null)
   const espImgRef = useRef<HTMLImageElement | null>(null) // imagen/logo de la pantalla especial
+  const videoProyRef = useRef<HTMLVideoElement | null>(null) // animación proyectada
   const rafRef = useRef<number>(0)
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any, hayVideo: false })
   useEffect(() => {
     const bibliaTexto = biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : ""
-    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp }
-  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp])
+    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl }
+  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, videoUrl])
 
   // ── Cargar la imagen proyectada (para la escena de contenido) ───────────────
   useEffect(() => {
@@ -127,6 +129,16 @@ export default function EnVivoPage() {
     img.onerror = () => { imagenImgRef.current = null }
     img.src = imagenUrl
   }, [imagenUrl])
+
+  // ── Reproducir la animación proyectada (video mudo en loop) ─────────────────
+  useEffect(() => {
+    const el = videoProyRef.current
+    if (!el) return
+    if (!videoUrl) { try { el.pause() } catch {}; el.removeAttribute("src"); el.load?.(); return }
+    el.src = videoUrl
+    el.loop = true; el.muted = true
+    el.play().catch(() => {})
+  }, [videoUrl])
 
   // ── Cargar la imagen/logo de la pantalla especial (logo/descanso) ───────────
   useEffect(() => {
@@ -267,27 +279,27 @@ export default function EnVivoPage() {
     const s = io(getSocketUrl(), { reconnection: true, reconnectionAttempts: 10, reconnectionDelay: 1000 })
 
     const aplicarCancion = (d: any) => {
-      setImagenUrl(null); setBiblia(null); setEstadoEsp(null)
+      setImagenUrl(null); setVideoUrl(null); setBiblia(null); setEstadoEsp(null)
       setPartes(d.partes || []); setIndex(d.index || 0)
       setTitulo(d.titulo || ""); setTono(d.tono || "")
       if (d.logo_marca_url) setLogoSocket(d.logo_marca_url)
     }
     const aplicarImagen = (d: any) => {
-      // Solo imágenes (no videos): el video no se puede dibujar en el lienzo aquí.
       setPartes([]); setTitulo(""); setTono(""); setIndex(0); setBiblia(null); setEstadoEsp(null)
-      setImagenUrl(d?.video ? null : (d?.url || null))
+      if (d?.video) { setVideoUrl(d?.url || null); setImagenUrl(null) }
+      else { setImagenUrl(d?.url || null); setVideoUrl(null) }
     }
     const aplicarBiblia = (d: any) => {
-      setPartes([]); setTitulo(""); setTono(""); setIndex(0); setImagenUrl(null); setEstadoEsp(null)
+      setPartes([]); setTitulo(""); setTono(""); setIndex(0); setImagenUrl(null); setVideoUrl(null); setEstadoEsp(null)
       setBiblia(d || null); setPaginaBiblia(d?.pagina || 0)
       if (d?.logo_marca_url) setLogoSocket(d.logo_marca_url)
     }
     const aplicarEstado = (d: any) => {
-      setPartes([]); setTitulo(""); setTono(""); setIndex(0); setImagenUrl(null); setBiblia(null)
+      setPartes([]); setTitulo(""); setTono(""); setIndex(0); setImagenUrl(null); setVideoUrl(null); setBiblia(null)
       setEstadoEsp(d || null)
       if (d?.logo_marca_url) setLogoSocket(d.logo_marca_url)
     }
-    const limpiar = () => { setPartes([]); setTitulo(""); setTono(""); setIndex(0); setImagenUrl(null); setBiblia(null); setEstadoEsp(null) }
+    const limpiar = () => { setPartes([]); setTitulo(""); setTono(""); setIndex(0); setImagenUrl(null); setVideoUrl(null); setBiblia(null); setEstadoEsp(null) }
 
     s.on("connect", async () => {
       if (!activo) return
@@ -390,8 +402,11 @@ export default function EnVivoPage() {
         if (esLetra) {
           // Escena "Proyección": diapositiva con fondo, SIN cámara.
           dibujarFondoBrandeado(ctx)
+          const vProy = videoProyRef.current
           if (cont.estadoEsp) {
             dibujarEstadoEspecial(ctx, cont.estadoEsp, espImgRef.current || logo, cont.nombre, cont.color)
+          } else if (cont.hayVideo && vProy && vProy.videoWidth > 0) {
+            dibujarImagenContenida(ctx, vProy) // el video se dibuja igual que una imagen (contain)
           } else if (imagen) {
             dibujarImagenContenida(ctx, imagen)
           } else if (textoContenido.trim()) {
@@ -579,6 +594,9 @@ export default function EnVivoPage() {
         <video ref={video2Ref} autoPlay muted playsInline
           onLoadedMetadata={() => video2Ref.current?.play().catch(() => {})}
           style={{ position: "absolute", width: 2, height: 2, opacity: 0, pointerEvents: "none", left: 0, top: 0 }} />
+        {/* Animación proyectada (video mudo en loop) */}
+        <video ref={videoProyRef} muted loop playsInline crossOrigin="anonymous"
+          style={{ position: "absolute", width: 2, height: 2, opacity: 0, pointerEvents: "none", left: 0, top: 0 }} />
 
         {/* Controles */}
         <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, padding: 20, marginTop: 18 }}>
@@ -635,6 +653,7 @@ export default function EnVivoPage() {
                   ? (estadoEsp ? `Proyectando: ${nombreEstado(estadoEsp.tipo)}`
                     : biblia?.referencia ? `Proyectando: ${biblia.referencia}`
                     : titulo ? `Proyectando: ${titulo}${tono ? ` · ${tono}` : ""}`
+                    : videoUrl ? "Proyectando una animación"
                     : imagenUrl ? "Proyectando una imagen"
                     : "Sin proyección activa")
                   : "Conectando con la proyección…"}
@@ -956,11 +975,14 @@ function dibujarFondoBrandeado(ctx: CanvasRenderingContext2D) {
   ctx.fillStyle = r; ctx.fillRect(0, 0, ANCHO, ALTO)
 }
 
-// Imagen "contain" centrada (letterbox) sobre el fondo.
-function dibujarImagenContenida(ctx: CanvasRenderingContext2D, img: HTMLImageElement) {
-  const escala = Math.min(ANCHO / img.width, ALTO / img.height)
-  const w = img.width * escala, h = img.height * escala
-  ctx.drawImage(img, (ANCHO - w) / 2, (ALTO - h) / 2, w, h)
+// Imagen o video "contain" centrado (letterbox) sobre el fondo.
+function dibujarImagenContenida(ctx: CanvasRenderingContext2D, el: HTMLImageElement | HTMLVideoElement) {
+  const iw = (el as any).videoWidth || (el as any).naturalWidth || el.width
+  const ih = (el as any).videoHeight || (el as any).naturalHeight || el.height
+  if (!iw || !ih) return
+  const escala = Math.min(ANCHO / iw, ALTO / ih)
+  const w = iw * escala, h = ih * escala
+  ctx.drawImage(el, (ANCHO - w) / 2, (ALTO - h) / 2, w, h)
 }
 
 // Letra grande centrada para la escena "Proyección". Se achica sola hasta que
