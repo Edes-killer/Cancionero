@@ -60,6 +60,11 @@ export default function EnVivoPage() {
   // Mensaje en vivo (banner que el operador escribe y muestra sobre todo)
   const [mensajeVivo, setMensajeVivo] = useState("")
   const [mostrarMensaje, setMostrarMensaje] = useState(false)
+  const [mensajePos, setMensajePos] = useState<"abajo" | "arriba">("abajo")
+
+  // Nombre de la iglesia como objeto movible/redimensionable
+  const [nombrePos, setNombrePos] = useState<{ x: number; y: number }>({ x: ANCHO / 2 - 220, y: 26 })
+  const [nombreTam, setNombreTam] = useState(30)
 
   // Personalización (guardada en el equipo)
   const [colorLetra, setColorLetra] = useState("#ffffff")
@@ -75,6 +80,8 @@ export default function EnVivoPage() {
       const t = localStorage.getItem("en-vivo-logo-tam"); if (t) setLogoTam(Number(t) || 168)
       const p = localStorage.getItem("en-vivo-logo-pos"); if (p) setLogoPos(JSON.parse(p))
       const pip = localStorage.getItem("en-vivo-pip"); if (pip) { const o = JSON.parse(pip); if (o.pos) setPipPos(o.pos); if (o.tam) setPipTam(o.tam) }
+      const nom = localStorage.getItem("en-vivo-nombre"); if (nom) { const o = JSON.parse(nom); if (o.pos) setNombrePos(o.pos); if (o.tam) setNombreTam(o.tam) }
+      const mp = localStorage.getItem("en-vivo-mensaje-pos"); if (mp === "arriba" || mp === "abajo") setMensajePos(mp)
     } catch {}
   }, [])
   const guardarColor = (c: string) => { setColorLetra(c); try { localStorage.setItem("en-vivo-color-letra", c) } catch {} }
@@ -82,6 +89,7 @@ export default function EnVivoPage() {
   // Guardar posiciones/tamaños (con leve retardo para no escribir en cada píxel)
   useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-logo-pos", JSON.stringify(logoPos)); localStorage.setItem("en-vivo-logo-tam", String(logoTam)) } catch {} }, 300); return () => clearTimeout(t) }, [logoPos, logoTam])
   useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-pip", JSON.stringify({ pos: pipPos, tam: pipTam })) } catch {} }, 300); return () => clearTimeout(t) }, [pipPos, pipTam])
+  useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-nombre", JSON.stringify({ pos: nombrePos, tam: nombreTam })) } catch {} }, 300); return () => clearTimeout(t) }, [nombrePos, nombreTam])
 
 
   // Datos de la iglesia (logo + nombre) desde la configuración, no del socket:
@@ -140,11 +148,11 @@ export default function EnVivoPage() {
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any, hayVideo: false })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any, hayVideo: false, nombrePos: { x: 0, y: 0 }, nombreTam: 30, mensajePos: "abajo" as "abajo" | "arriba" })
   useEffect(() => {
     const bibliaTexto = biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : ""
-    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl }
-  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, videoUrl])
+    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl, nombrePos, nombreTam, mensajePos }
+  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, videoUrl, nombrePos, nombreTam, mensajePos])
 
   // ── Cargar la imagen proyectada (para la escena de contenido) ───────────────
   useEffect(() => {
@@ -454,11 +462,11 @@ export default function EnVivoPage() {
             ctx.strokeStyle = "rgba(255,255,255,0.9)"; ctx.lineWidth = 3
             redondear(ctx, x, y, pw, ph, 12); ctx.stroke()
           }
-          // Nombre de la iglesia (centrado arriba, elegante)
-          dibujarNombreCentrado(ctx, cont.nombre)
+          // Nombre de la iglesia (objeto movible)
+          dibujarNombreCentrado(ctx, cont.nombre, cont.nombrePos, cont.nombreTam)
           // Contenido abajo solo en "camara-letra" (letra o versículo)
           if (cont.escena === "camara-letra" && textoContenido.trim()) {
-            dibujarRotuloInferior(ctx, textoContenido, tituloContenido, tonoContenido, hayMensaje ? 84 : 0, cont.color)
+            dibujarRotuloInferior(ctx, textoContenido, tituloContenido, tonoContenido, (hayMensaje && cont.mensajePos === "abajo") ? 84 : 0, cont.color)
           }
           // Logo movible/redimensionable (se dibuja al final para tapar la marca)
           if (logo && logo.width > 0) {
@@ -469,8 +477,8 @@ export default function EnVivoPage() {
           }
         }
 
-        // Mensaje en vivo: banner abajo, sobre todas las escenas.
-        if (hayMensaje) dibujarMensaje(ctx, cont.mensaje)
+        // Mensaje en vivo: banner sobre todas las escenas (arriba o abajo).
+        if (hayMensaje) dibujarMensaje(ctx, cont.mensaje, cont.mensajePos)
       } catch (e) {
         console.error("Error dibujando fotograma:", e)
       }
@@ -569,6 +577,11 @@ export default function EnVivoPage() {
                 <ObjetoEditable etiqueta="Logo" pos={logoPos} w={logoTam} h={logoTam * logoAspecto}
                   minW={60} maxW={520}
                   onChange={(p, w) => { setLogoPos(p); setLogoTam(Math.round(w)) }} />
+              )}
+              {nombreIglesia && (
+                <ObjetoEditable etiqueta="Nombre" pos={nombrePos} w={cajaNombre(nombreIglesia, nombreTam).w} h={cajaNombre(nombreIglesia, nombreTam).h}
+                  minW={120} maxW={900}
+                  onChange={(p, w) => { setNombrePos(p); setNombreTam(Math.max(16, Math.round(w / (nombreIglesia.length * 0.66)))) }} />
               )}
               {camaraActiva === "ambas" && camara2Id && (
                 <ObjetoEditable etiqueta="Cámara 2" pos={pipPos} w={pipTam} h={pipTam * 9 / 16}
@@ -705,6 +718,17 @@ export default function EnVivoPage() {
                 })}>
                 {mostrarMensaje ? "Ocultar" : "Mostrar"}
               </button>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+              <span style={{ fontSize: 12, color: C.tenue }}>Posición:</span>
+              {(["abajo", "arriba"] as const).map(p => (
+                <button key={p} onClick={() => { setMensajePos(p); try { localStorage.setItem("en-vivo-mensaje-pos", p) } catch {} }}
+                  style={{ padding: "6px 14px", borderRadius: 8, cursor: "pointer", fontSize: 12.5, fontWeight: 700,
+                    background: mensajePos === p ? "rgba(37,99,235,0.2)" : C.panel2,
+                    border: `1.5px solid ${mensajePos === p ? C.azul : C.borde}`, color: mensajePos === p ? "#93c5fd" : C.texto }}>
+                  {p === "abajo" ? "⬇ Abajo" : "⬆ Arriba"}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -1130,38 +1154,42 @@ function dibujarCabecera(ctx: CanvasRenderingContext2D, nombre: string, titulo: 
   ctx.restore()
 }
 
-// Nombre de la iglesia centrado arriba, elegante (línea de acento ámbar debajo).
-function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string) {
+// Caja estimada del nombre (para el editor y el dibujo). Sin medir en canvas.
+function cajaNombre(nombre: string, tam: number) {
+  return { w: Math.max(160, nombre.length * tam * 0.66), h: tam * 1.7 }
+}
+
+// Nombre de la iglesia (objeto movible): centrado dentro de su caja, con línea
+// de acento ámbar debajo.
+function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, pos: { x: number; y: number }, tam: number) {
   if (!nombre) return
+  const { w, h } = cajaNombre(nombre, tam)
+  const cx = pos.x + w / 2, cy = pos.y + h / 2
   ctx.save()
-  const texto = nombre.toUpperCase()
-  const y = 52
   ctx.textAlign = "center"; ctx.textBaseline = "middle"
-  ctx.font = "700 30px 'Segoe UI', system-ui, sans-serif"
-  try { (ctx as any).letterSpacing = "3px" } catch {}
+  ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif`
+  try { (ctx as any).letterSpacing = `${Math.round(tam / 10)}px` } catch {}
   ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = 10
   ctx.fillStyle = "rgba(255,255,255,0.96)"
-  ctx.fillText(texto, ANCHO / 2, y)
-  const w = ctx.measureText(texto).width
+  ctx.fillText(nombre.toUpperCase(), cx, cy - tam * 0.18)
   try { (ctx as any).letterSpacing = "0px" } catch {}
   ctx.shadowBlur = 0
-  // Línea de acento ámbar debajo del nombre
-  const lineaW = Math.min(w * 0.5, 130)
+  const lineaW = Math.min(w * 0.5, tam * 4.4)
   ctx.fillStyle = C.ambar
-  redondear(ctx, ANCHO / 2 - lineaW / 2, y + 24, lineaW, 4, 2); ctx.fill()
+  redondear(ctx, cx - lineaW / 2, cy + tam * 0.62, lineaW, 4, 2); ctx.fill()
   ctx.restore()
 }
 
-// Mensaje en vivo: banner inferior sobre todas las escenas.
-function dibujarMensaje(ctx: CanvasRenderingContext2D, texto: string) {
+// Mensaje en vivo: banner sobre todas las escenas (abajo o arriba).
+function dibujarMensaje(ctx: CanvasRenderingContext2D, texto: string, posicion: "abajo" | "arriba" = "abajo") {
   ctx.save()
-  const h = 72, y = ALTO - h
+  const h = 72, y = posicion === "arriba" ? 0 : ALTO - h
   // Fondo del banner
-  const g = ctx.createLinearGradient(0, y, 0, ALTO)
+  const g = ctx.createLinearGradient(0, y, 0, y + h)
   g.addColorStop(0, "rgba(120,53,15,0.92)"); g.addColorStop(1, "rgba(146,64,14,0.92)")
   ctx.fillStyle = g; ctx.fillRect(0, y, ANCHO, h)
-  // Línea de acento arriba
-  ctx.fillStyle = C.ambar; ctx.fillRect(0, y, ANCHO, 4)
+  // Línea de acento (en el borde interior)
+  ctx.fillStyle = C.ambar; ctx.fillRect(0, posicion === "arriba" ? h - 4 : y, ANCHO, 4)
   // Texto (ajustado a una línea; si es muy largo se achica)
   let tam = 32
   ctx.textAlign = "center"; ctx.textBaseline = "middle"
