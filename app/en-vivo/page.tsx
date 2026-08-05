@@ -15,6 +15,22 @@ import { getIglesiaId } from "@/lib/getIglesia"
 import { useApp } from "@/context/AppContext"
 
 type Escena = "camara" | "camara-letra" | "letra"
+type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
+
+const PLATAFORMAS: { key: DestKey; nombre: string; emoji: string; esUrl: boolean; ayuda: string; placeholder: string }[] = [
+  { key: "facebook", nombre: "Facebook", emoji: "📘", esUrl: false, placeholder: "Clave de transmisión de Facebook", ayuda: "Live Producer → “Usar software de streaming” → copia la Clave de transmisión." },
+  { key: "youtube", nombre: "YouTube", emoji: "▶️", esUrl: false, placeholder: "Clave de transmisión de YouTube", ayuda: "Estudio → Transmitir en vivo → copia la Clave de transmisión." },
+  { key: "tiktok", nombre: "TikTok", emoji: "🎵", esUrl: true, placeholder: "URL RTMP completa de TikTok", ayuda: "Requiere cuenta con LIVE. En TikTok LIVE Studio pega servidor + clave juntos." },
+  { key: "custom", nombre: "Otra (RTMP)", emoji: "🔗", esUrl: true, placeholder: "rtmp://servidor/app/clave", ayuda: "Pega la URL RTMP/RTMPS completa que te da la plataforma." },
+]
+
+function urlDeDestino(k: DestKey, valor: string): string {
+  const v = valor.trim()
+  if (!v) return ""
+  if (k === "facebook") return "rtmps://live-api-s.facebook.com:443/rtmp/" + v
+  if (k === "youtube") return "rtmp://a.rtmp.youtube.com/live2/" + v
+  return v // tiktok / custom: URL completa
+}
 
 const C = {
   fondo: "#060d1a", panel: "#111b2e", panel2: "#0d1626",
@@ -90,9 +106,19 @@ export default function EnVivoPage() {
 
   // Transmisión (Incremento 2)
   const [esEscritorio, setEsEscritorio] = useState(false)
-  const [destino, setDestino] = useState<"facebook" | "youtube" | "custom">("facebook")
-  const [claveTx, setClaveTx] = useState("")
-  const [urlCustom, setUrlCustom] = useState("")
+  // Destinos: varias plataformas a la vez. valor = clave (FB/YT) o URL (TikTok/otra).
+  const [destinos, setDestinos] = useState<Record<DestKey, { activo: boolean; valor: string }>>({
+    facebook: { activo: true, valor: "" },
+    youtube: { activo: false, valor: "" },
+    tiktok: { activo: false, valor: "" },
+    custom: { activo: false, valor: "" },
+  })
+  useEffect(() => {
+    try { const g = localStorage.getItem("en-vivo-destinos"); if (g) setDestinos(d => ({ ...d, ...JSON.parse(g) })) } catch {}
+  }, [])
+  const setDestino = (k: DestKey, patch: Partial<{ activo: boolean; valor: string }>) => {
+    setDestinos(prev => { const next = { ...prev, [k]: { ...prev[k], ...patch } }; try { localStorage.setItem("en-vivo-destinos", JSON.stringify(next)) } catch {}; return next })
+  }
   const [txEstado, setTxEstado] = useState<"idle" | "conectando" | "vivo" | "error">("idle")
   const [errorTx, setErrorTx] = useState<string | null>(null)
   const [segundos, setSegundos] = useState(0)
@@ -357,12 +383,6 @@ export default function EnVivoPage() {
     return () => { offEstado?.(); offLog?.() }
   }, [])
 
-  // Cargar la clave guardada al cambiar de plataforma
-  useEffect(() => {
-    if (destino === "custom") return
-    try { setClaveTx(localStorage.getItem(`en-vivo-clave-${destino}`) || "") } catch {}
-  }, [destino])
-
   // Cronómetro mientras está al aire
   useEffect(() => {
     if (txEstado !== "vivo") return
@@ -462,24 +482,16 @@ export default function EnVivoPage() {
 
   const reintentar = () => { setErrorCam(null); setPermiso("pidiendo"); setReintento(n => n + 1) }
 
-  const construirUrlRtmp = (): string => {
-    if (destino === "custom") return urlCustom.trim()
-    const k = claveTx.trim()
-    if (!k) return ""
-    if (destino === "facebook") return "rtmps://live-api-s.facebook.com:443/rtmp/" + k
-    return "rtmp://a.rtmp.youtube.com/live2/" + k
-  }
+  const construirUrls = (): string[] =>
+    PLATAFORMAS.filter(p => destinos[p.key].activo).map(p => urlDeDestino(p.key, destinos[p.key].valor)).filter(Boolean)
 
   const salirEnVivo = async () => {
     setErrorTx(null)
     const tx = (window as any).transmision
     if (!tx) { setErrorTx("Esto solo funciona en la app de escritorio de Selah Live."); return }
-    const rtmpUrl = construirUrlRtmp()
-    if (!rtmpUrl) { setErrorTx(destino === "custom" ? "Pega la URL RTMP completa." : "Pega la clave de transmisión de tu plataforma."); return }
+    const rtmpUrls = construirUrls()
+    if (rtmpUrls.length === 0) { setErrorTx("Activa al menos una plataforma y pega su clave / URL."); return }
     if (!canvasRef.current || !streamRef.current) { setErrorTx("La cámara aún no está lista."); return }
-
-    // Recordar la clave para la próxima
-    try { if (destino !== "custom") localStorage.setItem(`en-vivo-clave-${destino}`, claveTx.trim()) } catch {}
 
     setLogsTx([])
     setTxEstado("conectando")
@@ -492,9 +504,9 @@ export default function EnVivoPage() {
       "video/webm;codecs=vp8,opus",
       "video/webm",
     ].find(m => (window as any).MediaRecorder?.isTypeSupported?.(m)) || "video/webm"
-    setLogsTx(prev => [...prev, `▶ formato de captura: ${mime}`])
+    setLogsTx(prev => [...prev, `▶ formato de captura: ${mime}`, `▶ destinos: ${rtmpUrls.length}`])
 
-    const res = await tx.iniciar({ rtmpUrl })
+    const res = await tx.iniciar({ rtmpUrls })
     if (!res?.ok) { setTxEstado("error"); setErrorTx(res?.error || "No se pudo iniciar la transmisión."); return }
 
     try {
@@ -742,41 +754,38 @@ export default function EnVivoPage() {
                   <div style={{ fontSize: 15, fontWeight: 800, color: txEstado === "vivo" ? "#f87171" : "#fbbf24" }}>
                     {txEstado === "vivo" ? `AL AIRE · ${fmtTiempo(segundos)}` : "Conectando…"}
                   </div>
-                  <div style={{ fontSize: 12, color: C.tenue }}>{nombreDestino(destino)}</div>
+                  <div style={{ fontSize: 12, color: C.tenue }}>
+                    {PLATAFORMAS.filter(p => destinos[p.key].activo && destinos[p.key].valor.trim()).map(p => p.nombre).join(" · ") || "—"}
+                  </div>
                 </div>
               </div>
               <button onClick={terminar} style={botonBase({ background: C.rojo, color: "#fff" })}>■ Terminar transmisión</button>
             </div>
           ) : (
             <>
-              {/* Selector de plataforma */}
-              <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-                {([["facebook", "📘 Facebook"], ["youtube", "▶️ YouTube"], ["custom", "🔗 Otra (RTMP)"]] as const).map(([id, txt]) => (
-                  <button key={id} onClick={() => setDestino(id)} style={{
-                    padding: "9px 14px", borderRadius: 10, cursor: "pointer", fontWeight: 700, fontSize: 13.5,
-                    background: destino === id ? "rgba(37,99,235,0.2)" : C.panel2,
-                    border: `1.5px solid ${destino === id ? C.azul : C.borde}`,
-                    color: destino === id ? "#93c5fd" : C.texto,
-                  }}>{txt}</button>
-                ))}
-              </div>
-
-              {destino === "custom" ? (
-                <label style={{ fontSize: 12.5, color: C.tenue, display: "block" }}>
-                  URL RTMP completa
-                  <input value={urlCustom} onChange={e => setUrlCustom(e.target.value)} placeholder="rtmp://servidor/app/clave" style={selectEstilo} />
-                </label>
-              ) : (
-                <label style={{ fontSize: 12.5, color: C.tenue, display: "block" }}>
-                  Clave de transmisión de {nombreDestino(destino)}
-                  <input value={claveTx} onChange={e => setClaveTx(e.target.value)} placeholder="Pega aquí tu clave de transmisión" style={selectEstilo} />
-                </label>
-              )}
-
-              <div style={{ fontSize: 12, color: C.tenue, margin: "10px 2px 16px" }}>
-                {destino === "facebook" && "En Facebook: crea una transmisión en tu Página → Live Producer → copia la “Clave de transmisión”."}
-                {destino === "youtube" && "En YouTube: Estudio → Transmitir en vivo → copia la “Clave de transmisión”."}
-                {destino === "custom" && "Pega la URL RTMP/RTMPS completa que te da tu plataforma (incluyendo la clave al final)."}
+              <div style={{ fontSize: 12, color: C.tenue, marginBottom: 12 }}>Activa una o varias plataformas — se transmite a todas a la vez (necesitas buena subida de internet).</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+                {PLATAFORMAS.map(p => {
+                  const d = destinos[p.key]
+                  return (
+                    <div key={p.key} style={{ background: C.panel2, border: `1px solid ${d.activo ? C.azul : C.borde}`, borderRadius: 12, padding: "12px 14px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ fontSize: 14, fontWeight: 800 }}>{p.emoji} {p.nombre}</div>
+                        <button onClick={() => setDestino(p.key, { activo: !d.activo })} aria-label={`Activar ${p.nombre}`}
+                          style={{ position: "relative", width: 46, height: 26, borderRadius: 99, border: "none", cursor: "pointer", background: d.activo ? C.verde : "rgba(255,255,255,0.14)", flexShrink: 0 }}>
+                          <span style={{ position: "absolute", top: 3, left: d.activo ? 23 : 3, width: 20, height: 20, borderRadius: 99, background: "#fff", transition: "left .15s" }} />
+                        </button>
+                      </div>
+                      {d.activo && (
+                        <>
+                          <input value={d.valor} onChange={e => setDestino(p.key, { valor: e.target.value })}
+                            placeholder={p.placeholder} style={{ ...selectEstilo, marginTop: 10 }} />
+                          <div style={{ fontSize: 11.5, color: C.tenue, marginTop: 7 }}>{p.ayuda}</div>
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
 
               <button onClick={salirEnVivo} disabled={permiso !== "ok"}
@@ -1169,10 +1178,6 @@ function fmtTiempo(s: number): string {
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), seg = s % 60
   const mm = String(m).padStart(2, "0"), ss = String(seg).padStart(2, "0")
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
-}
-
-function nombreDestino(d: string): string {
-  return d === "facebook" ? "Facebook" : d === "youtube" ? "YouTube" : "RTMP personalizado"
 }
 
 function nombreEstado(t: string): string {
