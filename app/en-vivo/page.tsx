@@ -40,6 +40,7 @@ const C = {
 }
 
 const ANCHO = 1280, ALTO = 720 // lienzo de salida (720p)
+const LETRA_RATIO = 0.32 // alto de la caja de letra = ancho × este factor
 
 interface Disp { id: string; label: string }
 
@@ -66,6 +67,10 @@ export default function EnVivoPage() {
   const [nombrePos, setNombrePos] = useState<{ x: number; y: number }>({ x: ANCHO / 2 - 220, y: 26 })
   const [nombreTam, setNombreTam] = useState(30)
 
+  // Letra sobre la cámara como objeto movible/redimensionable (ancho; alto = ancho×RATIO)
+  const [letraPos, setLetraPos] = useState<{ x: number; y: number }>({ x: (ANCHO - 940) / 2, y: ALTO - 300 - 24 })
+  const [letraTam, setLetraTam] = useState(940)
+
   // Personalización (guardada en el equipo)
   const [colorLetra, setColorLetra] = useState("#ffffff")
   const [logoPos, setLogoPos] = useState<{ x: number; y: number }>({ x: ANCHO - 168 - 30, y: 26 })
@@ -81,6 +86,7 @@ export default function EnVivoPage() {
       const p = localStorage.getItem("en-vivo-logo-pos"); if (p) setLogoPos(JSON.parse(p))
       const pip = localStorage.getItem("en-vivo-pip"); if (pip) { const o = JSON.parse(pip); if (o.pos) setPipPos(o.pos); if (o.tam) setPipTam(o.tam) }
       const nom = localStorage.getItem("en-vivo-nombre"); if (nom) { const o = JSON.parse(nom); if (o.pos) setNombrePos(o.pos); if (o.tam) setNombreTam(o.tam) }
+      const let_ = localStorage.getItem("en-vivo-letra"); if (let_) { const o = JSON.parse(let_); if (o.pos) setLetraPos(o.pos); if (o.tam) setLetraTam(o.tam) }
       const mp = localStorage.getItem("en-vivo-mensaje-pos"); if (mp === "arriba" || mp === "abajo") setMensajePos(mp)
     } catch {}
   }, [])
@@ -90,6 +96,7 @@ export default function EnVivoPage() {
   useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-logo-pos", JSON.stringify(logoPos)); localStorage.setItem("en-vivo-logo-tam", String(logoTam)) } catch {} }, 300); return () => clearTimeout(t) }, [logoPos, logoTam])
   useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-pip", JSON.stringify({ pos: pipPos, tam: pipTam })) } catch {} }, 300); return () => clearTimeout(t) }, [pipPos, pipTam])
   useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-nombre", JSON.stringify({ pos: nombrePos, tam: nombreTam })) } catch {} }, 300); return () => clearTimeout(t) }, [nombrePos, nombreTam])
+  useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-letra", JSON.stringify({ pos: letraPos, tam: letraTam })) } catch {} }, 300); return () => clearTimeout(t) }, [letraPos, letraTam])
 
 
   // Datos de la iglesia (logo + nombre) desde la configuración, no del socket:
@@ -148,11 +155,11 @@ export default function EnVivoPage() {
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any, hayVideo: false, nombrePos: { x: 0, y: 0 }, nombreTam: 30, mensajePos: "abajo" as "abajo" | "arriba" })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any, hayVideo: false, nombrePos: { x: 0, y: 0 }, nombreTam: 30, mensajePos: "abajo" as "abajo" | "arriba", letraPos: { x: 0, y: 0 }, letraTam: 940 })
   useEffect(() => {
     const bibliaTexto = biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : ""
-    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl, nombrePos, nombreTam, mensajePos }
-  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, videoUrl, nombrePos, nombreTam, mensajePos])
+    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam }
+  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam])
 
   // ── Cargar la imagen proyectada (para la escena de contenido) ───────────────
   useEffect(() => {
@@ -464,9 +471,9 @@ export default function EnVivoPage() {
           }
           // Nombre de la iglesia (objeto movible)
           dibujarNombreCentrado(ctx, cont.nombre, cont.nombrePos, cont.nombreTam)
-          // Contenido abajo solo en "camara-letra" (letra o versículo)
+          // Letra en caja movible solo en "camara-letra" (letra o versículo)
           if (cont.escena === "camara-letra" && textoContenido.trim()) {
-            dibujarRotuloInferior(ctx, textoContenido, tituloContenido, tonoContenido, (hayMensaje && cont.mensajePos === "abajo") ? 84 : 0, cont.color)
+            dibujarLetraCaja(ctx, textoContenido, tituloContenido, tonoContenido, cont.letraPos.x, cont.letraPos.y, cont.letraTam, cont.color)
           }
           // Logo movible/redimensionable (se dibuja al final para tapar la marca)
           if (logo && logo.width > 0) {
@@ -587,6 +594,11 @@ export default function EnVivoPage() {
                 <ObjetoEditable etiqueta="Cámara 2" pos={pipPos} w={pipTam} h={pipTam * 9 / 16}
                   minW={160} maxW={900}
                   onChange={(p, w) => { setPipPos(p); setPipTam(Math.round(w)) }} />
+              )}
+              {escena === "camara-letra" && (
+                <ObjetoEditable etiqueta="Letra" pos={letraPos} w={letraTam} h={letraTam * LETRA_RATIO}
+                  minW={300} maxW={ANCHO}
+                  onChange={(p, w) => { setLetraPos(p); setLetraTam(Math.round(w)) }} />
               )}
             </div>
           )}
@@ -756,7 +768,7 @@ export default function EnVivoPage() {
               <span style={{ fontSize: 12, color: C.suave, width: 46, textAlign: "right" }}>{logoTam}px</span>
             </div>
             <div style={{ fontSize: 12, color: C.tenue, marginTop: 10 }}>
-              💡 Arrastra el <strong style={{ color: C.suave }}>logo</strong> en la vista previa para moverlo (útil para tapar la marca de Iriun). Se guarda solo.
+              💡 En la vista previa puedes <strong style={{ color: C.suave }}>arrastrar y redimensionar</strong> el logo, el nombre, la letra y la Cámara 2 (tira de la esquina azul). Todo se guarda solo.
             </div>
           </div>
         </div>
@@ -924,55 +936,42 @@ function limpiarTexto(texto: string): string {
     .trim()
 }
 
-// ── Dibujo del rótulo inferior con la letra ────────────────────────────────────
-// offsetY: cuánto subir el rótulo (para dejar espacio al mensaje en vivo abajo).
-function dibujarRotuloInferior(ctx: CanvasRenderingContext2D, texto: string, titulo: string, tono: string, offsetY = 0, color = "#ffffff") {
-  const BASE = ALTO - offsetY
-  const maxAncho = ANCHO - 160
+// Letra sobre la cámara dentro de una caja movible (x,y,w; alto = w×RATIO).
+// El texto se achica solo para caber completo dentro de la caja.
+function dibujarLetraCaja(ctx: CanvasRenderingContext2D, texto: string, titulo: string, tono: string, x: number, y: number, w: number, color: string) {
+  const h = w * LETRA_RATIO
+  // Fondo semitransparente redondeado (legibilidad sobre la cámara)
+  ctx.save()
+  ctx.fillStyle = "rgba(0,0,0,0.42)"
+  redondear(ctx, x, y, w, h, 16); ctx.fill()
+  const padX = 26, padTop = titulo ? 34 : 18, padBot = 16
+  const areaW = w - padX * 2, areaTop = y + padTop, areaH = h - padTop - padBot
+  // Título + tono
+  if (titulo) {
+    ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"
+    ctx.fillStyle = "rgba(255,255,255,0.72)"
+    ctx.font = "600 20px 'Segoe UI', system-ui, sans-serif"
+    const et = tono ? `${titulo.toUpperCase()}  ·  ${tono}` : titulo.toUpperCase()
+    ctx.fillText(et.slice(0, 60), x + w / 2, y + 26)
+  }
+  // Letra: envolver + achicar hasta caber
   const envolver = (t: number) => {
     ctx.font = `700 ${t}px 'Segoe UI', system-ui, sans-serif`
     const ls: string[] = []
-    for (const bruto of texto.split("\n")) { const l = bruto.trim(); if (l) ls.push(...ajustarLinea(ctx, l, maxAncho)) }
+    for (const b of texto.split("\n")) { const l = b.trim(); if (l) ls.push(...ajustarLinea(ctx, l, areaW)) }
     return ls
   }
-  // Achicar la fuente hasta que TODO quepa (bloque ≤ ~50% de la pantalla).
-  const maxBloque = ALTO * 0.5
-  let tamano = 44
-  let mostradas = envolver(tamano)
-  while (mostradas.length * tamano * 1.28 > maxBloque && tamano > 24) { tamano -= 3; mostradas = envolver(tamano) }
-  const alturaLinea = tamano * 1.28
-  const padY = 34
-  const altoBloque = mostradas.length * alturaLinea + padY * 2
-
-  // Degradado inferior para legibilidad
-  const grad = ctx.createLinearGradient(0, BASE - altoBloque - 60, 0, BASE)
-  grad.addColorStop(0, "rgba(0,0,0,0)")
-  grad.addColorStop(1, "rgba(0,0,0,0.78)")
-  ctx.fillStyle = grad
-  ctx.fillRect(0, BASE - altoBloque - 60, ANCHO, altoBloque + 60)
-
-  // Título + tono (arriba del rótulo)
-  if (titulo) {
-    ctx.font = "600 24px 'Segoe UI', system-ui, sans-serif"
-    ctx.fillStyle = "rgba(255,255,255,0.72)"
-    ctx.textAlign = "center"
-    const etiqueta = tono ? `${titulo.toUpperCase()}  ·  ${tono}` : titulo.toUpperCase()
-    ctx.fillText(etiqueta, ANCHO / 2, BASE - altoBloque - 6)
-  }
-
-  // Letra
-  ctx.font = `700 ${tamano}px 'Segoe UI', system-ui, sans-serif`
-  ctx.textAlign = "center"
-  ctx.textBaseline = "alphabetic"
-  ctx.shadowColor = "rgba(0,0,0,0.85)"
-  ctx.shadowBlur = 8
-  let y = BASE - altoBloque + padY + tamano
+  let tam = 40
+  let lineas = envolver(tam)
+  while (lineas.length * tam * 1.28 > areaH && tam > 18) { tam -= 2; lineas = envolver(tam) }
+  const alturaLinea = tam * 1.28
+  let ty = areaTop + (areaH - lineas.length * alturaLinea) / 2 + tam
+  ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"
+  ctx.shadowColor = "rgba(0,0,0,0.85)"; ctx.shadowBlur = 6
   ctx.fillStyle = color
-  for (const l of mostradas) {
-    ctx.fillText(l, ANCHO / 2, y)
-    y += alturaLinea
-  }
-  ctx.shadowBlur = 0
+  ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif`
+  for (const l of lineas) { ctx.fillText(l, x + w / 2, ty); ty += alturaLinea }
+  ctx.restore()
 }
 
 function ajustarLinea(ctx: CanvasRenderingContext2D, texto: string, maxAncho: number): string[] {
