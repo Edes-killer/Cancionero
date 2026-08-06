@@ -686,10 +686,24 @@ useEffect(() => {
 }, [lista, indiceLista, index, partes, paginasBiblia, paginaBibliaActual, loopCoro, nombreIglesia, logoEsperaUrl])
 
 // ✅ Al cambiar de canción, reiniciar el puntero de la secuencia del coro
-// intercalado (si no, arrastraría la posición de la canción anterior).
+// intercalado (si no, arrastraría la posición de la canción anterior) y cargar
+// la "tanda" guardada de ESA canción (si repite coro o no, recordado por canción).
 useEffect(() => {
   posSecuenciaRef.current = 0
+  try {
+    const guardado = activaId ? localStorage.getItem("coro-cancion-" + activaId) : null
+    setIntercalarCoro(guardado === "1")
+  } catch { setIntercalarCoro(false) }
 }, [activaId])
+
+// Alterna "repetir coro" y lo GUARDA para esta canción (su tanda queda recordada).
+const alternarCoro = () => {
+  setIntercalarCoro(prev => {
+    const nuevo = !prev
+    try { if (activaId) localStorage.setItem("coro-cancion-" + activaId, nuevo ? "1" : "0") } catch {}
+    return nuevo
+  })
+}
 
 useEffect(() => {
   let activo = true
@@ -4088,7 +4102,7 @@ return (
           }}>{versoDespuesCoro !== null ? "↩ Verso" : "🎵 Coro"}</button>
         )}
         {partes.some(p => /coro|estribillo/i.test(p?.tipo || "")) && (
-          <button onClick={() => setIntercalarCoro(v => !v)} title="Repetir el coro después de cada verso al avanzar" style={{
+          <button onClick={alternarCoro} title="Repetir el coro después de cada verso al avanzar. Se recuerda para esta canción." style={{
             padding: "4px 9px", borderRadius: 8, flexShrink: 0,
             border: `1px solid ${intercalarCoro ? "rgba(34,197,94,0.5)" : "rgba(255,255,255,0.12)"}`,
             background: intercalarCoro ? "rgba(34,197,94,0.14)" : "rgba(255,255,255,0.03)",
@@ -4158,7 +4172,7 @@ return (
           }}>{versoDespuesCoro !== null ? "↩ Verso" : "🎵 Coro"}</button>
         )}
         {partes.some(p => /coro|estribillo/i.test(p?.tipo || "")) && (
-          <button onClick={() => setIntercalarCoro(v => !v)} title="Repetir el coro después de cada verso al avanzar" style={{
+          <button onClick={alternarCoro} title="Repetir el coro después de cada verso al avanzar. Se recuerda para esta canción." style={{
             padding: "6px 12px", borderRadius: 8, flexShrink: 0,
             border: `1px solid ${intercalarCoro ? "rgba(34,197,94,0.5)" : "rgba(255,255,255,0.12)"}`,
             background: intercalarCoro ? "rgba(34,197,94,0.14)" : "rgba(255,255,255,0.03)",
