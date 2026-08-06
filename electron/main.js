@@ -1028,6 +1028,10 @@ app.whenReady().then(async () => {
     })
 
     autoUpdater.on("update-downloaded", (info) => {
+      // ✅ La descarga terminó → cerrar la ventanita de progreso de DESCARGA.
+      // Si no, queda pegada al 100% detrás del diálogo. La fase de instalación
+      // abre su propia ventana limpia más abajo.
+      cerrarVentanaProgreso()
       dialog.showMessageBox(mainWindow, {
         type: "info",
         title: "¡Actualización lista!",
