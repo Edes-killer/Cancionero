@@ -2492,6 +2492,11 @@ const contarMediaNube = async (iglesiaId: string): Promise<{ videos: number; ima
 
 const subirImagen = async (file: File) => {
   try {
+    const ext = (file.name.split(".").pop() || "").toLowerCase()
+    if (!EXT_IMAGEN.includes(ext)) {
+      flashCtrl(`Formato de imagen no compatible (.${ext || "?"}). Usa JPG, PNG, WEBP o GIF.`)
+      return null
+    }
     const iglesiaId = await getIglesiaIdCached()
     const archivoOptimizado = await optimizarImagen(file)
     const baseName = file.name.replace(/\.[^/.]+$/, "").replace(/\s+/g, "_").trim()
@@ -2544,11 +2549,28 @@ const subirImagen = async (file: File) => {
 // correcto — un video re-agregado como "imagen" se rompería al proyectar).
 const esUrlVideo = (url: string) => /\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(url || "")
 
+// ✅ Formatos permitidos para subir. Se valida por EXTENSIÓN (más confiable que
+// el MIME, que a veces viene vacío o raro) para rechazar archivos con formato
+// no soportado o extraño (.avi, .mkv, .heic, .exe, renombrados, etc.).
+const EXT_IMAGEN = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "avif"]
+const EXT_VIDEO = ["mp4", "webm", "mov", "m4v", "ogg"]
+const validarMedia = (file: File): { ok: boolean; tipo?: "imagen" | "video"; error?: string } => {
+  const ext = (file.name.split(".").pop() || "").toLowerCase()
+  if (EXT_IMAGEN.includes(ext)) return { ok: true, tipo: "imagen" }
+  if (EXT_VIDEO.includes(ext)) return { ok: true, tipo: "video" }
+  return { ok: false, error: `“${file.name}”: el formato .${ext || "?"} no es compatible. Sube imágenes (JPG, PNG, WEBP, GIF) o videos (MP4, WEBM, MOV).` }
+}
+
 // ✅ Subir un video corto (transición / descanso). A diferencia de la imagen NO
 // se optimiza (se sube tal cual) y siempre va a la nube. El bucket de Supabase
 // debe permitir el tipo video/* y un tamaño suficiente, o el upload falla.
 const subirVideo = async (file: File) => {
   try {
+    const extV = (file.name.split(".").pop() || "").toLowerCase()
+    if (!EXT_VIDEO.includes(extV)) {
+      flashCtrl(`Formato de video no compatible (.${extV || "?"}). Convierte a MP4 o WEBM.`)
+      return null
+    }
     const MAX_MB = 25
     if (file.size > MAX_MB * 1024 * 1024) {
       flashCtrl(`El video pesa ${(file.size / 1024 / 1024).toFixed(0)} MB. Máximo ${MAX_MB} MB — usá un clip más corto o de menor resolución.`)
@@ -4868,8 +4890,10 @@ return (
                       onChange={async e => {
                         const inputFile = e.target as HTMLInputElement
                         const file = inputFile.files?.[0]
-                        if (!file) return
-                        const esVideo = file.type.startsWith("video/")
+                        if (!file) { return }
+                        const val = validarMedia(file)
+                        if (!val.ok) { flashCtrl(val.error || "Formato no compatible"); inputFile.value = ""; return }
+                        const esVideo = val.tipo === "video"
                         const resultado = esVideo ? await subirVideo(file) : await subirImagen(file)
                         if (resultado?.url) {
                           agregarItemAListaConFeedback(
@@ -5186,6 +5210,10 @@ return (
                       const inputFile = e.target as HTMLInputElement
                       const file = inputFile.files?.[0]
                       if (!file) return
+                      const extF = (file.name.split(".").pop() || "").toLowerCase()
+                      if (fondoCancionModo === "video" && !EXT_VIDEO.includes(extF)) {
+                        flashCtrl(`Formato de video no compatible (.${extF || "?"}). Convierte a MP4 o WEBM.`); inputFile.value = ""; return
+                      }
                       if (fondoCancionModo === "video") {
                         // Video: guardar local en Electron o subir a Supabase Storage
                         const isElectron = navigator.userAgent.includes("Electron")
