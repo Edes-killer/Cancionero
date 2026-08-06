@@ -5610,9 +5610,12 @@ return (
     </div>
 
     {/* ══ COLUMNA DERECHA ════════════════════════════════════════════════ */}
+    {/* ✅ En escritorio queda PEGADA (sticky) al hacer scroll: la lista de culto
+        se mantiene visible aunque la lista de canciones de la izquierda sea larga. */}
     <div style={{
       display: "flex", flexDirection: "column", gap: isMobile ? 8 : 12,
-      minWidth: 0, width: "100%"
+      minWidth: 0, width: "100%",
+      ...(isMobile ? {} : { position: "sticky", top: 20, alignSelf: "start", maxHeight: "calc(100vh - 40px)" })
     }}>
 
       {/* Tabs mobile: Preview | Lista — solo en desktop */}
@@ -5728,7 +5731,10 @@ return (
           border: "1px solid rgba(255,255,255,0.08)",
           borderRadius: 16, overflow: "hidden",
           overflowY: "auto",
-          minWidth: 0, width: "100%"
+          minWidth: 0, width: "100%",
+          // ✅ En escritorio la lista llena el alto disponible y scrollea adentro
+          // (para que la columna pegada no se salga de la pantalla).
+          ...(isMobile ? {} : { flex: 1, minHeight: 0 })
         }}
       >
         {/* Header lista */}
