@@ -71,6 +71,41 @@ export default function EnVivoPage() {
   const [letraPos, setLetraPos] = useState<{ x: number; y: number }>({ x: (ANCHO - 940) / 2, y: ALTO - 300 - 24 })
   const [letraTam, setLetraTam] = useState(940)
 
+  // Gráficos propios (imágenes que el usuario sube como objetos movibles)
+  const [graficos, setGraficos] = useState<{ id: string; url: string; pos: { x: number; y: number }; w: number; aspecto: number }[]>([])
+  const graficoImgs = useRef<Record<string, HTMLImageElement>>({})
+  useEffect(() => {
+    try { const g = localStorage.getItem("en-vivo-graficos"); if (g) setGraficos(JSON.parse(g)) } catch {}
+  }, [])
+  useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-graficos", JSON.stringify(graficos)) } catch {} }, 400); return () => clearTimeout(t) }, [graficos])
+  // Cargar la imagen de cada gráfico
+  useEffect(() => {
+    for (const g of graficos) {
+      if (graficoImgs.current[g.id]) continue
+      const img = new Image(); img.crossOrigin = "anonymous"
+      img.onload = () => { graficoImgs.current[g.id] = img }
+      img.src = g.url
+    }
+    // limpiar imágenes de gráficos eliminados
+    for (const id of Object.keys(graficoImgs.current)) if (!graficos.some(g => g.id === id)) delete graficoImgs.current[id]
+  }, [graficos])
+  const setGraficoPos = (id: string, pos: { x: number; y: number }, w: number) =>
+    setGraficos(gs => gs.map(g => g.id === id ? { ...g, pos, w: Math.round(w) } : g))
+  const agregarGrafico = (file: File) => {
+    const r = new FileReader()
+    r.onload = () => {
+      const url = String(r.result || "")
+      const img = new Image()
+      img.onload = () => {
+        const w = Math.min(360, img.width)
+        setGraficos(gs => [...gs, { id: "g" + Date.now(), url, pos: { x: ANCHO / 2 - w / 2, y: ALTO / 2 - (w * img.height / img.width) / 2 }, w, aspecto: img.height / img.width || 1 }])
+      }
+      img.src = url
+    }
+    r.readAsDataURL(file)
+  }
+  const quitarGrafico = (id: string) => { setGraficos(gs => gs.filter(g => g.id !== id)); delete graficoImgs.current[id] }
+
   // Personalización (guardada en el equipo)
   const [colorLetra, setColorLetra] = useState("#ffffff")
   const [logoPos, setLogoPos] = useState<{ x: number; y: number }>({ x: ANCHO - 168 - 30, y: 26 })
@@ -155,11 +190,11 @@ export default function EnVivoPage() {
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any, hayVideo: false, nombrePos: { x: 0, y: 0 }, nombreTam: 30, mensajePos: "abajo" as "abajo" | "arriba", letraPos: { x: 0, y: 0 }, letraTam: 940 })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any, hayVideo: false, nombrePos: { x: 0, y: 0 }, nombreTam: 30, mensajePos: "abajo" as "abajo" | "arriba", letraPos: { x: 0, y: 0 }, letraTam: 940, graficos: [] as { id: string; pos: { x: number; y: number }; w: number; aspecto: number }[] })
   useEffect(() => {
     const bibliaTexto = biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : ""
-    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam }
-  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam])
+    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos }
+  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos])
 
   // ── Cargar la imagen proyectada (para la escena de contenido) ───────────────
   useEffect(() => {
@@ -475,6 +510,11 @@ export default function EnVivoPage() {
           if (cont.escena === "camara-letra" && textoContenido.trim()) {
             dibujarLetraCaja(ctx, textoContenido, tituloContenido, tonoContenido, cont.letraPos.x, cont.letraPos.y, cont.letraTam, cont.color)
           }
+          // Gráficos propios (imágenes que el usuario subió)
+          for (const g of cont.graficos) {
+            const gi = graficoImgs.current[g.id]
+            if (gi && gi.width > 0) ctx.drawImage(gi, g.pos.x, g.pos.y, g.w, g.w * g.aspecto)
+          }
           // Logo movible/redimensionable (se dibuja al final para tapar la marca)
           if (logo && logo.width > 0) {
             const lw = cont.logoTam, lh = logo.height * (lw / logo.width)
@@ -600,6 +640,11 @@ export default function EnVivoPage() {
                   minW={300} maxW={ANCHO}
                   onChange={(p, w) => { setLetraPos(p); setLetraTam(Math.round(w)) }} />
               )}
+              {graficos.map(g => (
+                <ObjetoEditable key={g.id} etiqueta="Gráfico" pos={g.pos} w={g.w} h={g.w * g.aspecto}
+                  minW={40} maxW={ANCHO}
+                  onChange={(p, w) => setGraficoPos(g.id, p, w)} />
+              ))}
             </div>
           )}
           {/* etiqueta: vista previa o EN VIVO con cronómetro */}
@@ -768,7 +813,31 @@ export default function EnVivoPage() {
               <span style={{ fontSize: 12, color: C.suave, width: 46, textAlign: "right" }}>{logoTam}px</span>
             </div>
             <div style={{ fontSize: 12, color: C.tenue, marginTop: 10 }}>
-              💡 En la vista previa puedes <strong style={{ color: C.suave }}>arrastrar y redimensionar</strong> el logo, el nombre, la letra y la Cámara 2 (tira de la esquina azul). Todo se guarda solo.
+              💡 En la vista previa puedes <strong style={{ color: C.suave }}>arrastrar y redimensionar</strong> el logo, el nombre, la letra, la Cámara 2 y los gráficos (tira de la esquina azul). Todo se guarda solo.
+            </div>
+
+            {/* Gráficos propios */}
+            <div style={{ marginTop: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12.5, color: C.tenue }}>Gráficos propios (marcos, adornos, logos de aliados…)</span>
+                <label style={botonBase({ background: "rgba(37,99,235,0.15)", color: "#93c5fd", padding: "8px 12px", fontSize: 12.5, border: `1px solid ${C.azul}` })}>
+                  ➕ Agregar imagen
+                  <input type="file" accept="image/*" style={{ display: "none" }}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) agregarGrafico(f); e.currentTarget.value = "" }} />
+                </label>
+              </div>
+              {graficos.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                  {graficos.map((g, i) => (
+                    <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 8, background: C.panel2, border: `1px solid ${C.borde}`, borderRadius: 10, padding: "6px 8px 6px 6px" }}>
+                      <img src={g.url} alt="" style={{ width: 34, height: 34, objectFit: "contain", borderRadius: 6, background: "rgba(0,0,0,.3)" }} />
+                      <span style={{ fontSize: 12, color: C.suave }}>Gráfico {i + 1}</span>
+                      <button onClick={() => quitarGrafico(g.id)} title="Quitar"
+                        style={{ background: "transparent", border: "none", color: "#fca5a5", cursor: "pointer", fontSize: 15, fontWeight: 800, padding: "0 4px" }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
