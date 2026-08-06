@@ -553,6 +553,15 @@ export default function ConfiguracionPage() {
   const subirArchivoLogo = async (file: File) => {
     if (!iglesiaId) return
 
+    // ✅ Validar formato: el logo debe ser una imagen.
+    const ext = (file.name.split(".").pop() || "").toLowerCase()
+    if (!["png", "jpg", "jpeg", "webp", "gif", "bmp", "avif", "svg"].includes(ext)) {
+      mostrarFlash(`Formato no compatible (.${ext || "?"}). Usa PNG (recomendado, con transparencia), JPG o WEBP.`, "error")
+      return
+    }
+
+    const logoAnterior = logoUrl // para borrarlo tras subir el nuevo
+
     try {
       setSubiendoLogo(true)
       mostrarFlash("Procesando imagen...", "info")
@@ -600,6 +609,15 @@ export default function ConfiguracionPage() {
 
       setLogoUrl(nuevaUrl)
       setLogoNombre(nuevoNombre)
+
+      // ✅ Borrar el logo anterior de storage (evita acumular logos viejos).
+      try {
+        const path = logoAnterior?.split("/imagenes-culto/")[1]?.split("?")[0]
+        if (path && path.startsWith("logos/") && nuevaUrl !== logoAnterior) {
+          await supabase.storage.from("imagenes-culto").remove([decodeURIComponent(path)])
+        }
+      } catch {}
+
       mostrarFlash("✅ Logo actualizado correctamente")
     } catch (error) {
       console.error("Error procesando logo:", error)
@@ -632,12 +650,22 @@ export default function ConfiguracionPage() {
   const quitarLogo = async () => {
     if (!iglesiaId) return
 
+    const logoAnterior = logoUrl
+
     const { error } = await supabase
       .from("iglesias")
       .update({ logo_url: null, logo_nombre: null })
       .eq("id", iglesiaId)
 
     if (error) { mostrarFlash("No se pudo quitar el logo", "error"); return }
+
+    // ✅ Borrar el archivo del logo de storage (no dejar basura).
+    try {
+      const path = logoAnterior?.split("/imagenes-culto/")[1]?.split("?")[0]
+      if (path && path.startsWith("logos/")) {
+        await supabase.storage.from("imagenes-culto").remove([decodeURIComponent(path)])
+      }
+    } catch {}
 
     setLogoUrl("")
     setLogoNombre("")
