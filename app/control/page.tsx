@@ -121,6 +121,13 @@ export default function ControlPage() {
   )
   const [galeriaImagenes, setGaleriaImagenes] = useState<{url:string,nombre:string,local:boolean}[]>([])
   const [galeriaAbierta, setGaleriaAbierta] = useState(false)
+  // Carrusel: proyectar varias imágenes en secuencia (auto-avance)
+  const [modoCarrusel, setModoCarrusel] = useState(false)          // selección múltiple en la galería
+  const [selCarrusel, setSelCarrusel] = useState<string[]>([])     // urls elegidas (en orden)
+  const [carruselOn, setCarruselOn] = useState(false)
+  const [carruselSeg, setCarruselSeg] = useState(6)                // segundos por imagen
+  const carruselUrlsRef = useRef<string[]>([])
+  const carruselIdxRef = useRef(0)
   const [cargandoGaleria, setCargandoGaleria] = useState(false)
   const isElectronCtx = typeof navigator !== "undefined" && navigator.userAgent.includes("Electron")
   const [modoGuardado, setModoGuardado] = useState<"local" | "nube">(() =>
@@ -704,6 +711,33 @@ const alternarCoro = () => {
     return nuevo
   })
 }
+
+// Carrusel de imágenes: al activarse, proyecta cada imagen por N segundos, en ciclo.
+useEffect(() => {
+  if (!carruselOn || carruselUrlsRef.current.length === 0) return
+  const emitir = () => {
+    const url = carruselUrlsRef.current[carruselIdxRef.current]
+    if (url) socketRef2.current?.emit("mostrar-imagen", { url, iglesia: "", video: false })
+  }
+  carruselIdxRef.current = 0
+  emitir()
+  const t = setInterval(() => {
+    carruselIdxRef.current = (carruselIdxRef.current + 1) % carruselUrlsRef.current.length
+    emitir()
+  }, Math.max(2, carruselSeg) * 1000)
+  return () => clearInterval(t)
+}, [carruselOn, carruselSeg])
+
+const iniciarCarrusel = () => {
+  if (selCarrusel.length === 0) { flashCtrl("Elige al menos una imagen para el carrusel"); return }
+  carruselUrlsRef.current = [...selCarrusel]
+  setCarruselOn(true)
+  setGaleriaAbierta(false)
+  flashCtrl(`🎠 Carrusel de ${selCarrusel.length} imágenes`)
+}
+const detenerCarrusel = () => { setCarruselOn(false) }
+const toggleSelCarrusel = (url: string) =>
+  setSelCarrusel(s => s.includes(url) ? s.filter(u => u !== url) : [...s, url])
 
 useEffect(() => {
   let activo = true
@@ -2553,6 +2587,13 @@ const cargarGaleriaImagenes = async (): Promise<{url: string, nombre: string, lo
       })
     }
   }
+  // Aplicar nombres a medida (renombrados por el usuario; guardados por URL).
+  try {
+    for (const img of resultado) {
+      const custom = localStorage.getItem("img-nombre-" + img.url)
+      if (custom) img.nombre = custom
+    }
+  } catch {}
   return resultado
 }
 
@@ -4829,6 +4870,20 @@ return (
                 </div>
 
                 {/* ✅ Modal flotante de galería — no empuja el contenido */}
+                {carruselOn && (
+                  <div style={{
+                    position:"fixed", bottom:18, left:"50%", transform:"translateX(-50%)", zIndex:210,
+                    display:"flex", alignItems:"center", gap:12, padding:"10px 16px", borderRadius:99,
+                    background:"rgba(17,24,39,0.96)", border:"1px solid rgba(34,197,94,0.4)", boxShadow:"0 8px 30px rgba(0,0,0,0.5)"
+                  }}>
+                    <span style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, fontWeight:700, color:"#4ade80" }}>
+                      <span style={{ width:9, height:9, borderRadius:"50%", background:"#4ade80", boxShadow:"0 0 8px #4ade80" }} />
+                      🎠 Carrusel · {carruselUrlsRef.current.length} imágenes · {carruselSeg}s
+                    </span>
+                    <button onClick={detenerCarrusel} style={{ padding:"6px 14px", borderRadius:99, border:"none", background:"#dc2626", color:"#fff", fontSize:12.5, fontWeight:800, cursor:"pointer" }}>■ Detener</button>
+                  </div>
+                )}
+
                 {galeriaAbierta && (
                   <div style={{
                     position:"fixed", inset:0, zIndex:200,
@@ -4844,10 +4899,31 @@ return (
                       {/* Header */}
                       <div style={{ padding:"14px 16px", borderBottom:"1px solid rgba(255,255,255,0.08)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                         <div style={{ fontWeight:800, fontSize:15 }}>🗂️ Galería de imágenes</div>
-                        <div style={{ display:"flex", gap:16, alignItems:"center" }}>
+                        <div style={{ display:"flex", gap:14, alignItems:"center" }}>
                           <span style={{ fontSize:11, opacity:0.4 }}>☁️ {galeriaImagenes.filter(i=>!i.local).length}/20 · 💾 {galeriaImagenes.filter(i=>i.local).length}</span>
                           <button onClick={() => setGaleriaAbierta(false)} style={{ background:"none", border:"none", color:"white", fontSize:18, cursor:"pointer", opacity:0.5 }}>✕</button>
                         </div>
+                      </div>
+                      {/* Barra de carrusel */}
+                      <div style={{ padding:"8px 16px", borderBottom:"1px solid rgba(255,255,255,0.08)", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+                        <button onClick={() => { setModoCarrusel(m => !m); setSelCarrusel([]) }} style={{
+                          padding:"5px 11px", borderRadius:8, cursor:"pointer", fontSize:11.5, fontWeight:700,
+                          border:`1px solid ${modoCarrusel ? "rgba(34,197,94,0.5)" : "rgba(255,255,255,0.14)"}`,
+                          background: modoCarrusel ? "rgba(34,197,94,0.14)" : "rgba(255,255,255,0.04)",
+                          color: modoCarrusel ? "#4ade80" : "rgba(255,255,255,0.7)"
+                        }}>🎠 {modoCarrusel ? "Eligiendo…" : "Carrusel"}</button>
+                        {modoCarrusel && (<>
+                          <span style={{ fontSize:11, opacity:0.6 }}>{selCarrusel.length} elegidas</span>
+                          <label style={{ fontSize:11, opacity:0.6, display:"flex", alignItems:"center", gap:4 }}>
+                            <input type="number" min={2} max={60} value={carruselSeg} onChange={e => setCarruselSeg(Math.max(2, Number(e.target.value)||6))}
+                              style={{ width:44, background:"#0a1525", border:"1px solid rgba(255,255,255,0.15)", borderRadius:6, color:"#fff", padding:"3px 5px", fontSize:11 }} /> seg
+                          </label>
+                          <button onClick={iniciarCarrusel} disabled={selCarrusel.length===0} style={{
+                            padding:"5px 12px", borderRadius:8, cursor:"pointer", fontSize:11.5, fontWeight:800,
+                            border:"none", background: selCarrusel.length? "#16a34a" : "rgba(255,255,255,0.08)", color:"#fff",
+                            opacity: selCarrusel.length? 1 : 0.5
+                          }}>▶ Proyectar</button>
+                        </>)}
                       </div>
                       {/* Grid */}
                       <div style={{ overflowY:"auto", flex:1, padding:12 }}>
@@ -4859,16 +4935,36 @@ return (
                               <div key={i} style={{ position:"relative", aspectRatio:"16/9", borderRadius:8, overflow:"hidden", border:"1px solid rgba(255,255,255,0.08)" }}>
                                 {esUrlVideo(img.url) ? (
                                   <video src={img.url} muted playsInline preload="metadata"
-                                    onClick={() => { agregarItemAListaConFeedback({ tipo:"video", url:img.url, titulo:img.nombre }, `✅ ${img.nombre}`); setGaleriaAbierta(false) }}
+                                    onClick={() => { if (modoCarrusel) { toggleSelCarrusel(img.url); return } agregarItemAListaConFeedback({ tipo:"video", url:img.url, titulo:img.nombre }, `✅ ${img.nombre}`); setGaleriaAbierta(false) }}
                                     style={{ width:"100%", height:"100%", objectFit:"cover", cursor:"pointer" }} />
                                 ) : (
                                   <img src={img.url} alt={img.nombre}
-                                    onClick={() => { agregarItemAListaConFeedback({ tipo:"imagen", url:img.url, titulo:img.nombre }, `✅ ${img.nombre}`); setGaleriaAbierta(false) }}
+                                    onClick={() => { if (modoCarrusel) { toggleSelCarrusel(img.url); return } agregarItemAListaConFeedback({ tipo:"imagen", url:img.url, titulo:img.nombre }, `✅ ${img.nombre}`); setGaleriaAbierta(false) }}
                                     style={{ width:"100%", height:"100%", objectFit:"cover", cursor:"pointer" }} />
                                 )}
+                                {/* Selección para carrusel */}
+                                {modoCarrusel && (() => { const n = selCarrusel.indexOf(img.url); return (
+                                  <div style={{ position:"absolute", inset:0, border: n>=0 ? "3px solid #16a34a" : "3px solid transparent", borderRadius:8, background: n>=0 ? "rgba(22,163,74,0.18)" : "rgba(0,0,0,0.15)", display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
+                                    {n>=0 && <span style={{ width:26, height:26, borderRadius:"50%", background:"#16a34a", color:"#fff", fontWeight:800, fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}>{n+1}</span>}
+                                  </div>
+                                )})()}
                                 {esUrlVideo(img.url) && <span style={{ position:"absolute", top:3, right:3, fontSize:11, background:"rgba(0,0,0,0.7)", borderRadius:3, padding:"1px 4px" }}>🎬</span>}
                                 {img.local && <span style={{ position:"absolute", top:3, left:3, fontSize:9, background:"rgba(0,0,0,0.7)", borderRadius:3, padding:"1px 4px" }}>💾</span>}
                                 <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:"4px 6px", background:"linear-gradient(transparent,rgba(0,0,0,0.7))", fontSize:10, opacity:0.8, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{img.nombre}</div>
+                                {/* ✅ Botón renombrar */}
+                                <button onClick={async e => {
+                                  e.stopPropagation()
+                                  const nuevo = await pedirTexto("Nuevo nombre para la imagen:", { valorInicial: img.nombre, textoOk: "Guardar" })
+                                  if (nuevo == null) return
+                                  const n = nuevo.trim()
+                                  try { if (n) localStorage.setItem("img-nombre-" + img.url, n); else localStorage.removeItem("img-nombre-" + img.url) } catch {}
+                                  setGaleriaImagenes(await cargarGaleriaImagenes())
+                                }} title="Renombrar" style={{
+                                  position:"absolute", top:3, right:26,
+                                  width:20, height:20, borderRadius:4,
+                                  background:"rgba(37,99,235,0.85)", border:"none",
+                                  color:"white", fontSize:11, cursor:"pointer", lineHeight:"1"
+                                }}>✎</button>
                                 {/* ✅ Botón eliminar */}
                                 <button onClick={async e => {
                                   e.stopPropagation()
