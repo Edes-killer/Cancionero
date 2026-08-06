@@ -330,6 +330,12 @@ function startSocketServer(port) {
 
   const server = http.createServer((req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*")
+    // ✅ CORS completo: sin esto, un DELETE con JSON (borrar imagen local) dispara
+    // un preflight OPTIONS que el servidor no respondía → "Failed to fetch".
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type")
+    if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return }
+
     if (req.url === "/qr") {
       const handler = async () => {
         try {
