@@ -60,6 +60,8 @@ interface ItemLista {
   referencia?: string
   referencia_biblica?: string
   paginas?: string[]
+  urls?: string[]   // carrusel: imágenes/videos en secuencia
+  seg?: number      // carrusel: segundos por imagen
 }
 
 interface CultoData {
@@ -121,13 +123,13 @@ export default function ControlPage() {
   )
   const [galeriaImagenes, setGaleriaImagenes] = useState<{url:string,nombre:string,local:boolean}[]>([])
   const [galeriaAbierta, setGaleriaAbierta] = useState(false)
-  // Carrusel: proyectar varias imágenes en secuencia (auto-avance)
+  // Carrusel: se ARMA en la galería y se agrega como ITEM de la lista; al
+  // proyectar ese item, pasa las imágenes/videos en secuencia (auto-avance).
   const [modoCarrusel, setModoCarrusel] = useState(false)          // selección múltiple en la galería
   const [selCarrusel, setSelCarrusel] = useState<string[]>([])     // urls elegidas (en orden)
-  const [carruselOn, setCarruselOn] = useState(false)
   const [carruselSeg, setCarruselSeg] = useState(6)                // segundos por imagen
-  const carruselUrlsRef = useRef<string[]>([])
-  const carruselIdxRef = useRef(0)
+  const [carruselActivo, setCarruselActivo] = useState(false)      // hay un carrusel proyectándose
+  const carruselTimerRef = useRef<any>(null)
   const [cargandoGaleria, setCargandoGaleria] = useState(false)
   const isElectronCtx = typeof navigator !== "undefined" && navigator.userAgent.includes("Electron")
   const [modoGuardado, setModoGuardado] = useState<"local" | "nube">(() =>
@@ -701,6 +703,8 @@ useEffect(() => {
     const guardado = activaId ? localStorage.getItem("coro-cancion-" + activaId) : null
     setIntercalarCoro(guardado === "1")
   } catch { setIntercalarCoro(false) }
+  // Si se proyectó una canción, cortar cualquier carrusel en curso.
+  if (activaId) detenerCarruselTimer()
 }, [activaId])
 
 // Alterna "repetir coro" y lo GUARDA para esta canción (su tanda queda recordada).
@@ -712,32 +716,40 @@ const alternarCoro = () => {
   })
 }
 
-// Carrusel de imágenes: al activarse, proyecta cada imagen por N segundos, en ciclo.
-useEffect(() => {
-  if (!carruselOn || carruselUrlsRef.current.length === 0) return
-  const emitir = () => {
-    const url = carruselUrlsRef.current[carruselIdxRef.current]
-    if (url) socketRef2.current?.emit("mostrar-imagen", { url, iglesia: "", video: false })
-  }
-  carruselIdxRef.current = 0
-  emitir()
-  const t = setInterval(() => {
-    carruselIdxRef.current = (carruselIdxRef.current + 1) % carruselUrlsRef.current.length
-    emitir()
-  }, Math.max(2, carruselSeg) * 1000)
-  return () => clearInterval(t)
-}, [carruselOn, carruselSeg])
-
-const iniciarCarrusel = () => {
-  if (selCarrusel.length === 0) { flashCtrl("Elige al menos una imagen para el carrusel"); return }
-  carruselUrlsRef.current = [...selCarrusel]
-  setCarruselOn(true)
-  setGaleriaAbierta(false)
-  flashCtrl(`🎠 Carrusel de ${selCarrusel.length} imágenes`)
+// ── Carrusel (como item de lista) ────────────────────────────────────────────
+const detenerCarruselTimer = () => {
+  if (carruselTimerRef.current) { clearInterval(carruselTimerRef.current); carruselTimerRef.current = null }
+  setCarruselActivo(false)
 }
-const detenerCarrusel = () => { setCarruselOn(false) }
+// Reproduce una secuencia de imágenes/videos, cada uno por N segundos, en ciclo.
+// Maneja .mp4 (esUrlVideo → el proyector lo muestra como video mudo en loop).
+const reproducirCarrusel = (urls: string[], seg: number) => {
+  detenerCarruselTimer()
+  const lista = (urls || []).filter(Boolean)
+  if (lista.length === 0) return
+  let idx = 0
+  const emitir = () => {
+    const url = lista[idx]
+    if (url) socketRef2.current?.emit("mostrar-imagen", { url, iglesia: "", video: esUrlVideo(url) })
+  }
+  emitir()
+  setCarruselActivo(true)
+  if (lista.length > 1) {
+    carruselTimerRef.current = setInterval(() => { idx = (idx + 1) % lista.length; emitir() }, Math.max(2, seg) * 1000)
+  }
+}
 const toggleSelCarrusel = (url: string) =>
   setSelCarrusel(s => s.includes(url) ? s.filter(u => u !== url) : [...s, url])
+const agregarCarruselALista = () => {
+  if (selCarrusel.length === 0) { flashCtrl("Elige al menos una imagen para el carrusel"); return }
+  agregarItemAListaConFeedback(
+    { tipo: "carrusel", urls: [...selCarrusel], seg: carruselSeg, titulo: `Carrusel (${selCarrusel.length})` },
+    `🎠 Carrusel de ${selCarrusel.length} agregado a la lista`
+  )
+  setSelCarrusel([]); setModoCarrusel(false); setGaleriaAbierta(false)
+}
+// Detener el carrusel al desmontar
+useEffect(() => () => detenerCarruselTimer(), [])
 
 useEffect(() => {
   let activo = true
@@ -1842,13 +1854,15 @@ const itemAFila = (item: any, i: number, listaId: string) => ({
   cancion_id: item.tipo === "cancion" ? item.id : null,
   tipo: item.tipo,
   // ✅ El video reusa la columna imagen_url (guarda su URL igual que la imagen).
-  imagen_url: (item.tipo === "imagen" || item.tipo === "video") ? item.url : null,
+  // ✅ El carrusel guarda sus URLs (JSON) en imagen_url y los segundos en estado_url.
+  imagen_url: (item.tipo === "imagen" || item.tipo === "video") ? item.url
+    : item.tipo === "carrusel" ? JSON.stringify(item.urls || []) : null,
   referencia_biblica: item.tipo === "biblia" ? item.referencia : null,
   texto_biblico: item.tipo === "biblia" ? item.texto : null,
   estado_modo: item.tipo === "estado" ? item.modo : null,
   estado_titulo: item.tipo === "estado" ? item.titulo : null,
   estado_subtitulo: item.tipo === "estado" ? item.subtitulo : null,
-  estado_url: item.tipo === "estado" ? item.url : null
+  estado_url: item.tipo === "estado" ? item.url : (item.tipo === "carrusel" ? String(item.seg || 6) : null)
 })
 
 
@@ -2181,6 +2195,12 @@ const cargarListaDesdeBD = async (id: string) => {
       }
     }
 
+    if (item.tipo === "carrusel") {
+      let urls: string[] = []
+      try { urls = JSON.parse(item.imagen_url || "[]") } catch {}
+      return { tipo: "carrusel", urls, seg: Number(item.estado_url) || 6, titulo: `Carrusel (${urls.length})` }
+    }
+
     if (item.tipo === "biblia") {
   const texto = item.texto_biblico || ""
   return {
@@ -2232,6 +2252,16 @@ const irAItemLista = async (i: number, alFinal = false) => {
 
   setIndiceLista(i)
   setIndiceActivoLista(i)
+
+  // Al cambiar de item se corta cualquier carrusel que estuviera corriendo.
+  detenerCarruselTimer()
+
+  if (item.tipo === "carrusel") {
+    setActivaId(null); setPartes([]); setIndex(0); limpiarModoBiblia()
+    setAprendiendo(false); detenerAutoAvance(); setEstadoEspecialActivo("")
+    reproducirCarrusel(item.urls || [], item.seg || 6)
+    return
+  }
 
   if (item.tipo === "imagen" || item.tipo === "video") {
     setActivaId(null); setPartes([]); setIndex(0); limpiarModoBiblia()
@@ -2917,6 +2947,7 @@ const iconoItemLista = (item: any) => {
   if (item?.tipo === "biblia") return "📖"
   if (item?.tipo === "imagen") return "🖼️"
   if (item?.tipo === "video") return "🎬"
+  if (item?.tipo === "carrusel") return "🎠"
 
   if (item?.tipo === "estado") {
     if (item.modo === "negro") return "⚫"
@@ -4870,7 +4901,7 @@ return (
                 </div>
 
                 {/* ✅ Modal flotante de galería — no empuja el contenido */}
-                {carruselOn && (
+                {carruselActivo && (
                   <div style={{
                     position:"fixed", bottom:18, left:"50%", transform:"translateX(-50%)", zIndex:210,
                     display:"flex", alignItems:"center", gap:12, padding:"10px 16px", borderRadius:99,
@@ -4878,9 +4909,9 @@ return (
                   }}>
                     <span style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, fontWeight:700, color:"#4ade80" }}>
                       <span style={{ width:9, height:9, borderRadius:"50%", background:"#4ade80", boxShadow:"0 0 8px #4ade80" }} />
-                      🎠 Carrusel · {carruselUrlsRef.current.length} imágenes · {carruselSeg}s
+                      🎠 Carrusel en curso
                     </span>
-                    <button onClick={detenerCarrusel} style={{ padding:"6px 14px", borderRadius:99, border:"none", background:"#dc2626", color:"#fff", fontSize:12.5, fontWeight:800, cursor:"pointer" }}>■ Detener</button>
+                    <button onClick={detenerCarruselTimer} style={{ padding:"6px 14px", borderRadius:99, border:"none", background:"#dc2626", color:"#fff", fontSize:12.5, fontWeight:800, cursor:"pointer" }}>■ Detener auto-avance</button>
                   </div>
                 )}
 
@@ -4918,11 +4949,11 @@ return (
                             <input type="number" min={2} max={60} value={carruselSeg} onChange={e => setCarruselSeg(Math.max(2, Number(e.target.value)||6))}
                               style={{ width:44, background:"#0a1525", border:"1px solid rgba(255,255,255,0.15)", borderRadius:6, color:"#fff", padding:"3px 5px", fontSize:11 }} /> seg
                           </label>
-                          <button onClick={iniciarCarrusel} disabled={selCarrusel.length===0} style={{
+                          <button onClick={agregarCarruselALista} disabled={selCarrusel.length===0} style={{
                             padding:"5px 12px", borderRadius:8, cursor:"pointer", fontSize:11.5, fontWeight:800,
                             border:"none", background: selCarrusel.length? "#16a34a" : "rgba(255,255,255,0.08)", color:"#fff",
                             opacity: selCarrusel.length? 1 : 0.5
-                          }}>▶ Proyectar</button>
+                          }}>➕ Agregar a la lista</button>
                         </>)}
                       </div>
                       {/* Grid */}
@@ -4942,9 +4973,9 @@ return (
                                     onClick={() => { if (modoCarrusel) { toggleSelCarrusel(img.url); return } agregarItemAListaConFeedback({ tipo:"imagen", url:img.url, titulo:img.nombre }, `✅ ${img.nombre}`); setGaleriaAbierta(false) }}
                                     style={{ width:"100%", height:"100%", objectFit:"cover", cursor:"pointer" }} />
                                 )}
-                                {/* Selección para carrusel */}
+                                {/* Selección para carrusel (solo resalta las elegidas, no oscurece el resto) */}
                                 {modoCarrusel && (() => { const n = selCarrusel.indexOf(img.url); return (
-                                  <div style={{ position:"absolute", inset:0, border: n>=0 ? "3px solid #16a34a" : "3px solid transparent", borderRadius:8, background: n>=0 ? "rgba(22,163,74,0.18)" : "rgba(0,0,0,0.15)", display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
+                                  <div style={{ position:"absolute", inset:0, border: n>=0 ? "3px solid #16a34a" : "3px solid transparent", borderRadius:8, background: n>=0 ? "rgba(22,163,74,0.22)" : "transparent", display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
                                     {n>=0 && <span style={{ width:26, height:26, borderRadius:"50%", background:"#16a34a", color:"#fff", fontWeight:800, fontSize:13, display:"flex", alignItems:"center", justifyContent:"center" }}>{n+1}</span>}
                                   </div>
                                 )})()}
