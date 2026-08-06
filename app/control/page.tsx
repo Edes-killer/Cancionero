@@ -129,6 +129,7 @@ export default function ControlPage() {
   const [selCarrusel, setSelCarrusel] = useState<string[]>([])     // urls elegidas (en orden)
   const [carruselSeg, setCarruselSeg] = useState(6)                // segundos por imagen
   const [carruselActivo, setCarruselActivo] = useState(false)      // hay un carrusel proyectándose
+  const [carruselUrlActual, setCarruselUrlActual] = useState<string>("") // imagen/video actual del carrusel
   const carruselTimerRef = useRef<any>(null)
   const [cargandoGaleria, setCargandoGaleria] = useState(false)
   const isElectronCtx = typeof navigator !== "undefined" && navigator.userAgent.includes("Electron")
@@ -406,6 +407,10 @@ const [previewHabilitado, setPreviewHabilitado] = useState(true)
 // ── Vista previa FLOTANTE (arrastrable, siempre visible en escritorio) ────────
 const [previewPos, setPreviewPos] = useState<{ x: number; y: number } | null>(null)
 const [previewMinimizado, setPreviewMinimizado] = useState(false)
+const [previewAnclado, setPreviewAnclado] = useState(() => {
+  try { return localStorage.getItem("selah-preview-anclado") === "1" } catch { return false }
+})
+const alternarAnclado = () => setPreviewAnclado(a => { const n = !a; try { localStorage.setItem("selah-preview-anclado", n ? "1" : "0") } catch {}; return n })
 const arrastrePreviewRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
 const previewPosRef = useRef<{ x: number; y: number } | null>(null)
 
@@ -437,6 +442,7 @@ const soltarPreview = () => {
   try { if (previewPosRef.current) localStorage.setItem("selah-preview-pos", JSON.stringify(previewPosRef.current)) } catch {}
 }
 const iniciarArrastrePreview = (e: React.MouseEvent) => {
+  if (previewAnclado) return // anclada: no se arrastra
   const p = previewPosRef.current
   if (!p) return
   arrastrePreviewRef.current = { sx: e.clientX, sy: e.clientY, ox: p.x, oy: p.y }
@@ -730,7 +736,7 @@ const reproducirCarrusel = (urls: string[], seg: number) => {
   let idx = 0
   const emitir = () => {
     const url = lista[idx]
-    if (url) socketRef2.current?.emit("mostrar-imagen", { url, iglesia: "", video: esUrlVideo(url) })
+    if (url) { socketRef2.current?.emit("mostrar-imagen", { url, iglesia: "", video: esUrlVideo(url) }); setCarruselUrlActual(url) }
   }
   emitir()
   setCarruselActivo(true)
@@ -5657,7 +5663,7 @@ return (
           <div onMouseDown={iniciarArrastrePreview} style={{
             padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)",
             display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
-            cursor: "move", userSelect: "none", background: "rgba(255,255,255,0.03)"
+            cursor: previewAnclado ? "default" : "move", userSelect: "none", background: "rgba(255,255,255,0.03)"
           }}>
             <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ opacity: 0.35, fontSize: 13, flexShrink: 0 }}>⠿</span>
@@ -5666,7 +5672,7 @@ return (
                   {tituloActual || "Vista previa en vivo"}
                 </div>
                 <div style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 8, marginTop: 1 }}>
-                  {(partes.length > 0 || paginasBiblia.length > 0 || estadoEspecialActivo) && (
+                  {(partes.length > 0 || paginasBiblia.length > 0 || estadoEspecialActivo || carruselActivo || (indiceActivoLista != null && ["imagen", "video", "carrusel"].includes((lista[indiceActivoLista] as any)?.tipo))) && (
                     <span style={{ color: "#4ade80", fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 4 }}>
                       <span style={{ width: 6, height: 6, borderRadius: 999, background: "#4ade80" }} />EN VIVO
                     </span>
@@ -5676,6 +5682,12 @@ return (
               </div>
             </div>
             <div style={{ display: "flex", gap: 4, flexShrink: 0 }} onMouseDown={e => e.stopPropagation()}>
+              <button onClick={alternarAnclado} title={previewAnclado ? "Anclada (clic para soltar)" : "Anclar en su lugar"} style={{
+                padding: "3px 9px", borderRadius: 7,
+                border: `1px solid ${previewAnclado ? "rgba(245,158,11,0.5)" : "rgba(255,255,255,0.1)"}`,
+                background: previewAnclado ? "rgba(245,158,11,0.16)" : "rgba(255,255,255,0.06)",
+                color: previewAnclado ? "#fbbf24" : "white", fontSize: 12, fontWeight: 800, cursor: "pointer"
+              }}>📌</button>
               <button onClick={() => setPreviewMinimizado(m => !m)} title={previewMinimizado ? "Expandir" : "Minimizar"} style={{
                 padding: "3px 9px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)",
                 background: "rgba(255,255,255,0.06)", color: "white", fontSize: 12, fontWeight: 800, cursor: "pointer"
@@ -5691,32 +5703,63 @@ return (
               avanza. Así ve en el PC lo mismo que la congregación, sin mirar el
               proyector. */}
           {!previewMinimizado && (
-            <div style={{ padding: "12px 14px", minHeight: 140, maxHeight: 320, overflowY: "auto" }}>
-              {partes.length > 0 ? (() => {
-                const parte = partes[index]
-                if (!parte) return null
-                const textoBase = parte.texto || parte.texto_acordes || ""
-                const limpio = textoBase.split("\n")
-                  .map((l: string) => l.replace(/\[[^\]]+\]/g, "").trim())
-                  .filter((l: string) => {
-                    if (!l) return false
-                    const tokens = l.split(/\s+/)
-                    return !tokens.every((t: string) =>
-                      t.match(/^(Do#?|Reb?|Re#?|Mib?|Mi|Fa#?|Solb?|Sol#?|Lab?|La#?|Sib?|Si|[A-G])(b|#)?(m|maj|min|sus|dim|aug|add)?\d*(\/[A-G])?$/)
-                    )
-                  })
-                  .join("\n")
-                return (<>
-                  <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 8, letterSpacing: "0.04em", color: parteActualEsCoro ? "#fbbf24" : "#93c5fd" }}>
-                    {etiquetaParteControl}
-                  </div>
-                  <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", margin: 0, fontSize: 14, lineHeight: 1.7, fontWeight: 500, color: "white" }}>{limpio.trim()}</pre>
-                </>)
-              })() : (
-                <div style={{ opacity: 0.4, fontSize: 13, textAlign: "center", paddingTop: 24 }}>
-                  {estadoEspecialActivo || (paginasBiblia.length > 0 ? "📖 Palabra proyectada" : "Nada proyectándose todavía")}
-                </div>
-              )}
+            <div style={{ padding: "12px 14px", minHeight: 140, maxHeight: 340, overflowY: "auto" }}>
+              {(() => {
+                const it: any = (indiceActivoLista != null && lista[indiceActivoLista]) ? lista[indiceActivoLista] : null
+                const estiloMedia: React.CSSProperties = { width: "100%", maxHeight: 280, objectFit: "contain", borderRadius: 8, display: "block", background: "#000" }
+
+                // 1) Carrusel proyectándose → imagen/video actual
+                if (carruselActivo && carruselUrlActual) {
+                  return esUrlVideo(carruselUrlActual)
+                    ? <video src={carruselUrlActual} muted loop autoPlay playsInline style={estiloMedia} />
+                    : <img src={carruselUrlActual} alt="" style={estiloMedia} />
+                }
+
+                // 2) Canción con letra
+                if (partes.length > 0 && partes[index]) {
+                  const textoBase = partes[index].texto || partes[index].texto_acordes || ""
+                  const limpio = textoBase.split("\n")
+                    .map((l: string) => l.replace(/\[[^\]]+\]/g, "").trim())
+                    .filter((l: string) => {
+                      if (!l) return false
+                      const tokens = l.split(/\s+/)
+                      return !tokens.every((t: string) => t.match(/^(Do#?|Reb?|Re#?|Mib?|Mi|Fa#?|Solb?|Sol#?|Lab?|La#?|Sib?|Si|[A-G])(b|#)?(m|maj|min|sus|dim|aug|add)?\d*(\/[A-G])?$/))
+                    }).join("\n")
+                  return (<>
+                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 8, letterSpacing: "0.04em", color: parteActualEsCoro ? "#fbbf24" : "#93c5fd" }}>{etiquetaParteControl}</div>
+                    <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", margin: 0, fontSize: 14, lineHeight: 1.7, fontWeight: 500, color: "white" }}>{limpio.trim()}</pre>
+                  </>)
+                }
+
+                // 3) Biblia
+                if (paginasBiblia.length > 0) {
+                  const txt = String(paginasBiblia[paginaBibliaActual] || "").replace(/<[^>]*>/g, " ").replace(/\[[^\]]*\]/g, "").replace(/\s+/g, " ").trim()
+                  return (<>
+                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 8, color: "#93c5fd" }}>📖 {it?.referencia || "Palabra"}{paginasBiblia.length > 1 ? ` · ${paginaBibliaActual + 1}/${paginasBiblia.length}` : ""}</div>
+                    <div style={{ fontSize: 14, lineHeight: 1.7, color: "white" }}>{txt}</div>
+                  </>)
+                }
+
+                // 4) Imagen / video (item activo)
+                if (it && (it.tipo === "imagen" || it.tipo === "video")) {
+                  return (it.tipo === "video" || esUrlVideo(it.url || ""))
+                    ? <video src={it.url} muted loop autoPlay playsInline style={estiloMedia} />
+                    : <img src={it.url} alt="" style={estiloMedia} />
+                }
+
+                // 5) Pantalla especial
+                if (estadoEspecialActivo || it?.tipo === "estado") {
+                  return (
+                    <div style={{ textAlign: "center", padding: "20px 8px" }}>
+                      <div style={{ fontSize: 30, marginBottom: 8 }}>{it ? iconoItemLista(it) : "⏳"}</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: "white" }}>{it?.titulo || estadoEspecialActivo || "Pantalla especial"}</div>
+                      {(it?.subtitulo || it?.estado_subtitulo) ? <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>{it?.subtitulo || it?.estado_subtitulo}</div> : null}
+                    </div>
+                  )
+                }
+
+                return <div style={{ opacity: 0.4, fontSize: 13, textAlign: "center", paddingTop: 24 }}>Nada proyectándose todavía</div>
+              })()}
             </div>
           )}
         </div>
