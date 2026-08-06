@@ -5032,13 +5032,17 @@ return (
                                         body: JSON.stringify({ nombre })
                                       })
                                     } else {
-                                      const igId = await getIglesiaIdCached()
                                       const path = img.url.split("/imagenes-culto/")[1]?.split("?")[0]
-                                      if (path) await supabase.storage.from("imagenes-culto").remove([decodeURIComponent(path)])
+                                      if (path) {
+                                        const { error } = await supabase.storage.from("imagenes-culto").remove([decodeURIComponent(path)])
+                                        if (error) { flashCtrl("No se pudo eliminar: " + error.message); return }
+                                      }
                                     }
+                                    // Limpiar también el nombre a medida guardado localmente
+                                    try { localStorage.removeItem("img-nombre-" + img.url) } catch {}
                                     const actualizadas = await cargarGaleriaImagenes()
                                     setGaleriaImagenes(actualizadas)
-                                  } catch(e) { flashCtrl("No se pudo eliminar") }
+                                  } catch(e:any) { flashCtrl("No se pudo eliminar: " + (e?.message || "")) }
                                 }} style={{
                                   position:"absolute", top:3, right:3,
                                   width:20, height:20, borderRadius:4,
