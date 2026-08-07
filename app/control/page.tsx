@@ -422,16 +422,20 @@ useEffect(() => {
     const g = localStorage.getItem("selah-preview-pos")
     p = g ? JSON.parse(g) : { x: window.innerWidth - 372, y: window.innerHeight - 430 }
   } catch { p = { x: window.innerWidth - 372, y: window.innerHeight - 430 } }
+  // Clamp: que no quede sobre la barra superior ni fuera de pantalla.
+  p = { x: Math.min(Math.max(4, p.x), window.innerWidth - 356), y: Math.min(Math.max(210, p.y), window.innerHeight - 120) }
   previewPosRef.current = p
   setPreviewPos(p)
 }, [])
 
+// ✅ Tope superior: que la vista previa no se suba sobre la barra/controles.
+const PREVIEW_TOPE_Y = 210
 const moverPreview = (e: MouseEvent) => {
   const a = arrastrePreviewRef.current
   if (!a) return
   const ANCHO = 356, ALTO = 120
   const x = Math.min(Math.max(4, a.ox + (e.clientX - a.sx)), window.innerWidth - ANCHO)
-  const y = Math.min(Math.max(4, a.oy + (e.clientY - a.sy)), window.innerHeight - ALTO)
+  const y = Math.min(Math.max(PREVIEW_TOPE_Y, a.oy + (e.clientY - a.sy)), window.innerHeight - ALTO)
   previewPosRef.current = { x, y }
   setPreviewPos({ x, y })
 }
@@ -855,6 +859,14 @@ const [mostrarAcciones, setMostrarAcciones] = useState(false)
 const [mostrarPalabra, setMostrarPalabra] = useState(false)
 const [mostrarCultos, setMostrarCultos] = useState(false)
 const [estadoEspecialActivo, setEstadoEspecialActivo] = useState("")
+// Datos de la pantalla especial en curso (para mostrar el detalle en la vista previa)
+const [estadoEspData, setEstadoEspData] = useState<any>(null)
+const [tickPreview, setTickPreview] = useState(0)
+useEffect(() => {
+  if (!estadoEspecialActivo) return
+  const t = setInterval(() => setTickPreview(x => x + 1), 1000) // refresca la cuenta regresiva
+  return () => clearInterval(t)
+}, [estadoEspecialActivo])
 const cargarLista = async () => {
   if (!listaIdActual) return
   await cargarListaDesdeBD(listaIdActual)
@@ -2781,6 +2793,7 @@ const proyectarMensajeRapido = () => {
   setPartes([]); setIndex(0); limpiarModoBiblia()
   setAprendiendo(false); detenerAutoAvance()
   setEstadoEspecialActivo("✍️ Mensaje")
+  setEstadoEspData({ tipo: "mensaje", titulo: mensajeRapido || "Espere un momento", subtitulo: nombreIglesia || "" })
   socket.emit("mostrar-estado", {
     tipo: "mensaje",
     titulo: mensajeRapido || "Espere un momento",
@@ -2804,6 +2817,7 @@ const proyectarCuentaRegresiva = () => {
   setPartes([]); setIndex(0); limpiarModoBiblia()
   setAprendiendo(false); detenerAutoAvance()
   setEstadoEspecialActivo("⏳ Cuenta regresiva")
+  setEstadoEspData({ tipo: "cuenta-regresiva", mensaje: cuentaRegresivaMensaje || "", hasta: objetivo.toISOString() })
   socket.emit("mostrar-estado", {
     tipo: "cuenta-regresiva",
     mensaje: cuentaRegresivaMensaje || "",
@@ -5747,13 +5761,38 @@ return (
                     : <img src={it.url} alt="" style={estiloMedia} />
                 }
 
-                // 5) Pantalla especial
+                // 5) Pantalla especial (con detalle: texto del mensaje / cuenta regresiva en vivo)
                 if (estadoEspecialActivo || it?.tipo === "estado") {
+                  const esp: any = (it?.tipo === "estado" ? it : null) || estadoEspData || {}
+                  const modo = esp.modo || esp.tipo || ""
+                  void tickPreview // fuerza re-render cada segundo para la cuenta
+
+                  if (modo === "cuenta-regresiva") {
+                    let target: number | null = esp.hasta ? new Date(esp.hasta).getTime() : null
+                    if (!target && esp.url) {
+                      const [hh, mm] = String(esp.url).split(":").map(Number)
+                      const o = new Date(); o.setHours(hh, mm, 0, 0); if (o.getTime() <= Date.now()) o.setDate(o.getDate() + 1)
+                      target = o.getTime()
+                    }
+                    const rem = target ? Math.max(0, Math.floor((target - Date.now()) / 1000)) : 0
+                    const pad = (n: number) => String(n).padStart(2, "0")
+                    const h = Math.floor(rem / 3600), m = Math.floor((rem % 3600) / 60), s = rem % 60
+                    const txt = rem > 0 ? (h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`) : "¡Comenzamos!"
+                    return (
+                      <div style={{ textAlign: "center", padding: "16px 8px" }}>
+                        <div style={{ fontSize: 40, fontWeight: 900, color: "white", fontVariantNumeric: "tabular-nums" }}>{txt}</div>
+                        {esp.mensaje && rem > 0 ? <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 6 }}>{esp.mensaje}</div> : null}
+                      </div>
+                    )
+                  }
+
+                  const titulo = esp.titulo || esp.mensaje || (modo === "espera" ? "Espere un momento" : estadoEspecialActivo || "Pantalla especial")
+                  const sub = esp.subtitulo || esp.estado_subtitulo || ""
                   return (
-                    <div style={{ textAlign: "center", padding: "20px 8px" }}>
-                      <div style={{ fontSize: 30, marginBottom: 8 }}>{it ? iconoItemLista(it) : "⏳"}</div>
-                      <div style={{ fontSize: 15, fontWeight: 800, color: "white" }}>{it?.titulo || estadoEspecialActivo || "Pantalla especial"}</div>
-                      {(it?.subtitulo || it?.estado_subtitulo) ? <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>{it?.subtitulo || it?.estado_subtitulo}</div> : null}
+                    <div style={{ textAlign: "center", padding: "18px 8px" }}>
+                      <div style={{ fontSize: 26, marginBottom: 8 }}>{it ? iconoItemLista(it) : "✍️"}</div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: "white", whiteSpace: "pre-wrap" }}>{titulo}</div>
+                      {sub ? <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>{sub}</div> : null}
                     </div>
                   )
                 }
