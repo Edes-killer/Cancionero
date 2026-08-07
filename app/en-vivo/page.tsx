@@ -108,6 +108,7 @@ export default function EnVivoPage() {
 
   // Personalización (guardada en el equipo)
   const [colorLetra, setColorLetra] = useState("#ffffff")
+  const [acento, setAcento] = useState("#f59e0b") // color de marca (acentos) por iglesia
   const [logoPos, setLogoPos] = useState<{ x: number; y: number }>({ x: ANCHO - 168 - 30, y: 26 })
   const [logoTam, setLogoTam] = useState(168)
   const [logoAspecto, setLogoAspecto] = useState(1) // alto/ancho del logo
@@ -117,6 +118,7 @@ export default function EnVivoPage() {
   useEffect(() => {
     try {
       const c = localStorage.getItem("en-vivo-color-letra"); if (c) setColorLetra(c)
+      const ac = localStorage.getItem("en-vivo-acento"); if (ac) setAcento(ac)
       const t = localStorage.getItem("en-vivo-logo-tam"); if (t) setLogoTam(Number(t) || 168)
       const p = localStorage.getItem("en-vivo-logo-pos"); if (p) setLogoPos(JSON.parse(p))
       const pip = localStorage.getItem("en-vivo-pip"); if (pip) { const o = JSON.parse(pip); if (o.pos) setPipPos(o.pos); if (o.tam) setPipTam(o.tam) }
@@ -126,6 +128,7 @@ export default function EnVivoPage() {
     } catch {}
   }, [])
   const guardarColor = (c: string) => { setColorLetra(c); try { localStorage.setItem("en-vivo-color-letra", c) } catch {} }
+  const guardarAcento = (c: string) => { setAcento(c); try { localStorage.setItem("en-vivo-acento", c) } catch {} }
   const cambiarLogoTam = (t: number) => { setLogoTam(t) }
   // Guardar posiciones/tamaños (con leve retardo para no escribir en cada píxel)
   useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-logo-pos", JSON.stringify(logoPos)); localStorage.setItem("en-vivo-logo-tam", String(logoTam)) } catch {} }, 300); return () => clearTimeout(t) }, [logoPos, logoTam])
@@ -190,11 +193,11 @@ export default function EnVivoPage() {
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any, hayVideo: false, nombrePos: { x: 0, y: 0 }, nombreTam: 30, mensajePos: "abajo" as "abajo" | "arriba", letraPos: { x: 0, y: 0 }, letraTam: 940, graficos: [] as { id: string; pos: { x: number; y: number }; w: number; aspecto: number }[] })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any, hayVideo: false, nombrePos: { x: 0, y: 0 }, nombreTam: 30, mensajePos: "abajo" as "abajo" | "arriba", letraPos: { x: 0, y: 0 }, letraTam: 940, graficos: [] as { id: string; pos: { x: number; y: number }; w: number; aspecto: number }[], acento: "#f59e0b" })
   useEffect(() => {
     const bibliaTexto = biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : ""
-    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos }
-  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos])
+    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos, acento }
+  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos, acento])
 
   // ── Cargar la imagen proyectada (para la escena de contenido) ───────────────
   useEffect(() => {
@@ -484,7 +487,7 @@ export default function EnVivoPage() {
           } else {
             dibujarEspera(ctx, cont.nombre, logo)
           }
-          if (!cont.estadoEsp) dibujarCabecera(ctx, cont.nombre, tituloContenido, tonoContenido, logo)
+          if (!cont.estadoEsp) dibujarCabecera(ctx, cont.nombre, tituloContenido, tonoContenido, logo, cont.acento)
         } else {
           // Escenas con cámara ("camara" y "camara-letra").
           if (v && v.videoWidth > 0) {
@@ -505,10 +508,10 @@ export default function EnVivoPage() {
             redondear(ctx, x, y, pw, ph, 12); ctx.stroke()
           }
           // Nombre de la iglesia (objeto movible)
-          dibujarNombreCentrado(ctx, cont.nombre, cont.nombrePos, cont.nombreTam)
+          dibujarNombreCentrado(ctx, cont.nombre, cont.nombrePos, cont.nombreTam, cont.acento)
           // Letra en caja movible solo en "camara-letra" (letra o versículo)
           if (cont.escena === "camara-letra" && textoContenido.trim()) {
-            dibujarLetraCaja(ctx, textoContenido, tituloContenido, tonoContenido, cont.letraPos.x, cont.letraPos.y, cont.letraTam, cont.color)
+            dibujarLetraCaja(ctx, textoContenido, tituloContenido, tonoContenido, cont.letraPos.x, cont.letraPos.y, cont.letraTam, cont.color, cont.acento)
           }
           // Gráficos propios (imágenes que el usuario subió)
           for (const g of cont.graficos) {
@@ -525,7 +528,7 @@ export default function EnVivoPage() {
         }
 
         // Mensaje en vivo: banner sobre todas las escenas (arriba o abajo).
-        if (hayMensaje) dibujarMensaje(ctx, cont.mensaje, cont.mensajePos)
+        if (hayMensaje) dibujarMensaje(ctx, cont.mensaje, cont.mensajePos, cont.acento)
       } catch (e) {
         console.error("Error dibujando fotograma:", e)
       }
@@ -612,7 +615,7 @@ export default function EnVivoPage() {
 
       <div style={{ maxWidth: 920, margin: "0 auto", padding: "24px" }}>
         {/* Vista previa (lo que saldría al aire) */}
-        <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", border: `1px solid ${C.borde}`, background: "#000", aspectRatio: "16 / 9" }}>
+        <div style={{ position: "sticky", top: 12, zIndex: 5, borderRadius: 16, overflow: "hidden", border: `1px solid ${C.borde}`, background: "#000", aspectRatio: "16 / 9", boxShadow: "0 12px 34px rgba(0,0,0,0.4)" }}>
           <canvas ref={canvasRef} width={ANCHO} height={ALTO}
             style={{ width: "100%", height: "100%", display: "block" }} />
 
@@ -805,6 +808,21 @@ export default function EnVivoPage() {
                 title="Color personalizado" style={{ width: 34, height: 30, borderRadius: 8, border: "none", background: "transparent", cursor: "pointer" }} />
             </div>
 
+            {/* Color de acento (marca de la iglesia) */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+              <span style={{ fontSize: 12.5, color: C.tenue, minWidth: 90 }}>Color de acento</span>
+              {[["#f59e0b", "Ámbar"], ["#2563eb", "Azul"], ["#dc2626", "Rojo"], ["#16a34a", "Verde"], ["#7c3aed", "Morado"], ["#0891b2", "Cian"]].map(([col, nom]) => (
+                <button key={col} onClick={() => guardarAcento(col)} title={nom}
+                  style={{ width: 30, height: 30, borderRadius: 8, cursor: "pointer", background: col,
+                    border: acento === col ? `3px solid #fff` : "2px solid rgba(255,255,255,0.2)" }} />
+              ))}
+              <input type="color" value={acento} onChange={e => guardarAcento(e.target.value)}
+                title="Color personalizado" style={{ width: 34, height: 30, borderRadius: 8, border: "none", background: "transparent", cursor: "pointer" }} />
+            </div>
+            <div style={{ fontSize: 11.5, color: C.tenue, marginBottom: 16, marginTop: -6 }}>
+              El acento se usa en las líneas, barras y detalles — así cada iglesia se ve distinta.
+            </div>
+
             {/* Tamaño del logo */}
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <span style={{ fontSize: 12.5, color: C.tenue, minWidth: 90 }}>Tamaño del logo</span>
@@ -943,29 +961,54 @@ function ObjetoEditable({ pos, w, h, onChange, etiqueta, minW = 60, maxW = ANCHO
   etiqueta: string; minW?: number; maxW?: number
 }) {
   const ref = useRef<HTMLDivElement>(null)
-  const est = useRef<{ modo: "mover" | "escalar"; px: number; py: number; x: number; y: number; w: number } | null>(null)
+  const est = useRef<{ modo: "mover" | "esc"; px: number; py: number; x: number; y: number; ax: number; ay: number; ratio: number; left: boolean; top: boolean } | null>(null)
   const rectCont = () => ref.current?.parentElement?.getBoundingClientRect()
+  const aCanvas = (e: React.PointerEvent) => {
+    const r = rectCont(); if (!r) return { x: 0, y: 0 }
+    return { x: (e.clientX - r.left) * (ANCHO / r.width), y: (e.clientY - r.top) * (ALTO / r.height) }
+  }
 
-  const iniciar = (modo: "mover" | "escalar") => (e: React.PointerEvent) => {
+  const iniciarMover = (e: React.PointerEvent) => {
     e.preventDefault(); e.stopPropagation()
-    est.current = { modo, px: e.clientX, py: e.clientY, x: pos.x, y: pos.y, w }
+    est.current = { modo: "mover", px: e.clientX, py: e.clientY, x: pos.x, y: pos.y, ax: 0, ay: 0, ratio: h / w, left: false, top: false }
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch {}
+  }
+  // Redimensionar desde una esquina: la esquina OPUESTA queda fija (ancla).
+  const iniciarEscalar = (corner: "tl" | "tr" | "bl" | "br") => (e: React.PointerEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    const left = corner === "tl" || corner === "bl"
+    const top = corner === "tl" || corner === "tr"
+    est.current = {
+      modo: "esc", px: e.clientX, py: e.clientY, x: pos.x, y: pos.y,
+      ax: left ? pos.x + w : pos.x, ay: top ? pos.y + h : pos.y, ratio: h / w, left, top,
+    }
     try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch {}
   }
   const mover = (e: React.PointerEvent) => {
-    if (!est.current) return
+    const s = est.current; if (!s) return
     const r = rectCont(); if (!r) return
-    const dx = (e.clientX - est.current.px) * (ANCHO / r.width)
-    const dy = (e.clientY - est.current.py) * (ALTO / r.height)
-    if (est.current.modo === "mover") {
-      onChange({ x: Math.max(0, Math.min(ANCHO - w, est.current.x + dx)), y: Math.max(0, Math.min(ALTO - h, est.current.y + dy)) }, w)
+    if (s.modo === "mover") {
+      const dx = (e.clientX - s.px) * (ANCHO / r.width)
+      const dy = (e.clientY - s.py) * (ALTO / r.height)
+      onChange({ x: Math.max(0, Math.min(ANCHO - w, s.x + dx)), y: Math.max(0, Math.min(ALTO - h, s.y + dy)) }, w)
     } else {
-      onChange(pos, Math.max(minW, Math.min(maxW, est.current.w + dx)))
+      const p = aCanvas(e)
+      const nw = Math.max(minW, Math.min(maxW, Math.abs(p.x - s.ax)))
+      const nh = nw * s.ratio
+      const nx = Math.max(0, Math.min(ANCHO - nw, s.left ? s.ax - nw : s.ax))
+      const ny = Math.max(0, Math.min(ALTO - nh, s.top ? s.ay - nh : s.ay))
+      onChange({ x: nx, y: ny }, nw)
     }
   }
   const soltar = (e: React.PointerEvent) => { est.current = null; try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId) } catch {} }
 
+  const manija = (corner: "tl" | "tr" | "bl" | "br", extra: React.CSSProperties): React.CSSProperties => ({
+    position: "absolute", width: 16, height: 16, borderRadius: 4, background: "#2563eb", border: "2px solid #fff",
+    touchAction: "none", ...extra,
+  })
+
   return (
-    <div ref={ref} onPointerDown={iniciar("mover")} onPointerMove={mover} onPointerUp={soltar}
+    <div ref={ref} onPointerDown={iniciarMover} onPointerMove={mover} onPointerUp={soltar}
       style={{
         position: "absolute", left: `${pos.x / ANCHO * 100}%`, top: `${pos.y / ALTO * 100}%`,
         width: `${w / ANCHO * 100}%`, height: `${h / ALTO * 100}%`,
@@ -973,8 +1016,10 @@ function ObjetoEditable({ pos, w, h, onChange, etiqueta, minW = 60, maxW = ANCHO
         boxSizing: "border-box", pointerEvents: "auto", touchAction: "none",
       }}>
       <span style={{ position: "absolute", top: -19, left: 0, fontSize: 10, fontWeight: 700, color: "#93c5fd", background: "rgba(0,0,0,0.55)", padding: "1px 6px", borderRadius: 4, whiteSpace: "nowrap" }}>{etiqueta}</span>
-      <div onPointerDown={iniciar("escalar")} onPointerMove={mover} onPointerUp={soltar}
-        style={{ position: "absolute", right: -9, bottom: -9, width: 18, height: 18, borderRadius: 5, background: "#2563eb", border: "2px solid #fff", cursor: "nwse-resize", touchAction: "none" }} />
+      <div onPointerDown={iniciarEscalar("tl")} onPointerMove={mover} onPointerUp={soltar} style={manija("tl", { left: -8, top: -8, cursor: "nwse-resize" })} />
+      <div onPointerDown={iniciarEscalar("tr")} onPointerMove={mover} onPointerUp={soltar} style={manija("tr", { right: -8, top: -8, cursor: "nesw-resize" })} />
+      <div onPointerDown={iniciarEscalar("bl")} onPointerMove={mover} onPointerUp={soltar} style={manija("bl", { left: -8, bottom: -8, cursor: "nesw-resize" })} />
+      <div onPointerDown={iniciarEscalar("br")} onPointerMove={mover} onPointerUp={soltar} style={manija("br", { right: -8, bottom: -8, cursor: "nwse-resize" })} />
     </div>
   )
 }
@@ -1007,7 +1052,7 @@ function limpiarTexto(texto: string): string {
 
 // Letra sobre la cámara dentro de una caja movible (x,y,w; alto = w×RATIO).
 // El texto se achica solo para caber completo dentro de la caja.
-function dibujarLetraCaja(ctx: CanvasRenderingContext2D, texto: string, titulo: string, tono: string, x: number, y: number, w: number, color: string) {
+function dibujarLetraCaja(ctx: CanvasRenderingContext2D, texto: string, titulo: string, tono: string, x: number, y: number, w: number, color: string, acento = "#f59e0b") {
   const h = w * LETRA_RATIO
   // Fondo: scrim con degradado (más cinematográfico que una caja plana) + acento
   ctx.save()
@@ -1016,7 +1061,7 @@ function dibujarLetraCaja(ctx: CanvasRenderingContext2D, texto: string, titulo: 
   ctx.fillStyle = bg
   redondear(ctx, x, y, w, h, 18); ctx.fill()
   // Barra de acento a la izquierda
-  ctx.fillStyle = C.ambar
+  ctx.fillStyle = acento
   redondear(ctx, x + 16, y + 16, 5, h - 32, 3); ctx.fill()
   const padX = 40, padTop = titulo ? 46 : 20, padBot = 20
   const areaW = w - padX * 2, areaTop = y + padTop, areaH = h - padTop - padBot
@@ -1208,7 +1253,7 @@ function dibujarEstadoEspecial(ctx: CanvasRenderingContext2D, esp: any, img: HTM
 
 // Cabecera (esquinas) para la escena "Letra": logo + nombre a la izquierda,
 // título · tono a la derecha. Con sombra para leerse sobre cualquier fondo.
-function dibujarCabecera(ctx: CanvasRenderingContext2D, nombre: string, titulo: string, tono: string, logo: HTMLImageElement | null) {
+function dibujarCabecera(ctx: CanvasRenderingContext2D, nombre: string, titulo: string, tono: string, logo: HTMLImageElement | null, acento = "#f59e0b") {
   ctx.save()
   ctx.shadowColor = "rgba(0,0,0,0.55)"; ctx.shadowBlur = 8
   ctx.textBaseline = "middle"
@@ -1229,7 +1274,7 @@ function dibujarCabecera(ctx: CanvasRenderingContext2D, nombre: string, titulo: 
   }
   if (titulo) {
     ctx.textAlign = "right"
-    ctx.fillStyle = C.ambar
+    ctx.fillStyle = acento
     ctx.font = "700 22px 'Segoe UI', system-ui, sans-serif"
     const et = tono ? `${titulo.toUpperCase()}  ·  ${tono}` : titulo.toUpperCase()
     ctx.fillText(et, ANCHO - 40, yc)
@@ -1249,7 +1294,7 @@ function cajaNombre(nombre: string, tam: number) {
 
 // Nombre de la iglesia (objeto movible): centrado dentro de su caja, con línea
 // de acento ámbar debajo.
-function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, pos: { x: number; y: number }, tam: number) {
+function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, pos: { x: number; y: number }, tam: number, acento = "#f59e0b") {
   if (!nombre) return
   const { w, h } = cajaNombre(nombre, tam)
   const cx = pos.x + w / 2, cy = pos.y + h / 2
@@ -1265,7 +1310,7 @@ function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, po
   // Acento: línea ámbar con un puntito a cada lado (estilo broadcast)
   const lineaW = Math.min(w * 0.42, tam * 3.6)
   const ly = cy + tam * 0.64
-  ctx.fillStyle = C.ambar
+  ctx.fillStyle = acento
   redondear(ctx, cx - lineaW / 2, ly - 1.5, lineaW, 3, 1.5); ctx.fill()
   ctx.beginPath(); ctx.arc(cx - lineaW / 2 - 9, ly, 2.6, 0, Math.PI * 2); ctx.fill()
   ctx.beginPath(); ctx.arc(cx + lineaW / 2 + 9, ly, 2.6, 0, Math.PI * 2); ctx.fill()
@@ -1273,15 +1318,15 @@ function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, po
 }
 
 // Mensaje en vivo: banner sobre todas las escenas (abajo o arriba).
-function dibujarMensaje(ctx: CanvasRenderingContext2D, texto: string, posicion: "abajo" | "arriba" = "abajo") {
+function dibujarMensaje(ctx: CanvasRenderingContext2D, texto: string, posicion: "abajo" | "arriba" = "abajo", acento = "#f59e0b") {
   ctx.save()
   const h = 76, y = posicion === "arriba" ? 0 : ALTO - h
   // Fondo "vidrio oscuro"
   const g = ctx.createLinearGradient(0, y, 0, y + h)
   g.addColorStop(0, "rgba(10,14,24,0.88)"); g.addColorStop(1, "rgba(6,10,18,0.94)")
   ctx.fillStyle = g; ctx.fillRect(0, y, ANCHO, h)
-  // Línea de acento ámbar (borde interior)
-  ctx.fillStyle = C.ambar; ctx.fillRect(0, posicion === "arriba" ? h - 3 : y, ANCHO, 3)
+  // Línea de acento (borde interior)
+  ctx.fillStyle = acento; ctx.fillRect(0, posicion === "arriba" ? h - 3 : y, ANCHO, 3)
   // Punto ámbar + texto
   const cy = y + h / 2
   let tam = 31
@@ -1291,7 +1336,7 @@ function dibujarMensaje(ctx: CanvasRenderingContext2D, texto: string, posicion: 
   while (ctx.measureText(texto).width > maxW && tam > 18) { tam -= 2; ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif` }
   const anchoTexto = ctx.measureText(texto).width
   // dot de acento a la izquierda del texto
-  ctx.fillStyle = C.ambar
+  ctx.fillStyle = acento
   ctx.beginPath(); ctx.arc(ANCHO / 2 - anchoTexto / 2 - 22, cy, 5, 0, Math.PI * 2); ctx.fill()
   ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 6
   ctx.fillStyle = "#fff"
