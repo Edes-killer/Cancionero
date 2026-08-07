@@ -1009,19 +1009,28 @@ function limpiarTexto(texto: string): string {
 // El texto se achica solo para caber completo dentro de la caja.
 function dibujarLetraCaja(ctx: CanvasRenderingContext2D, texto: string, titulo: string, tono: string, x: number, y: number, w: number, color: string) {
   const h = w * LETRA_RATIO
-  // Fondo semitransparente redondeado (legibilidad sobre la cámara)
+  // Fondo: scrim con degradado (más cinematográfico que una caja plana) + acento
   ctx.save()
-  ctx.fillStyle = "rgba(0,0,0,0.42)"
-  redondear(ctx, x, y, w, h, 16); ctx.fill()
-  const padX = 26, padTop = titulo ? 34 : 18, padBot = 16
+  const bg = ctx.createLinearGradient(0, y, 0, y + h)
+  bg.addColorStop(0, "rgba(8,13,24,0.28)"); bg.addColorStop(1, "rgba(6,10,20,0.80)")
+  ctx.fillStyle = bg
+  redondear(ctx, x, y, w, h, 18); ctx.fill()
+  // Barra de acento a la izquierda
+  ctx.fillStyle = C.ambar
+  redondear(ctx, x + 16, y + 16, 5, h - 32, 3); ctx.fill()
+  const padX = 40, padTop = titulo ? 46 : 20, padBot = 20
   const areaW = w - padX * 2, areaTop = y + padTop, areaH = h - padTop - padBot
-  // Título + tono
+  // Título + tono (letra espaciada, con línea divisoria fina)
   if (titulo) {
-    ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"
-    ctx.fillStyle = "rgba(255,255,255,0.72)"
-    ctx.font = "600 20px 'Segoe UI', system-ui, sans-serif"
-    const et = tono ? `${titulo.toUpperCase()}  ·  ${tono}` : titulo.toUpperCase()
-    ctx.fillText(et.slice(0, 60), x + w / 2, y + 26)
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"
+    ctx.fillStyle = "rgba(255,255,255,0.82)"
+    ctx.font = "700 19px 'Segoe UI', system-ui, sans-serif"
+    try { (ctx as any).letterSpacing = "1.5px" } catch {}
+    const et = tono ? `${titulo.toUpperCase()}    ·    ${tono}` : titulo.toUpperCase()
+    ctx.fillText(et.slice(0, 60), x + padX, y + 31)
+    try { (ctx as any).letterSpacing = "0px" } catch {}
+    ctx.fillStyle = "rgba(255,255,255,0.12)"
+    ctx.fillRect(x + padX, y + 42, w - padX * 2, 1.5)
   }
   // Letra: envolver + achicar hasta caber
   const envolver = (t: number) => {
@@ -1066,14 +1075,20 @@ function redondear(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath()
 }
 
-// Fondo oscuro con un leve brillo, para la escena "Letra" (sin cámara).
+// Fondo oscuro sofisticado para la escena "Proyección": degradado diagonal,
+// brillo suave arriba y viñeta en los bordes para dar profundidad.
 function dibujarFondoBrandeado(ctx: CanvasRenderingContext2D) {
-  const g = ctx.createLinearGradient(0, 0, 0, ALTO)
-  g.addColorStop(0, "#0b1626"); g.addColorStop(1, "#050b16")
+  const g = ctx.createLinearGradient(0, 0, ANCHO, ALTO)
+  g.addColorStop(0, "#0d1a2e"); g.addColorStop(0.55, "#08111f"); g.addColorStop(1, "#04080f")
   ctx.fillStyle = g; ctx.fillRect(0, 0, ANCHO, ALTO)
-  const r = ctx.createRadialGradient(ANCHO / 2, ALTO * 0.36, 40, ANCHO / 2, ALTO * 0.36, ANCHO * 0.72)
-  r.addColorStop(0, "rgba(37,99,235,0.10)"); r.addColorStop(1, "rgba(37,99,235,0)")
+  // Brillo tenue arriba al centro
+  const r = ctx.createRadialGradient(ANCHO / 2, ALTO * 0.30, 30, ANCHO / 2, ALTO * 0.30, ANCHO * 0.7)
+  r.addColorStop(0, "rgba(56,120,255,0.12)"); r.addColorStop(1, "rgba(56,120,255,0)")
   ctx.fillStyle = r; ctx.fillRect(0, 0, ANCHO, ALTO)
+  // Viñeta en los bordes
+  const v = ctx.createRadialGradient(ANCHO / 2, ALTO / 2, ALTO * 0.4, ANCHO / 2, ALTO / 2, ANCHO * 0.72)
+  v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,0.45)")
+  ctx.fillStyle = v; ctx.fillRect(0, 0, ANCHO, ALTO)
 }
 
 // Imagen o video "contain" centrado (letterbox) sobre el fondo.
@@ -1219,6 +1234,11 @@ function dibujarCabecera(ctx: CanvasRenderingContext2D, nombre: string, titulo: 
     const et = tono ? `${titulo.toUpperCase()}  ·  ${tono}` : titulo.toUpperCase()
     ctx.fillText(et, ANCHO - 40, yc)
   }
+  // Línea divisoria fina bajo la cabecera (degradado, se desvanece a los lados)
+  ctx.shadowBlur = 0
+  const ld = ctx.createLinearGradient(40, 0, ANCHO - 40, 0)
+  ld.addColorStop(0, "rgba(255,255,255,0)"); ld.addColorStop(0.5, "rgba(255,255,255,0.16)"); ld.addColorStop(1, "rgba(255,255,255,0)")
+  ctx.fillStyle = ld; ctx.fillRect(40, yc + 30, ANCHO - 80, 1.5)
   ctx.restore()
 }
 
@@ -1242,31 +1262,40 @@ function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, po
   ctx.fillText(nombre.toUpperCase(), cx, cy - tam * 0.18)
   try { (ctx as any).letterSpacing = "0px" } catch {}
   ctx.shadowBlur = 0
-  const lineaW = Math.min(w * 0.5, tam * 4.4)
+  // Acento: línea ámbar con un puntito a cada lado (estilo broadcast)
+  const lineaW = Math.min(w * 0.42, tam * 3.6)
+  const ly = cy + tam * 0.64
   ctx.fillStyle = C.ambar
-  redondear(ctx, cx - lineaW / 2, cy + tam * 0.62, lineaW, 4, 2); ctx.fill()
+  redondear(ctx, cx - lineaW / 2, ly - 1.5, lineaW, 3, 1.5); ctx.fill()
+  ctx.beginPath(); ctx.arc(cx - lineaW / 2 - 9, ly, 2.6, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.arc(cx + lineaW / 2 + 9, ly, 2.6, 0, Math.PI * 2); ctx.fill()
   ctx.restore()
 }
 
 // Mensaje en vivo: banner sobre todas las escenas (abajo o arriba).
 function dibujarMensaje(ctx: CanvasRenderingContext2D, texto: string, posicion: "abajo" | "arriba" = "abajo") {
   ctx.save()
-  const h = 72, y = posicion === "arriba" ? 0 : ALTO - h
-  // Fondo del banner
+  const h = 76, y = posicion === "arriba" ? 0 : ALTO - h
+  // Fondo "vidrio oscuro"
   const g = ctx.createLinearGradient(0, y, 0, y + h)
-  g.addColorStop(0, "rgba(120,53,15,0.92)"); g.addColorStop(1, "rgba(146,64,14,0.92)")
+  g.addColorStop(0, "rgba(10,14,24,0.88)"); g.addColorStop(1, "rgba(6,10,18,0.94)")
   ctx.fillStyle = g; ctx.fillRect(0, y, ANCHO, h)
-  // Línea de acento (en el borde interior)
-  ctx.fillStyle = C.ambar; ctx.fillRect(0, posicion === "arriba" ? h - 4 : y, ANCHO, 4)
-  // Texto (ajustado a una línea; si es muy largo se achica)
-  let tam = 32
+  // Línea de acento ámbar (borde interior)
+  ctx.fillStyle = C.ambar; ctx.fillRect(0, posicion === "arriba" ? h - 3 : y, ANCHO, 3)
+  // Punto ámbar + texto
+  const cy = y + h / 2
+  let tam = 31
   ctx.textAlign = "center"; ctx.textBaseline = "middle"
-  ctx.fillStyle = "#fff"
-  const maxW = ANCHO - 120
+  const maxW = ANCHO - 160
   ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif`
   while (ctx.measureText(texto).width > maxW && tam > 18) { tam -= 2; ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif` }
+  const anchoTexto = ctx.measureText(texto).width
+  // dot de acento a la izquierda del texto
+  ctx.fillStyle = C.ambar
+  ctx.beginPath(); ctx.arc(ANCHO / 2 - anchoTexto / 2 - 22, cy, 5, 0, Math.PI * 2); ctx.fill()
   ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 6
-  ctx.fillText(texto, ANCHO / 2, y + h / 2 + 2)
+  ctx.fillStyle = "#fff"
+  ctx.fillText(texto, ANCHO / 2, cy + 1)
   ctx.restore()
 }
 
