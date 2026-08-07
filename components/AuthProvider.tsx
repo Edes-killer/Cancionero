@@ -28,7 +28,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   }, [])
 
   // ✅ /bienvenido es la landing pública (marketing): tiene que verse sin sesión.
-  const publicRoutes = ["/login", "/register", "/proyectar", "/musicos", "/unirse", "/bienvenido"]
+  const publicRoutes = ["/login", "/register", "/proyectar", "/musicos", "/unirse", "/bienvenido", "/en-vivo-lab"]
   // ✅ next.config.ts usa trailingSlash: true → usePathname() devuelve "/login/"
   // con barra final; y en el APK navegamos a "/login/index.html". normalizarRuta
   // deja ambos como "/login" para comparar contra las rutas conocidas.
