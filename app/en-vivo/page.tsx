@@ -13,6 +13,7 @@ import { navegarSPA } from "@/lib/navegar"
 import { getSocketUrl } from "@/lib/servidor"
 import { getIglesiaId } from "@/lib/getIglesia"
 import { useApp } from "@/context/AppContext"
+import ObjetoEditable from "@/components/ObjetoEditable"
 
 type Escena = "camara" | "camara-letra" | "letra"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
@@ -109,6 +110,13 @@ export default function EnVivoPage() {
   // Personalización (guardada en el equipo)
   const [colorLetra, setColorLetra] = useState("#ffffff")
   const [acento, setAcento] = useState("#f59e0b") // color de marca (acentos) por iglesia
+  // Layout: en pantallas anchas, vista previa a la izquierda + controles a la derecha.
+  const [esAncho, setEsAncho] = useState(false)
+  useEffect(() => {
+    const check = () => setEsAncho(window.innerWidth >= 1024)
+    check(); window.addEventListener("resize", check)
+    return () => window.removeEventListener("resize", check)
+  }, [])
   const [logoPos, setLogoPos] = useState<{ x: number; y: number }>({ x: ANCHO - 168 - 30, y: 26 })
   const [logoTam, setLogoTam] = useState(168)
   const [logoAspecto, setLogoAspecto] = useState(1) // alto/ancho del logo
@@ -613,9 +621,11 @@ export default function EnVivoPage() {
         </button>
       </div>
 
-      <div style={{ maxWidth: 920, margin: "0 auto", padding: "24px" }}>
+      <div style={{ maxWidth: esAncho ? 1280 : 920, margin: "0 auto", padding: "24px", display: esAncho ? "grid" : "block", gridTemplateColumns: esAncho ? "minmax(0,1.55fr) minmax(0,1fr)" : undefined, gap: 22, alignItems: "start" }}>
+        {/* Columna izquierda: vista previa (fija/sticky en escritorio) */}
+        <div style={esAncho ? { position: "sticky", top: 12 } : {}}>
         {/* Vista previa (lo que saldría al aire) */}
-        <div style={{ position: "sticky", top: 12, zIndex: 5, borderRadius: 16, overflow: "hidden", border: `1px solid ${C.borde}`, background: "#000", aspectRatio: "16 / 9", boxShadow: "0 12px 34px rgba(0,0,0,0.4)" }}>
+        <div style={{ position: "relative", zIndex: 5, borderRadius: 16, overflow: "hidden", border: `1px solid ${C.borde}`, background: "#000", aspectRatio: "16 / 9", boxShadow: "0 12px 34px rgba(0,0,0,0.4)" }}>
           <canvas ref={canvasRef} width={ANCHO} height={ALTO}
             style={{ width: "100%", height: "100%", display: "block" }} />
 
@@ -682,9 +692,12 @@ export default function EnVivoPage() {
         {/* Animación proyectada (video mudo en loop) */}
         <video ref={videoProyRef} muted loop playsInline crossOrigin="anonymous"
           style={{ position: "absolute", width: 2, height: 2, opacity: 0, pointerEvents: "none", left: 0, top: 0 }} />
+        </div>{/* fin columna izquierda */}
 
+        {/* Columna derecha: controles (con scroll propio en escritorio) */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0, ...(esAncho ? { maxHeight: "calc(100vh - 48px)", overflowY: "auto", paddingRight: 4 } : {}) }}>
         {/* Controles */}
-        <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, padding: 20, marginTop: 18 }}>
+        <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, padding: 20 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <label style={{ fontSize: 12.5, color: C.tenue }}>
               🎥 Cámara 1
@@ -944,85 +957,15 @@ export default function EnVivoPage() {
         </div>
 
         {/* Aviso de conexión */}
-        <div style={{ marginTop: 14, fontSize: 12, color: C.tenue, textAlign: "center", lineHeight: 1.6 }}>
+        <div style={{ marginTop: 4, fontSize: 12, color: C.tenue, textAlign: "center", lineHeight: 1.6 }}>
           Para una transmisión estable, conéctate por <strong style={{ color: C.suave }}>cable de red</strong> (no WiFi) y con buena subida de internet.
         </div>
+        </div>{/* fin columna derecha */}
       </div>
     </div>
   )
 }
 
-// Recuadro editable (mover + redimensionar) sobre la vista previa. Es HTML, no
-// se dibuja en el lienzo → las manijas NO salen al aire. Coordenadas en el
-// espacio del lienzo (1280×720); se posiciona en % del contenedor.
-function ObjetoEditable({ pos, w, h, onChange, etiqueta, minW = 60, maxW = ANCHO }: {
-  pos: { x: number; y: number }; w: number; h: number
-  onChange: (p: { x: number; y: number }, w: number) => void
-  etiqueta: string; minW?: number; maxW?: number
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-  const est = useRef<{ modo: "mover" | "esc"; px: number; py: number; x: number; y: number; ax: number; ay: number; ratio: number; left: boolean; top: boolean } | null>(null)
-  const rectCont = () => ref.current?.parentElement?.getBoundingClientRect()
-  const aCanvas = (e: React.PointerEvent) => {
-    const r = rectCont(); if (!r) return { x: 0, y: 0 }
-    return { x: (e.clientX - r.left) * (ANCHO / r.width), y: (e.clientY - r.top) * (ALTO / r.height) }
-  }
-
-  const iniciarMover = (e: React.PointerEvent) => {
-    e.preventDefault(); e.stopPropagation()
-    est.current = { modo: "mover", px: e.clientX, py: e.clientY, x: pos.x, y: pos.y, ax: 0, ay: 0, ratio: h / w, left: false, top: false }
-    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch {}
-  }
-  // Redimensionar desde una esquina: la esquina OPUESTA queda fija (ancla).
-  const iniciarEscalar = (corner: "tl" | "tr" | "bl" | "br") => (e: React.PointerEvent) => {
-    e.preventDefault(); e.stopPropagation()
-    const left = corner === "tl" || corner === "bl"
-    const top = corner === "tl" || corner === "tr"
-    est.current = {
-      modo: "esc", px: e.clientX, py: e.clientY, x: pos.x, y: pos.y,
-      ax: left ? pos.x + w : pos.x, ay: top ? pos.y + h : pos.y, ratio: h / w, left, top,
-    }
-    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId) } catch {}
-  }
-  const mover = (e: React.PointerEvent) => {
-    const s = est.current; if (!s) return
-    const r = rectCont(); if (!r) return
-    if (s.modo === "mover") {
-      const dx = (e.clientX - s.px) * (ANCHO / r.width)
-      const dy = (e.clientY - s.py) * (ALTO / r.height)
-      onChange({ x: Math.max(0, Math.min(ANCHO - w, s.x + dx)), y: Math.max(0, Math.min(ALTO - h, s.y + dy)) }, w)
-    } else {
-      const p = aCanvas(e)
-      const nw = Math.max(minW, Math.min(maxW, Math.abs(p.x - s.ax)))
-      const nh = nw * s.ratio
-      const nx = Math.max(0, Math.min(ANCHO - nw, s.left ? s.ax - nw : s.ax))
-      const ny = Math.max(0, Math.min(ALTO - nh, s.top ? s.ay - nh : s.ay))
-      onChange({ x: nx, y: ny }, nw)
-    }
-  }
-  const soltar = (e: React.PointerEvent) => { est.current = null; try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId) } catch {} }
-
-  const manija = (corner: "tl" | "tr" | "bl" | "br", extra: React.CSSProperties): React.CSSProperties => ({
-    position: "absolute", width: 16, height: 16, borderRadius: 4, background: "#2563eb", border: "2px solid #fff",
-    touchAction: "none", ...extra,
-  })
-
-  return (
-    <div ref={ref} onPointerDown={iniciarMover} onPointerMove={mover} onPointerUp={soltar}
-      style={{
-        position: "absolute", left: `${pos.x / ANCHO * 100}%`, top: `${pos.y / ALTO * 100}%`,
-        width: `${w / ANCHO * 100}%`, height: `${h / ALTO * 100}%`,
-        border: "1.5px dashed rgba(147,197,253,0.95)", borderRadius: 6, cursor: "move",
-        boxSizing: "border-box", pointerEvents: "auto", touchAction: "none",
-      }}>
-      <span style={{ position: "absolute", top: -19, left: 0, fontSize: 10, fontWeight: 700, color: "#93c5fd", background: "rgba(0,0,0,0.55)", padding: "1px 6px", borderRadius: 4, whiteSpace: "nowrap" }}>{etiqueta}</span>
-      <div onPointerDown={iniciarEscalar("tl")} onPointerMove={mover} onPointerUp={soltar} style={manija("tl", { left: -8, top: -8, cursor: "nwse-resize" })} />
-      <div onPointerDown={iniciarEscalar("tr")} onPointerMove={mover} onPointerUp={soltar} style={manija("tr", { right: -8, top: -8, cursor: "nesw-resize" })} />
-      <div onPointerDown={iniciarEscalar("bl")} onPointerMove={mover} onPointerUp={soltar} style={manija("bl", { left: -8, bottom: -8, cursor: "nesw-resize" })} />
-      <div onPointerDown={iniciarEscalar("br")} onPointerMove={mover} onPointerUp={soltar} style={manija("br", { right: -8, bottom: -8, cursor: "nwse-resize" })} />
-    </div>
-  )
-}
 
 // Extrae la letra de una parte (que es un objeto) y la limpia: quita HTML,
 // acordes entre corchetes y normaliza saltos/espacios. Prefiere texto_letra.
