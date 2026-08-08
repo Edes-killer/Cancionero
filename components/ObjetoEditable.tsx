@@ -25,17 +25,21 @@ export interface ObjetoEditableProps {
   maxW?: number
   ancho?: number
   alto?: number
+  // "solo ancho": al redimensionar cambia solo el ancho; el alto lo maneja el
+  // contenido (ej. el rótulo de letra, que crece según el texto). La parte de
+  // arriba (y) queda fija.
+  soloAncho?: boolean
 }
 
 export default function ObjetoEditable({
-  pos, w, h, onChange, etiqueta, minW = 60, maxW, ancho = 1280, alto = 720,
+  pos, w, h, onChange, etiqueta, minW = 60, maxW, ancho = 1280, alto = 720, soloAncho = false,
 }: ObjetoEditableProps) {
   const maxAncho = maxW ?? ancho
   const ref = useRef<HTMLDivElement>(null)
 
   // Props frescas para que los listeners del documento usen siempre lo último.
-  const propsRef = useRef({ onChange, minW, maxAncho, ancho, alto })
-  propsRef.current = { onChange, minW, maxAncho, ancho, alto }
+  const propsRef = useRef({ onChange, minW, maxAncho, ancho, alto, soloAncho })
+  propsRef.current = { onChange, minW, maxAncho, ancho, alto, soloAncho }
 
   // Estado del arrastre en curso (null = sin arrastre).
   const est = useRef<{
@@ -48,7 +52,7 @@ export default function ObjetoEditable({
   const onMove = useRef((e: PointerEvent) => {
     const s = est.current; if (!s) return
     const r = s.rect; if (!r.width) return
-    const { onChange, minW, maxAncho, ancho, alto } = propsRef.current
+    const { onChange, minW, maxAncho, ancho, alto, soloAncho } = propsRef.current
 
     if (s.modo === "mover") {
       const dx = (e.clientX - s.px) * (ancho / r.width)
@@ -59,8 +63,13 @@ export default function ObjetoEditable({
     // Redimensionar: ancho = distancia horizontal del puntero al ancla.
     const px = (e.clientX - r.left) * (ancho / r.width)
     const nw = clamp(Math.abs(px - s.ax), minW, maxAncho)
-    const nh = nw * s.ratio
     const nx = clamp(s.left ? s.ax - nw : s.ax, 0, ancho - nw)
+    if (soloAncho) {
+      // El alto lo maneja el contenido; la parte de arriba (y) queda fija.
+      onChange({ x: nx, y: s.y }, nw)
+      return
+    }
+    const nh = nw * s.ratio
     const ny = clamp(s.top ? s.ay - nh : s.ay, 0, alto - nh)
     onChange({ x: nx, y: ny }, nw)
   }).current

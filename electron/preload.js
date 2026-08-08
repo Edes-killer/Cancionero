@@ -16,6 +16,13 @@ contextBridge.exposeInMainWorld("transmision", {
   detener: () => ipcRenderer.invoke("transmision:detener"),
   abrirLog: () => ipcRenderer.invoke("transmision:abrirLog"),
   enviarChunk: (chunk) => ipcRenderer.send("transmision:chunk", chunk),
+  // Grabación local (respaldo del culto)
+  iniciarGrabacion: (opts) => ipcRenderer.invoke("grabacion:iniciar", opts),
+  detenerGrabacion: () => ipcRenderer.invoke("grabacion:detener"),
+  nuevoSegmentoGrabacion: () => ipcRenderer.invoke("grabacion:nuevoSegmento"),
+  enviarChunkGrabacion: (chunk) => ipcRenderer.send("grabacion:chunk", chunk),
+  abrirCarpetaGrabaciones: () => ipcRenderer.invoke("grabacion:abrirCarpeta"),
+  listarPantallas: () => ipcRenderer.invoke("pantalla:fuentes"),
   onEstado: (cb) => {
     const h = (_e, d) => cb(d)
     ipcRenderer.on("transmision:estado", h)
@@ -26,4 +33,21 @@ contextBridge.exposeInMainWorld("transmision", {
     ipcRenderer.on("transmision:log", h)
     return () => ipcRenderer.removeListener("transmision:log", h)
   },
+  onStats: (cb) => {
+    const h = (_e, d) => cb(d)
+    ipcRenderer.on("transmision:stats", h)
+    return () => ipcRenderer.removeListener("transmision:stats", h)
+  },
+  onGrabacionListo: (cb) => {
+    const h = (_e, d) => cb(d)
+    ipcRenderer.on("grabacion:listo", h)
+    return () => ipcRenderer.removeListener("grabacion:listo", h)
+  },
+})
+
+// ── Importar desde PowerPoint ────────────────────────────────────────────────
+contextBridge.exposeInMainWorld("powerpoint", {
+  elegir: () => ipcRenderer.invoke("ppt:elegir"),
+  imagenes: (ruta) => ipcRenderer.invoke("ppt:imagenes", { ruta }),
+  diapositivas: (ruta) => ipcRenderer.invoke("ppt:diapositivas", { ruta }),
 })

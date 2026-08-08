@@ -123,6 +123,9 @@ export default function ControlPage() {
   )
   const [galeriaImagenes, setGaleriaImagenes] = useState<{url:string,nombre:string,local:boolean}[]>([])
   const [galeriaAbierta, setGaleriaAbierta] = useState(false)
+  // Importar desde PowerPoint (solo escritorio): menú de 2 opciones + progreso.
+  const [pptMenu, setPptMenu] = useState(false)
+  const [pptProg, setPptProg] = useState("")
   // Carrusel: se ARMA en la galería y se agrega como ITEM de la lista; al
   // proyectar ese item, pasa las imágenes/videos en secuencia (auto-avance).
   const [modoCarrusel, setModoCarrusel] = useState(false)          // selección múltiple en la galería
@@ -2563,6 +2566,42 @@ const subirImagen = async (file: File) => {
   }
 }
 
+// ✅ Importar desde PowerPoint (solo app de escritorio). modo "imagenes" saca las
+// imágenes incrustadas del .pptx; modo "diapositivas" renderiza cada slide a PNG.
+// Las imágenes resultantes se suben a la galería (reusa subirImagen).
+const importarPPT = async (modo: "imagenes" | "diapositivas") => {
+  setPptMenu(false)
+  const pp = (window as any).powerpoint
+  if (!pp) { flashCtrl("Importar de PowerPoint funciona solo en la app de escritorio."); return }
+  try {
+    const sel = await pp.elegir()
+    if (!sel?.ok) { if (!sel?.cancelado) flashCtrl(sel?.error || "No se pudo abrir el archivo."); return }
+    setPptProg("Procesando PowerPoint…")
+    const r = modo === "imagenes" ? await pp.imagenes(sel.ruta) : await pp.diapositivas(sel.ruta)
+    if (!r?.ok || !r.imagenes?.length) { setPptProg(""); flashCtrl(r?.error || "No se pudo importar."); return }
+    const base = (String(sel.ruta).split(/[\\/]/).pop() || "PPT").replace(/\.[^.]+$/, "")
+    let subidas = 0
+    for (let i = 0; i < r.imagenes.length; i++) {
+      setPptProg(`Importando ${i + 1}/${r.imagenes.length}…`)
+      try {
+        const blob = await (await fetch(r.imagenes[i].dataUrl)).blob()
+        const ext = modo === "diapositivas" ? "png" : ((r.imagenes[i].nombre.split(".").pop() || "png").toLowerCase())
+        const nombre = modo === "diapositivas"
+          ? `${base} - diapositiva ${String(i + 1).padStart(3, "0")}.${ext}`
+          : `${base} - ${r.imagenes[i].nombre}`
+        const file = new File([blob], nombre, { type: blob.type || "image/png" })
+        const res = await subirImagen(file)
+        if (res?.url) { subidas++; try { localStorage.setItem("img-nombre-" + res.url, nombre.replace(/\.[^.]+$/, "")) } catch {} }
+      } catch {}
+    }
+    setPptProg("")
+    const imgs = await cargarGaleriaImagenes(); setGaleriaImagenes(imgs); setGaleriaAbierta(true)
+    flashCtrl(subidas > 0
+      ? `✅ ${subidas} ${modo === "diapositivas" ? "diapositiva(s)" : "imagen(es)"} importada(s) a la galería`
+      : "No se pudo importar ninguna imagen.")
+  } catch (e: any) { setPptProg(""); flashCtrl("Falló la importación: " + (e?.message || "")) }
+}
+
 // ✅ ¿La URL apunta a un video? (para re-agregar desde la galería con el tipo
 // correcto — un video re-agregado como "imagen" se rompería al proyectar).
 const esUrlVideo = (url: string) => /\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(url || "")
@@ -4943,6 +4982,33 @@ return (
                     {cargandoGaleria ? "⏳" : "🗂️"} Galería
                   </button>
                 </div>
+
+                {/* ── Importar desde PowerPoint (solo escritorio) ── */}
+                {isElectronCtx && (
+                  <div style={{ position: "relative", marginBottom: 4 }}>
+                    <button onClick={() => setPptMenu(v => !v)} disabled={!!pptProg} style={{
+                      width: "100%", padding: "9px 14px", borderRadius: 10,
+                      border: `1px solid ${pptMenu ? "rgba(234,88,12,0.5)" : "rgba(255,255,255,0.1)"}`,
+                      background: pptMenu ? "rgba(234,88,12,0.12)" : "rgba(255,255,255,0.03)",
+                      color: pptProg ? "rgba(255,255,255,0.5)" : "white", fontSize: 13, fontWeight: 600,
+                      cursor: pptProg ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    }}>
+                      {pptProg ? `⏳ ${pptProg}` : "📊 Importar desde PowerPoint"}
+                    </button>
+                    {pptMenu && !pptProg && (
+                      <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6, padding: 8, borderRadius: 10, background: "rgba(17,24,39,0.98)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                        <button onClick={() => importarPPT("diapositivas")} style={{ textAlign: "left", padding: "9px 11px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "white", cursor: "pointer" }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700 }}>🖼️ Diapositivas completas</div>
+                          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginTop: 2 }}>Cada diapositiva como una imagen, tal cual se ve (usa PowerPoint).</div>
+                        </button>
+                        <button onClick={() => importarPPT("imagenes")} style={{ textAlign: "left", padding: "9px 11px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "white", cursor: "pointer" }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700 }}>📎 Imágenes incrustadas</div>
+                          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginTop: 2 }}>Solo las fotos/logos que hay dentro del archivo.</div>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* ✅ Modal flotante de galería — no empuja el contenido */}
                 {carruselActivo && (
