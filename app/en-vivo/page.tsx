@@ -41,7 +41,54 @@ const C = {
 }
 
 const ANCHO = 1280, ALTO = 720 // lienzo de salida (720p)
-const LETRA_RATIO = 0.32 // alto de la caja de letra = ancho × este factor
+
+// ── Temas de color (marca de la iglesia) ─────────────────────────────────────
+// Cada iglesia elige un tema; el acento tiñe líneas, barras, puntos, el nombre,
+// la barra de la letra y la letra del mensaje. 12 tonos + color personalizado.
+const TEMAS: [string, string][] = [
+  ["#f59e0b", "Ámbar"], ["#eab308", "Dorado"], ["#f97316", "Naranja"],
+  ["#dc2626", "Rojo"], ["#ec4899", "Rosa"], ["#8b5cf6", "Morado"],
+  ["#6366f1", "Índigo"], ["#2563eb", "Azul"], ["#06b6d4", "Cian"],
+  ["#14b8a6", "Turquesa"], ["#22c55e", "Verde"], ["#84cc16", "Lima"],
+]
+
+// ── Diseños de los gráficos (forma/estilo de los overlays al aire) ───────────
+// No es el color: es la FORMA. Cada diseño cambia la caja de la letra, el
+// nombre y el mensaje de manera coordinada. El color del tema se aplica encima.
+type Diseno = "vidrio" | "tarjeta" | "minimal" | "broadcast"
+const DISENOS: [Diseno, string, string][] = [
+  ["vidrio", "Vidrio", "Caja oscura translúcida y redondeada, barra de acento."],
+  ["tarjeta", "Tarjeta", "Marco con borde de acento y título en pastilla. Editorial."],
+  ["minimal", "Minimal", "Sin caja: letra grande con sombra y línea de acento. Limpio."],
+  ["broadcast", "Broadcast", "Barras sólidas estilo noticiero de TV. Potente y claro."],
+]
+const ES_DISENO = (d: string): d is Diseno => DISENOS.some(([id]) => id === d)
+
+// Color de texto legible SOBRE un fondo del color de acento (para pastillas):
+// negro cálido si el acento es claro, blanco si es oscuro.
+function textoSobreAcento(hex: string): string {
+  const m = /^#?([\da-f]{6})$/i.exec(hex.trim())
+  if (!m) return "#141414"
+  const n = parseInt(m[1], 16)
+  const lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255
+  return lum > 0.6 ? "#1a1205" : "#ffffff"
+}
+
+// Aclara un color hasta que sea legible sobre el vidrio oscuro del mensaje
+// (mezcla con blanco si su luminancia es baja). Así cualquier tema, incluso los
+// oscuros como rojo o índigo, deja el texto del mensaje nítido y con la marca.
+function legibleSobreOscuro(hex: string): string {
+  const m = /^#?([\da-f]{6})$/i.exec(hex.trim())
+  if (!m) return "#ffffff"
+  const n = parseInt(m[1], 16)
+  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  if (lum < 0.62) {
+    const t = (0.62 - lum) / 0.62 // cuánto mezclar hacia el blanco
+    r = Math.round(r + (255 - r) * t); g = Math.round(g + (255 - g) * t); b = Math.round(b + (255 - b) * t)
+  }
+  return `rgb(${r},${g},${b})`
+}
 
 interface Disp { id: string; label: string }
 
@@ -69,8 +116,8 @@ export default function EnVivoPage() {
   const [nombreTam, setNombreTam] = useState(30)
 
   // Letra sobre la cámara como objeto movible/redimensionable (ancho; alto = ancho×RATIO)
-  const [letraPos, setLetraPos] = useState<{ x: number; y: number }>({ x: (ANCHO - 940) / 2, y: ALTO - 300 - 24 })
-  const [letraTam, setLetraTam] = useState(940)
+  const [letraPos, setLetraPos] = useState<{ x: number; y: number }>({ x: (ANCHO - 680) / 2, y: 348 })
+  const [letraTam, setLetraTam] = useState(680)
 
   // Gráficos propios (imágenes que el usuario sube como objetos movibles)
   const [graficos, setGraficos] = useState<{ id: string; url: string; pos: { x: number; y: number }; w: number; aspecto: number }[]>([])
@@ -110,6 +157,7 @@ export default function EnVivoPage() {
   // Personalización (guardada en el equipo)
   const [colorLetra, setColorLetra] = useState("#ffffff")
   const [acento, setAcento] = useState("#f59e0b") // color de marca (acentos) por iglesia
+  const [diseno, setDiseno] = useState<Diseno>("vidrio") // forma/estilo de los gráficos
   // Layout: en pantallas anchas, vista previa a la izquierda + controles a la derecha.
   const [esAncho, setEsAncho] = useState(false)
   useEffect(() => {
@@ -127,6 +175,11 @@ export default function EnVivoPage() {
     try {
       const c = localStorage.getItem("en-vivo-color-letra"); if (c) setColorLetra(c)
       const ac = localStorage.getItem("en-vivo-acento"); if (ac) setAcento(ac)
+      const ds = localStorage.getItem("en-vivo-diseno"); if (ds && ES_DISENO(ds)) setDiseno(ds)
+      const gr = localStorage.getItem("en-vivo-grabar"); if (gr === "0") setGrabar(false)
+      const la = localStorage.getItem("en-vivo-limpiar-audio"); if (la === "0") setLimpiarAudio(false)
+      const ca = localStorage.getItem("en-vivo-calidad"); if (ca === "baja" || ca === "media" || ca === "alta") setCalidad(ca)
+      const tr = localStorage.getItem("en-vivo-transiciones"); if (tr === "0") setTransiciones(false)
       const t = localStorage.getItem("en-vivo-logo-tam"); if (t) setLogoTam(Number(t) || 168)
       const p = localStorage.getItem("en-vivo-logo-pos"); if (p) setLogoPos(JSON.parse(p))
       const pip = localStorage.getItem("en-vivo-pip"); if (pip) { const o = JSON.parse(pip); if (o.pos) setPipPos(o.pos); if (o.tam) setPipTam(o.tam) }
@@ -137,6 +190,7 @@ export default function EnVivoPage() {
   }, [])
   const guardarColor = (c: string) => { setColorLetra(c); try { localStorage.setItem("en-vivo-color-letra", c) } catch {} }
   const guardarAcento = (c: string) => { setAcento(c); try { localStorage.setItem("en-vivo-acento", c) } catch {} }
+  const guardarDiseno = (d: Diseno) => { setDiseno(d); try { localStorage.setItem("en-vivo-diseno", d) } catch {} }
   const cambiarLogoTam = (t: number) => { setLogoTam(t) }
   // Guardar posiciones/tamaños (con leve retardo para no escribir en cada píxel)
   useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-logo-pos", JSON.stringify(logoPos)); localStorage.setItem("en-vivo-logo-tam", String(logoTam)) } catch {} }, 300); return () => clearTimeout(t) }, [logoPos, logoTam])
@@ -180,13 +234,61 @@ export default function EnVivoPage() {
   const setDestino = (k: DestKey, patch: Partial<{ activo: boolean; valor: string }>) => {
     setDestinos(prev => { const next = { ...prev, [k]: { ...prev[k], ...patch } }; try { localStorage.setItem("en-vivo-destinos", JSON.stringify(next)) } catch {}; return next })
   }
-  const [txEstado, setTxEstado] = useState<"idle" | "conectando" | "vivo" | "error">("idle")
+  const [txEstado, setTxEstado] = useState<"idle" | "conectando" | "vivo" | "reconectando" | "error">("idle")
   const [errorTx, setErrorTx] = useState<string | null>(null)
   const [segundos, setSegundos] = useState(0)
   const [logsTx, setLogsTx] = useState<string[]>([])
   const recRef = useRef<MediaRecorder | null>(null)
   const txEstadoRef = useRef(txEstado)
   useEffect(() => { txEstadoRef.current = txEstado }, [txEstado])
+
+  // Panel de salud del stream (viene de las estadísticas de ffmpeg).
+  const [salud, setSalud] = useState<{ bitrate: number | null; fps: number | null; speed: number | null; drop: number | null } | null>(null)
+  const [intento, setIntento] = useState(0) // nº de reintento de reconexión en curso
+
+  // Grabación local (respaldo). Grabador DEDICADO, independiente del de stream,
+  // para que una reconexión no interrumpa la grabación.
+  const [grabar, setGrabar] = useState(true) // preferencia: grabar el culto
+  const [grabInfo, setGrabInfo] = useState<{ carpeta?: string; ruta?: string; listo?: boolean } | null>(null)
+  const [grabMB, setGrabMB] = useState(0)
+  const intentoRef = useRef(0)
+
+  // ── Audio: reducción de ruido + medidor de nivel (VU) ───────────────────────
+  const [limpiarAudio, setLimpiarAudio] = useState(true) // supresión de ruido/eco/AGC
+  const limpiarAudioRef = useRef(true)
+  const [sinAudio, setSinAudio] = useState(false) // el micro lleva un rato en silencio
+  const [audioGen, setAudioGen] = useState(0) // sube cada vez que hay un track de audio nuevo listo
+  const audioCtxRef = useRef<any>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const vuFillRef = useRef<HTMLDivElement | null>(null)   // barra de nivel (se anima por DOM, sin re-render)
+  const vuPeakRef = useRef<HTMLDivElement | null>(null)   // marca de pico
+  const rafVuRef = useRef<number>(0)
+  const ultimoSonidoRef = useRef<number>(Date.now())
+
+  // ── Tier 3: compartir pantalla, calidad de salida, transiciones ─────────────
+  const [pantallaOn, setPantallaOn] = useState(false)
+  const [camaraEnPip, setCamaraEnPip] = useState(true) // mostrar la cámara en recuadro sobre la pantalla
+  const [fuentesPantalla, setFuentesPantalla] = useState<{ id: string; nombre: string; thumb: string; esPantalla: boolean }[] | null>(null)
+  const [pickerPantalla, setPickerPantalla] = useState(false)
+  const screenVideoRef = useRef<HTMLVideoElement | null>(null)
+  const screenStreamRef = useRef<MediaStream | null>(null)
+
+  const [calidad, setCalidad] = useState<"baja" | "media" | "alta">("media")
+  const CALIDAD_KBPS: Record<string, number> = { baja: 1200, media: 2500, alta: 4500 }
+
+  const [transiciones, setTransiciones] = useState(true) // fundido al cambiar de escena
+  const transRef = useRef<{ hasta: number; snap: HTMLCanvasElement } | null>(null)
+  const escenaDibujadaRef = useRef<string>("")
+  const grabBytesRef = useRef(0)
+  const grabActivaRef = useRef(false)
+
+  // Refs para reconectar sin re-suscribir listeners.
+  const mimeRef = useRef<string>("video/webm")
+  const urlsTxRef = useRef<string[]>([])
+  const bitrateRef = useRef<number>(2500) // kbps elegido para la sesión
+  const detenidoRef = useRef(false) // el usuario pidió terminar → no reconectar
+  const reconTimerRef = useRef<any>(null)
+  const reconectarRef = useRef<() => void>(() => {})
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const video2Ref = useRef<HTMLVideoElement | null>(null)
@@ -201,11 +303,11 @@ export default function EnVivoPage() {
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any, hayVideo: false, nombrePos: { x: 0, y: 0 }, nombreTam: 30, mensajePos: "abajo" as "abajo" | "arriba", letraPos: { x: 0, y: 0 }, letraTam: 940, graficos: [] as { id: string; pos: { x: number; y: number }; w: number; aspecto: number }[], acento: "#f59e0b" })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any, hayVideo: false, nombrePos: { x: 0, y: 0 }, nombreTam: 30, mensajePos: "abajo" as "abajo" | "arriba", letraPos: { x: 0, y: 0 }, letraTam: 940, graficos: [] as { id: string; pos: { x: number; y: number }; w: number; aspecto: number }[], acento: "#f59e0b", diseno: "vidrio" as Diseno, pantallaOn: false, camaraEnPip: true, transiciones: true })
   useEffect(() => {
     const bibliaTexto = biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : ""
-    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos, acento }
-  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos, acento])
+    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos, acento, diseno, pantallaOn, camaraEnPip, transiciones }
+  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos, acento, diseno, pantallaOn, camaraEnPip, transiciones])
 
   // ── Cargar la imagen proyectada (para la escena de contenido) ───────────────
   useEffect(() => {
@@ -258,10 +360,17 @@ export default function EnVivoPage() {
         // Detener el stream anterior si cambiamos de dispositivo
         streamRef.current?.getTracks().forEach(t => t.stop())
 
+        // Audio con limpieza opcional (supresión de ruido, eco y ganancia
+        // automática). Clave en iglesias: quita el zumbido del salón.
+        const audioBase: MediaTrackConstraints = {
+          echoCancellation: limpiarAudioRef.current,
+          noiseSuppression: limpiarAudioRef.current,
+          autoGainControl: limpiarAudioRef.current,
+        }
         const constraints: MediaStreamConstraints = {
           video: camaraId ? { deviceId: { exact: camaraId }, width: { ideal: 1280 }, height: { ideal: 720 } }
                           : { width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: microId ? { deviceId: { exact: microId } } : true,
+          audio: microId ? { deviceId: { exact: microId }, ...audioBase } : audioBase,
         }
         const stream = await navigator.mediaDevices.getUserMedia(constraints)
         if (cancelado) { stream.getTracks().forEach(t => t.stop()); return }
@@ -273,6 +382,8 @@ export default function EnVivoPage() {
           await videoRef.current.play().catch(() => {})
         }
         setPermiso("ok")
+        ultimoSonidoRef.current = Date.now() // no marcar "sin audio" apenas arranca
+        setAudioGen(g => g + 1) // hay un track de audio nuevo → re-enganchar el VU
 
         // Con permiso ya concedido, las etiquetas de los dispositivos aparecen
         const dispositivos = await navigator.mediaDevices.enumerateDevices()
@@ -310,6 +421,61 @@ export default function EnVivoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camaraId, microId, reintento])
 
+  // Aplicar la limpieza de audio al track EN VIVO (sin reiniciar la cámara).
+  useEffect(() => {
+    limpiarAudioRef.current = limpiarAudio
+    const track = streamRef.current?.getAudioTracks()[0]
+    if (!track) return
+    track.applyConstraints({ echoCancellation: limpiarAudio, noiseSuppression: limpiarAudio, autoGainControl: limpiarAudio }).catch(() => {})
+  }, [limpiarAudio, audioGen])
+
+  // Medidor de nivel (VU): analiza el track de audio y anima la barra por DOM
+  // (sin re-render). Avisa si el micrófono lleva un rato en silencio.
+  useEffect(() => {
+    const track = streamRef.current?.getAudioTracks()[0]
+    if (!track) return
+    let cancelado = false
+    try {
+      const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext
+      if (!Ctx) return
+      const ctx = new Ctx(); audioCtxRef.current = ctx
+      try { ctx.resume?.() } catch {}
+      const src = ctx.createMediaStreamSource(new MediaStream([track]))
+      const an = ctx.createAnalyser(); an.fftSize = 1024; an.smoothingTimeConstant = 0.75
+      src.connect(an); analyserRef.current = an
+      const datos = new Uint8Array(an.fftSize)
+      let pico = 0
+      const loop = () => {
+        if (cancelado) return
+        an.getByteTimeDomainData(datos)
+        let sum = 0
+        for (let i = 0; i < datos.length; i++) { const v = (datos[i] - 128) / 128; sum += v * v }
+        const rms = Math.sqrt(sum / datos.length)              // 0..1
+        const nivel = Math.min(1, rms * 2.2)                    // realce para lectura visual
+        pico = Math.max(nivel, pico * 0.92)                     // pico con caída suave
+        if (nivel > 0.02) ultimoSonidoRef.current = Date.now()
+        const col = nivel > 0.9 ? "#f87171" : nivel > 0.65 ? "#fbbf24" : "#4ade80"
+        if (vuFillRef.current) { vuFillRef.current.style.width = `${Math.round(nivel * 100)}%`; vuFillRef.current.style.background = col }
+        if (vuPeakRef.current) vuPeakRef.current.style.left = `${Math.round(pico * 100)}%`
+        rafVuRef.current = requestAnimationFrame(loop)
+      }
+      rafVuRef.current = requestAnimationFrame(loop)
+    } catch { /* Web Audio no disponible: sin medidor */ }
+    return () => {
+      cancelado = true
+      cancelAnimationFrame(rafVuRef.current)
+      try { audioCtxRef.current?.close() } catch {}
+      audioCtxRef.current = null; analyserRef.current = null
+    }
+  }, [audioGen])
+
+  // Aviso de "sin audio": el micro lleva >4s en silencio mientras hay cámara.
+  useEffect(() => {
+    if (permiso !== "ok") return
+    const t = setInterval(() => setSinAudio(Date.now() - ultimoSonidoRef.current > 4000), 1000)
+    return () => clearInterval(t)
+  }, [permiso])
+
   // ── Cámara 2 (opcional, solo video) — para multicámara ──────────────────────
   useEffect(() => {
     let cancelado = false
@@ -342,6 +508,7 @@ export default function EnVivoPage() {
   useEffect(() => () => {
     streamRef.current?.getTracks().forEach(t => t.stop())
     stream2Ref.current?.getTracks().forEach(t => t.stop())
+    screenStreamRef.current?.getTracks().forEach(t => t.stop())
   }, [])
 
   // Refrescar la lista cuando conectas/desconectas una cámara (o el celular por
@@ -426,14 +593,17 @@ export default function EnVivoPage() {
     }
     const offEstado = tx.onEstado((d: any) => {
       agregarLog(d?.estado === "error" ? `⛔ error de proceso: ${d?.error || ""}` : `■ ffmpeg terminó (código ${d?.code})`)
-      // ffmpeg terminó/erró mientras creíamos estar al aire → avisar
-      if (d?.estado === "error" || d?.estado === "terminado") {
-        if (txEstadoRef.current === "vivo" || txEstadoRef.current === "conectando") {
-          try { recRef.current?.stop() } catch {}
-          recRef.current = null
-          setTxEstado("error")
-          setErrorTx(d?.error || (d?.code ? "La transmisión se cortó. Revisa los detalles técnicos más abajo." : "La transmisión terminó inesperadamente."))
-        }
+      if (d?.estado !== "error" && d?.estado !== "terminado") return
+      if (detenidoRef.current) return // parada intencional del usuario
+      const est = txEstadoRef.current
+      // Caída inesperada estando al aire (o reconectando) → reconectar solo.
+      if (d?.inesperado && (est === "vivo" || est === "reconectando")) { reconectarRef.current(); return }
+      // Falla al conectar por primera vez, o cierre no recuperable → avisar.
+      if (est === "conectando" || est === "vivo" || est === "reconectando") {
+        try { recRef.current?.stop() } catch {}
+        recRef.current = null
+        setTxEstado("error")
+        setErrorTx(d?.error || (d?.code ? "La transmisión se cortó. Revisa los detalles técnicos más abajo." : "La transmisión terminó inesperadamente."))
       }
     })
     const offLog = tx.onLog((m: string) => {
@@ -441,13 +611,20 @@ export default function EnVivoPage() {
       const linea = (m || "").trim()
       if (linea) setErrorTx(prev => (txEstadoRef.current === "conectando" ? linea : prev))
     })
-    return () => { offEstado?.(); offLog?.() }
+    const offStats = tx.onStats?.((d: any) => {
+      setSalud({ bitrate: d?.bitrate ?? null, fps: d?.fps ?? null, speed: d?.speed ?? null, drop: d?.drop ?? null })
+      if (txEstadoRef.current === "vivo") intentoRef.current = 0 // estable → resetear reintentos
+    })
+    const offGrab = tx.onGrabacionListo?.((d: any) => {
+      setGrabInfo(gi => ({ ...(gi || {}), carpeta: d?.carpeta, ruta: d?.ruta, listo: true }))
+    })
+    return () => { offEstado?.(); offLog?.(); offStats?.(); offGrab?.() }
   }, [])
 
-  // Cronómetro mientras está al aire
+  // Cronómetro de sesión: cuenta al aire Y mientras reconecta (la grabación
+  // sigue), sin reiniciarse en la transición. Se pone en 0 al iniciar (salirEnVivo).
   useEffect(() => {
-    if (txEstado !== "vivo") return
-    setSegundos(0)
+    if (txEstado !== "vivo" && txEstado !== "reconectando") return
     const t = setInterval(() => setSegundos(s => s + 1), 1000)
     return () => clearInterval(t)
   }, [txEstado])
@@ -476,6 +653,18 @@ export default function EnVivoPage() {
         const tituloContenido = hayBiblia ? cont.bibliaRef : cont.titulo
         const tonoContenido = hayBiblia ? "" : cont.tono
 
+        // Transición (fundido) al cambiar de escena: capturamos el fotograma
+        // anterior ANTES de limpiar, para fundirlo sobre la escena nueva.
+        const claveEscena = `${cont.escena}|${cont.pantallaOn ? "p" : ""}`
+        if (cont.transiciones && escenaDibujadaRef.current && escenaDibujadaRef.current !== claveEscena && canvas.width) {
+          let snap = transRef.current?.snap
+          if (!snap) { snap = document.createElement("canvas"); snap.width = ANCHO; snap.height = ALTO }
+          const sctx = snap.getContext("2d")
+          if (sctx) { sctx.clearRect(0, 0, ANCHO, ALTO); sctx.drawImage(canvas, 0, 0) }
+          transRef.current = { hasta: performance.now() + 350, snap }
+        }
+        escenaDibujadaRef.current = claveEscena
+
         ctx.fillStyle = "#000"; ctx.fillRect(0, 0, ANCHO, ALTO)
 
         const hayMensaje = !!cont.mensaje
@@ -497,29 +686,40 @@ export default function EnVivoPage() {
           }
           if (!cont.estadoEsp) dibujarCabecera(ctx, cont.nombre, tituloContenido, tonoContenido, logo, cont.acento)
         } else {
-          // Escenas con cámara ("camara" y "camara-letra").
-          if (v && v.videoWidth > 0) {
+          // Escenas con cámara ("camara" y "camara-letra") o pantalla compartida.
+          const sv = screenVideoRef.current
+          if (cont.pantallaOn && sv && sv.videoWidth > 0) {
+            // Pantalla: "contain" (no recorta diapositivas), letterbox negro.
+            const es = Math.min(ANCHO / sv.videoWidth, ALTO / sv.videoHeight)
+            const w = sv.videoWidth * es, h = sv.videoHeight * es
+            ctx.drawImage(sv, (ANCHO - w) / 2, (ALTO - h) / 2, w, h)
+          } else if (v && v.videoWidth > 0) {
             const escala = Math.max(ANCHO / v.videoWidth, ALTO / v.videoHeight)
             const w = v.videoWidth * escala, h = v.videoHeight * escala
             ctx.drawImage(v, (ANCHO - w) / 2, (ALTO - h) / 2, w, h)
           }
-          // Cámara 2 como recuadro (PiP) cuando el modo es "ambas".
-          if (cont.camaraActiva === "ambas" && v2 && v2.videoWidth > 0) {
+          // Recuadro (PiP): la cámara del presentador sobre la pantalla, o la
+          // Cámara 2 en modo "ambas". Ambos usan la misma caja movible.
+          const vCam = videoRef.current
+          const pip = (cont.pantallaOn && cont.camaraEnPip && vCam && vCam.videoWidth > 0) ? vCam
+                    : (!cont.pantallaOn && cont.camaraActiva === "ambas" && v2 && v2.videoWidth > 0) ? v2
+                    : null
+          if (pip) {
             const { x, y } = cont.pipPos, pw = cont.pipTam, ph = pw * 9 / 16
             ctx.save()
             redondear(ctx, x, y, pw, ph, 12); ctx.clip()
-            const es = Math.max(pw / v2.videoWidth, ph / v2.videoHeight)
-            const w = v2.videoWidth * es, h = v2.videoHeight * es
-            ctx.drawImage(v2, x + (pw - w) / 2, y + (ph - h) / 2, w, h)
+            const es = Math.max(pw / pip.videoWidth, ph / pip.videoHeight)
+            const w = pip.videoWidth * es, h = pip.videoHeight * es
+            ctx.drawImage(pip, x + (pw - w) / 2, y + (ph - h) / 2, w, h)
             ctx.restore()
             ctx.strokeStyle = "rgba(255,255,255,0.9)"; ctx.lineWidth = 3
             redondear(ctx, x, y, pw, ph, 12); ctx.stroke()
           }
           // Nombre de la iglesia (objeto movible)
-          dibujarNombreCentrado(ctx, cont.nombre, cont.nombrePos, cont.nombreTam, cont.acento)
+          dibujarNombreCentrado(ctx, cont.nombre, cont.nombrePos, cont.nombreTam, cont.acento, cont.diseno)
           // Letra en caja movible solo en "camara-letra" (letra o versículo)
           if (cont.escena === "camara-letra" && textoContenido.trim()) {
-            dibujarLetraCaja(ctx, textoContenido, tituloContenido, tonoContenido, cont.letraPos.x, cont.letraPos.y, cont.letraTam, cont.color, cont.acento)
+            dibujarLetraCaja(ctx, textoContenido, tituloContenido, tonoContenido, cont.letraPos.x, cont.letraPos.y, cont.letraTam, cont.color, cont.acento, cont.diseno)
           }
           // Gráficos propios (imágenes que el usuario subió)
           for (const g of cont.graficos) {
@@ -536,7 +736,15 @@ export default function EnVivoPage() {
         }
 
         // Mensaje en vivo: banner sobre todas las escenas (arriba o abajo).
-        if (hayMensaje) dibujarMensaje(ctx, cont.mensaje, cont.mensajePos, cont.acento)
+        if (hayMensaje) dibujarMensaje(ctx, cont.mensaje, cont.mensajePos, cont.acento, cont.diseno)
+
+        // Fundido de la transición: el fotograma anterior se desvanece encima.
+        const tr = transRef.current
+        if (tr) {
+          const restante = tr.hasta - performance.now()
+          if (restante > 0) { ctx.save(); ctx.globalAlpha = Math.max(0, Math.min(1, restante / 350)); ctx.drawImage(tr.snap, 0, 0); ctx.restore() }
+          else transRef.current = null
+        }
       } catch (e) {
         console.error("Error dibujando fotograma:", e)
       }
@@ -551,6 +759,84 @@ export default function EnVivoPage() {
   const construirUrls = (): string[] =>
     PLATAFORMAS.filter(p => destinos[p.key].activo).map(p => urlDeDestino(p.key, destinos[p.key].valor)).filter(Boolean)
 
+  // Un MediaStream nuevo del lienzo + audio (cada captureStream da un track
+  // propio; el audio se puede compartir entre varios streams sin problema).
+  const streamSalida = (): MediaStream | null => {
+    if (!canvasRef.current || !streamRef.current) return null
+    return new MediaStream([
+      ...canvasRef.current.captureStream(30).getVideoTracks(),
+      ...streamRef.current.getAudioTracks(),
+    ])
+  }
+
+  // Arranca ffmpeg + un grabador de STREAM fresco. Se usa al iniciar y en cada
+  // reconexión (el grabador se recrea para que ffmpeg reciba una cabecera limpia).
+  // Un solo encode: cada trozo va a ffmpeg y, si se está grabando, también a disco.
+  const arrancarStreamRecorder = async (): Promise<boolean> => {
+    const tx = (window as any).transmision
+    if (!tx) return false
+    const res = await tx.iniciar({ rtmpUrls: urlsTxRef.current, bitrateKbps: bitrateRef.current })
+    if (!res?.ok) { setErrorTx(res?.error || "No se pudo iniciar la transmisión."); return false }
+    try {
+      const salida = streamSalida(); if (!salida) return false
+      const rec = new MediaRecorder(salida, { mimeType: mimeRef.current, videoBitsPerSecond: bitrateRef.current * 1000, audioBitsPerSecond: 128_000 })
+      rec.ondataavailable = async ev => {
+        if (!ev.data || !ev.data.size) return
+        try {
+          const buf = new Uint8Array(await ev.data.arrayBuffer())
+          tx.enviarChunk(buf)
+          if (grabActivaRef.current) {
+            tx.enviarChunkGrabacion?.(buf)
+            grabBytesRef.current += buf.byteLength; setGrabMB(Math.round(grabBytesRef.current / 1048576))
+          }
+        } catch {}
+      }
+      rec.start(250)
+      recRef.current = rec
+      return true
+    } catch (e: any) { setErrorTx("No se pudo capturar el video: " + (e?.message || "")); return false }
+  }
+
+  // Abre el archivo de grabación (respaldo). Los trozos los reparte el grabador
+  // de stream (no hay un segundo encode). En reconexión rodamos a un segmento.
+  const arrancarGrabacion = async () => {
+    const tx = (window as any).transmision
+    if (!tx || !grabar) return
+    const r = await tx.iniciarGrabacion?.({ nombre: nombreIglesia || "Culto" })
+    if (!r?.ok) { setLogsTx(p => [...p, `⚠ no se pudo grabar: ${r?.error || ""}`]); return }
+    grabActivaRef.current = true; grabBytesRef.current = 0; setGrabMB(0)
+    setGrabInfo({ carpeta: r.carpeta, ruta: r.ruta, listo: false })
+  }
+
+  const detenerGrabacion = async () => {
+    const tx = (window as any).transmision
+    if (grabActivaRef.current) { grabActivaRef.current = false; try { await tx?.detenerGrabacion?.() } catch {} }
+  }
+
+  // Reconexión automática: al caerse ffmpeg de forma inesperada, reintenta con
+  // espera creciente. La grabación local sigue intacta durante todo el proceso.
+  const reconectar = () => {
+    if (detenidoRef.current) return
+    if (reconTimerRef.current) return // ya hay un reintento agendado (evita duplicar)
+    try { recRef.current?.stop() } catch {}
+    recRef.current = null
+    const n = (intentoRef.current || 0) + 1; intentoRef.current = n; setIntento(n)
+    setTxEstado("reconectando")
+    if (n > 30) { setTxEstado("error"); setErrorTx("No se pudo reconectar tras varios intentos. Revisa tu conexión."); return }
+    const espera = Math.min(2000 * n, 10000)
+    reconTimerRef.current = setTimeout(async () => {
+      reconTimerRef.current = null
+      if (detenidoRef.current) return
+      // Rodar la grabación a un segmento nuevo: el grabador se recrea con
+      // cabecera nueva, que no puede mezclarse en el mismo archivo mkv.
+      if (grabActivaRef.current) { try { await (window as any).transmision?.nuevoSegmentoGrabacion?.() } catch {} }
+      const ok = await arrancarStreamRecorder()
+      if (ok) setTxEstado("vivo")
+      else reconectar()
+    }, espera)
+  }
+  reconectarRef.current = reconectar
+
   const salirEnVivo = async () => {
     setErrorTx(null)
     const tx = (window as any).transmision
@@ -559,7 +845,10 @@ export default function EnVivoPage() {
     if (rtmpUrls.length === 0) { setErrorTx("Activa al menos una plataforma y pega su clave / URL."); return }
     if (!canvasRef.current || !streamRef.current) { setErrorTx("La cámara aún no está lista."); return }
 
-    setLogsTx([])
+    setLogsTx([]); setSalud(null); setIntento(0); intentoRef.current = 0
+    detenidoRef.current = false
+    setSegundos(0)
+    setGrabInfo(null); setGrabMB(0)
     setTxEstado("conectando")
     // Preferir H264 (lo puede comprimir la tarjeta gráfica → más fps en el i3);
     // VP8 es por software y ahoga los PC lentos (~10fps). ffmpeg lee cualquiera.
@@ -570,36 +859,58 @@ export default function EnVivoPage() {
       "video/webm;codecs=vp8,opus",
       "video/webm",
     ].find(m => (window as any).MediaRecorder?.isTypeSupported?.(m)) || "video/webm"
-    setLogsTx(prev => [...prev, `▶ formato de captura: ${mime}`, `▶ destinos: ${rtmpUrls.length}`])
+    mimeRef.current = mime
+    urlsTxRef.current = rtmpUrls
+    bitrateRef.current = CALIDAD_KBPS[calidad]
+    setLogsTx(prev => [...prev, `▶ formato de captura: ${mime}`, `▶ destinos: ${rtmpUrls.length}`, `▶ calidad: ${calidad} (${CALIDAD_KBPS[calidad]}k)`, grabar ? "● grabación local: activada" : "○ grabación local: desactivada"])
 
-    const res = await tx.iniciar({ rtmpUrls })
-    if (!res?.ok) { setTxEstado("error"); setErrorTx(res?.error || "No se pudo iniciar la transmisión."); return }
-
-    try {
-      const salida = new MediaStream([
-        ...(canvasRef.current.captureStream(30).getVideoTracks()),
-        ...(streamRef.current.getAudioTracks()),
-      ])
-      const rec = new MediaRecorder(salida, { mimeType: mime, videoBitsPerSecond: 2_500_000, audioBitsPerSecond: 128_000 })
-      rec.ondataavailable = async ev => {
-        if (ev.data && ev.data.size) {
-          try { tx.enviarChunk(new Uint8Array(await ev.data.arrayBuffer())) } catch {}
-        }
-      }
-      rec.start(250) // enviar trozos cada 250ms
-      recRef.current = rec
-      setTxEstado("vivo")
-    } catch (e: any) {
-      setTxEstado("error"); setErrorTx("No se pudo capturar el video: " + (e?.message || ""))
-      try { await tx.detener() } catch {}
-    }
+    // Abrir la grabación ANTES de arrancar el grabador: así el primer trozo (que
+    // trae la cabecera mkv) sí queda en el archivo.
+    await arrancarGrabacion()
+    const ok = await arrancarStreamRecorder()
+    if (!ok) { setTxEstado("error"); await detenerGrabacion(); return }
+    setTxEstado("vivo")
   }
 
   const terminar = async () => {
+    detenidoRef.current = true
+    if (reconTimerRef.current) { clearTimeout(reconTimerRef.current); reconTimerRef.current = null }
     try { recRef.current?.stop() } catch {}
     recRef.current = null
     try { await (window as any).transmision?.detener() } catch {}
-    setTxEstado("idle"); setErrorTx(null); setSegundos(0)
+    await detenerGrabacion()
+    setTxEstado("idle"); setErrorTx(null); setSegundos(0); setSalud(null); setIntento(0); intentoRef.current = 0
+  }
+
+  // ── Compartir pantalla ──────────────────────────────────────────────────────
+  const abrirPickerPantalla = async () => {
+    const tx = (window as any).transmision
+    if (!tx?.listarPantallas) { setErrorTx("Compartir pantalla funciona solo en la app de escritorio."); return }
+    const r = await tx.listarPantallas()
+    if (!r?.ok) { setErrorTx(r?.error || "No se pudieron listar las pantallas."); return }
+    setFuentesPantalla(r.fuentes || []); setPickerPantalla(true)
+  }
+
+  const elegirPantalla = async (id: string) => {
+    try {
+      const stream = await (navigator.mediaDevices as any).getUserMedia({
+        audio: false,
+        video: { mandatory: { chromeMediaSource: "desktop", chromeMediaSourceId: id, maxWidth: 1920, maxHeight: 1080, maxFrameRate: 30 } },
+      })
+      screenStreamRef.current?.getTracks().forEach(t => t.stop())
+      screenStreamRef.current = stream
+      if (screenVideoRef.current) { screenVideoRef.current.srcObject = stream; screenVideoRef.current.muted = true; await screenVideoRef.current.play().catch(() => {}) }
+      // Si el usuario detiene la compartición desde el aviso del sistema.
+      stream.getVideoTracks()[0]?.addEventListener("ended", () => dejarPantalla())
+      setPantallaOn(true); setPickerPantalla(false)
+    } catch (e: any) { setErrorTx("No se pudo compartir la pantalla: " + (e?.message || "")) }
+  }
+
+  const dejarPantalla = () => {
+    screenStreamRef.current?.getTracks().forEach(t => t.stop())
+    screenStreamRef.current = null
+    if (screenVideoRef.current) screenVideoRef.current.srcObject = null
+    setPantallaOn(false)
   }
 
   return (
@@ -624,8 +935,11 @@ export default function EnVivoPage() {
       <div style={{ maxWidth: esAncho ? 1280 : 920, margin: "0 auto", padding: "24px", display: esAncho ? "grid" : "block", gridTemplateColumns: esAncho ? "minmax(0,1.55fr) minmax(0,1fr)" : undefined, gap: 22, alignItems: "start" }}>
         {/* Columna izquierda: vista previa (fija/sticky en escritorio) */}
         <div style={esAncho ? { position: "sticky", top: 12 } : {}}>
+        {/* Marco (passe-partout): un margen claro alrededor del cuadro para que
+            se note dónde termina exactamente lo que sale al aire. */}
+        <div style={{ padding: 10, borderRadius: 20, background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))", border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 14px 40px rgba(0,0,0,0.45)" }}>
         {/* Vista previa (lo que saldría al aire) */}
-        <div style={{ position: "relative", zIndex: 5, borderRadius: 16, overflow: "hidden", border: `1px solid ${C.borde}`, background: "#000", aspectRatio: "16 / 9", boxShadow: "0 12px 34px rgba(0,0,0,0.4)" }}>
+        <div style={{ position: "relative", zIndex: 5, borderRadius: 12, overflow: "hidden", border: "2px solid rgba(255,255,255,0.3)", background: "#000", aspectRatio: "16 / 9", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.6)" }}>
           <canvas ref={canvasRef} width={ANCHO} height={ALTO}
             style={{ width: "100%", height: "100%", display: "block" }} />
 
@@ -643,14 +957,15 @@ export default function EnVivoPage() {
                   minW={120} maxW={900}
                   onChange={(p, w) => { setNombrePos(p); setNombreTam(Math.max(16, Math.round(w / (nombreIglesia.length * 0.66)))) }} />
               )}
-              {camaraActiva === "ambas" && camara2Id && (
-                <ObjetoEditable etiqueta="Cámara 2" pos={pipPos} w={pipTam} h={pipTam * 9 / 16}
+              {((camaraActiva === "ambas" && camara2Id) || (pantallaOn && camaraEnPip)) && (
+                <ObjetoEditable etiqueta={pantallaOn ? "Cámara" : "Cámara 2"} pos={pipPos} w={pipTam} h={pipTam * 9 / 16}
                   minW={160} maxW={900}
                   onChange={(p, w) => { setPipPos(p); setPipTam(Math.round(w)) }} />
               )}
               {escena === "camara-letra" && (
-                <ObjetoEditable etiqueta="Letra" pos={letraPos} w={letraTam} h={letraTam * LETRA_RATIO}
-                  minW={300} maxW={ANCHO}
+                <ObjetoEditable etiqueta="Letra" pos={letraPos} w={letraTam}
+                  h={altoLetraCaja(biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : limpiarLetra(partes[index]), letraTam, letraPos.y)}
+                  soloAncho minW={280} maxW={ANCHO}
                   onChange={(p, w) => { setLetraPos(p); setLetraTam(Math.round(w)) }} />
               )}
               {graficos.map(g => (
@@ -661,9 +976,9 @@ export default function EnVivoPage() {
             </div>
           )}
           {/* etiqueta: vista previa o EN VIVO con cronómetro */}
-          <div style={{ position: "absolute", top: 10, left: 10, display: "flex", alignItems: "center", gap: 8, padding: "5px 11px", borderRadius: 99, fontSize: 11.5, fontWeight: 800, color: "#fff", backdropFilter: "blur(4px)", background: txEstado === "vivo" ? "rgba(220,38,38,.85)" : "rgba(0,0,0,.55)" }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: txEstado === "vivo" ? "#fff" : "#4ade80", boxShadow: txEstado === "vivo" ? "0 0 6px #fff" : "none" }} />
-            {txEstado === "vivo" ? `EN VIVO · ${fmtTiempo(segundos)}` : "VISTA PREVIA"}
+          <div style={{ position: "absolute", top: 10, left: 10, display: "flex", alignItems: "center", gap: 8, padding: "5px 11px", borderRadius: 99, fontSize: 11.5, fontWeight: 800, color: "#fff", backdropFilter: "blur(4px)", background: txEstado === "vivo" ? "rgba(220,38,38,.85)" : txEstado === "reconectando" ? "rgba(217,119,6,.85)" : "rgba(0,0,0,.55)" }}>
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: txEstado === "vivo" ? "#fff" : txEstado === "reconectando" ? "#fbbf24" : "#4ade80", boxShadow: txEstado === "vivo" ? "0 0 6px #fff" : "none" }} />
+            {txEstado === "vivo" ? `EN VIVO · ${fmtTiempo(segundos)}` : txEstado === "reconectando" ? "RECONECTANDO…" : "VISTA PREVIA"}
           </div>
           {permiso !== "ok" && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 14, background: "rgba(6,13,26,.82)", textAlign: "center", padding: 24 }}>
@@ -679,6 +994,36 @@ export default function EnVivoPage() {
             </div>
           )}
         </div>
+          <div style={{ marginTop: 8, textAlign: "center", fontSize: 10.5, letterSpacing: 0.5, color: C.tenue, fontWeight: 700 }}>
+            CUADRO 1280 × 720 — TODO LO DE ADENTRO SALE AL AIRE
+          </div>
+        </div>
+
+        {/* Audio del micrófono: medidor de nivel (VU) + reducción de ruido */}
+        {permiso === "ok" && (
+          <div style={{ marginTop: 12, background: C.panel, border: `1px solid ${sinAudio ? "rgba(248,113,113,0.5)" : C.borde}`, borderRadius: 12, padding: "11px 13px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ fontSize: 11.5, fontWeight: 800, color: C.suave, display: "flex", alignItems: "center", gap: 6 }}>🎙️ Audio del micrófono</span>
+              {sinAudio && <span style={{ fontSize: 11, fontWeight: 800, color: "#f87171" }}>⚠ Sin señal</span>}
+            </div>
+            <div style={{ position: "relative", height: 12, borderRadius: 99, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+              <div ref={vuFillRef} style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "0%", background: "#4ade80", borderRadius: 99 }} />
+              <div ref={vuPeakRef} style={{ position: "absolute", top: -2, bottom: -2, left: "0%", width: 2, background: "rgba(255,255,255,0.9)" }} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, color: C.tenue, flex: 1, minWidth: 150 }}>
+                {sinAudio ? "No se detecta sonido — revisa el micrófono o que no esté silenciado." : "Habla o toca: la barra debe moverse en verde. Rojo = satura."}
+              </span>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                <span style={{ fontSize: 11.5, color: C.suave, fontWeight: 700 }}>Reducir ruido</span>
+                <button type="button" onClick={() => { const v = !limpiarAudio; setLimpiarAudio(v); try { localStorage.setItem("en-vivo-limpiar-audio", v ? "1" : "0") } catch {} }} aria-label="Reducir ruido del micrófono"
+                  style={{ position: "relative", width: 42, height: 24, borderRadius: 99, border: "none", cursor: "pointer", background: limpiarAudio ? C.verde : "rgba(255,255,255,0.14)", flexShrink: 0 }}>
+                  <span style={{ position: "absolute", top: 3, left: limpiarAudio ? 21 : 3, width: 18, height: 18, borderRadius: 99, background: "#fff", transition: "left .15s" }} />
+                </button>
+              </label>
+            </div>
+          </div>
+        )}
 
         {/* Video que alimenta el lienzo. NO usar display:none: con eso el
             navegador no decodifica los fotogramas (videoWidth queda en 0 y no
@@ -691,6 +1036,9 @@ export default function EnVivoPage() {
           style={{ position: "absolute", width: 2, height: 2, opacity: 0, pointerEvents: "none", left: 0, top: 0 }} />
         {/* Animación proyectada (video mudo en loop) */}
         <video ref={videoProyRef} muted loop playsInline crossOrigin="anonymous"
+          style={{ position: "absolute", width: 2, height: 2, opacity: 0, pointerEvents: "none", left: 0, top: 0 }} />
+        {/* Pantalla compartida (alimenta el lienzo) */}
+        <video ref={screenVideoRef} autoPlay muted playsInline
           style={{ position: "absolute", width: 2, height: 2, opacity: 0, pointerEvents: "none", left: 0, top: 0 }} />
         </div>{/* fin columna izquierda */}
 
@@ -774,6 +1122,37 @@ export default function EnVivoPage() {
                 </button>
               ))}
             </div>
+
+            {/* Transiciones + Compartir pantalla */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+              <button type="button" onClick={() => { const v = !transiciones; setTransiciones(v); try { localStorage.setItem("en-vivo-transiciones", v ? "1" : "0") } catch {} }} aria-label="Transiciones"
+                style={{ position: "relative", width: 42, height: 24, borderRadius: 99, border: "none", cursor: "pointer", background: transiciones ? C.verde : "rgba(255,255,255,0.14)", flexShrink: 0 }}>
+                <span style={{ position: "absolute", top: 3, left: transiciones ? 21 : 3, width: 18, height: 18, borderRadius: 99, background: "#fff", transition: "left .15s" }} />
+              </button>
+              <span style={{ fontSize: 12.5, color: C.suave }}>Fundido suave al cambiar de escena</span>
+            </div>
+
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.borde}` }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>🖥️ Compartir pantalla</div>
+                  <div style={{ fontSize: 11.5, color: C.tenue, marginTop: 2 }}>Proyecta ProPresenter, PowerPoint o un video de otra app; la letra y el mensaje se sobreponen igual.</div>
+                </div>
+                {pantallaOn
+                  ? <button onClick={dejarPantalla} style={botonBase({ background: C.rojo, color: "#fff", padding: "9px 13px", fontSize: 12.5 })}>Dejar de compartir</button>
+                  : <button onClick={abrirPickerPantalla} disabled={!esEscritorio} style={botonBase({ background: "rgba(37,99,235,0.15)", color: "#93c5fd", padding: "9px 13px", fontSize: 12.5, border: `1px solid ${C.azul}`, opacity: esEscritorio ? 1 : 0.5 })}>Elegir pantalla…</button>}
+              </div>
+              {pantallaOn && (
+                <label style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, cursor: "pointer" }}>
+                  <button type="button" onClick={() => setCamaraEnPip(v => !v)} aria-label="Mostrar cámara en recuadro"
+                    style={{ position: "relative", width: 42, height: 24, borderRadius: 99, border: "none", cursor: "pointer", background: camaraEnPip ? C.verde : "rgba(255,255,255,0.14)", flexShrink: 0 }}>
+                    <span style={{ position: "absolute", top: 3, left: camaraEnPip ? 21 : 3, width: 18, height: 18, borderRadius: 99, background: "#fff", transition: "left .15s" }} />
+                  </button>
+                  <span style={{ fontSize: 12.5, color: C.suave }}>Mostrar mi cámara en un recuadro (arrástrala en la vista previa)</span>
+                </label>
+              )}
+              {!esEscritorio && <div style={{ fontSize: 11.5, color: C.tenue, marginTop: 8 }}>Disponible solo en la app de escritorio.</div>}
+            </div>
           </div>
 
           {/* Mensaje en vivo */}
@@ -821,19 +1200,41 @@ export default function EnVivoPage() {
                 title="Color personalizado" style={{ width: 34, height: 30, borderRadius: 8, border: "none", background: "transparent", cursor: "pointer" }} />
             </div>
 
-            {/* Color de acento (marca de la iglesia) */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-              <span style={{ fontSize: 12.5, color: C.tenue, minWidth: 90 }}>Color de acento</span>
-              {[["#f59e0b", "Ámbar"], ["#2563eb", "Azul"], ["#dc2626", "Rojo"], ["#16a34a", "Verde"], ["#7c3aed", "Morado"], ["#0891b2", "Cian"]].map(([col, nom]) => (
+            {/* Diseño de los gráficos (forma/estilo al aire) */}
+            <div style={{ marginBottom: 14 }}>
+              <span style={{ fontSize: 12.5, color: C.tenue }}>Diseño</span>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                {DISENOS.map(([id, nom, desc]) => (
+                  <button key={id} onClick={() => guardarDiseno(id)} title={desc}
+                    style={{ flex: "1 1 160px", textAlign: "left", padding: "10px 12px", borderRadius: 10, cursor: "pointer",
+                      background: diseno === id ? "rgba(37,99,235,0.16)" : "rgba(255,255,255,0.03)",
+                      border: diseno === id ? `2px solid ${acento}` : "2px solid rgba(255,255,255,0.12)", color: C.texto }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 800, display: "flex", alignItems: "center", gap: 6 }}>
+                      {diseno === id && <span style={{ color: acento }}>✓</span>}{nom}
+                    </div>
+                    <div style={{ fontSize: 11, color: C.tenue, marginTop: 3, lineHeight: 1.3 }}>{desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tema de color (marca de la iglesia) */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              <span style={{ fontSize: 12.5, color: C.tenue, minWidth: 90 }}>Tema de color</span>
+              {TEMAS.map(([col, nom]) => (
                 <button key={col} onClick={() => guardarAcento(col)} title={nom}
                   style={{ width: 30, height: 30, borderRadius: 8, cursor: "pointer", background: col,
-                    border: acento === col ? `3px solid #fff` : "2px solid rgba(255,255,255,0.2)" }} />
+                    boxShadow: acento === col ? `0 0 0 2px #0b1220, 0 0 0 4px ${col}` : "none",
+                    border: acento === col ? `2px solid #fff` : "2px solid rgba(255,255,255,0.2)" }} />
               ))}
-              <input type="color" value={acento} onChange={e => guardarAcento(e.target.value)}
-                title="Color personalizado" style={{ width: 34, height: 30, borderRadius: 8, border: "none", background: "transparent", cursor: "pointer" }} />
+              <label title="Color personalizado" style={{ position: "relative", width: 34, height: 30, borderRadius: 8, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", border: "2px dashed rgba(255,255,255,0.35)", color: C.suave, fontSize: 16 }}>
+                +
+                <input type="color" value={acento} onChange={e => guardarAcento(e.target.value)}
+                  style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }} />
+              </label>
             </div>
-            <div style={{ fontSize: 11.5, color: C.tenue, marginBottom: 16, marginTop: -6 }}>
-              El acento se usa en las líneas, barras y detalles — así cada iglesia se ve distinta.
+            <div style={{ fontSize: 11.5, color: C.tenue, marginBottom: 16 }}>
+              El tema tiñe las líneas, barras, el nombre y la letra del mensaje — así cada iglesia se ve distinta.
             </div>
 
             {/* Tamaño del logo */}
@@ -882,20 +1283,47 @@ export default function EnVivoPage() {
             <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 12, padding: "12px 14px", fontSize: 13, color: C.suave }}>
               Transmitir en vivo funciona solo en la <strong style={{ color: C.texto }}>app de escritorio</strong> de Selah Live (aquí en el navegador puedes probar la cámara y la letra, pero no salir al aire).
             </div>
-          ) : (txEstado === "vivo" || txEstado === "conectando") ? (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <span style={{ width: 12, height: 12, borderRadius: 99, background: txEstado === "vivo" ? "#f87171" : "#fbbf24", boxShadow: txEstado === "vivo" ? "0 0 8px #f87171" : "none" }} />
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: txEstado === "vivo" ? "#f87171" : "#fbbf24" }}>
-                    {txEstado === "vivo" ? `AL AIRE · ${fmtTiempo(segundos)}` : "Conectando…"}
-                  </div>
-                  <div style={{ fontSize: 12, color: C.tenue }}>
-                    {PLATAFORMAS.filter(p => destinos[p.key].activo && destinos[p.key].valor.trim()).map(p => p.nombre).join(" · ") || "—"}
+          ) : (txEstado === "vivo" || txEstado === "conectando" || txEstado === "reconectando") ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <span style={{ width: 12, height: 12, borderRadius: 99, background: txEstado === "vivo" ? "#f87171" : "#fbbf24", boxShadow: txEstado === "vivo" ? "0 0 8px #f87171" : "none" }} />
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: txEstado === "vivo" ? "#f87171" : "#fbbf24" }}>
+                      {txEstado === "vivo" ? `AL AIRE · ${fmtTiempo(segundos)}`
+                        : txEstado === "reconectando" ? `Reconectando… (intento ${intento})`
+                        : "Conectando…"}
+                    </div>
+                    <div style={{ fontSize: 12, color: C.tenue }}>
+                      {PLATAFORMAS.filter(p => destinos[p.key].activo && destinos[p.key].valor.trim()).map(p => p.nombre).join(" · ") || "—"}
+                    </div>
                   </div>
                 </div>
+                <button onClick={terminar} style={botonBase({ background: C.rojo, color: "#fff" })}>■ Terminar transmisión</button>
               </div>
-              <button onClick={terminar} style={botonBase({ background: C.rojo, color: "#fff" })}>■ Terminar transmisión</button>
+
+              {/* Panel de salud del stream */}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {(() => {
+                  const chip = (etq: string, val: string, col: string = C.suave) => (
+                    <div key={etq} style={{ background: C.panel2, border: `1px solid ${C.borde}`, borderRadius: 10, padding: "7px 11px", minWidth: 80 }}>
+                      <div style={{ fontSize: 10, color: C.tenue, textTransform: "uppercase", letterSpacing: 0.5 }}>{etq}</div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: col }}>{val}</div>
+                    </div>
+                  )
+                  const sp = salud?.speed ?? null
+                  const saludTxt = sp == null ? "—" : sp >= 0.95 ? "Fluido" : sp >= 0.8 ? "Justo" : "Lento"
+                  const saludCol = sp == null ? C.suave : sp >= 0.95 ? "#4ade80" : sp >= 0.8 ? "#fbbf24" : "#f87171"
+                  const grabando = !!grabInfo && !grabInfo.listo
+                  return [
+                    chip("Bitrate", salud?.bitrate != null ? `${(salud.bitrate / 1000).toFixed(1)} Mbps` : "—"),
+                    chip("FPS", salud?.fps != null ? String(Math.round(salud.fps)) : "—"),
+                    chip("Salud", saludTxt, saludCol),
+                    chip("Caídos", salud?.drop != null ? String(salud.drop) : "0"),
+                    grabando ? chip("● REC", `${grabMB} MB`, "#f87171") : null,
+                  ]
+                })()}
+              </div>
             </div>
           ) : (
             <>
@@ -924,10 +1352,47 @@ export default function EnVivoPage() {
                 })}
               </div>
 
+              {/* Calidad de salida */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12.5, color: C.tenue, minWidth: 58 }}>Calidad</span>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {([["baja", "Baja", "1.2 Mbps · internet lento"], ["media", "Media", "2.5 Mbps · recomendada"], ["alta", "Alta", "4.5 Mbps · buena subida"]] as const).map(([id, txt, sub]) => (
+                    <button key={id} title={sub} onClick={() => { setCalidad(id); try { localStorage.setItem("en-vivo-calidad", id) } catch {} }}
+                      style={{ padding: "8px 12px", borderRadius: 9, cursor: "pointer", fontSize: 12.5, fontWeight: 700,
+                        background: calidad === id ? "rgba(37,99,235,0.2)" : C.panel2,
+                        border: `1.5px solid ${calidad === id ? C.azul : C.borde}`, color: calidad === id ? "#93c5fd" : C.texto }}>{txt}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Grabación local (respaldo del culto) */}
+              <label style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14, cursor: "pointer", background: C.panel2, border: `1px solid ${grabar ? C.azul : C.borde}`, borderRadius: 12, padding: "11px 14px" }}>
+                <button type="button" onClick={() => { const v = !grabar; setGrabar(v); try { localStorage.setItem("en-vivo-grabar", v ? "1" : "0") } catch {} }} aria-label="Grabar el culto"
+                  style={{ position: "relative", width: 46, height: 26, borderRadius: 99, border: "none", cursor: "pointer", background: grabar ? C.verde : "rgba(255,255,255,0.14)", flexShrink: 0 }}>
+                  <span style={{ position: "absolute", top: 3, left: grabar ? 23 : 3, width: 20, height: 20, borderRadius: 99, background: "#fff", transition: "left .15s" }} />
+                </button>
+                <div>
+                  <div style={{ fontSize: 13.5, fontWeight: 800, color: C.texto }}>Grabar el culto (respaldo local)</div>
+                  <div style={{ fontSize: 11.5, color: C.tenue }}>Guarda el video en tu PC mientras transmites — respaldo si se cae internet y para subirlo después.</div>
+                </div>
+              </label>
+
               <button onClick={salirEnVivo} disabled={permiso !== "ok"}
                 style={botonBase({ background: C.rojo, color: "#fff", width: "100%", padding: "14px", opacity: permiso !== "ok" ? 0.5 : 1 })}>
                 ● Salir en vivo
               </button>
+
+              {grabInfo && !grabInfo.listo && (
+                <div style={{ marginTop: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${C.borde}`, borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: C.suave }}>
+                  ⏳ Guardando la grabación (preparando el .mp4)…
+                </div>
+              )}
+              {grabInfo?.listo && (
+                <div style={{ marginTop: 12, background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.28)", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: "#bbf7d0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                  <span>✅ Grabación guardada{grabInfo.ruta ? `: ${grabInfo.ruta.split(/[\\/]/).pop()}` : ""}.</span>
+                  <button onClick={() => (window as any).transmision?.abrirCarpetaGrabaciones?.()} style={botonBase({ background: "rgba(255,255,255,0.08)", color: C.texto, padding: "6px 11px", fontSize: 12 })}>📂 Abrir carpeta</button>
+                </div>
+              )}
             </>
           )}
 
@@ -962,6 +1427,33 @@ export default function EnVivoPage() {
         </div>
         </div>{/* fin columna derecha */}
       </div>
+
+      {/* Selector de pantalla/ventana a compartir */}
+      {pickerPantalla && (
+        <div onClick={() => setPickerPantalla(false)} style={{ position: "fixed", inset: 0, background: "rgba(2,6,14,0.82)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, padding: 20, maxWidth: 840, width: "100%", maxHeight: "82vh", overflow: "auto" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <div style={{ fontSize: 16, fontWeight: 800 }}>Elige qué compartir</div>
+              <button onClick={() => setPickerPantalla(false)} style={{ background: "transparent", border: "none", color: C.suave, fontSize: 20, cursor: "pointer" }}>✕</button>
+            </div>
+            {!fuentesPantalla ? <div style={{ color: C.tenue }}>Cargando…</div>
+              : fuentesPantalla.length === 0 ? <div style={{ color: C.tenue }}>No se encontraron pantallas ni ventanas.</div>
+                : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 12 }}>
+                  {fuentesPantalla.map(f => (
+                    <button key={f.id} onClick={() => elegirPantalla(f.id)} style={{ background: C.panel2, border: `1px solid ${C.borde}`, borderRadius: 12, padding: 8, cursor: "pointer", textAlign: "left" }}>
+                      {f.thumb
+                        ? <img src={f.thumb} alt="" style={{ width: "100%", borderRadius: 8, background: "#000", aspectRatio: "16 / 9", objectFit: "contain", display: "block" }} />
+                        : <div style={{ aspectRatio: "16 / 9", background: "#000", borderRadius: 8 }} />}
+                      <div style={{ fontSize: 12, color: C.texto, marginTop: 6, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                        <span>{f.esPantalla ? "🖥️" : "🪟"}</span>
+                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.nombre}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -993,50 +1485,132 @@ function limpiarTexto(texto: string): string {
     .trim()
 }
 
-// Letra sobre la cámara dentro de una caja movible (x,y,w; alto = w×RATIO).
-// El texto se achica solo para caber completo dentro de la caja.
-function dibujarLetraCaja(ctx: CanvasRenderingContext2D, texto: string, titulo: string, tono: string, x: number, y: number, w: number, color: string, acento = "#f59e0b") {
-  const h = w * LETRA_RATIO
-  // Fondo: scrim con degradado (más cinematográfico que una caja plana) + acento
+// Fuente de la letra según el ANCHO de la caja (escala, con topes legibles).
+// Caja más ancha → letra más grande, así siempre se ve balanceada.
+function fontLetra(w: number): number { return Math.round(Math.max(20, Math.min(54, w / 20))) }
+const LETRA_PADX = 38, LETRA_PADBOT = 22, LETRA_TITULO_H = 46
+
+function envolverLineas(ctx: CanvasRenderingContext2D, texto: string, maxW: number, font: number): string[] {
+  ctx.font = `700 ${font}px 'Segoe UI', system-ui, sans-serif`
+  try { (ctx as any).letterSpacing = "0px" } catch {}
+  const out: string[] = []
+  for (const b of (texto || "").split("\n")) { const l = b.trim(); if (l) out.push(...ajustarLinea(ctx, l, maxW)) }
+  return out
+}
+
+// Canvas oculto para medir texto en el render de React (sin dibujar).
+let _medCanvas: HTMLCanvasElement | null = null
+function medirCtx(): CanvasRenderingContext2D | null {
+  if (typeof document === "undefined") return null
+  if (!_medCanvas) _medCanvas = document.createElement("canvas")
+  return _medCanvas.getContext("2d")
+}
+
+// Mide la caja de letra: la fuente escala con el ANCHO, pero se topa para que la
+// caja QUEPA en el espacio disponible bajo su posición (no se sale de pantalla).
+// Único cálculo compartido por el dibujo y el editor → siempre calzan.
+function medirLetra(ctx: CanvasRenderingContext2D | null, texto: string, w: number, yTop: number): { font: number; lineas: string[]; h: number } {
+  const dispo = Math.max(150, ALTO - yTop - 22)
+  const t = texto || ""
+  const wrap = (f: number) => ctx ? envolverLineas(ctx, t, w - LETRA_PADX * 2, f) : t.split("\n").filter(l => l.trim())
+  const altoDe = (f: number, n: number) => LETRA_TITULO_H + Math.max(n, t.trim() ? 1 : 0) * f * 1.34 + LETRA_PADBOT
+  let font = fontLetra(w)
+  let lineas = wrap(font)
+  let h = altoDe(font, lineas.length)
+  while (h > dispo && font > 16) { font -= 2; lineas = wrap(font); h = altoDe(font, lineas.length) }
+  return { font, lineas, h: Math.round(h) }
+}
+
+// Alto que tendrá la caja de letra (para el editor: la caja calza con el dibujo).
+function altoLetraCaja(texto: string, w: number, yTop: number): number {
+  return medirLetra(medirCtx(), texto, w, yTop).h
+}
+
+// Letra sobre la cámara: caja movible cuyo ALTO se ajusta al texto (no a un
+// ratio fijo). La fuente escala con el ancho y se topa para no desbordar.
+function dibujarLetraCaja(ctx: CanvasRenderingContext2D, texto: string, titulo: string, tono: string, x: number, y: number, w: number, color: string, acento = "#f59e0b", diseno: Diseno = "vidrio") {
+  const { font, lineas, h } = medirLetra(ctx, texto, w, y)
+  const lineH = font * 1.34
+  const et = titulo ? (tono ? `${titulo.toUpperCase()}    ·    ${tono}` : titulo.toUpperCase()).slice(0, 60) : ""
+
   ctx.save()
-  const bg = ctx.createLinearGradient(0, y, 0, y + h)
-  bg.addColorStop(0, "rgba(8,13,24,0.28)"); bg.addColorStop(1, "rgba(6,10,20,0.80)")
-  ctx.fillStyle = bg
-  redondear(ctx, x, y, w, h, 18); ctx.fill()
-  // Barra de acento a la izquierda
-  ctx.fillStyle = acento
-  redondear(ctx, x + 16, y + 16, 5, h - 32, 3); ctx.fill()
-  const padX = 40, padTop = titulo ? 46 : 20, padBot = 20
-  const areaW = w - padX * 2, areaTop = y + padTop, areaH = h - padTop - padBot
-  // Título + tono (letra espaciada, con línea divisoria fina)
-  if (titulo) {
+
+  if (diseno === "broadcast") {
+    // ── Broadcast: banda de acento con el título (texto oscuro) + banda oscura
+    //    con la letra alineada a la izquierda. Esquinas rectas (estilo noticiero).
+    ctx.fillStyle = "rgba(9,12,20,0.92)"; ctx.fillRect(x, y, w, h)
+    ctx.fillStyle = acento; ctx.fillRect(x, y, w, LETRA_TITULO_H)
+    if (et) {
+      ctx.textAlign = "left"; ctx.textBaseline = "middle"
+      ctx.font = "800 21px 'Segoe UI', system-ui, sans-serif"
+      try { (ctx as any).letterSpacing = "1px" } catch {}
+      ctx.fillStyle = textoSobreAcento(acento)
+      ctx.fillText(et, x + LETRA_PADX, y + LETRA_TITULO_H / 2 + 1, w - LETRA_PADX * 2)
+      try { (ctx as any).letterSpacing = "0px" } catch {}
+    }
     ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"
-    ctx.fillStyle = "rgba(255,255,255,0.82)"
-    ctx.font = "700 19px 'Segoe UI', system-ui, sans-serif"
-    try { (ctx as any).letterSpacing = "1.5px" } catch {}
-    const et = tono ? `${titulo.toUpperCase()}    ·    ${tono}` : titulo.toUpperCase()
-    ctx.fillText(et.slice(0, 60), x + padX, y + 31)
-    try { (ctx as any).letterSpacing = "0px" } catch {}
-    ctx.fillStyle = "rgba(255,255,255,0.12)"
-    ctx.fillRect(x + padX, y + 42, w - padX * 2, 1.5)
+    ctx.fillStyle = color
+    ctx.font = `700 ${font}px 'Segoe UI', system-ui, sans-serif`
+    let tyb = y + LETRA_TITULO_H + font * 0.92
+    for (const l of lineas) { ctx.fillText(l, x + LETRA_PADX, tyb); tyb += lineH }
+    ctx.restore()
+    return
   }
-  // Letra: envolver + achicar hasta caber
-  const envolver = (t: number) => {
-    ctx.font = `700 ${t}px 'Segoe UI', system-ui, sans-serif`
-    const ls: string[] = []
-    for (const b of texto.split("\n")) { const l = b.trim(); if (l) ls.push(...ajustarLinea(ctx, l, areaW)) }
-    return ls
+
+  if (diseno === "tarjeta") {
+    // ── Tarjeta: fondo tenue + borde de acento; título en pastilla que monta
+    //    sobre el borde superior. Esquinas menos redondeadas (editorial).
+    ctx.fillStyle = "rgba(10,14,22,0.70)"; redondear(ctx, x, y, w, h, 12); ctx.fill()
+    ctx.strokeStyle = acento; ctx.lineWidth = 2
+    redondear(ctx, x + 1, y + 1, w - 2, h - 2, 11); ctx.stroke()
+    if (et) {
+      ctx.font = "800 19px 'Segoe UI', system-ui, sans-serif"
+      try { (ctx as any).letterSpacing = "1px" } catch {}
+      const tw = Math.min(ctx.measureText(et).width + 30, w - 40)
+      const px = x + 26, ph = 34, py = y - ph / 2
+      ctx.fillStyle = acento; redondear(ctx, px, py, tw, ph, 8); ctx.fill()
+      ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillStyle = textoSobreAcento(acento)
+      ctx.fillText(et, px + 15, py + ph / 2 + 1, tw - 24)
+      try { (ctx as any).letterSpacing = "0px" } catch {}
+    }
+  } else if (diseno === "minimal") {
+    // ── Minimal: sin caja. Título con línea corta de acento; la letra (abajo)
+    //    se apoya en la sombra para leerse sobre cualquier fondo.
+    if (et) {
+      ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"
+      ctx.shadowColor = "rgba(0,0,0,0.7)"; ctx.shadowBlur = 8
+      ctx.fillStyle = "rgba(255,255,255,0.9)"
+      ctx.font = "700 19px 'Segoe UI', system-ui, sans-serif"
+      try { (ctx as any).letterSpacing = "2px" } catch {}
+      ctx.fillText(et, x + w / 2, y + 24)
+      try { (ctx as any).letterSpacing = "0px" } catch {}
+      ctx.shadowBlur = 0
+      ctx.fillStyle = acento; redondear(ctx, x + w / 2 - 26, y + 34, 52, 3.5, 1.75); ctx.fill()
+    }
+  } else {
+    // ── Vidrio (actual): scrim + barra de acento a la izquierda + divisor.
+    const bg = ctx.createLinearGradient(0, y, 0, y + h)
+    bg.addColorStop(0, "rgba(8,13,24,0.30)"); bg.addColorStop(1, "rgba(6,10,20,0.82)")
+    ctx.fillStyle = bg; redondear(ctx, x, y, w, h, 18); ctx.fill()
+    ctx.fillStyle = acento; redondear(ctx, x + 15, y + 14, 5, h - 28, 3); ctx.fill()
+    if (et) {
+      ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"
+      ctx.fillStyle = "rgba(255,255,255,0.82)"
+      ctx.font = "700 19px 'Segoe UI', system-ui, sans-serif"
+      try { (ctx as any).letterSpacing = "1.5px" } catch {}
+      ctx.fillText(et, x + LETRA_PADX, y + 30)
+      try { (ctx as any).letterSpacing = "0px" } catch {}
+      ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fillRect(x + LETRA_PADX, y + 40, w - LETRA_PADX * 2, 1.5)
+    }
   }
-  let tam = 40
-  let lineas = envolver(tam)
-  while (lineas.length * tam * 1.28 > areaH && tam > 18) { tam -= 2; lineas = envolver(tam) }
-  const alturaLinea = tam * 1.28
-  let ty = areaTop + (areaH - lineas.length * alturaLinea) / 2 + tam
+
+  // Letra centrada — común a Vidrio, Tarjeta y Minimal (Broadcast ya retornó).
   ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"
   ctx.shadowColor = "rgba(0,0,0,0.85)"; ctx.shadowBlur = 6
   ctx.fillStyle = color
-  ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif`
-  for (const l of lineas) { ctx.fillText(l, x + w / 2, ty); ty += alturaLinea }
+  ctx.font = `700 ${font}px 'Segoe UI', system-ui, sans-serif`
+  let ty = y + LETRA_TITULO_H + font * 0.82
+  for (const l of lineas) { ctx.fillText(l, x + w / 2, ty); ty += lineH }
   ctx.restore()
 }
 
@@ -1237,11 +1811,58 @@ function cajaNombre(nombre: string, tam: number) {
 
 // Nombre de la iglesia (objeto movible): centrado dentro de su caja, con línea
 // de acento ámbar debajo.
-function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, pos: { x: number; y: number }, tam: number, acento = "#f59e0b") {
+function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, pos: { x: number; y: number }, tam: number, acento = "#f59e0b", diseno: Diseno = "vidrio") {
   if (!nombre) return
   const { w, h } = cajaNombre(nombre, tam)
   const cx = pos.x + w / 2, cy = pos.y + h / 2
   ctx.save()
+
+  if (diseno === "tarjeta") {
+    // Placa con borde de acento alrededor del nombre (misma familia que la letra).
+    ctx.fillStyle = "rgba(10,14,22,0.55)"; redondear(ctx, pos.x + 2, pos.y + 2, w - 4, h - 4, 9); ctx.fill()
+    ctx.strokeStyle = acento; ctx.lineWidth = 2; redondear(ctx, pos.x + 3, pos.y + 3, w - 6, h - 6, 8); ctx.stroke()
+    ctx.textAlign = "center"; ctx.textBaseline = "middle"
+    ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif`
+    try { (ctx as any).letterSpacing = `${Math.round(tam / 12)}px` } catch {}
+    ctx.fillStyle = "rgba(255,255,255,0.97)"
+    ctx.fillText(nombre.toUpperCase(), cx, cy + 1)
+    try { (ctx as any).letterSpacing = "0px" } catch {}
+    ctx.restore()
+    return
+  }
+
+  if (diseno === "broadcast") {
+    // Placa sólida de acento con el nombre en texto oscuro (estilo noticiero).
+    ctx.fillStyle = acento; ctx.fillRect(pos.x, pos.y, w, h)
+    ctx.textAlign = "center"; ctx.textBaseline = "middle"
+    ctx.font = `800 ${tam}px 'Segoe UI', system-ui, sans-serif`
+    try { (ctx as any).letterSpacing = `${Math.round(tam / 14)}px` } catch {}
+    ctx.fillStyle = textoSobreAcento(acento)
+    ctx.fillText(nombre.toUpperCase(), cx, cy + 1)
+    try { (ctx as any).letterSpacing = "0px" } catch {}
+    ctx.restore()
+    return
+  }
+
+  if (diseno === "minimal") {
+    // Sin caja: nombre centrado con sombra y un puntito de acento a cada lado.
+    ctx.textAlign = "center"; ctx.textBaseline = "middle"
+    ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif`
+    try { (ctx as any).letterSpacing = `${Math.round(tam / 10)}px` } catch {}
+    ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = 10
+    ctx.fillStyle = "rgba(255,255,255,0.96)"
+    ctx.fillText(nombre.toUpperCase(), cx, cy)
+    try { (ctx as any).letterSpacing = "0px" } catch {}
+    ctx.shadowBlur = 0
+    const tw = Math.min(ctx.measureText(nombre.toUpperCase()).width, w)
+    ctx.fillStyle = acento
+    ctx.beginPath(); ctx.arc(cx - tw / 2 - 16, cy, 3, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath(); ctx.arc(cx + tw / 2 + 16, cy, 3, 0, Math.PI * 2); ctx.fill()
+    ctx.restore()
+    return
+  }
+
+  // Vidrio (actual): nombre + línea de acento con un puntito a cada lado.
   ctx.textAlign = "center"; ctx.textBaseline = "middle"
   ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif`
   try { (ctx as any).letterSpacing = `${Math.round(tam / 10)}px` } catch {}
@@ -1250,7 +1871,6 @@ function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, po
   ctx.fillText(nombre.toUpperCase(), cx, cy - tam * 0.18)
   try { (ctx as any).letterSpacing = "0px" } catch {}
   ctx.shadowBlur = 0
-  // Acento: línea ámbar con un puntito a cada lado (estilo broadcast)
   const lineaW = Math.min(w * 0.42, tam * 3.6)
   const ly = cy + tam * 0.64
   ctx.fillStyle = acento
@@ -1261,8 +1881,67 @@ function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, po
 }
 
 // Mensaje en vivo: banner sobre todas las escenas (abajo o arriba).
-function dibujarMensaje(ctx: CanvasRenderingContext2D, texto: string, posicion: "abajo" | "arriba" = "abajo", acento = "#f59e0b") {
+function dibujarMensaje(ctx: CanvasRenderingContext2D, texto: string, posicion: "abajo" | "arriba" = "abajo", acento = "#f59e0b", diseno: Diseno = "vidrio") {
   ctx.save()
+
+  if (diseno === "tarjeta") {
+    // Cápsula centrada con borde de acento (no ocupa todo el ancho).
+    const h = 60
+    let tam = 29
+    ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif`
+    const maxTxt = ANCHO - 260
+    while (ctx.measureText(texto).width > maxTxt && tam > 18) { tam -= 2; ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif` }
+    const tw = ctx.measureText(texto).width
+    const w = Math.min(tw + 110, ANCHO - 80)
+    const x = (ANCHO - w) / 2, y = posicion === "arriba" ? 24 : ALTO - 24 - h
+    const cy = y + h / 2
+    ctx.fillStyle = "rgba(10,14,22,0.74)"; redondear(ctx, x, y, w, h, h / 2); ctx.fill()
+    ctx.strokeStyle = acento; ctx.lineWidth = 2; redondear(ctx, x + 1, y + 1, w - 2, h - 2, (h - 2) / 2); ctx.stroke()
+    ctx.textAlign = "center"; ctx.textBaseline = "middle"
+    ctx.fillStyle = acento
+    ctx.beginPath(); ctx.arc(x + 30, cy, 5, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = legibleSobreOscuro(acento)
+    ctx.fillText(texto, x + 30 + (w - 30) / 2, cy + 1)
+    ctx.restore()
+    return
+  }
+
+  if (diseno === "broadcast") {
+    // Barra sólida de acento a todo el ancho, con texto oscuro (ticker de TV).
+    const h = 66, y = posicion === "arriba" ? 0 : ALTO - h, cy = y + h / 2
+    ctx.fillStyle = acento; ctx.fillRect(0, y, ANCHO, h)
+    ctx.fillStyle = "rgba(0,0,0,0.18)"; ctx.fillRect(0, posicion === "arriba" ? h - 3 : y, ANCHO, 3)
+    let tam = 30
+    ctx.textAlign = "center"; ctx.textBaseline = "middle"
+    ctx.font = `800 ${tam}px 'Segoe UI', system-ui, sans-serif`
+    const maxW = ANCHO - 120
+    while (ctx.measureText(texto).width > maxW && tam > 18) { tam -= 2; ctx.font = `800 ${tam}px 'Segoe UI', system-ui, sans-serif` }
+    ctx.fillStyle = textoSobreAcento(acento)
+    ctx.fillText(texto, ANCHO / 2, cy + 1)
+    ctx.restore()
+    return
+  }
+
+  if (diseno === "minimal") {
+    // Sin barra: texto centrado con sombra y un puntito de acento a cada lado.
+    const y = posicion === "arriba" ? 46 : ALTO - 46
+    let tam = 31
+    ctx.textAlign = "center"; ctx.textBaseline = "middle"
+    ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif`
+    const maxW = ANCHO - 200
+    while (ctx.measureText(texto).width > maxW && tam > 18) { tam -= 2; ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif` }
+    const tw = ctx.measureText(texto).width
+    ctx.shadowColor = "rgba(0,0,0,0.85)"; ctx.shadowBlur = 10
+    ctx.fillStyle = legibleSobreOscuro(acento)
+    ctx.fillText(texto, ANCHO / 2, y)
+    ctx.shadowBlur = 0
+    ctx.fillStyle = acento
+    ctx.beginPath(); ctx.arc(ANCHO / 2 - tw / 2 - 20, y, 4, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath(); ctx.arc(ANCHO / 2 + tw / 2 + 20, y, 4, 0, Math.PI * 2); ctx.fill()
+    ctx.restore()
+    return
+  }
+
   const h = 76, y = posicion === "arriba" ? 0 : ALTO - h
   // Fondo "vidrio oscuro"
   const g = ctx.createLinearGradient(0, y, 0, y + h)
@@ -1282,7 +1961,8 @@ function dibujarMensaje(ctx: CanvasRenderingContext2D, texto: string, posicion: 
   ctx.fillStyle = acento
   ctx.beginPath(); ctx.arc(ANCHO / 2 - anchoTexto / 2 - 22, cy, 5, 0, Math.PI * 2); ctx.fill()
   ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 6
-  ctx.fillStyle = "#fff"
+  // La letra del mensaje toma el color del tema (aclarado para que siempre se lea).
+  ctx.fillStyle = legibleSobreOscuro(acento)
   ctx.fillText(texto, ANCHO / 2, cy + 1)
   ctx.restore()
 }

@@ -1,5 +1,5 @@
 try { require("dotenv").config() } catch(e) {}
-const { app, BrowserWindow, shell, Menu, ipcMain, dialog, session } = require("electron")
+const { app, BrowserWindow, shell, Menu, ipcMain, dialog, session, desktopCapturer } = require("electron")
 const path = require("path")
 const http = require("http")
 const { Server } = require("socket.io")
@@ -20,7 +20,41 @@ try {
   }
 } catch (e) { console.error("ffmpeg-static no disponible:", e) }
 let ffmpegProc = null
+let pararIntencional = false // true cuando el usuario detiene (no es una caída)
 let encoderElegido = null // se cachea el primer encoder que funcione en este PC
+
+// Grabación local (respaldo del culto): los MISMOS trozos que van a ffmpeg se
+// escriben también a disco (un solo encode → no ahoga PCs modestos). Cada trozo
+// es un contenedor mkv válido; en una reconexión el grabador del renderer se
+// recrea (cabecera nueva), así que rodamos a un SEGMENTO nuevo y al final los
+// unimos en un solo archivo.
+let grabStream = null   // fs.WriteStream del segmento en curso
+let grabBase = null     // ruta base (sin extensión) del culto en curso
+let grabSegs = []       // rutas .mkv de los segmentos grabados
+
+function carpetaGrabaciones() {
+  let base
+  try { base = app.getPath("videos") } catch { base = os.tmpdir() }
+  const dir = path.join(base, "Selah Live")
+  try { fs.mkdirSync(dir, { recursive: true }) } catch {}
+  return dir
+}
+
+// Parsea la línea de estadísticas de ffmpeg (-stats) para el panel de salud.
+// Ej: "frame=300 fps=30 q=28 size=... time=00:00:10.00 bitrate=2543.1kbits/s dup=0 drop=2 speed=1.00x"
+function parseStats(m) {
+  if (!/bitrate=|fps=|speed=/.test(m)) return null
+  const num = (re) => { const g = re.exec(m); const v = g ? parseFloat(g[1]) : NaN; return Number.isFinite(v) ? v : null }
+  const bitrate = num(/bitrate=\s*([\d.]+)kbits\/s/i)
+  const fps = num(/fps=\s*([\d.]+)/i)
+  const speed = num(/speed=\s*([\d.]+)x/i)
+  const drop = num(/drop=\s*(\d+)/i)
+  const dup = num(/dup=\s*(\d+)/i)
+  const tg = /time=\s*(\d+):(\d+):(\d+)/.exec(m)
+  const timeMs = tg ? ((+tg[1]) * 3600 + (+tg[2]) * 60 + (+tg[3])) * 1000 : null
+  if (bitrate == null && fps == null && speed == null) return null
+  return { bitrate, fps, speed, drop, dup, timeMs }
+}
 
 // Probar si un encoder realmente arranca en ESTE PC (no basta con que exista;
 // h264_qsv puede estar listado pero fallar sin GPU Intel utilizable).
@@ -56,7 +90,9 @@ async function elegirEncoder() {
 // Argumentos de ffmpeg según el encoder. En todos: keyframe cada ~2s y AAC.
 // rtmpUrls: 1 destino → -f flv; varios → muxer "tee" (codifica una vez y empuja
 // a todas las plataformas a la vez). onfail=ignore: si una cae, las otras siguen.
-function construirArgsFFmpeg(encoder, rtmpUrls) {
+function construirArgsFFmpeg(encoder, rtmpUrls, bitrateKbps) {
+  const kbps = Math.max(600, Math.min(8000, Number(bitrateKbps) || 2500))
+  const vb = `${kbps}k`, buf = `${kbps * 2}k`
   // -loglevel warning + stats cada 5s: vemos problemas reales (cortes,
   // "Broken pipe", "Connection reset") y si el PC va al día (speed≈1.0x).
   const base = ["-hide_banner", "-loglevel", "warning", "-stats", "-stats_period", "5", "-fflags", "+genpts", "-i", "pipe:0"]
@@ -65,14 +101,14 @@ function construirArgsFFmpeg(encoder, rtmpUrls) {
   const kf = ["-force_key_frames", "expr:gte(t,n_forced*2)"]
   let video
   if (encoder === "h264_qsv") {
-    video = ["-c:v", "h264_qsv", "-b:v", "2500k", "-maxrate", "2500k", "-bufsize", "5000k", "-g", "60", "-look_ahead", "0", ...kf]
+    video = ["-c:v", "h264_qsv", "-b:v", vb, "-maxrate", vb, "-bufsize", buf, "-g", "60", "-look_ahead", "0", ...kf]
   } else if (encoder === "h264_mf") {
-    video = ["-c:v", "h264_mf", "-b:v", "2500k", "-g", "60", ...kf]
+    video = ["-c:v", "h264_mf", "-b:v", vb, "-g", "60", ...kf]
   } else {
     video = [
       "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-pix_fmt", "yuv420p",
       "-g", "60", "-keyint_min", "60", ...kf,
-      "-b:v", "2500k", "-maxrate", "2500k", "-bufsize", "5000k",
+      "-b:v", vb, "-maxrate", vb, "-bufsize", buf,
     ]
   }
   const audio = ["-c:a", "aac", "-b:a", "128k", "-ar", "44100"]
@@ -91,20 +127,24 @@ function rutaLogTransmision() {
 
 // ✅ Matar ffmpeg si la app se cierra mientras transmite: si no, queda huérfano
 // empujando a Facebook y el siguiente intento choca con "límite de streams".
-app.on("before-quit", () => { if (ffmpegProc) { try { ffmpegProc.kill("SIGKILL") } catch {} ffmpegProc = null } })
+app.on("before-quit", () => {
+  if (ffmpegProc) { try { ffmpegProc.kill("SIGKILL") } catch {} ffmpegProc = null }
+  if (grabStream) { try { grabStream.end() } catch {} grabStream = null }
+})
 
 function registrarIPCTransmision() {
   // Iniciar: levanta ffmpeg leyendo webm por stdin y empujando a RTMP.
-  ipcMain.handle("transmision:iniciar", async (_e, { rtmpUrl, rtmpUrls } = {}) => {
+  ipcMain.handle("transmision:iniciar", async (_e, { rtmpUrl, rtmpUrls, bitrateKbps } = {}) => {
     try {
       if (!ffmpegPath) return { ok: false, error: "No se encontró ffmpeg dentro de la app." }
       // Acepta un arreglo (multiplataforma) o una sola URL (compatibilidad).
       const urls = (Array.isArray(rtmpUrls) ? rtmpUrls : [rtmpUrl]).filter(u => typeof u === "string" && /^rtmps?:\/\//i.test(u))
       if (urls.length === 0) return { ok: false, error: "No hay ninguna dirección de transmisión válida." }
       if (ffmpegProc) { try { ffmpegProc.kill("SIGKILL") } catch {} ffmpegProc = null }
+      pararIntencional = false // arrancamos: cualquier cierre siguiente es una caída
 
       const encoder = await elegirEncoder()
-      const args = construirArgsFFmpeg(encoder, urls)
+      const args = construirArgsFFmpeg(encoder, urls, bitrateKbps)
       const proc = spawn(ffmpegPath, args, { stdio: ["pipe", "ignore", "pipe"] })
       ffmpegProc = proc
 
@@ -118,9 +158,12 @@ function registrarIPCTransmision() {
       const enviar = (canal, dato) => {
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(canal, dato)
       }
-      proc.stderr.on("data", d => { const m = d.toString(); console.error("[ffmpeg]", m); aLog(m); enviar("transmision:log", m) })
-      proc.on("error", err => { aLog(`\n[error de proceso] ${err.message}\n`); enviar("transmision:estado", { estado: "error", error: err.message }); if (ffmpegProc === proc) ffmpegProc = null })
-      proc.on("close", code => { aLog(`\n[ffmpeg terminó con código ${code}]\n`); enviar("transmision:estado", { estado: "terminado", code }); if (ffmpegProc === proc) ffmpegProc = null })
+      proc.stderr.on("data", d => {
+        const m = d.toString(); console.error("[ffmpeg]", m); aLog(m); enviar("transmision:log", m)
+        const st = parseStats(m); if (st) enviar("transmision:stats", st)
+      })
+      proc.on("error", err => { aLog(`\n[error de proceso] ${err.message}\n`); enviar("transmision:estado", { estado: "error", error: err.message, inesperado: !pararIntencional }); if (ffmpegProc === proc) ffmpegProc = null })
+      proc.on("close", code => { aLog(`\n[ffmpeg terminó con código ${code}]\n`); enviar("transmision:estado", { estado: "terminado", code, inesperado: !pararIntencional }); if (ffmpegProc === proc) ffmpegProc = null })
       proc.stdin.on("error", () => {}) // evitar crash si RTMP corta el pipe
 
       return { ok: true, encoder }
@@ -135,8 +178,10 @@ function registrarIPCTransmision() {
   })
 
   // Detener: cerrar stdin para que ffmpeg termine limpio; forzar si se demora.
+  // pararIntencional evita que el cierre se trate como una caída (reconexión).
   ipcMain.handle("transmision:detener", async () => {
     try {
+      pararIntencional = true
       if (ffmpegProc) {
         const p = ffmpegProc; ffmpegProc = null
         try { p.stdin.end() } catch {}
@@ -146,6 +191,107 @@ function registrarIPCTransmision() {
     } catch (e) { return { ok: false, error: e.message } }
   })
 
+  // ── Grabación local (respaldo) ────────────────────────────────────────────
+  function abrirSegmento() {
+    const idx = grabSegs.length
+    const ruta = idx === 0 ? `${grabBase}.mkv` : `${grabBase} (${idx + 1}).mkv`
+    grabStream = fs.createWriteStream(ruta)
+    grabStream.on("error", () => {})
+    grabSegs.push(ruta)
+  }
+
+  // Abre el archivo del culto y empieza a recibir trozos (los mismos del stream).
+  ipcMain.handle("grabacion:iniciar", async (_e, { nombre } = {}) => {
+    try {
+      if (grabStream) { try { grabStream.end() } catch {} grabStream = null }
+      grabSegs = []
+      const limpio = String(nombre || "Culto").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 40) || "Culto"
+      const f = new Date()
+      const pad = n => String(n).padStart(2, "0")
+      const sello = `${f.getFullYear()}-${pad(f.getMonth() + 1)}-${pad(f.getDate())} ${pad(f.getHours())}-${pad(f.getMinutes())}`
+      grabBase = path.join(carpetaGrabaciones(), `${limpio} ${sello}`)
+      abrirSegmento()
+      return { ok: true, ruta: grabSegs[0], carpeta: carpetaGrabaciones() }
+    } catch (e) { return { ok: false, error: e.message || String(e) } }
+  })
+
+  ipcMain.on("grabacion:chunk", (_e, chunk) => {
+    try { if (grabStream && grabStream.writable) grabStream.write(Buffer.from(chunk)) } catch {}
+  })
+
+  // Al reconectar, el grabador del renderer se recrea (cabecera nueva) → rodamos
+  // a un segmento nuevo para no mezclar dos contenedores en un mismo archivo.
+  ipcMain.handle("grabacion:nuevoSegmento", async () => {
+    try {
+      if (!grabBase) return { ok: false }
+      if (grabStream) { const s = grabStream; grabStream = null; await new Promise(r => { try { s.end(r) } catch { r() } }) }
+      abrirSegmento()
+      return { ok: true }
+    } catch (e) { return { ok: false, error: e.message } }
+  })
+
+  // Cierra el archivo y, en segundo plano, deja un solo .mp4 (une segmentos si
+  // hubo reconexiones). Emite "grabacion:listo" cuando está disponible.
+  ipcMain.handle("grabacion:detener", async () => {
+    try {
+      const segs = grabSegs.slice(); const s = grabStream
+      grabStream = null; grabBase = null; grabSegs = []
+      if (!s || segs.length === 0) return { ok: false, error: "No había grabación en curso." }
+      await new Promise(res => { try { s.end(res) } catch { res() } })
+      const carpeta = carpetaGrabaciones()
+      const enviar = (canal, dato) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(canal, dato) }
+      const mp4 = segs[0].replace(/\.mkv$/i, ".mp4")
+      const listo = (ruta) => enviar("grabacion:listo", { ok: true, ruta, carpeta })
+
+      if (!ffmpegPath) { listo(segs[0]); return { ok: true, ruta: segs[0], carpeta } }
+      try {
+        let proc
+        if (segs.length === 1) {
+          // Un solo segmento: remux directo mkv → mp4 (copia, rápido).
+          proc = spawn(ffmpegPath, ["-y", "-i", segs[0], "-c", "copy", "-movflags", "+faststart", mp4], { stdio: "ignore" })
+        } else {
+          // Varios: unir con el demuxer concat (copia, sin recodificar).
+          const lista = path.join(carpeta, `concat-${Date.now()}.txt`)
+          fs.writeFileSync(lista, segs.map(p => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"))
+          proc = spawn(ffmpegPath, ["-y", "-f", "concat", "-safe", "0", "-i", lista, "-c", "copy", "-movflags", "+faststart", mp4], { stdio: "ignore" })
+          proc.on("close", () => { try { fs.unlinkSync(lista) } catch {} })
+        }
+        proc.on("close", c => {
+          if (c === 0) { for (const p of segs) { try { fs.unlinkSync(p) } catch {} } listo(mp4) }
+          else listo(segs[0])
+        })
+        proc.on("error", () => listo(segs[0]))
+      } catch { listo(segs[0]) }
+      return { ok: true, ruta: mp4, carpeta }
+    } catch (e) { return { ok: false, error: e.message || String(e) } }
+  })
+
+  ipcMain.handle("grabacion:abrirCarpeta", async () => {
+    try { await shell.openPath(carpetaGrabaciones()); return { ok: true } }
+    catch (e) { return { ok: false, error: e.message } }
+  })
+
+  // ── Compartir pantalla ────────────────────────────────────────────────────
+  // Lista pantallas y ventanas disponibles (con miniatura) para que el usuario
+  // elija cuál compartir. La captura la hace el renderer con el id devuelto.
+  ipcMain.handle("pantalla:fuentes", async () => {
+    try {
+      const fuentes = await desktopCapturer.getSources({
+        types: ["screen", "window"],
+        thumbnailSize: { width: 320, height: 180 },
+      })
+      return {
+        ok: true,
+        fuentes: fuentes.map(f => ({
+          id: f.id,
+          nombre: f.name,
+          esPantalla: f.id.startsWith("screen:"),
+          thumb: (() => { try { return f.thumbnail.toDataURL() } catch { return "" } })(),
+        })),
+      }
+    } catch (e) { return { ok: false, error: e.message || String(e) } }
+  })
+
   // Abrir el archivo de registro para diagnóstico.
   ipcMain.handle("transmision:abrirLog", async () => {
     try { await shell.openPath(rutaLogTransmision()); return { ok: true } }
@@ -153,6 +299,117 @@ function registrarIPCTransmision() {
   })
 }
 registrarIPCTransmision()
+
+// ── Importar desde PowerPoint (Windows) ──────────────────────────────────────
+// Dos modos: (1) desincrustar las imágenes del .pptx (es un zip → Expand-Archive)
+// y (2) renderizar cada diapositiva completa a PNG vía PowerPoint COM.
+function correrPS1(contenido) {
+  return new Promise((resolve) => {
+    const f = path.join(os.tmpdir(), `selah-ps-${Date.now()}-${Math.random().toString(36).slice(2)}.ps1`)
+    try { fs.writeFileSync(f, contenido, "utf8") } catch (e) { return resolve({ code: -1, out: "", err: e.message }) }
+    let out = "", err = ""
+    let ps
+    try { ps = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", f], { windowsHide: true }) }
+    catch (e) { try { fs.unlinkSync(f) } catch {} return resolve({ code: -1, out: "", err: e.message }) }
+    ps.stdout.on("data", d => out += d.toString())
+    ps.stderr.on("data", d => err += d.toString())
+    ps.on("close", code => { try { fs.unlinkSync(f) } catch {} resolve({ code, out, err }) })
+    ps.on("error", e => { try { fs.unlinkSync(f) } catch {} resolve({ code: -1, out, err: e.message }) })
+  })
+}
+const q = (s) => String(s).replace(/'/g, "''") // escape para comillas simples de PowerShell
+const aDataUrl = (file) => {
+  const ext = (file.split(".").pop() || "png").toLowerCase()
+  const mime = ext === "jpg" ? "jpeg" : ext
+  return `data:image/${mime};base64,${fs.readFileSync(file).toString("base64")}`
+}
+const ordenNum = (a, b) => (parseInt((a.match(/\d+/) || ["0"])[0], 10) - parseInt((b.match(/\d+/) || ["0"])[0], 10))
+
+function registrarIPCPowerPoint() {
+  // Diálogo nativo para elegir el .pptx / .ppt.
+  ipcMain.handle("ppt:elegir", async () => {
+    try {
+      const r = await dialog.showOpenDialog(mainWindow, {
+        title: "Elige una presentación de PowerPoint",
+        filters: [{ name: "PowerPoint", extensions: ["pptx", "ppt"] }],
+        properties: ["openFile"],
+      })
+      if (r.canceled || !r.filePaths[0]) return { ok: false, cancelado: true }
+      return { ok: true, ruta: r.filePaths[0] }
+    } catch (e) { return { ok: false, error: e.message } }
+  })
+
+  // Modo 1: desincrustar las imágenes del .pptx (ppt/media/*).
+  ipcMain.handle("ppt:imagenes", async (_e, { ruta } = {}) => {
+    try {
+      if (!ruta || !fs.existsSync(ruta)) return { ok: false, error: "No se encontró el archivo." }
+      // .ppt antiguo NO es un zip → no se puede descomprimir. Guiar a "Diapositivas".
+      if (!/\.pptx$/i.test(ruta)) {
+        return { ok: false, error: "Este es un PowerPoint antiguo (.ppt). Las imágenes incrustadas solo salen de archivos .pptx. Usa la opción “Diapositivas completas”, que sí funciona con .ppt." }
+      }
+      const work = path.join(os.tmpdir(), `selah-ppt-${Date.now()}`)
+      const zip = `${work}.zip`
+      const r = await correrPS1(
+        `$ErrorActionPreference='Stop'\n` +
+        `Copy-Item -LiteralPath '${q(ruta)}' -Destination '${q(zip)}' -Force\n` +
+        `Expand-Archive -LiteralPath '${q(zip)}' -DestinationPath '${q(work)}' -Force\n`
+      )
+      const mediaDir = path.join(work, "ppt", "media")
+      const imagenes = []
+      if (fs.existsSync(mediaDir)) {
+        const files = fs.readdirSync(mediaDir).filter(f => /\.(png|jpe?g|gif|bmp|webp)$/i.test(f)).sort(ordenNum)
+        for (const f of files) { try { imagenes.push({ nombre: f, dataUrl: aDataUrl(path.join(mediaDir, f)) }) } catch {} }
+      }
+      try { fs.rmSync(work, { recursive: true, force: true }) } catch {}
+      try { fs.unlinkSync(zip) } catch {}
+      if (imagenes.length === 0) {
+        // Nunca devolvemos el stack de PowerShell; mensaje claro según el caso.
+        const dañado = /directorio central|central directory|End of Central|ZipArchive/i.test(r.err || "")
+        return { ok: false, error: dañado
+          ? "El archivo no es un .pptx válido (puede estar dañado). Prueba con “Diapositivas completas”."
+          : "La presentación no tiene imágenes incrustadas (es solo texto). Prueba con “Diapositivas completas”." }
+      }
+      return { ok: true, imagenes }
+    } catch (e) { return { ok: false, error: "No se pudieron extraer las imágenes. Prueba con “Diapositivas completas”." } }
+  })
+
+  // Modo 2: renderizar cada diapositiva completa a PNG (PowerPoint COM).
+  ipcMain.handle("ppt:diapositivas", async (_e, { ruta } = {}) => {
+    try {
+      if (!ruta || !fs.existsSync(ruta)) return { ok: false, error: "No se encontró el archivo." }
+      const outDir = path.join(os.tmpdir(), `selah-slides-${Date.now()}`)
+      try { fs.mkdirSync(outDir, { recursive: true }) } catch {}
+      const r = await correrPS1(
+        `$ErrorActionPreference='Stop'\n` +
+        `$ppt = New-Object -ComObject PowerPoint.Application\n` +
+        `try {\n` +
+        `  $pres = $ppt.Presentations.Open('${q(ruta)}', $true, $false, $false)\n` +
+        `  $w = 1920\n` +
+        `  $h = [int]($w * $pres.PageSetup.SlideHeight / $pres.PageSetup.SlideWidth)\n` +
+        `  for ($i=1; $i -le $pres.Slides.Count; $i++) {\n` +
+        `    $n = '{0:D3}' -f $i\n` +
+        `    $pres.Slides.Item($i).Export((Join-Path '${q(outDir)}' ("slide_" + $n + ".png")), 'PNG', $w, $h)\n` +
+        `  }\n` +
+        `  $pres.Close()\n` +
+        `} finally { $ppt.Quit() }\n`
+      )
+      const imagenes = []
+      if (fs.existsSync(outDir)) {
+        const files = fs.readdirSync(outDir).filter(f => /\.png$/i.test(f)).sort()
+        for (const f of files) { try { imagenes.push({ nombre: f, dataUrl: aDataUrl(path.join(outDir, f)) }) } catch {} }
+      }
+      try { fs.rmSync(outDir, { recursive: true, force: true }) } catch {}
+      if (imagenes.length === 0) {
+        const enUso = /being used|en uso|access|0x80048240|being edited/i.test(r.err || "")
+        return { ok: false, error: enUso
+          ? "PowerPoint no pudo abrir el archivo (¿está abierto en otra ventana?). Ciérralo y reintenta."
+          : "No se pudieron exportar las diapositivas. Verifica que PowerPoint esté instalado y que el archivo no esté abierto." }
+      }
+      return { ok: true, imagenes }
+    } catch (e) { return { ok: false, error: "No se pudieron exportar las diapositivas. Verifica que PowerPoint esté instalado." } }
+  })
+}
+registrarIPCPowerPoint()
 
 // Calentar la detección de encoder unos segundos tras arrancar, para que al
 // dar "Salir en vivo" ya esté elegido (conecta más rápido). Se cachea en memoria.
