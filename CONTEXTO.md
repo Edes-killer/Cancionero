@@ -1,362 +1,308 @@
-# Selah Live — Contexto completo para continuación de desarrollo
+# Selah Live — Documento de Diseño (SDD) y Contexto de Desarrollo
 
-## 1. DESCRIPCIÓN DEL PROYECTO
-
-**Selah Live** es un SaaS de proyección para iglesias. Permite controlar canciones, biblia e imágenes en un proyector desde un celular vía WiFi local.
-
-**Desarrollador:** Emmanuel Henríquez (IEP Moradora de Sion La Ligua, Chile)
-**Repositorio GitHub:** https://github.com/Edes-killer/Cancionero
-**Supabase Project ID:** `dkufqtrfvduonsubmwka`
-**App ID (Capacitor):** `com.tuiglesia.cancionero`
+> Versión del documento: 2026-08-09 · App: **v0.5.17** · Mantener al día al cerrar cada release.
 
 ---
 
-## 2. STACK TECNOLÓGICO
+## 1. Resumen del proyecto
 
-- **Frontend:** Next.js 16 App Router + TypeScript, output: "export" (estático)
-- **Base de datos:** Supabase (PostgreSQL + RLS + Storage)
-- **Tiempo real:** Socket.IO en puerto 4000 (`server/index.js`)
-- **Mobile:** Capacitor → APK Android (`android/app/build/outputs/apk/debug/app-debug.apk`)
-- **Desktop:** Electron con auto-updater → GitHub Releases v0.2.0
-- **Servidor local:** Node.js sirve la carpeta `out/` en puerto 3000 + Socket.IO en 4000
+**Selah Live** es un SaaS para iglesias que cubre tres necesidades del culto:
+
+1. **Proyección** — controlar canciones, Biblia e imágenes en el proyector desde un celular por WiFi local (tiempo real).
+2. **Cancionero** — gestionar el repertorio (canciones, tonos, acordes, categorías) e importarlo desde PowerPoint.
+3. **Transmisión en vivo NATIVA** — sacar el culto al aire (cámara + letra + overlays) directo a Facebook / YouTube / TikTok, sin depender de OBS.
+
+- **Desarrollador:** Emanuel Henríquez — IEP Moradora de Sion, La Ligua, Chile. (Escribir en español chileno, con "tú".)
+- **Repositorio:** https://github.com/Edes-killer/Cancionero
+- **Web pública (Vercel):** https://selah-live.vercel.app
+- **Supabase Project ID:** `dkufqtrfvduonsubmwka`
+- **App ID (Capacitor / Electron):** `com.tuiglesia.cancionero`
 
 ---
 
-## 3. ESTRUCTURA DE ARCHIVOS CLAVE
+## 2. Stack tecnológico
+
+| Capa | Tecnología |
+|------|-----------|
+| Frontend | Next.js 16 (App Router) + React 19 + TypeScript, `output: "export"` (estático) |
+| Estilos | Estilos inline + Tailwind 4 (PostCSS) |
+| Backend datos | Supabase (PostgreSQL + RLS + Storage) |
+| Tiempo real | Socket.IO 4.8 (`server/index.js`, puerto 4000) |
+| Mobile | Capacitor 8 → APK Android |
+| Desktop | Electron 42 + electron-updater 6.8 (auto-update desde GitHub Releases) |
+| Streaming | `ffmpeg-static` 5.3 (empaquetado) → RTMP; `obs-websocket-js` 5 (modo OBS avanzado opcional) |
+| Otros | jszip (importar PPT a canciones), docx, qrcode, jsonwebtoken, dotenv |
+
+**Tres targets de despliegue desde el MISMO código estático (`out/`):**
+- **Web** → Vercel (visitante anónimo ve la landing `/bienvenido`).
+- **APK** → Capacitor envuelve `out/`.
+- **Desktop** → Electron sirve `out/` + Socket.IO + ffmpeg + auto-update.
+
+---
+
+## 3. Arquitectura de despliegue y datos
+
+```
+                         ┌─────────────────────────────┐
+                         │   Supabase (auth, DB, RLS,   │
+                         │   Storage: imagenes-culto)   │
+                         └──────────────┬──────────────┘
+                                        │ HTTPS
+   Celular (Control) ──socket:4000──►  server/index.js  ──broadcast──►  Proyector (PC, fullscreen)
+                                        │ (hub tiempo real                └──────────►  Músicos (celulares)
+                                        │  + API Biblia HTTP)
+                                        │
+   PC Escritorio (Electron) ── ffmpeg (stdin) ──► RTMP(S) ──► Facebook / YouTube / TikTok
+```
+
+- La **proyección** es tiempo real vía Socket.IO en la red local (no pasa por internet).
+- La **transmisión** vive en el proceso Electron (renderer compone → main corre ffmpeg → RTMP).
+- La **data** (canciones, cultos, imágenes) está en Supabase; hay cache offline en IndexedDB.
+
+---
+
+## 4. Estructura de archivos clave
 
 ```
 app/
   page.tsx                  → Dashboard (inicio)
-  control/page.tsx          → Centro operativo del culto (4300+ líneas)
-  canciones/page.tsx        → Cancionero + editor + importador PPT
+  bienvenido/page.tsx       → Landing pública (marketing, ruta pública)
+  control/page.tsx          → Centro operativo del culto (~5500 líneas)
+  canciones/page.tsx        → Cancionero + editor + importador PPT→canciones (jszip)
   proyectar/page.tsx        → Pantalla de proyección fullscreen
-  configuracion/page.tsx    → Ajustes iglesia + PIN + fuentes
-  onboarding/page.tsx       → Flujo nuevos usuarios (4 pasos)
-  configurar-servidor/      → Escáner de IP del servidor
-  musicos/page.tsx          → Vista músicos con acordes
-  api/biblia/buscar/route.ts → Solo funciona en Next.js dev, NO en estático
+  en-vivo/page.tsx          → TRANSMISIÓN nativa (cámara + overlays → RTMP)
+  en-vivo-lab/page.tsx      → Banco de pruebas del editor de overlays (ruta pública)
+  transmision/page.tsx      → Entrada/ajustes del módulo de transmisión
+  configuracion/page.tsx    → Ajustes de iglesia + logo + PIN + fuentes
+  historial/page.tsx        → Historial de proyecciones
+  onboarding/page.tsx       → Alta de nuevos usuarios
+  crear-iglesia, unirse, register, login, configurar-servidor, musicos, auth/callback
+  api/biblia/buscar/route.ts → SOLO Next.js dev; en estático NO corre (usar server 4000)
 
-context/
-  AppContext.tsx             → Provider global: session, iglesia, canciones, pinSala, desdeCache
+components/
+  AuthProvider.tsx          → Control de sesión + rutas públicas + roles
+  ObjetoEditable.tsx        → Objeto movible/redimensionable sobre lienzo (transmisión + lab)
 
-lib/
-  cache.ts                  → IndexedDB wrapper para cache offline de canciones
-  biblia.ts                 → Lógica de búsqueda bíblica (solo para web con Next.js dev)
-  getIglesia.ts             → getIglesiaId(), setIglesiaActivaId()
-  servidor.ts               → getSocketUrl()
-
-server/
-  index.js                  → Socket.IO + HTTP server con endpoint /api/biblia/buscar
-
+context/AppContext.tsx      → Estado global: session, iglesia, canciones, pinSala, cache
+lib/                        → cache.ts (IndexedDB), biblia.ts, getIglesia.ts, servidor.ts, timeout.ts
+server/index.js             → Socket.IO + HTTP (/api/biblia/buscar) + estáticos + guardado local de imágenes
 electron/
-  main.js                   → Servidor estático + Socket.IO + auto-updater
-  preload.js                → Expone ipcRenderer al renderer
-
-data/
-  biblia/
-    procesados/             → Archivos .js por libro (genesis.js, juan.js, etc.)
-    index.js
-
+  main.js                   → Servidor estático + Socket.IO + ffmpeg + grabación + pantalla + PPT + updater
+  preload.js                → Bridges: window.transmision, window.powerpoint, window.electron
+  installer.nsh             → Hook NSIS (fix de desinstalación en auto-update)
+data/biblia/                → Biblia local en .js por libro
+electron-builder.json       → publish github (owner Edes-killer, repo Cancionero), output dist-electron
 capacitor.config.ts         → webDir: "out"
-electron-builder.json       → publish: github (owner: Edes-killer, repo: Cancionero)
 ```
 
 ---
 
-## 4. BASE DE DATOS SUPABASE (tablas principales)
+## 5. Modelo de datos (Supabase)
 
 ```sql
-iglesias          (id, nombre, localidad, logo_url, logo_nombre, pin_sala)
-usuarios_iglesia  (user_id, iglesia_id)
+iglesias          (id, nombre, localidad, logo_url, logo_nombre, pin_sala, ...)
+usuarios_iglesia  (user_id, iglesia_id, rol)          -- rol: admin | lider | musico
 canciones         (id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda)
 partes_cancion    (id, cancion_id, tipo, texto, texto_acordes, tiene_acordes, orden, formato)
 listas_culto      (id, iglesia_id, nombre, fecha)
-items_lista       (id, lista_id, cancion_id, orden, tipo, ...)
+items_lista       (id, lista_id, cancion_id, orden, tipo, imagen_url, estado_url, ...)
 historial_proyecciones (id, iglesia_id, cancion_id, titulo, tono, categoria, tipo, proyectado_en)
 ```
 
-**SQL requerido (ya ejecutado):**
+**Storage:** bucket `imagenes-culto`, carpeta por iglesia (`{iglesiaId}/...`). Requiere policy de DELETE
+para borrar desde la nube:
 ```sql
-ALTER TABLE iglesias ADD COLUMN pin_sala TEXT DEFAULT NULL;
+create policy "borrar imagenes-culto" on storage.objects
+  for delete to authenticated using (bucket_id = 'imagenes-culto');
 ```
+
+**Roles (AuthProvider):** admin (todo), líder de alabanza (Control/Canciones/Historial/Transmisión, NO
+Configuración), músico (solo /musicos). PIN de sala opcional (`iglesias.pin_sala`, sincronizado por AppContext).
 
 ---
 
-## 5. COMANDOS FRECUENTES
+## 6. Subsistemas
+
+### 6.1 Control del culto — `app/control/page.tsx`
+Centro operativo (mobile/web/desktop). Arma la lista de culto (canciones, imágenes, videos, carruseles,
+pantallas especiales), proyecta con `▶`, auto-avance con **aprendizaje de tiempos**
+(`localStorage("selah-tiempos-{cancionId}")`), galería de imágenes (Disco/Nube), tanda por canción,
+carrusel como ítem de lista, y el **importador de PowerPoint a la galería** (ver 6.5).
+
+### 6.2 Proyección — `app/proyectar/page.tsx` + tiempo real
+Pantalla fullscreen (segundo monitor en Electron). Escucha Socket.IO y renderiza letra/Biblia/imagen.
+Fuente y escala configurables (`localStorage proyector-escala-fuente`, `proyector-font-family`), leídas en
+vivo por evento `storage`. Atajos de teclado (espacio/flechas/±/0/ESC).
+
+### 6.3 Cancionero + importar PPT→canciones — `app/canciones/page.tsx`
+Editor de canciones/partes, teclado de acordes (inserta `[Do]` en el cursor), y un importador que usa
+**jszip** para sacar el TEXTO de `.pptx` y crear canciones (distinto del importador de imágenes de 6.5).
+
+### 6.4 TRANSMISIÓN nativa — `app/en-vivo/page.tsx` + `electron/main.js`  ⭐ subsistema mayor
+Pipeline (solo escritorio):
+```
+Lienzo 1280×720 (cámara(s)/pantalla + overlays) ──captureStream(30)+audio──►
+  MediaRecorder (H264 mkv preferido) ──chunks 250ms via IPC──►
+    ffmpeg stdin ──► RTMP(S)   (multi-destino con el muxer `tee`)
+```
+- **Encoder auto-seleccionado** al arrancar y cacheado: `h264_qsv` → `h264_mf` → `libx264` (ultrafast).
+- **Keyframe cada 2 s por TIEMPO** (`-force_key_frames expr:gte(t,n_forced*2)`) — clave para que Facebook no corte.
+- `backgroundThrottling:false` en la ventana (si no, los fps caen al perder foco).
+- **Destinos:** Facebook / YouTube / TikTok / RTMP propio (multiplataforma simultánea con `tee`).
+- **Diseños de overlay:** Vidrio, Tarjeta, Minimal, Broadcast (coordinan nombre + caja de letra + mensaje).
+- **Temas de color:** 12 presets + color personalizado (tiñen líneas, barras, nombre y letra del mensaje).
+- **Caja de letra:** alto por contenido + fuente que escala al ancho, topada para no salirse del cuadro
+  (`medirLetra`, compartido con el editor `ObjetoEditable` para que el recuadro calce con el dibujo).
+- **Modo OBS avanzado (opcional):** `obs-websocket-js` (no es el camino por defecto).
+- **`/en-vivo-lab`:** banco de pruebas público del editor (sin cámara ni sesión).
+
+**Tier 1 — Confiabilidad:**
+- Grabación local (UN solo encode: los mismos chunks van a ffmpeg y a un `.mkv`; al terminar se remuxea a
+  `.mp4` en Vídeos/Selah Live; si hubo reconexión, une segmentos con el demuxer `concat`).
+- Reconexión automática (la maneja el renderer: al caerse ffmpeg de forma inesperada recrea el grabador y
+  respawnea ffmpeg con espera creciente; la grabación no se corta, rueda a un segmento nuevo).
+- Panel de salud: parsea las `-stats` de ffmpeg → bitrate, fps, salud (speed), frames caídos, REC.
+
+**Tier 2 — Audio:**
+- Medidor VU (Web Audio `AnalyserNode`, animado por DOM) con aviso "sin señal".
+- Reducción de ruido/eco/AGC (constraints de getUserMedia + `applyConstraints` en vivo).
+
+**Tier 3 — Producción:**
+- Compartir pantalla/ventana (`desktopCapturer`) con la cámara en recuadro PiP.
+- Calidad de salida configurable (Baja 1200 / Media 2500 / Alta 4500 kbps).
+- Transiciones (fundido ~350 ms al cambiar de escena, crossfade en el lienzo).
+
+### 6.5 Importar PowerPoint a la galería — Control (solo escritorio)
+Dos motores por PowerShell desde `main.js`:
+- **Diapositivas completas** → PowerPoint COM exporta cada slide a PNG 1920×(según aspecto). Funciona con
+  `.ppt` antiguo Y `.pptx`. Es el modo universal (el himnario de Emanuel es todo `.ppt`).
+- **Imágenes incrustadas** → copia el `.pptx` a `.zip` y `Expand-Archive` para leer `ppt/media/*`.
+  Solo `.pptx` (el `.ppt` antiguo no es zip → se rechaza con mensaje claro).
+Las imágenes se suben a la galería reusando `subirImagen`. Nunca se muestran stack traces crudos.
+
+### 6.6 Biblia
+Endpoint `/api/biblia/buscar` servido por `server/index.js` (Node), leyendo `data/biblia/procesados/*.js`.
+El cliente SIEMPRE llama a `http://{hostname}:4000/api/biblia/buscar` (las API routes de Next NO corren en
+estático/APK/Electron).
+
+### 6.7 Auth, roles y PIN · 6.8 Onboarding + Dashboard · 6.9 Landing pública
+Ver §5 (roles) y `components/AuthProvider.tsx`. Dashboard con stats, último culto, top cantadas. Landing
+`/bienvenido` es pública (marketing) y es el destino del visitante anónimo en la web (en la app va a `/login`).
+
+---
+
+## 7. IPC de Electron (main ↔ renderer)
+
+**Bridges (preload):** `window.transmision`, `window.powerpoint`, `window.electron`.
+
+| Canal (invoke/handle) | Qué hace |
+|---|---|
+| `transmision:iniciar {rtmpUrls, bitrateKbps}` | Spawnea ffmpeg (encoder auto + `tee` multi-destino) |
+| `transmision:chunk` (send) | Escribe chunk del MediaRecorder a ffmpeg stdin |
+| `transmision:detener` | Cierra stdin (marca parada intencional → no reconecta) |
+| `transmision:abrirLog` | Abre `transmision.log` |
+| `grabacion:iniciar/chunk/nuevoSegmento/detener/abrirCarpeta` | Grabación local (segmentos → remux/concat a mp4) |
+| `pantalla:fuentes` | `desktopCapturer.getSources` (pantallas + ventanas, con miniatura) |
+| `ppt:elegir / ppt:imagenes / ppt:diapositivas` | Importador PowerPoint (diálogo + Expand-Archive / COM) |
+
+**Eventos (main → renderer):** `transmision:estado` (incluye `inesperado`), `transmision:log`,
+`transmision:stats`, `grabacion:listo`.
+
+**localStorage de `/en-vivo`:** `en-vivo-acento`, `en-vivo-diseno`, `en-vivo-grabar`,
+`en-vivo-limpiar-audio`, `en-vivo-calidad`, `en-vivo-transiciones`, `en-vivo-destinos`, `en-vivo-nombre`,
+`en-vivo-letra`, `en-vivo-mensaje-pos`, `en-vivo-color-letra`, `en-vivo-logo-*`, `en-vivo-pip`.
+
+---
+
+## 8. Comandos frecuentes
 
 ```bash
-# Desarrollo web
-npm run dev
+npm run dev                 # Desarrollo web (localhost:3000)
+npm run build               # Build estático → out/
+npm run electron:dev        # build + abrir la app de escritorio (para probar transmisión, etc.)
+node server/index.js        # Socket.IO + Biblia standalone (puerto 4000)
 
-# Build + APK Android
+# APK Android
 npm run build && npx cap sync
-cd android && gradlew assembleDebug
-# APK en: android\app\build\outputs\apk\debug\app-debug.apk
-
-# Clean build (si APK tiene código viejo)
-rmdir /s /q .next && rmdir /s /q out && rmdir /s /q android\app\src\main\assets\public
-npm run build && npx cap sync && cd android && gradlew assembleDebug
-
-# Electron build + publish GitHub
-set "GH_TOKEN=ghp_..." && npm run electron:build:win
-# Luego publicar el release en GitHub (sacar de Draft)
-
-# Servidor Socket.IO standalone
-node server/index.js
-
-# Servidor web estático
-npx serve out -l 3000
+cd android && gradlew assembleDebug   # → android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ---
 
-## 6. ARQUITECTURA DE ACTORES
+## 9. Despliegue
 
-| Actor | Descripción |
-|-------|-------------|
-| `control/page.tsx` | Operador mobile/web — controla todo |
-| `proyectar/page.tsx` | Pantalla fullscreen en el PC del proyector |
-| `musicos/page.tsx` | Músicos en sus celulares — ven acordes |
-| `server/index.js` | Hub Socket.IO + API Biblia + servir estáticos |
-| `AppContext.tsx` | Estado global: session, iglesia, canciones, cache |
+### 9.1 Web (Vercel)
+Push a `main` → Vercel publica el estático en https://selah-live.vercel.app. `NEXT_PUBLIC_SITE_URL` apunta
+ahí (usado en los links de invitación).
 
-**Flujo de datos:**
-```
-Mobile (control) ──socket──> server/index.js ──broadcast──> proyectar (PC)
-                                                         ──broadcast──> musicos (celulares)
-```
+### 9.2 APK Android
+Copiar cambios → clean build si el APK trae código viejo (`rmdir /s /q .next out
+android\app\src\main\assets\public`) → `npm run build && npx cap sync` → `gradlew assembleDebug` →
+desinstalar la versión previa antes de instalar.
 
----
-
-## 7. FEATURES IMPLEMENTADOS (auditoría completa)
-
-### Seguridad
-- ✅ PIN de sala guardado en Supabase `iglesias.pin_sala`
-- ✅ PIN se sincroniza automáticamente entre dispositivos vía AppContext
-- ✅ Server valida PIN (solo si hay PIN configurado, es opcional)
-- ✅ RLS activo en todas las tablas
-- ✅ Detección de session expiry con `onAuthStateChange`
-
-### Rendimiento
-- ✅ Batch queries con `.in()` para partes_cancion
-- ✅ `partesCacheRef` evita re-fetch de partes
-- ✅ AppContext carga canciones una vez y las expone globalmente
-- ✅ Cache offline en IndexedDB (`lib/cache.ts`) — TTL 24h
-- ✅ Canciones cargan desde cache inmediatamente, Supabase actualiza en background
-
-### APK / Mobile
-- ✅ App abre sin servidor configurado (modo offline)
-- ✅ Banner rojo "Sin conexión" + botón "Conectar" cuando no hay servidor
-- ✅ Modal "Sin conexión al servidor" al intentar proyectar sin servidor
-- ✅ Badge "● EN LÍNEA" / "● SIN CONEXIÓN" en header
-- ✅ `visualViewport` adapta altura cuando se abre el teclado virtual
-- ✅ `socketConectado: boolean | null` — null=nunca conectó, true=conectado, false=desconectado
-- ✅ `pingTimeout: 8000, pingInterval: 4000` para detección rápida de desconexión
-
-### Proyección
-- ✅ `▶` proyecta directamente sin abrir preview
-- ✅ `+` agrega a lista sin abrir preview (stopPropagation)
-- ✅ Tocar el cuerpo de la canción abre el bottom sheet (preview)
-- ✅ Handle del bottom sheet cierra al tocar
-- ✅ Toggle "👁 ON/OFF" para habilitar/deshabilitar preview
-- ✅ Texto blanco en el preview
-- ✅ Indicador "Verso 1 • Parte 1 de 4" en la barra inferior del control
-- ✅ Badge "⏱ Aprendiendo" en la barra del indicador
-- ✅ Pantalla de descanso respeta el fondo configurado (sin texto)
-- ✅ Título oculto en estadoEspecial (negro/descanso)
-- ✅ Font size adaptativo según líneas (14 escalones para canciones y biblia)
-
-### Auto-avance con aprendizaje
-- ✅ Al proyectar → badge "⏱ Aprendiendo" en el indicador de parte
-- ✅ Mide tiempo entre cambios de parte automáticamente
-- ✅ Al terminar la canción → guarda tiempos en `localStorage("selah-tiempos-{cancionId}")`
-- ✅ Segunda vez → botón "▶ Auto" en el header
-- ✅ Auto-avance usa los tiempos aprendidos con cuenta regresiva visible
-- ✅ Cambio manual durante auto-avance resetea el timer
-
-### Importador PPT
-- ✅ Tab "📤 Importar PPT" en Canciones
-- ✅ Drag & drop de múltiples .pptx
-- ✅ "Agregar más archivos" sin reemplazar anteriores
-- ✅ Detección de duplicados con badge ⚠️
-- ✅ Edición libre de partes antes de importar
-- ✅ Select de tono y categoría con estilos dark
-- ✅ `cargarCanciones(iglesiaId)` explícito después de importar
-
-### Teclado de acordes
-- ✅ Botón "🎸 Acordes" en editor de partes
-- ✅ Notas Do-Si con sostenidos/bemoles
-- ✅ Modificadores: m, 7, m7, maj7, dim, sus2, sus4, add9
-- ✅ Inserta `[Do]` en posición exacta del cursor (id="ta-parte-{i}")
-- ✅ Modificador agrega al último acorde antes del cursor
-
-### Fuentes y proyector desktop
-- ✅ Slider tamaño 60-160% en /configuracion
-- ✅ 4 tipos de fuente con preview "Dios es amor"
-- ✅ Guarda en `localStorage("proyector-escala-fuente")` y `("proyector-font-family")`
-- ✅ Proyector lee via evento `storage` en tiempo real
-- ✅ `zoom: Math.min(150, Math.max(60, escalaFuente))%` — limita para evitar colapso
-- ✅ Keyboard shortcuts en proyector: Espacio/→=siguiente, ←=anterior, +/-=escala, 0=reset, ESC=cierra
-
-### Electron
-- ✅ Auto-updater con electron-updater → GitHub Releases
-- ✅ Versión actual publicada: 0.2.0
-- ✅ Banner azul "Descargando v..." / verde "Reiniciar ahora"
-- ✅ Proyector abre en segundo monitor si existe, fullscreen, oculta taskbar Windows
-- ✅ ESC cierra el proyector via globalShortcut en main process
-- ✅ Preload expone ipcRenderer al renderer
-
-### Biblia
-- ✅ Endpoint `/api/biblia/buscar` en `server/index.js` (Node.js)
-- ✅ Lee archivos de `data/biblia/procesados/*.js` directamente
-- ✅ Client siempre llama a `http://{hostname}:4000/api/biblia/buscar`
-- ✅ Zoom aplicado al texto de biblia también
-- ✅ Font sizes reducidos (max 52px)
-
-### Onboarding
-- ✅ `/onboarding` page con 4 pasos: Bienvenida → Iglesia → Logo → Tour
-- ✅ Dashboard redirige a /onboarding si no tiene iglesia y no completó onboarding
-- ✅ `localStorage("selah-onboarding-ok")` evita que aparezca de nuevo
-
-### Dashboard
-- ✅ Hero con logo, nombre, localidad, versículo del día
-- ✅ Grid de acciones: Control (grande), Canciones, Proyector, Músicos, Config
-- ✅ Stats: total canciones, con acordes, cultos guardados
-- ✅ Último culto guardado con botón "Abrir →" que lo carga directo en control
-- ✅ Top 5 más cantadas del mes
-- ✅ Últimas 4 canciones agregadas
-- ✅ Barras de categorías (himnario, alabanza, adoración, etc.)
-- ✅ Estado del servidor (ping a puerto 4000)
-- ✅ Barras de progreso: canciones con tono, con acordes
+### 9.3 Release de escritorio (Electron, auto-update)  ← receta probada
+1. Subir `version` en `package.json` + commit `chore(release): x.y.z — ...` en `main`.
+2. En **PowerShell** (una vez por PC): `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force`
+   (si no, `npm` falla con "npm.ps1 ejecución deshabilitada"; alternativa: usar `npm.cmd`).
+3. `$env:GH_TOKEN = "<PAT classic, scope repo>"` — **los tokens vencen; regenerar en github.com/settings/tokens**.
+   (En cmd sería `set GH_TOKEN=<token>` sin comillas.)
+4. `npm run electron:build:win` → build + `electron-builder --win --publish always`.
+5. `git push origin main`.
+El instalador queda en `dist-electron/Selah Live Setup x.y.z.exe` (~190 MB). El build ocurre ANTES de
+publicar: si solo falla el publish (token), el `.exe` igual queda hecho. El fix del error NSIS de
+desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 
 ---
 
-## 8. PATRONES Y PRINCIPIOS CRÍTICOS
+## 10. Patrones y principios críticos (NO REGRESAR)
 
-```typescript
-// ── NO REGRESAR NUNCA ──────────────────────────────────────────────────────
-
-// 1. pinesPorSala FUERA del io.on("connection") en server/index.js
-const pinesPorSala = {}  // ← nivel módulo, NO dentro del handler
-io.on("connection", (socket) => { ... })
-
-// 2. transponerTexto NO early-return al convertir notación aunque semitones=0
-
-// 3. cargarCanciones(iglesiaId) requiere iglesiaId EXPLÍCITO
-await cargarCanciones(iglesiaId)  // NO await cargarCanciones()
-
-// 4. La Biblia SIEMPRE llama al servidor 4000 (no a /api/biblia)
-const baseUrl = `http://${hostname}:4000/api/biblia/buscar`
-
-// 5. verificarServidor() usa socket?.connected (no solo socket)
-if (socket?.connected) return true
-
-// 6. socketConectado inicia en null (no false) para distinguir "nunca conectó"
-const [socketConectado, setSocketConectado] = useState<boolean | null>(null)
-
-// 7. Archivo nuevo se aplica ANTES del build para que APK lo tenga
-// (npm run build compila lo que está en /app, no los outputs generados)
+```
+1. pinesPorSala/estado a nivel de módulo en server/index.js (NO dentro de io.on("connection")).
+2. cargarCanciones(iglesiaId) requiere iglesiaId EXPLÍCITO.
+3. La Biblia SIEMPRE llama al servidor 4000 (las API routes de Next no corren en estático/APK/Electron).
+4. socketConectado inicia en null (no false) para distinguir "nunca conectó".
+5. Electron NO soporta window.prompt() (devuelve null) → usar el hook usePrompt.
+6. En el APK: NO habilitar CapacitorHttp (rompe router.push de Next tras el WebView de One UI 8.5).
+7. Transmisión: al reconectar hay que RECREAR el MediaRecorder (ffmpeg necesita cabecera nueva) → por eso
+   la grabación rueda a un segmento nuevo y se concatena al final.
+8. Transmisión: un solo encode (los chunks se reparten a ffmpeg y a disco) para no ahogar PCs modestos.
+9. getUserMedia con constraints de limpieza de audio; aplicar cambios en vivo con applyConstraints (sin
+   reiniciar la cámara).
 ```
 
 ---
 
-## 9. OUTPUTS GENERADOS EN ESTA SESIÓN
+## 11. Pendientes y futuro
 
-Todos los archivos output están en la conversación. Al copiarlos al proyecto ANTES del build:
-
-| Output | Destino en proyecto |
-|--------|---------------------|
-| `control_page.tsx` | `app/control/page.tsx` |
-| `canciones_page.tsx` | `app/canciones/page.tsx` |
-| `proyectar_page.tsx` | `app/proyectar/page.tsx` |
-| `dashboard_page.tsx` | `app/page.tsx` |
-| `configuracion_page.tsx` | `app/configuracion/page.tsx` |
-| `onboarding_page.tsx` | `app/onboarding/page.tsx` |
-| `AppContext.tsx` | `context/AppContext.tsx` |
-| `index.js` | `server/index.js` |
-| `cache.ts` | `lib/cache.ts` |
-| `main.js` | `electron/main.js` |
-| `preload.js` | `electron/preload.js` |
-| `electron-builder.json` | `electron-builder.json` |
+- [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
+- [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).
+- [ ] Galería con carpetas.
+- [ ] Transmisión: de mi lista OBS quedan cosas menores descartadas por no ser para iglesias (atajos de
+      teclado, chroma key, modo estudio).
+- [ ] Multi-iglesia sin relogin, CCLI reporting, analíticas.
+- [ ] Web "Moradora de Sion" (proyecto paralelo: landing carta de presentación de la iglesia).
 
 ---
 
-## 10. PENDIENTES Y BUGS CONOCIDOS
-
-### Pendientes funcionales
-- [ ] Auto-avance: el badge "⏱ Aprendiendo" no resetea si cambias de canción sin llegar al final
-- [ ] Persistencia proyección desde canciones: control actualiza partes pero puede tener delay
-- [ ] Configurar-servidor: cuando la IP cambia, hay que re-escanear manualmente
-
-### Refactor pendiente (para después, cuando el código esté más estable)
-- [ ] Dividir `control/page.tsx` (4300 líneas) en: `CancionesList`, `ListaCulto`, `VisorMobile`, `BottomSheet`, `HerramientasPanel`
-- [ ] Reemplazar `any` por interfaces TypeScript: `Cancion`, `Parte`, `ItemLista`
-
-### Features futuro
-- [ ] Multi-iglesia sin relogin (base está en usuarios_iglesia)
-- [ ] CCLI reporting
-- [ ] Analíticas de uso detalladas
-- [ ] Importar desde TXT / Word (además de PPT)
-
----
-
-## 11. FLUJO PARA ACTUALIZAR EL APK
-
-```bash
-# 1. Copiar TODOS los archivos output al proyecto (ver tabla sección 9)
-# 2. Clean build:
-rmdir /s /q .next
-rmdir /s /q out
-rmdir /s /q android\app\src\main\assets\public
-# 3. Build + sync + compile:
-npm run build && npx cap sync
-cd android
-gradlew assembleDebug
-# 4. APK en: android\app\build\outputs\apk\debug\app-debug.apk
-# 5. Desinstalar versión anterior en el celular (Ajustes > Apps)
-# 6. Instalar nuevo APK
-```
-
-## 12. FLUJO PARA PUBLICAR ELECTRON
-
-```bash
-# Subir versión en package.json: "version": "0.3.0"
-set "GH_TOKEN=ghp_..."
-npm run electron:build:win
-# Ir a https://github.com/Edes-killer/Cancionero/releases
-# Editar el release → Publish release (sacar de Draft)
-```
-
----
-
-## 13. DEPENDENCIAS CLAVE INSTALADAS
-
-```json
-"jszip": "^3.10.1",          // Importador PPT
-"electron-updater": "^6.x",  // Auto-updater Electron
-"socket.io": "^4.x",         // Tiempo real
-"socket.io-client": "^4.x",
-"@supabase/supabase-js": "^2.x"
-```
-
----
-
-## 14. VARIABLES DE ENTORNO (.env.local)
+## 12. Variables de entorno (`.env.local`)
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://dkufqtrfvduonsubmwka.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+NEXT_PUBLIC_SITE_URL=https://selah-live.vercel.app
+# GH_TOKEN NO va aquí para el build; se setea en el entorno al publicar (ver §9.3).
 ```
 
 ---
 
-## 15. NOTAS PARA EL DESARROLLADOR QUE CONTINÚE
+## 13. Notas para quien continúe
 
-1. **Siempre** copiar los archivos output al proyecto ANTES de hacer `npm run build`
-2. El APK usa el contenido de `out/` (build estático). Si el web funciona pero el APK no, es porque faltó copiar algún archivo antes del build
-3. Las API routes de Next.js (`/api/...`) NO funcionan en el APK ni en Electron — la Biblia usa el servidor Socket.IO en puerto 4000
-4. El servidor Socket.IO también sirve la Biblia vía HTTP GET en `/api/biblia/buscar`
-5. `server/index.js` es el archivo más crítico — si falla, nada funciona
-6. El PIN de sala es opcional. Sin PIN, cualquier dispositivo autenticado en Supabase puede conectarse
-7. `localStorage("selah_autoload_lista")` abre un culto específico cuando el control carga
-8. Los tiempos de auto-avance se guardan en `localStorage("selah-tiempos-{cancionId}")` — son por dispositivo
+1. Se edita el código directamente en `/app`, `/electron`, etc. (ya NO existe el viejo flujo de "copiar
+   outputs antes del build").
+2. Las API routes de Next (`/api/...`) no corren en APK ni Electron → la Biblia usa el server 4000.
+3. `server/index.js` es crítico: si falla, la proyección en tiempo real no funciona.
+4. Transmisión, grabación, compartir pantalla e importar PPT son **solo escritorio** (Electron): en la web
+   muestran aviso "solo app de escritorio".
+5. El himnario del usuario es todo `.ppt` antiguo → para importarlo usar "Diapositivas completas".
+6. Al cerrar un release, actualizar la versión de este documento (arriba) y su §6/§7 si cambió el diseño.
+```
