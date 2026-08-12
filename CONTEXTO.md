@@ -1,6 +1,6 @@
 # Selah Live — Documento de Diseño (SDD) y Contexto de Desarrollo
 
-> Versión del documento: 2026-08-09 · App: **v0.5.17** · Mantener al día al cerrar cada release.
+> Versión del documento: 2026-08-09 · App: **v0.5.18** · Mantener al día al cerrar cada release.
 
 ---
 
@@ -171,6 +171,13 @@ Lienzo 1280×720 (cámara(s)/pantalla + overlays) ──captureStream(30)+audio�
 - Compartir pantalla/ventana (`desktopCapturer`) con la cámara en recuadro PiP.
 - Calidad de salida configurable (Baja 1200 / Media 2500 / Alta 4500 kbps).
 - Transiciones (fundido ~350 ms al cambiar de escena, crossfade en el lienzo).
+
+**Operador (v0.5.18):**
+- Escena **"Espera"**: fondo brandeado + logo + titular + cuenta regresiva ("El culto comienza
+  pronto"). `esperaTexto`/`esperaHasta` en contenidoRef; el contador baja solo en el bucle de dibujo.
+- **Atajos de teclado**: 1/2/3/4 = escenas, M = mensaje, C = cámara, R = resetear (se ignoran en inputs).
+- **Grabar sin transmitir**: grabador dedicado a disco sin RTMP (ensayo/respaldo).
+- **Resetear posiciones** (a `POS_DEF`) + **guardar/restaurar armado** (localStorage `en-vivo-armado`).
 
 ### 6.5 Importar PowerPoint a la galería — Control (solo escritorio)
 Dos motores por PowerShell desde `main.js`:

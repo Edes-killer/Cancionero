@@ -15,7 +15,7 @@ import { getIglesiaId } from "@/lib/getIglesia"
 import { useApp } from "@/context/AppContext"
 import ObjetoEditable from "@/components/ObjetoEditable"
 
-type Escena = "camara" | "camara-letra" | "letra"
+type Escena = "camara" | "camara-letra" | "letra" | "espera"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
 
 const PLATAFORMAS: { key: DestKey; nombre: string; emoji: string; esUrl: boolean; ayuda: string; placeholder: string }[] = [
@@ -41,6 +41,15 @@ const C = {
 }
 
 const ANCHO = 1280, ALTO = 720 // lienzo de salida (720p)
+
+// Posiciones/tamaños por defecto de los objetos movibles (para "Resetear").
+const POS_DEF = {
+  logo: { pos: { x: ANCHO - 168 - 30, y: 26 }, tam: 168 },
+  nombre: { pos: { x: ANCHO / 2 - 220, y: 26 }, tam: 30 },
+  letra: { pos: { x: (ANCHO - 680) / 2, y: 348 }, tam: 680 },
+  pip: { pos: { x: ANCHO - 360 - 40, y: ALTO - 202 - 40 }, tam: 360 },
+  mensajePos: "abajo" as "abajo" | "arriba",
+}
 
 // ── Temas de color (marca de la iglesia) ─────────────────────────────────────
 // Cada iglesia elige un tema; el acento tiñe líneas, barras, puntos, el nombre,
@@ -180,6 +189,7 @@ export default function EnVivoPage() {
       const la = localStorage.getItem("en-vivo-limpiar-audio"); if (la === "0") setLimpiarAudio(false)
       const ca = localStorage.getItem("en-vivo-calidad"); if (ca === "baja" || ca === "media" || ca === "alta") setCalidad(ca)
       const tr = localStorage.getItem("en-vivo-transiciones"); if (tr === "0") setTransiciones(false)
+      const et = localStorage.getItem("en-vivo-espera-texto"); if (et) setEsperaTexto(et)
       const t = localStorage.getItem("en-vivo-logo-tam"); if (t) setLogoTam(Number(t) || 168)
       const p = localStorage.getItem("en-vivo-logo-pos"); if (p) setLogoPos(JSON.parse(p))
       const pip = localStorage.getItem("en-vivo-pip"); if (pip) { const o = JSON.parse(pip); if (o.pos) setPipPos(o.pos); if (o.tam) setPipTam(o.tam) }
@@ -279,6 +289,20 @@ export default function EnVivoPage() {
   const [transiciones, setTransiciones] = useState(true) // fundido al cambiar de escena
   const transRef = useRef<{ hasta: number; snap: HTMLCanvasElement } | null>(null)
   const escenaDibujadaRef = useRef<string>("")
+
+  // Pantalla de espera "El culto comienza pronto" + cuenta regresiva.
+  const [esperaTexto, setEsperaTexto] = useState("El culto comienza pronto")
+  const [esperaHasta, setEsperaHasta] = useState<number | null>(null) // timestamp objetivo (ms) o null
+  const [esperaMin, setEsperaMin] = useState(10) // minutos para el contador
+
+  // Grabar sin transmitir (modo "solo grabar").
+  const [grabandoSolo, setGrabandoSolo] = useState(false)
+  const recSoloRef = useRef<MediaRecorder | null>(null)
+
+  const [mostrarAtajos, setMostrarAtajos] = useState(false) // leyenda de atajos de teclado
+  const [aviso, setAviso] = useState("") // toast breve (resetear/guardar armado)
+  const avisoTimerRef = useRef<any>(null)
+  const flash = (m: string) => { setAviso(m); if (avisoTimerRef.current) clearTimeout(avisoTimerRef.current); avisoTimerRef.current = setTimeout(() => setAviso(""), 2200) }
   const grabBytesRef = useRef(0)
   const grabActivaRef = useRef(false)
 
@@ -303,11 +327,11 @@ export default function EnVivoPage() {
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any, hayVideo: false, nombrePos: { x: 0, y: 0 }, nombreTam: 30, mensajePos: "abajo" as "abajo" | "arriba", letraPos: { x: 0, y: 0 }, letraTam: 940, graficos: [] as { id: string; pos: { x: number; y: number }; w: number; aspecto: number }[], acento: "#f59e0b", diseno: "vidrio" as Diseno, pantallaOn: false, camaraEnPip: true, transiciones: true })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any, hayVideo: false, nombrePos: { x: 0, y: 0 }, nombreTam: 30, mensajePos: "abajo" as "abajo" | "arriba", letraPos: { x: 0, y: 0 }, letraTam: 940, graficos: [] as { id: string; pos: { x: number; y: number }; w: number; aspecto: number }[], acento: "#f59e0b", diseno: "vidrio" as Diseno, pantallaOn: false, camaraEnPip: true, transiciones: true, esperaTexto: "", esperaHasta: null as number | null })
   useEffect(() => {
     const bibliaTexto = biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : ""
-    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos, acento, diseno, pantallaOn, camaraEnPip, transiciones }
-  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos, acento, diseno, pantallaOn, camaraEnPip, transiciones])
+    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos, acento, diseno, pantallaOn, camaraEnPip, transiciones, esperaTexto, esperaHasta }
+  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos, acento, diseno, pantallaOn, camaraEnPip, transiciones, esperaTexto, esperaHasta])
 
   // ── Cargar la imagen proyectada (para la escena de contenido) ───────────────
   useEffect(() => {
@@ -624,10 +648,33 @@ export default function EnVivoPage() {
   // Cronómetro de sesión: cuenta al aire Y mientras reconecta (la grabación
   // sigue), sin reiniciarse en la transición. Se pone en 0 al iniciar (salirEnVivo).
   useEffect(() => {
-    if (txEstado !== "vivo" && txEstado !== "reconectando") return
+    if (txEstado !== "vivo" && txEstado !== "reconectando" && !grabandoSolo) return
     const t = setInterval(() => setSegundos(s => s + 1), 1000)
     return () => clearInterval(t)
-  }, [txEstado])
+  }, [txEstado, grabandoSolo])
+
+  // Atajos de teclado del operador (se ignoran mientras escribes en un campo).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || (t as any).isContentEditable)) return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      switch (e.key) {
+        case "1": setEscena("camara"); break
+        case "2": setEscena("camara-letra"); break
+        case "3": setEscena("letra"); break
+        case "4": setEscena("espera"); break
+        case "m": case "M": if (mensajeVivo.trim() || mostrarMensaje) setMostrarMensaje(v => !v); break
+        case "c": case "C": if (camara2Id) setCamaraActiva(a => (a === 1 ? 2 : a === 2 ? "ambas" : 1)); break
+        case "r": case "R": resetearPosiciones(); break
+        default: return
+      }
+      e.preventDefault()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mensajeVivo, mostrarMensaje, camara2Id])
 
   // ── Bucle de composición: cámara + letra + logo → lienzo ────────────────────
   useEffect(() => {
@@ -669,7 +716,10 @@ export default function EnVivoPage() {
 
         const hayMensaje = !!cont.mensaje
 
-        if (esLetra) {
+        if (cont.escena === "espera") {
+          // Pantalla de espera: fondo brandeado + logo + nombre + titular + contador.
+          dibujarPantallaEspera(ctx, cont.esperaTexto, cont.esperaHasta, cont.nombre, logo, cont.acento)
+        } else if (esLetra) {
           // Escena "Proyección": diapositiva con fondo, SIN cámara.
           dibujarFondoBrandeado(ctx)
           const vProy = videoProyRef.current
@@ -913,6 +963,79 @@ export default function EnVivoPage() {
     setPantallaOn(false)
   }
 
+  // Formato de captura preferido (H264 mkv → menos CPU en el i3).
+  const elegirMime = () => [
+    "video/x-matroska;codecs=avc1,opus",
+    "video/mp4;codecs=avc1,mp4a.40.2",
+    "video/webm;codecs=h264,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
+  ].find(m => (window as any).MediaRecorder?.isTypeSupported?.(m)) || "video/webm"
+
+  // ── Pantalla de espera + cuenta regresiva ───────────────────────────────────
+  const guardarEsperaTexto = (t: string) => { setEsperaTexto(t); try { localStorage.setItem("en-vivo-espera-texto", t) } catch {} }
+  const iniciarEspera = () => { setEsperaHasta(Date.now() + Math.max(0, esperaMin) * 60000); setEscena("espera") }
+
+  // ── Grabar sin transmitir (solo a disco) ────────────────────────────────────
+  const grabarSolo = async () => {
+    const tx = (window as any).transmision
+    if (!tx?.iniciarGrabacion) { setErrorTx("Grabar funciona solo en la app de escritorio."); return }
+    if (!canvasRef.current || !streamRef.current) { setErrorTx("La cámara aún no está lista."); return }
+    setErrorTx(null)
+    const r = await tx.iniciarGrabacion({ nombre: nombreIglesia || "Culto" })
+    if (!r?.ok) { setErrorTx(r?.error || "No se pudo iniciar la grabación."); return }
+    grabActivaRef.current = true; grabBytesRef.current = 0; setGrabMB(0)
+    setGrabInfo({ carpeta: r.carpeta, ruta: r.ruta, listo: false })
+    try {
+      const salida = streamSalida(); if (!salida) return
+      mimeRef.current = elegirMime()
+      const rec = new MediaRecorder(salida, { mimeType: mimeRef.current, videoBitsPerSecond: CALIDAD_KBPS[calidad] * 1000, audioBitsPerSecond: 128_000 })
+      rec.ondataavailable = async ev => {
+        if (!ev.data || !ev.data.size) return
+        try { const buf = new Uint8Array(await ev.data.arrayBuffer()); tx.enviarChunkGrabacion?.(buf); grabBytesRef.current += buf.byteLength; setGrabMB(Math.round(grabBytesRef.current / 1048576)) } catch {}
+      }
+      rec.start(1000); recSoloRef.current = rec
+      setSegundos(0); setGrabandoSolo(true)
+    } catch (e: any) { setErrorTx("No se pudo capturar: " + (e?.message || "")); grabActivaRef.current = false; try { await tx.detenerGrabacion?.() } catch {} }
+  }
+  const detenerGrabarSolo = async () => {
+    try { recSoloRef.current?.stop() } catch {}
+    recSoloRef.current = null
+    setGrabandoSolo(false)
+    await detenerGrabacion()
+    setSegundos(0)
+  }
+
+  // ── Resetear posiciones + guardar/restaurar armado ──────────────────────────
+  const resetearPosiciones = () => {
+    setLogoPos(POS_DEF.logo.pos); setLogoTam(POS_DEF.logo.tam)
+    setNombrePos(POS_DEF.nombre.pos); setNombreTam(POS_DEF.nombre.tam)
+    setLetraPos(POS_DEF.letra.pos); setLetraTam(POS_DEF.letra.tam)
+    setPipPos(POS_DEF.pip.pos); setPipTam(POS_DEF.pip.tam)
+    setMensajePos(POS_DEF.mensajePos)
+    flash("Posiciones restauradas")
+  }
+  const guardarArmado = () => {
+    try {
+      localStorage.setItem("en-vivo-armado", JSON.stringify({ logoPos, logoTam, nombrePos, nombreTam, letraPos, letraTam, pipPos, pipTam, mensajePos, diseno, acento }))
+      flash("Armado guardado")
+    } catch { flash("No se pudo guardar") }
+  }
+  const restaurarArmado = () => {
+    try {
+      const raw = localStorage.getItem("en-vivo-armado"); if (!raw) { flash("No hay armado guardado"); return }
+      const a = JSON.parse(raw)
+      if (a.logoPos) setLogoPos(a.logoPos); if (a.logoTam) setLogoTam(a.logoTam)
+      if (a.nombrePos) setNombrePos(a.nombrePos); if (a.nombreTam) setNombreTam(a.nombreTam)
+      if (a.letraPos) setLetraPos(a.letraPos); if (a.letraTam) setLetraTam(a.letraTam)
+      if (a.pipPos) setPipPos(a.pipPos); if (a.pipTam) setPipTam(a.pipTam)
+      if (a.mensajePos) setMensajePos(a.mensajePos)
+      if (a.diseno && ES_DISENO(a.diseno)) guardarDiseno(a.diseno)
+      if (a.acento) guardarAcento(a.acento)
+      flash("Armado restaurado")
+    } catch { flash("No se pudo restaurar") }
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: C.fondo, color: C.texto, fontFamily: "'Segoe UI', system-ui, sans-serif", padding: "0 0 60px" }}>
       {/* Encabezado */}
@@ -945,7 +1068,7 @@ export default function EnVivoPage() {
 
           {/* Editor: manijas para mover/redimensionar objetos (solo escenas con
               cámara). Es HTML sobre el lienzo → NO sale al aire. */}
-          {escena !== "letra" && (
+          {(escena === "camara" || escena === "camara-letra") && (
             <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
               {logoImgRef.current && (
                 <ObjetoEditable etiqueta="Logo" pos={logoPos} w={logoTam} h={logoTam * logoAspecto}
@@ -1105,11 +1228,12 @@ export default function EnVivoPage() {
                   : "Conectando con la proyección…"}
               </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
               {([
                 ["camara", "🎥 Cámara", "Solo la cámara"],
                 ["camara-letra", "🎥 + 📝 Letra", "Letra sobre la cámara"],
                 ["letra", "📺 Proyección", "Letra, imagen o versículo"],
+                ["espera", "⏳ Espera", "Comienza pronto + contador"],
               ] as const).map(([id, txt, sub]) => (
                 <button key={id} onClick={() => setEscena(id)} style={{
                   padding: "12px 10px", borderRadius: 12, cursor: "pointer", textAlign: "center",
@@ -1122,6 +1246,23 @@ export default function EnVivoPage() {
                 </button>
               ))}
             </div>
+
+            {/* Config de la pantalla de espera (solo cuando esa escena está activa) */}
+            {escena === "espera" && (
+              <div style={{ marginTop: 12, background: C.panel2, border: `1px solid ${C.borde}`, borderRadius: 12, padding: "12px 14px" }}>
+                <input value={esperaTexto} onChange={e => guardarEsperaTexto(e.target.value)}
+                  placeholder="El culto comienza pronto" maxLength={60}
+                  style={{ ...selectEstilo, marginTop: 0, width: "100%" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12.5, color: C.tenue }}>Comienza en</span>
+                  <input type="number" min={0} max={120} value={esperaMin} onChange={e => setEsperaMin(Math.max(0, Number(e.target.value) || 0))}
+                    style={{ ...selectEstilo, marginTop: 0, width: 74, textAlign: "center" }} />
+                  <span style={{ fontSize: 12.5, color: C.tenue }}>min</span>
+                  <button onClick={iniciarEspera} style={botonBase({ background: C.azul, color: "#fff", padding: "8px 14px", fontSize: 12.5 })}>▶ Iniciar cuenta</button>
+                  {esperaHasta && <button onClick={() => setEsperaHasta(null)} style={botonBase({ background: "rgba(255,255,255,0.06)", color: C.suave, padding: "8px 12px", fontSize: 12.5 })}>Quitar contador</button>}
+                </div>
+              </div>
+            )}
 
             {/* Transiciones + Compartir pantalla */}
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
@@ -1248,6 +1389,34 @@ export default function EnVivoPage() {
               💡 En la vista previa puedes <strong style={{ color: C.suave }}>arrastrar y redimensionar</strong> el logo, el nombre, la letra, la Cámara 2 y los gráficos (tira de la esquina azul). Todo se guarda solo.
             </div>
 
+            {/* Resetear / guardar armado */}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+              <button onClick={resetearPosiciones} title="Volver todo a su posición por defecto"
+                style={botonBase({ background: "rgba(255,255,255,0.06)", color: C.texto, padding: "8px 12px", fontSize: 12.5 })}>↺ Resetear posiciones</button>
+              <button onClick={guardarArmado} title="Guardar la posición actual de todo"
+                style={botonBase({ background: "rgba(255,255,255,0.06)", color: C.texto, padding: "8px 12px", fontSize: 12.5 })}>💾 Guardar armado</button>
+              <button onClick={restaurarArmado} title="Volver al armado guardado"
+                style={botonBase({ background: "rgba(255,255,255,0.06)", color: C.texto, padding: "8px 12px", fontSize: 12.5 })}>↩ Restaurar</button>
+            </div>
+
+            {/* Atajos de teclado */}
+            <div style={{ marginTop: 12 }}>
+              <button onClick={() => setMostrarAtajos(v => !v)} style={{ background: "transparent", border: "none", color: C.suave, fontSize: 12.5, fontWeight: 700, cursor: "pointer", padding: 0 }}>
+                ⌨️ Atajos de teclado {mostrarAtajos ? "▲" : "▼"}
+              </button>
+              {mostrarAtajos && (
+                <div style={{ marginTop: 8, fontSize: 12, color: C.suave, lineHeight: 1.9 }}>
+                  {[["1 / 2 / 3 / 4", "Cambiar escena (Cámara / Letra / Proyección / Espera)"], ["M", "Mostrar/ocultar mensaje"], ["C", "Alternar cámara (1 → 2 → ambas)"], ["R", "Resetear posiciones"]].map(([k, d]) => (
+                    <div key={k as string} style={{ display: "flex", gap: 10 }}>
+                      <span style={{ display: "inline-block", minWidth: 74, fontFamily: "ui-monospace, Consolas, monospace", color: C.texto, background: "rgba(255,255,255,0.06)", borderRadius: 6, padding: "1px 8px", fontSize: 11.5, textAlign: "center" }}>{k}</span>
+                      <span>{d}</span>
+                    </div>
+                  ))}
+                  <div style={{ fontSize: 11, color: C.tenue, marginTop: 4 }}>Los atajos se ignoran mientras escribes en un campo.</div>
+                </div>
+              )}
+            </div>
+
             {/* Gráficos propios */}
             <div style={{ marginTop: 16 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -1282,6 +1451,17 @@ export default function EnVivoPage() {
           {!esEscritorio ? (
             <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", borderRadius: 12, padding: "12px 14px", fontSize: 13, color: C.suave }}>
               Transmitir en vivo funciona solo en la <strong style={{ color: C.texto }}>app de escritorio</strong> de Selah Live (aquí en el navegador puedes probar la cámara y la letra, pero no salir al aire).
+            </div>
+          ) : grabandoSolo ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ width: 12, height: 12, borderRadius: 99, background: "#f87171", boxShadow: "0 0 8px #f87171" }} />
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: "#f87171" }}>GRABANDO · {fmtTiempo(segundos)}</div>
+                  <div style={{ fontSize: 12, color: C.tenue }}>Solo grabación (no estás transmitiendo) · {grabMB} MB</div>
+                </div>
+              </div>
+              <button onClick={detenerGrabarSolo} style={botonBase({ background: C.rojo, color: "#fff" })}>■ Detener grabación</button>
             </div>
           ) : (txEstado === "vivo" || txEstado === "conectando" || txEstado === "reconectando") ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1382,6 +1562,12 @@ export default function EnVivoPage() {
                 ● Salir en vivo
               </button>
 
+              <button onClick={grabarSolo} disabled={permiso !== "ok"}
+                style={botonBase({ background: "rgba(255,255,255,0.06)", color: C.texto, width: "100%", padding: "11px", marginTop: 8, opacity: permiso !== "ok" ? 0.5 : 1 })}>
+                ⏺️ Grabar sin transmitir
+              </button>
+              <div style={{ fontSize: 11, color: C.tenue, marginTop: 6, textAlign: "center" }}>Graba el culto a tu PC sin sacarlo al aire (ensayo o respaldo).</div>
+
               {grabInfo && !grabInfo.listo && (
                 <div style={{ marginTop: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${C.borde}`, borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: C.suave }}>
                   ⏳ Guardando la grabación (preparando el .mp4)…
@@ -1427,6 +1613,13 @@ export default function EnVivoPage() {
         </div>
         </div>{/* fin columna derecha */}
       </div>
+
+      {/* Aviso breve (toast) */}
+      {aviso && (
+        <div style={{ position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", zIndex: 1100, background: "rgba(17,24,39,0.97)", border: `1px solid ${C.borde}`, borderRadius: 99, padding: "9px 18px", fontSize: 13, fontWeight: 700, color: C.texto, boxShadow: "0 8px 30px rgba(0,0,0,0.5)" }}>
+          {aviso}
+        </div>
+      )}
 
       {/* Selector de pantalla/ventana a compartir */}
       {pickerPantalla && (
@@ -1651,6 +1844,57 @@ function dibujarFondoBrandeado(ctx: CanvasRenderingContext2D) {
   const v = ctx.createRadialGradient(ANCHO / 2, ALTO / 2, ALTO * 0.4, ANCHO / 2, ALTO / 2, ANCHO * 0.72)
   v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,0.45)")
   ctx.fillStyle = v; ctx.fillRect(0, 0, ANCHO, ALTO)
+}
+
+// Pantalla de espera: fondo brandeado + logo + titular + cuenta regresiva +
+// nombre de la iglesia. Se muestra al aire mientras la gente llega.
+function dibujarPantallaEspera(ctx: CanvasRenderingContext2D, texto: string, hasta: number | null, nombre: string, logo: HTMLImageElement | null, acento = "#f59e0b") {
+  dibujarFondoBrandeado(ctx)
+  const cx = ANCHO / 2
+  ctx.save()
+  ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"
+
+  let y = 150
+  if (logo && logo.width > 0) {
+    const lw = 190, lh = logo.height * (lw / logo.width)
+    ctx.globalAlpha = 0.97
+    ctx.drawImage(logo, cx - lw / 2, y - lh / 2, lw, lh)
+    ctx.globalAlpha = 1
+    y += lh / 2 + 34
+  } else { y = 232 }
+
+  // Línea de acento
+  ctx.fillStyle = acento; redondear(ctx, cx - 42, y, 84, 4, 2); ctx.fill(); y += 44
+
+  // Titular ("El culto comienza pronto")
+  ctx.fillStyle = "rgba(255,255,255,0.95)"
+  ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 8
+  ctx.font = "700 42px 'Segoe UI', system-ui, sans-serif"
+  ctx.fillText((texto || "").slice(0, 60), cx, y); ctx.shadowBlur = 0; y += 24
+
+  // Cuenta regresiva grande
+  if (hasta) {
+    const rem = Math.max(0, Math.floor((hasta - Date.now()) / 1000))
+    const mm = String(Math.floor(rem / 60)).padStart(2, "0")
+    const ss = String(rem % 60).padStart(2, "0")
+    if (rem > 0) {
+      ctx.fillStyle = "#fff"; ctx.font = "800 104px 'Segoe UI', system-ui, sans-serif"
+      ctx.fillText(`${mm}:${ss}`, cx, y + 108)
+    } else {
+      ctx.fillStyle = acento; ctx.font = "800 68px 'Segoe UI', system-ui, sans-serif"
+      ctx.fillText("¡Comenzamos!", cx, y + 96)
+    }
+  }
+
+  // Nombre de la iglesia abajo
+  if (nombre) {
+    ctx.font = "700 24px 'Segoe UI', system-ui, sans-serif"
+    ctx.fillStyle = "rgba(255,255,255,0.6)"
+    try { (ctx as any).letterSpacing = "2px" } catch {}
+    ctx.fillText(nombre.toUpperCase(), cx, ALTO - 58)
+    try { (ctx as any).letterSpacing = "0px" } catch {}
+  }
+  ctx.restore()
 }
 
 // Imagen o video "contain" centrado (letterbox) sobre el fondo.
