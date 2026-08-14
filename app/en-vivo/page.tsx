@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { io } from "socket.io-client"
+import { io, Socket } from "socket.io-client"
 import { navegarSPA } from "@/lib/navegar"
 import { getSocketUrl } from "@/lib/servidor"
 import { getIglesiaId } from "@/lib/getIglesia"
@@ -41,6 +41,7 @@ const C = {
 }
 
 const ANCHO = 1280, ALTO = 720 // lienzo de salida (720p)
+const CELULAR = "__celular__" // "deviceId" especial: la cámara es el celular (WebRTC)
 
 // Posiciones/tamaños por defecto de los objetos movibles (para "Resetear").
 const POS_DEF = {
@@ -283,6 +284,19 @@ export default function EnVivoPage() {
   const screenVideoRef = useRef<HTMLVideoElement | null>(null)
   const screenStreamRef = useRef<MediaStream | null>(null)
 
+  // Cámara desde el celular (WebRTC por la LAN). El PC es el "host": muestra un
+  // QR/código, el celular se une y le manda su video.
+  const [celularOn, setCelularOn] = useState(false)           // hay un celular conectado como cámara
+  const [camModal, setCamModal] = useState(false)             // modal de emparejamiento (QR)
+  const [camCodigo, setCamCodigo] = useState("")
+  const [camEstado, setCamEstado] = useState<"esperando" | "conectado" | "error">("esperando")
+  const [camError, setCamError] = useState("")
+  const phoneVideoRef = useRef<HTMLVideoElement | null>(null)
+  const phoneStreamRef = useRef<MediaStream | null>(null)
+  const pcHostRef = useRef<RTCPeerConnection | null>(null)
+  const camSocketRef = useRef<Socket | null>(null)
+  const camCodigoRef = useRef("")
+
   const [calidad, setCalidad] = useState<"baja" | "media" | "alta">("media")
   const CALIDAD_KBPS: Record<string, number> = { baja: 1200, media: 2500, alta: 4500 }
 
@@ -327,11 +341,11 @@ export default function EnVivoPage() {
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any, hayVideo: false, nombrePos: { x: 0, y: 0 }, nombreTam: 30, mensajePos: "abajo" as "abajo" | "arriba", letraPos: { x: 0, y: 0 }, letraTam: 940, graficos: [] as { id: string; pos: { x: number; y: number }; w: number; aspecto: number }[], acento: "#f59e0b", diseno: "vidrio" as Diseno, pantallaOn: false, camaraEnPip: true, transiciones: true, esperaTexto: "", esperaHasta: null as number | null })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any, hayVideo: false, nombrePos: { x: 0, y: 0 }, nombreTam: 30, mensajePos: "abajo" as "abajo" | "arriba", letraPos: { x: 0, y: 0 }, letraTam: 940, graficos: [] as { id: string; pos: { x: number; y: number }; w: number; aspecto: number }[], acento: "#f59e0b", diseno: "vidrio" as Diseno, pantallaOn: false, camaraEnPip: true, transiciones: true, esperaTexto: "", esperaHasta: null as number | null, celularOn: false, cam1Celular: false, cam2Celular: false })
   useEffect(() => {
     const bibliaTexto = biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : ""
-    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos, acento, diseno, pantallaOn, camaraEnPip, transiciones, esperaTexto, esperaHasta }
-  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos, acento, diseno, pantallaOn, camaraEnPip, transiciones, esperaTexto, esperaHasta])
+    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos, acento, diseno, pantallaOn, camaraEnPip, transiciones, esperaTexto, esperaHasta, celularOn, cam1Celular: camaraId === CELULAR, cam2Celular: camara2Id === CELULAR }
+  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos, acento, diseno, pantallaOn, camaraEnPip, transiciones, esperaTexto, esperaHasta, celularOn, camaraId, camara2Id])
 
   // ── Cargar la imagen proyectada (para la escena de contenido) ───────────────
   useEffect(() => {
@@ -391,10 +405,21 @@ export default function EnVivoPage() {
           noiseSuppression: limpiarAudioRef.current,
           autoGainControl: limpiarAudioRef.current,
         }
+        // El video puede venir del CELULAR (WebRTC) → acá no se pide cámara.
+        // El audio puede venir del CELULAR (mic del celular) → acá no se pide mic.
         const constraints: MediaStreamConstraints = {
-          video: camaraId ? { deviceId: { exact: camaraId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+          video: camaraId === CELULAR ? false
+               : camaraId ? { deviceId: { exact: camaraId }, width: { ideal: 1280 }, height: { ideal: 720 } }
                           : { width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: microId ? { deviceId: { exact: microId }, ...audioBase } : audioBase,
+          audio: microId === CELULAR ? false
+               : microId ? { deviceId: { exact: microId }, ...audioBase } : audioBase,
+        }
+        // Si TODO viene del celular (cámara y micrófono), no hay getUserMedia local.
+        if (!constraints.video && !constraints.audio) {
+          streamRef.current?.getTracks().forEach(t => t.stop()); streamRef.current = null
+          if (videoRef.current) videoRef.current.srcObject = null
+          setPermiso("ok"); ultimoSonidoRef.current = Date.now(); setAudioGen(g => g + 1)
+          return
         }
         const stream = await navigator.mediaDevices.getUserMedia(constraints)
         if (cancelado) { stream.getTracks().forEach(t => t.stop()); return }
@@ -456,7 +481,9 @@ export default function EnVivoPage() {
   // Medidor de nivel (VU): analiza el track de audio y anima la barra por DOM
   // (sin re-render). Avisa si el micrófono lleva un rato en silencio.
   useEffect(() => {
-    const track = streamRef.current?.getAudioTracks()[0]
+    // El VU mide la fuente de audio ACTIVA (celular si es el mic elegido, si no el PC).
+    const celTrack = phoneStreamRef.current?.getAudioTracks?.()[0]
+    const track = (microId === CELULAR && celTrack) ? celTrack : streamRef.current?.getAudioTracks()[0]
     if (!track) return
     let cancelado = false
     try {
@@ -491,7 +518,7 @@ export default function EnVivoPage() {
       try { audioCtxRef.current?.close() } catch {}
       audioCtxRef.current = null; analyserRef.current = null
     }
-  }, [audioGen])
+  }, [audioGen, microId, celularOn])
 
   // Aviso de "sin audio": el micro lleva >4s en silencio mientras hay cámara.
   useEffect(() => {
@@ -507,6 +534,13 @@ export default function EnVivoPage() {
       stream2Ref.current?.getTracks().forEach(t => t.stop()); stream2Ref.current = null
       if (video2Ref.current) video2Ref.current.srcObject = null
       setCamaraActiva(1) // sin cámara 2, volver a la 1
+      return
+    }
+    // Cámara 2 = CELULAR: el video lo entrega el celular (phoneVideoRef), no hay
+    // getUserMedia local. Liberamos la cámara 2 local si estaba abierta.
+    if (camara2Id === CELULAR) {
+      stream2Ref.current?.getTracks().forEach(t => t.stop()); stream2Ref.current = null
+      if (video2Ref.current) video2Ref.current.srcObject = null
       return
     }
     const iniciar = async () => {
@@ -533,6 +567,9 @@ export default function EnVivoPage() {
     streamRef.current?.getTracks().forEach(t => t.stop())
     stream2Ref.current?.getTracks().forEach(t => t.stop())
     screenStreamRef.current?.getTracks().forEach(t => t.stop())
+    phoneStreamRef.current?.getTracks().forEach(t => t.stop())
+    try { pcHostRef.current?.close() } catch {}
+    try { camSocketRef.current?.close() } catch {}
   }, [])
 
   // Refrescar la lista cuando conectas/desconectas una cámara (o el celular por
@@ -687,9 +724,11 @@ export default function EnVivoPage() {
       // congelaba todo). Pase lo que pase, re-agendamos el siguiente fotograma.
       try {
         const cont = contenidoRef.current
+        // Cada "slot" de cámara puede ser la cámara local o el CELULAR (WebRTC).
+        const v1 = cont.cam1Celular ? phoneVideoRef.current : videoRef.current
+        const v2 = cont.cam2Celular ? phoneVideoRef.current : video2Ref.current
         // Cámara al aire (1 o 2). Si la 2 no está lista, cae a la 1.
-        const v2 = video2Ref.current
-        const v = (cont.camaraActiva === 2 && v2 && v2.videoWidth > 0) ? v2 : videoRef.current
+        const v = (cont.camaraActiva === 2 && v2 && v2.videoWidth > 0) ? v2 : v1
         const logo = logoImgRef.current
         const imagen = imagenImgRef.current
         const esLetra = cont.escena === "letra"
@@ -737,6 +776,7 @@ export default function EnVivoPage() {
           if (!cont.estadoEsp) dibujarCabecera(ctx, cont.nombre, tituloContenido, tonoContenido, logo, cont.acento)
         } else {
           // Escenas con cámara ("camara" y "camara-letra") o pantalla compartida.
+          // v ya resuelve a la cámara al aire (local o celular).
           const sv = screenVideoRef.current
           if (cont.pantallaOn && sv && sv.videoWidth > 0) {
             // Pantalla: "contain" (no recorta diapositivas), letterbox negro.
@@ -750,8 +790,7 @@ export default function EnVivoPage() {
           }
           // Recuadro (PiP): la cámara del presentador sobre la pantalla, o la
           // Cámara 2 en modo "ambas". Ambos usan la misma caja movible.
-          const vCam = videoRef.current
-          const pip = (cont.pantallaOn && cont.camaraEnPip && vCam && vCam.videoWidth > 0) ? vCam
+          const pip = (cont.pantallaOn && cont.camaraEnPip && v1 && v1.videoWidth > 0) ? v1
                     : (!cont.pantallaOn && cont.camaraActiva === "ambas" && v2 && v2.videoWidth > 0) ? v2
                     : null
           if (pip) {
@@ -786,7 +825,8 @@ export default function EnVivoPage() {
         }
 
         // Mensaje en vivo: banner sobre todas las escenas (arriba o abajo).
-        if (hayMensaje) dibujarMensaje(ctx, cont.mensaje, cont.mensajePos, cont.acento, cont.diseno)
+        // El mensaje va sobre todas las escenas MENOS la de espera (ahí molesta).
+        if (hayMensaje && cont.escena !== "espera") dibujarMensaje(ctx, cont.mensaje, cont.mensajePos, cont.acento, cont.diseno)
 
         // Fundido de la transición: el fotograma anterior se desvanece encima.
         const tr = transRef.current
@@ -812,10 +852,14 @@ export default function EnVivoPage() {
   // Un MediaStream nuevo del lienzo + audio (cada captureStream da un track
   // propio; el audio se puede compartir entre varios streams sin problema).
   const streamSalida = (): MediaStream | null => {
-    if (!canvasRef.current || !streamRef.current) return null
+    if (!canvasRef.current) return null
+    // Audio: del CELULAR si es el micrófono elegido (y trae audio); si no, del PC.
+    const audioCel = phoneStreamRef.current?.getAudioTracks?.() || []
+    const audio = (microId === CELULAR && audioCel.length > 0) ? audioCel
+                : (streamRef.current?.getAudioTracks() || [])
     return new MediaStream([
       ...canvasRef.current.captureStream(30).getVideoTracks(),
-      ...streamRef.current.getAudioTracks(),
+      ...audio,
     ])
   }
 
@@ -961,6 +1005,64 @@ export default function EnVivoPage() {
     screenStreamRef.current = null
     if (screenVideoRef.current) screenVideoRef.current.srcObject = null
     setPantallaOn(false)
+  }
+
+  // ── Cámara desde el celular (host WebRTC) ───────────────────────────────────
+  const cerrarCamaraCelular = (avisar = true) => {
+    try { if (avisar) camSocketRef.current?.emit("camara:fin", { codigo: camCodigoRef.current }) } catch {}
+    try { pcHostRef.current?.close() } catch {}; pcHostRef.current = null
+    try { camSocketRef.current?.close() } catch {}; camSocketRef.current = null
+    phoneStreamRef.current?.getTracks().forEach(t => t.stop()); phoneStreamRef.current = null
+    if (phoneVideoRef.current) phoneVideoRef.current.srcObject = null
+    setCelularOn(false); setCamModal(false); setCamEstado("esperando")
+    // Liberar los slots que apuntaban al celular (cámara y mic vuelven al PC).
+    setCamaraId(prev => prev === CELULAR ? "" : prev)
+    setCamara2Id(prev => prev === CELULAR ? "" : prev)
+    setMicroId(prev => prev === CELULAR ? "" : prev)
+  }
+
+  const abrirCamaraCelular = async () => {
+    const tx = (window as any).transmision
+    if (!tx?.infoRedCamara) { setErrorTx("Usar el celular como cámara funciona solo en la app de escritorio."); return }
+    setCamError(""); setCamEstado("esperando")
+    const codigo = Math.random().toString(36).slice(2, 8).toUpperCase()
+    camCodigoRef.current = codigo; setCamCodigo(codigo)
+    setCamModal(true)
+
+    // Señalización (host): espera la oferta del celular y responde.
+    const socket = io(getSocketUrl(), { transports: ["websocket", "polling"], forceNew: true })
+    camSocketRef.current = socket
+    socket.on("connect", () => socket.emit("camara:host", { codigo }))
+    socket.on("camara:senal", async ({ data }: any) => {
+      if (!data) return
+      try {
+        if (data.tipo === "offer") {
+          const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] })
+          pcHostRef.current = pc
+          pc.ontrack = (e) => {
+            phoneStreamRef.current = e.streams[0]
+            if (phoneVideoRef.current) { phoneVideoRef.current.srcObject = e.streams[0]; phoneVideoRef.current.play().catch(() => {}) }
+          }
+          pc.onicecandidate = (e) => { if (e.candidate) socket.emit("camara:senal", { codigo, data: { tipo: "ice", candidate: e.candidate } }) }
+          pc.onconnectionstatechange = () => {
+            if (pc.connectionState === "connected") {
+              setCelularOn(true); setCamEstado("conectado")
+              // Queda disponible como Cámara 2 (se puede cambiar a 1 o "ambas").
+              setCamara2Id(prev => prev ? prev : CELULAR)
+            }
+            else if (pc.connectionState === "failed") { setCamEstado("error"); setCamError("No se pudo enlazar con el celular. ¿Están en la misma red?") }
+          }
+          await pc.setRemoteDescription(data.sdp)
+          const answer = await pc.createAnswer()
+          await pc.setLocalDescription(answer)
+          socket.emit("camara:senal", { codigo, data: { tipo: "answer", sdp: pc.localDescription } })
+        } else if (data.tipo === "ice" && data.candidate && pcHostRef.current) {
+          await pcHostRef.current.addIceCandidate(data.candidate)
+        }
+      } catch {}
+    })
+    socket.on("camara:par-fin", () => cerrarCamaraCelular(false))
+    socket.on("connect_error", () => { setCamEstado("error"); setCamError("No se pudo abrir la señalización.") })
   }
 
   // Formato de captura preferido (H264 mkv → menos CPU en el i3).
@@ -1163,6 +1265,9 @@ export default function EnVivoPage() {
         {/* Pantalla compartida (alimenta el lienzo) */}
         <video ref={screenVideoRef} autoPlay muted playsInline
           style={{ position: "absolute", width: 2, height: 2, opacity: 0, pointerEvents: "none", left: 0, top: 0 }} />
+        {/* Cámara del celular por WebRTC (alimenta el lienzo) */}
+        <video ref={phoneVideoRef} autoPlay muted playsInline
+          style={{ position: "absolute", width: 2, height: 2, opacity: 0, pointerEvents: "none", left: 0, top: 0 }} />
         </div>{/* fin columna izquierda */}
 
         {/* Columna derecha: controles (con scroll propio en escritorio) */}
@@ -1175,6 +1280,7 @@ export default function EnVivoPage() {
               <select value={camaraId} onChange={e => { const val = e.target.value; setCamaraId(val); if (val === camara2Id) setCamara2Id("") }} style={selectEstilo}>
                 {camaras.length === 0 && <option value="">(sin cámaras)</option>}
                 {camaras.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                {celularOn && <option value={CELULAR}>📱 Celular</option>}
               </select>
             </label>
             <label style={{ fontSize: 12.5, color: C.tenue }}>
@@ -1182,6 +1288,7 @@ export default function EnVivoPage() {
               <select value={camara2Id} onChange={e => setCamara2Id(e.target.value)} style={selectEstilo}>
                 <option value="">(ninguna)</option>
                 {camaras.filter(c => c.id !== camaraId).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                {celularOn && camaraId !== CELULAR && <option value={CELULAR}>📱 Celular</option>}
               </select>
             </label>
             <label style={{ fontSize: 12.5, color: C.tenue, gridColumn: "1 / -1" }}>
@@ -1189,6 +1296,7 @@ export default function EnVivoPage() {
               <select value={microId} onChange={e => setMicroId(e.target.value)} style={selectEstilo}>
                 {micros.length === 0 && <option value="">(sin micrófonos)</option>}
                 {micros.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+                {celularOn && <option value={CELULAR}>📱 Micrófono del celular</option>}
               </select>
             </label>
           </div>
@@ -1292,6 +1400,21 @@ export default function EnVivoPage() {
                   <span style={{ fontSize: 12.5, color: C.suave }}>Mostrar mi cámara en un recuadro (arrástrala en la vista previa)</span>
                 </label>
               )}
+              {!esEscritorio && <div style={{ fontSize: 11.5, color: C.tenue, marginTop: 8 }}>Disponible solo en la app de escritorio.</div>}
+            </div>
+
+            {/* Usar el celular como cámara (WebRTC por la LAN) */}
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.borde}` }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>📱 Usar celular como cámara</div>
+                  <div style={{ fontSize: 11.5, color: C.tenue, marginTop: 2 }}>Tu celular como cámara inalámbrica por WiFi: escaneas un QR y listo. Sin apps de terceros ni cable.</div>
+                </div>
+                {celularOn
+                  ? <button onClick={() => cerrarCamaraCelular(true)} style={botonBase({ background: C.rojo, color: "#fff", padding: "9px 13px", fontSize: 12.5 })}>Desconectar</button>
+                  : <button onClick={abrirCamaraCelular} disabled={!esEscritorio} style={botonBase({ background: "rgba(37,99,235,0.15)", color: "#93c5fd", padding: "9px 13px", fontSize: 12.5, border: `1px solid ${C.azul}`, opacity: esEscritorio ? 1 : 0.5 })}>Conectar celular…</button>}
+              </div>
+              {celularOn && <div style={{ fontSize: 11.5, color: "#4ade80", marginTop: 8, fontWeight: 700 }}>● Celular conectado como cámara</div>}
               {!esEscritorio && <div style={{ fontSize: 11.5, color: C.tenue, marginTop: 8 }}>Disponible solo en la app de escritorio.</div>}
             </div>
           </div>
@@ -1618,6 +1741,37 @@ export default function EnVivoPage() {
       {aviso && (
         <div style={{ position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", zIndex: 1100, background: "rgba(17,24,39,0.97)", border: `1px solid ${C.borde}`, borderRadius: 99, padding: "9px 18px", fontSize: 13, fontWeight: 700, color: C.texto, boxShadow: "0 8px 30px rgba(0,0,0,0.5)" }}>
           {aviso}
+        </div>
+      )}
+
+      {/* Emparejar el celular como cámara (QR + código) */}
+      {camModal && (
+        <div onClick={() => (celularOn ? setCamModal(false) : cerrarCamaraCelular(true))} style={{ position: "fixed", inset: 0, background: "rgba(2,6,14,0.82)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, padding: 22, maxWidth: 400, width: "100%", textAlign: "center" }}>
+            <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>📱 Conectar el celular</div>
+            {camEstado === "conectado" ? (
+              <>
+                <div style={{ fontSize: 40, margin: "18px 0 8px" }}>✅</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: "#4ade80" }}>¡Celular conectado!</div>
+                <div style={{ fontSize: 12.5, color: C.tenue, marginTop: 6 }}>Ya se ve en la vista previa. Deja la app abierta en el celular.</div>
+                <button onClick={() => setCamModal(false)} style={botonBase({ background: C.azul, color: "#fff", width: "100%", padding: "12px", marginTop: 16 })}>Listo</button>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 13, color: C.suave, marginTop: 8, marginBottom: 8, lineHeight: 1.7, textAlign: "left" }}>
+                  En el celular (misma red WiFi):<br />
+                  1. Abre <strong style={{ color: C.texto }}>Selah</strong> → <strong style={{ color: C.texto }}>📷 Cámara</strong><br />
+                  2. Escribe este código:
+                </div>
+                <div style={{ fontSize: 46, fontWeight: 900, letterSpacing: 8, color: "#93c5fd", margin: "8px 0 4px", background: "rgba(37,99,235,0.1)", borderRadius: 12, padding: "10px 0" }}>{camCodigo}</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 14, fontSize: 13, color: camEstado === "error" ? "#f87171" : "#fbbf24", fontWeight: 700 }}>
+                  <span style={{ width: 9, height: 9, borderRadius: 99, background: camEstado === "error" ? "#f87171" : "#fbbf24" }} />
+                  {camEstado === "error" ? (camError || "Error") : "Esperando el celular…"}
+                </div>
+                <button onClick={() => cerrarCamaraCelular(true)} style={botonBase({ background: "rgba(255,255,255,0.06)", color: C.suave, width: "100%", padding: "11px", marginTop: 16 })}>Cancelar</button>
+              </>
+            )}
+          </div>
         </div>
       )}
 

@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("transmision", {
   enviarChunkGrabacion: (chunk) => ipcRenderer.send("grabacion:chunk", chunk),
   abrirCarpetaGrabaciones: () => ipcRenderer.invoke("grabacion:abrirCarpeta"),
   listarPantallas: () => ipcRenderer.invoke("pantalla:fuentes"),
+  infoRedCamara: () => ipcRenderer.invoke("camara:infoRed"),
   onEstado: (cb) => {
     const h = (_e, d) => cb(d)
     ipcRenderer.on("transmision:estado", h)

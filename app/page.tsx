@@ -49,6 +49,11 @@ export default function InicioPage() {
   // ✅ Rol propio: para ocultar la tarjeta de Configuración a quien no es admin.
   // null = todavía no se sabe → no ocultar (el AuthProvider igual bloquea).
   const [rol, setRol] = useState<string | null>(null)
+  // ✅ La "Cámara para transmisión" solo tiene sentido en el CELULAR (APK): el
+  // celular manda su video al PC. En Electron/web no va. Estado por efecto para
+  // no romper la hidratación (server y primer render cliente = false).
+  const [esApp, setEsApp] = useState(false)
+  useEffect(() => { setEsApp(typeof window !== "undefined" && !!(window as any).Capacitor) }, [])
 
   // ✅ El sitio se compila UNA sola vez (npm run build) y esa fecha queda
   // congelada en el HTML estático desde ese momento. Calcular new Date()
@@ -324,8 +329,9 @@ export default function InicioPage() {
               }},
               { icon:"📅", label:"Historial",        sub:"Cultos y estadísticas",        border:"rgba(245,158,11,0.3)", bg:"rgba(245,158,11,0.1)", ibg:"rgba(245,158,11,0.25)",  action:() => navegarSPA(router, "/historial") },
               { icon:"🎥", label:"Transmisión",      sub:"Transmite en vivo · Premium",   border:"rgba(245,158,11,0.3)", bg:"rgba(245,158,11,0.08)", ibg:"rgba(245,158,11,0.2)",  action:() => navegarSPA(router, "/en-vivo") },
+              { icon:"📷", label:"Cámara",           sub:"Este celular como cámara",       border:"rgba(37,99,235,0.3)", bg:"rgba(37,99,235,0.08)", ibg:"rgba(37,99,235,0.2)",  action:() => navegarSPA(router, "/camara"), soloLider:true, soloApp:true },
               { icon:"⚙️", label:"Configuración",  sub:"Iglesia, servidor y ajustes",    border:"rgba(255,255,255,0.08)", bg:"rgba(255,255,255,0.04)", ibg:"rgba(255,255,255,0.07)", action:() => navegarSPA(router, "/configuracion"), soloAdmin:true },
-            ].filter(t => !(t as any).soloAdmin || rol === null || rol === "admin").map(({ icon, label, sub, border, bg, ibg, action }) => (
+            ].filter(t => (!(t as any).soloAdmin || rol === null || rol === "admin") && (!(t as any).soloLider || rol === null || rol === "admin" || rol === "lider") && (!(t as any).soloApp || esApp)).map(({ icon, label, sub, border, bg, ibg, action }) => (
               <button key={label} onClick={action} style={{ padding:"16px 14px", borderRadius:14, border:`1px solid ${border}`, background:bg, color:"white", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"flex-start", gap:8 }}>
                 <div style={{ width:40, height:40, borderRadius:11, background:ibg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{icon}</div>
                 <div>
