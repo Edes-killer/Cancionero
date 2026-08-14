@@ -18,6 +18,7 @@ const LINKS = [
   { href: "/",              label: "Inicio",    icon: "⌂"  },
   { href: "/canciones",     label: "Canciones", icon: "🎵"  },
   { href: "/control",       label: "Control",   icon: "🎛️"  },
+  { href: "/camara",        label: "Cámara",    icon: "📷", soloLider: true },
   { href: "/configuracion", label: "Config",    icon: "⚙️"  },
 ]
 
@@ -52,6 +53,10 @@ export default function Navbar() {
   const [menuAbierto, setMenuAbierto] = useState(false)
   const [cerrando, setCerrando] = useState(false)
   const [rol, setRol] = useState<string | null>(null)
+  // ✅ La "Cámara" (celular como cámara del PC) solo va en la APK. Estado por
+  // efecto para no romper la hidratación (server/primer render = false).
+  const [esApp, setEsApp] = useState(false)
+  useEffect(() => { setEsApp(typeof window !== "undefined" && !!(window as any).Capacitor) }, [])
   // ✅ Indicador de sin internet. La app funciona igual offline (con la caché),
   // que está bien, pero el usuario no tenía forma de SABER que está sin conexión.
   // Arranca en true para no marcar "offline" por un instante en el primer render.
@@ -113,8 +118,13 @@ export default function Navbar() {
   // ✅ Configuración es solo para admin (líder y músico no la ven).
   // Mientras no se sepa el rol (rol === null), se muestran todos para no
   // ocultar de más; el AuthProvider igual bloquea el acceso real.
+  // Config: solo admin. Cámara (transmisión): solo admin/líder (los músicos no
+  // la ven). Mientras no se sabe el rol se muestran; el AuthProvider igual bloquea.
   const linksVisibles = LINKS.filter(l =>
-    l.href === "/configuracion" ? (rol === null || rol === "admin") : true
+    l.href === "/camara" ? (esApp && (rol === null || rol === "admin" || rol === "lider"))
+    : l.href === "/configuracion" ? (rol === null || rol === "admin")
+    : (l as any).soloLider ? (rol === null || rol === "admin" || rol === "lider")
+    : true
   )
 
   const isCapacitor = typeof window !== "undefined" && (window as any).Capacitor

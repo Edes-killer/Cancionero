@@ -1,6 +1,6 @@
 # Selah Live — Documento de Diseño (SDD) y Contexto de Desarrollo
 
-> Versión del documento: 2026-08-09 · App: **v0.5.18** · Mantener al día al cerrar cada release.
+> Versión del documento: 2026-08-13 · App: **v0.5.19** · Mantener al día al cerrar cada release.
 
 ---
 
@@ -178,6 +178,22 @@ Lienzo 1280×720 (cámara(s)/pantalla + overlays) ──captureStream(30)+audio�
 - **Atajos de teclado**: 1/2/3/4 = escenas, M = mensaje, C = cámara, R = resetear (se ignoran en inputs).
 - **Grabar sin transmitir**: grabador dedicado a disco sin RTMP (ensayo/respaldo).
 - **Resetear posiciones** (a `POS_DEF`) + **guardar/restaurar armado** (localStorage `en-vivo-armado`).
+
+**Cámara desde el celular — WebRTC (v0.5.19):**
+- El celular (APK) manda su video/audio al PC por la LAN, sin apps de terceros. Ver [[camara-celular-webrtc]].
+- **Señalización** por el Socket.IO del PC (`camara:host`/`unir`/`senal`/`fin`, salas `cam-<código>`).
+  El video va DIRECTO PC↔celular (candidatos host + STUN).
+- **`app/camara/page.tsx`** (móvil): abre cámara (1080p ideal) + mic, envía por WebRTC; voltear con
+  getUserMedia `facingMode: exact` (libera la cámara antes de abrir la otra); wake lock. Ruta líder/admin.
+- **`/en-vivo`** (host): botón "📱 Usar celular como cámara" → código → recibe el track. El celular
+  entra como **cámara seleccionable** (`CELULAR="__celular__"` en los desplegables de Cámara 1/2 y de
+  micrófono): funciona con escenas, "Ambas"/PiP, intercambio y grabación como cualquier cámara. El mic
+  del PC es independiente (o se elige el del celular). El video/audio del celular se resuelven en el
+  bucle de dibujo (`cam1Celular`/`cam2Celular`) y en `streamSalida`.
+- **Acceso**: tile en Inicio + link en el menú, **solo en la APK** (`Capacitor`) y **solo admin/líder**.
+- Requiere que la APK tenga el **servidor configurado** (getSocketUrl) y **CAMERA/RECORD_AUDIO** en el
+  manifest (ya estaban). Depende de que el celular y el PC se vean en la LAN (mismo problema/route que
+  Camo/DroidCam: AP isolation).
 
 ### 6.5 Importar PowerPoint a la galería — Control (solo escritorio)
 Dos motores por PowerShell desde `main.js`:

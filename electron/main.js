@@ -411,6 +411,13 @@ function registrarIPCPowerPoint() {
 }
 registrarIPCPowerPoint()
 
+// IP local + puertos, para que /en-vivo arme el QR de "cámara desde el celular"
+// (el celular abre http://<ip>:3000/camara y señaliza por el socket en :4000).
+ipcMain.handle("camara:infoRed", () => {
+  try { return { ok: true, ip: getLocalIP(), web: 3000, socket: 4000 } }
+  catch (e) { return { ok: false, error: e.message } }
+})
+
 // Calentar la detección de encoder unos segundos tras arrancar, para que al
 // dar "Salir en vivo" ya esté elegido (conecta más rápido). Se cachea en memoria.
 if (ffmpegPath) setTimeout(() => { elegirEncoder().catch(() => {}) }, 4000)
@@ -957,6 +964,44 @@ try {
       socket.broadcast.to(salaDe(socket)).emit("cargar-cancion", data)
     })
 
+    // ── Señalización WebRTC: "cámara desde el celular" ──────────────────────
+    // El PC (host) abre una sala por CÓDIGO; el celular (emisor) se une con ese
+    // código; el servidor solo hace de RELAY de la señalización (SDP/ICE). El
+    // video va directo PC↔celular por la LAN (no pasa por el servidor).
+    const salaCam = (c) => "cam-" + String(c || "").trim().toUpperCase()
+
+    socket.on("camara:host", ({ codigo } = {}) => {
+      if (!codigo) return
+      socket.data.camaraCodigo = codigo
+      socket.data.camaraRol = "host"
+      socket.join(salaCam(codigo))
+      console.log("📷 host de cámara:", codigo)
+    })
+
+    socket.on("camara:unir", ({ codigo } = {}, cb) => {
+      const room = salaCam(codigo)
+      const set = io.sockets.adapter.rooms.get(room)
+      const hayHost = !!set && [...set].some(id => io.sockets.sockets.get(id)?.data?.camaraRol === "host")
+      if (!hayHost) { if (typeof cb === "function") cb({ ok: false, error: "no-host" }); return }
+      socket.data.camaraCodigo = codigo
+      socket.data.camaraRol = "emisor"
+      socket.join(room)
+      socket.broadcast.to(room).emit("camara:emisor-listo")
+      if (typeof cb === "function") cb({ ok: true })
+      console.log("📷 emisor unido:", codigo)
+    })
+
+    // Relay de la señalización (oferta/respuesta/ICE) al OTRO peer de la sala.
+    socket.on("camara:senal", ({ codigo, data } = {}) => {
+      if (!codigo || !data) return
+      socket.broadcast.to(salaCam(codigo)).emit("camara:senal", { data, de: socket.data.camaraRol })
+    })
+
+    socket.on("camara:fin", ({ codigo } = {}) => {
+      const c = codigo || socket.data.camaraCodigo
+      if (c) socket.broadcast.to(salaCam(c)).emit("camara:par-fin", { de: socket.data.camaraRol })
+    })
+
     socket.on("disconnect", () => {
       const sala = socket.data?.sala
       const pantalla = socket.data?.pantalla
@@ -964,6 +1009,10 @@ try {
       // Notificar al control cuando el proyector se cierra
       if (pantalla === "proyectar" && sala) {
         socket.broadcast.to(sala).emit("proyector-desconectado")
+      }
+      // Avisar al otro peer de la cámara si uno se cae.
+      if (socket.data?.camaraCodigo) {
+        socket.broadcast.to(salaCam(socket.data.camaraCodigo)).emit("camara:par-fin", { de: socket.data.camaraRol })
       }
     })
   })
