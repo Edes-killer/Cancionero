@@ -1,6 +1,6 @@
 # Selah Live — Documento de Diseño (SDD) y Contexto de Desarrollo
 
-> Versión del documento: 2026-08-13 · App: **v0.5.19** · Mantener al día al cerrar cada release.
+> Versión del documento: 2026-08-13 · App: **v0.5.20** · Mantener al día al cerrar cada release.
 
 ---
 
@@ -137,6 +137,13 @@ vivo por evento `storage`. Atajos de teclado (espacio/flechas/±/0/ESC).
 ### 6.3 Cancionero + importar PPT→canciones — `app/canciones/page.tsx`
 Editor de canciones/partes, teclado de acordes (inserta `[Do]` en el cursor), y un importador que usa
 **jszip** para sacar el TEXTO de `.pptx` y crear canciones (distinto del importador de imágenes de 6.5).
+
+**Modo improvisación (v0.5.20)** — `lib/improvisacion.ts` (motor puro: parsea el tono español/americano
+mayor/menor + transposición → sugiere escalas: pentatónicas, mayor/menor, blues, relativa) +
+`components/Improvisador.tsx` (pestañas de escalas + piano SVG que marca las notas, tónica destacada).
+Integrado en `/musicos` (botón 🎼) con el tono de la canción actual. También en 0.5.20: reorg de los
+controles de `/en-vivo` en **secciones colapsables** (Cámaras/Escena/Fuentes/Mensaje/Apariencia/Salir) y
+pulido de `/musicos` (rótulos en los botones, botón "volver al tono original").
 
 ### 6.4 TRANSMISIÓN nativa — `app/en-vivo/page.tsx` + `electron/main.js`  ⭐ subsistema mayor
 Pipeline (solo escritorio):

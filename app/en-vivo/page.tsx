@@ -6,7 +6,7 @@
 // la vista previa de "lo que saldría al aire". El botón "Salir en vivo" (empujar
 // a Facebook/YouTube por RTMP con ffmpeg) llega en el siguiente incremento.
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { io, Socket } from "socket.io-client"
 import { navegarSPA } from "@/lib/navegar"
@@ -42,6 +42,25 @@ const C = {
 
 const ANCHO = 1280, ALTO = 720 // lienzo de salida (720p)
 const CELULAR = "__celular__" // "deviceId" especial: la cámara es el celular (WebRTC)
+
+// Sección colapsable de los controles (a nivel módulo para no perder su estado
+// al re-renderizar). Encabezado que abre/cierra; la más usada arranca abierta.
+function Seccion({ titulo, sub, defaultOpen = false, children }: { titulo: string; sub?: string; defaultOpen?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, overflow: "hidden" }}>
+      <button onClick={() => setOpen(o => !o)} aria-expanded={open}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "15px 20px", background: "transparent", border: "none", cursor: "pointer", color: C.texto, textAlign: "left", fontFamily: "inherit" }}>
+        <span style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>{titulo}</span>
+          {sub && <span style={{ fontSize: 11.5, color: C.tenue }}>{sub}</span>}
+        </span>
+        <span style={{ fontSize: 13, color: C.tenue, transform: open ? "rotate(90deg)" : "none", transition: "transform .15s", flexShrink: 0 }}>▸</span>
+      </button>
+      {open && <div style={{ padding: "0 20px 20px" }}>{children}</div>}
+    </div>
+  )
+}
 
 // Posiciones/tamaños por defecto de los objetos movibles (para "Resetear").
 const POS_DEF = {
@@ -1272,8 +1291,8 @@ export default function EnVivoPage() {
 
         {/* Columna derecha: controles (con scroll propio en escritorio) */}
         <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0, ...(esAncho ? { maxHeight: "calc(100vh - 48px)", overflowY: "auto", paddingRight: 4 } : {}) }}>
-        {/* Controles */}
-        <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, padding: 20 }}>
+        {/* Cámaras y micrófono */}
+        <Seccion titulo="Cámaras y micrófono" defaultOpen>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <label style={{ fontSize: 12.5, color: C.tenue }}>
               🎥 Cámara 1
@@ -1321,11 +1340,11 @@ export default function EnVivoPage() {
               </div>
             </div>
           )}
+        </Seccion>
 
-          <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.borde}` }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>Escena al aire</div>
-              <div style={{ fontSize: 12, color: C.tenue }}>
+        {/* Escena al aire */}
+        <Seccion titulo="Escena al aire" defaultOpen>
+            <div style={{ fontSize: 12, color: C.tenue, marginBottom: 12 }}>
                 {conectadoSala
                   ? (estadoEsp ? `Proyectando: ${nombreEstado(estadoEsp.tipo)}`
                     : biblia?.referencia ? `Proyectando: ${biblia.referencia}`
@@ -1334,7 +1353,6 @@ export default function EnVivoPage() {
                     : imagenUrl ? "Proyectando una imagen"
                     : "Sin proyección activa")
                   : "Conectando con la proyección…"}
-              </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
               {([
@@ -1380,8 +1398,11 @@ export default function EnVivoPage() {
               </button>
               <span style={{ fontSize: 12.5, color: C.suave }}>Fundido suave al cambiar de escena</span>
             </div>
+        </Seccion>
 
-            <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.borde}` }}>
+        {/* Fuentes: pantalla y celular */}
+        <Seccion titulo="Fuentes" sub="Pantalla · Celular">
+            <div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                 <div style={{ flex: 1, minWidth: 180 }}>
                   <div style={{ fontSize: 14, fontWeight: 700 }}>🖥️ Compartir pantalla</div>
@@ -1417,11 +1438,10 @@ export default function EnVivoPage() {
               {celularOn && <div style={{ fontSize: 11.5, color: "#4ade80", marginTop: 8, fontWeight: 700 }}>● Celular conectado como cámara</div>}
               {!esEscritorio && <div style={{ fontSize: 11.5, color: C.tenue, marginTop: 8 }}>Disponible solo en la app de escritorio.</div>}
             </div>
-          </div>
+        </Seccion>
 
-          {/* Mensaje en vivo */}
-          <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.borde}` }}>
-            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Mensaje en vivo</div>
+        {/* Mensaje en vivo */}
+        <Seccion titulo="Mensaje en vivo">
             <div style={{ fontSize: 12, color: C.tenue, marginBottom: 12 }}>Un texto que aparece abajo, sobre cualquier escena (ej. “Bienvenidos”, “Ofrenda por transferencia…”).</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <input value={mensajeVivo} onChange={e => setMensajeVivo(e.target.value)}
@@ -1446,11 +1466,10 @@ export default function EnVivoPage() {
                 </button>
               ))}
             </div>
-          </div>
+        </Seccion>
 
-          {/* Personalización */}
-          <div style={{ marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.borde}` }}>
-            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Personalización</div>
+        {/* Apariencia (personalización) */}
+        <Seccion titulo="Apariencia" sub="Diseño · color · logo">
 
             {/* Color de la letra */}
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
@@ -1563,12 +1582,10 @@ export default function EnVivoPage() {
                 </div>
               )}
             </div>
-          </div>
-        </div>
+        </Seccion>
 
         {/* Salir en vivo */}
-        <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, padding: 20, marginTop: 18 }}>
-          <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 4 }}>Salir en vivo</div>
+        <Seccion titulo="Salir en vivo" sub="Transmite a tu plataforma" defaultOpen>
           <div style={{ fontSize: 12.5, color: C.tenue, marginBottom: 16 }}>Transmite esta vista directo a tu plataforma.</div>
 
           {!esEscritorio ? (
@@ -1728,7 +1745,7 @@ export default function EnVivoPage() {
               </div>
             </details>
           )}
-        </div>
+        </Seccion>
 
         {/* Aviso de conexión */}
         <div style={{ marginTop: 4, fontSize: 12, color: C.tenue, textAlign: "center", lineHeight: 1.6 }}>
