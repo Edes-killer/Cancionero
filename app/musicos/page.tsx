@@ -8,6 +8,7 @@ import { getSocketUrl, buscarServidorEnRed } from "../../lib/servidor"
 import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "../../lib/cache"
 import { ocultarGlobalesConCopia } from "@/context/AppContext"
 import PitchDetector from "@/components/PitchDetector"
+import Improvisador from "@/components/Improvisador"
 
 export default function MusicosPage() {
   const [partes, setPartes] = useState<any[]>([])
@@ -100,6 +101,7 @@ export default function MusicosPage() {
   // ── Modo: "repertorio" por defecto — funciona siempre sin servidor ────────
   const [modo, setModo] = useState<"vivo" | "repertorio">("repertorio")
   const [tunerAbierto, setTunerAbierto] = useState(false)
+  const [improvAbierto, setImprovAbierto] = useState(false)
   const [cancionesRepo, setCancionesRepo] = useState<any[]>([])
   const [cargandoRepo, setCargandoRepo] = useState(false)
   const [busquedaRepo, setBusquedaRepo] = useState("")
@@ -719,28 +721,39 @@ export default function MusicosPage() {
           onClick={() => setTunerAbierto(v => !v)}
           title="Afinador en tiempo real"
           style={{
-            width: esMovil ? 44 : 52, height: esMovil ? 44 : 52,
+            minWidth: esMovil ? 48 : 58, height: esMovil ? 46 : 52, padding: "4px 8px",
             borderRadius: 12, border: `1px solid ${tunerAbierto ? "rgba(251,191,36,0.5)" : "rgba(255,255,255,0.12)"}`,
             background: tunerAbierto ? "rgba(251,191,36,0.15)" : "rgba(255,255,255,0.07)",
-            color: "white", fontSize: 20, cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            flexShrink: 0
+            color: "white", cursor: "pointer", flexShrink: 0,
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1
           }}
-        >🎙️</button>
+        ><span style={{ fontSize: esMovil ? 17 : 19 }}>🎙️</span><span style={{ fontSize: 9, fontWeight: 700, opacity: 0.85 }}>Afinar</span></button>
+
+        {/* ── Botón Improvisar ── */}
+        <button
+          onClick={() => setImprovAbierto(v => !v)}
+          title="Escalas para improvisar en el tono de la canción"
+          style={{
+            minWidth: esMovil ? 56 : 66, height: esMovil ? 46 : 52, padding: "4px 8px",
+            borderRadius: 12, border: `1px solid ${improvAbierto ? "rgba(37,99,235,0.5)" : "rgba(255,255,255,0.12)"}`,
+            background: improvAbierto ? "rgba(37,99,235,0.15)" : "rgba(255,255,255,0.07)",
+            color: "white", cursor: "pointer", flexShrink: 0,
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1
+          }}
+        ><span style={{ fontSize: esMovil ? 17 : 19 }}>🎼</span><span style={{ fontSize: 9, fontWeight: 700, opacity: 0.85 }}>Improvisar</span></button>
 
         {/* Botón abrir panel */}
         <button
           className="ctrl-m"
           onClick={() => setPanelAbierto(v => !v)}
           style={{
-            width: esMovil ? 44 : 52, height: esMovil ? 44 : 52,
+            minWidth: esMovil ? 48 : 58, height: esMovil ? 46 : 52, padding: "4px 8px",
             borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)",
             background: panelAbierto ? "rgba(34,197,94,0.2)" : "rgba(255,255,255,0.07)",
-            color: "white", fontSize: 22, cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            flexShrink: 0
+            color: "white", cursor: "pointer", flexShrink: 0,
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1
           }}
-        >⚙️</button>
+        ><span style={{ fontSize: esMovil ? 17 : 19 }}>⚙️</span><span style={{ fontSize: 9, fontWeight: 700, opacity: 0.85 }}>Ajustes</span></button>
       </div>
 
       {/* ── MODAL AFINADOR ─────────────────────────────────────────────────── */}
@@ -790,6 +803,28 @@ export default function MusicosPage() {
             <div style={{ textAlign: "center", padding: "8px 16px 16px", fontSize: 11, color: "rgba(255,255,255,0.25)" }}>
               Toca cualquier nota — la app detecta el tono en tiempo real
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL IMPROVISAR ──────────────────────────────────────────────────── */}
+      {improvAbierto && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 200,
+          background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)",
+          display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 0 20px"
+        }} onClick={() => setImprovAbierto(false)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            width: "100%", maxWidth: 460, background: "rgba(10,18,38,0.98)",
+            border: "1px solid rgba(255,255,255,0.08)", borderRadius: "20px 20px 16px 16px",
+            padding: "6px 16px 18px", fontFamily: "'Segoe UI',system-ui,sans-serif", maxHeight: "88vh", overflowY: "auto"
+          }}>
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.15)", margin: "0 auto 14px" }} />
+            <Improvisador
+              tono={modo === "repertorio" ? (cancionRepo?.tono || "") : tono}
+              pasos={modo === "repertorio" ? transposicionRepo : transposicion}
+              americano={usarAmericano}
+            />
           </div>
         </div>
       )}
@@ -1282,16 +1317,23 @@ export default function MusicosPage() {
             style={btnBarraStyle(esMovil)}>
             ▲
           </button>
+
+          {transposicion !== 0 && (
+            <button className="ctrl-m" onClick={() => setTransposicion(0)} title="Volver al tono original"
+              style={{ ...btnBarraStyle(esMovil), color: "#fbbf24", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.3)", fontSize: esMovil ? 13 : 15 }}>
+              ↺
+            </button>
+          )}
         </div>
 
         {/* Info centro */}
-        <div style={{ textAlign: "center", flex: 1 }}>
+        <div style={{ textAlign: "center", flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: esMovil ? 11 : 13, fontWeight: 700, opacity: 0.7 }}>
             {etiquetaParte}
           </div>
           {tonoMostrado && (
-            <div style={{ fontSize: esMovil ? 10 : 12, opacity: 0.45, marginTop: 2 }}>
-              🎵 {tonoMostrado}
+            <div style={{ fontSize: esMovil ? 11 : 13, marginTop: 2, fontWeight: 700, color: transposicion !== 0 ? "#fbbf24" : "rgba(255,255,255,0.5)" }}>
+              🎵 {tonoMostrado}{transposicion !== 0 ? " (transpuesto)" : ""}
             </div>
           )}
         </div>
