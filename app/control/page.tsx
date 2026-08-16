@@ -4630,6 +4630,13 @@ return (
               </div>
             )}
 
+            {/* Leyenda: qué hace cada botón de la fila (claridad para nuevos) */}
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 10.5, color: "rgba(255,255,255,0.4)", padding: "0 2px 7px" }}>
+              <span><b style={{ color: "#60a5fa" }}>▶</b> Proyectar ahora</span>
+              <span><b>+</b> Agregar a la lista</span>
+              <span>📱 Vista previa</span>
+            </div>
+
             {/* Lista virtualizada — en mobile se apoya en visualViewport (alturaVP)
                 en vez de 100dvh porque varios WebView de Android no achican el
                 dvh al abrir el teclado, dejando la lista con casi nada de alto
@@ -4649,6 +4656,13 @@ return (
                 overflowX: "hidden",
               }}
             >
+              {cancionesFiltradas.length === 0 && (
+                <div style={{ textAlign: "center", padding: "28px 16px", color: "rgba(255,255,255,0.4)", fontSize: 13, lineHeight: 1.5 }}>
+                  {busqueda
+                    ? `😕 No hay canciones con “${busqueda}”. Prueba con otra búsqueda o revisa los filtros.`
+                    : "Aún no hay canciones. Agrégalas desde la sección 🎵 Canciones."}
+                </div>
+              )}
               <div style={{ height: cancionesFiltradas.length * ALTURA_ITEM_CANCION, position: "relative" }}>
                 <div style={{ transform: `translateY(${inicioVirtualCanciones * ALTURA_ITEM_CANCION}px)` }}>
                   {cancionesVirtuales.map(c => {
@@ -4724,6 +4738,8 @@ return (
                             <button
                               className="ctrl-btn"
                               onClick={e => { e.stopPropagation(); abrirVisor(c) }}
+                              title="Vista previa de la canción"
+                              aria-label="Vista previa"
                               style={{
                                 padding: "4px 6px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.12)",
                                 background: "rgba(255,255,255,0.06)", color: "white",
@@ -4733,6 +4749,8 @@ return (
                             <button
                               className="ctrl-btn"
                               onClick={e => { e.stopPropagation(); proyectar(c.id) }}
+                              title="Proyectar ahora"
+                              aria-label="Proyectar ahora"
                               style={{
                                 padding: "5px 9px",
                                 borderRadius: 8, border: "none",
@@ -4743,6 +4761,8 @@ return (
                             <button
                               className="ctrl-btn"
                               onClick={e => { e.stopPropagation(); agregarALista(c) }}
+                              title="Agregar a la lista del culto"
+                              aria-label="Agregar a la lista"
                               style={{
                                 padding: "5px 9px",
                                 borderRadius: 8, border: "none",

@@ -48,7 +48,7 @@ const CELULAR = "__celular__" // "deviceId" especial: la cámara es el celular (
 function Seccion({ titulo, sub, defaultOpen = false, children }: { titulo: string; sub?: string; defaultOpen?: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, overflow: "hidden" }}>
+    <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, overflow: "hidden", flexShrink: 0 }}>
       <button onClick={() => setOpen(o => !o)} aria-expanded={open}
         style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "15px 20px", background: "transparent", border: "none", cursor: "pointer", color: C.texto, textAlign: "left", fontFamily: "inherit" }}>
         <span style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
