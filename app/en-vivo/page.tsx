@@ -316,6 +316,15 @@ export default function EnVivoPage() {
   const camSocketRef = useRef<Socket | null>(null)
   const camCodigoRef = useRef("")
 
+  // ── Emisión directa (link propio en la red): el PC emite a N espectadores ──────
+  const [emisionOn, setEmisionOn] = useState(false)
+  const [verUrl, setVerUrl] = useState("")          // link que abre la congregación
+  const [numVer, setNumVer] = useState(0)           // espectadores conectados
+  const [copiado, setCopiado] = useState(false)
+  const emiSocketRef = useRef<Socket | null>(null)
+  const emiStreamRef = useRef<MediaStream | null>(null)          // salida capturada 1 vez
+  const emiPeersRef = useRef<Map<string, RTCPeerConnection>>(new Map())
+
   const [calidad, setCalidad] = useState<"baja" | "media" | "alta">("media")
   const CALIDAD_KBPS: Record<string, number> = { baja: 1200, media: 2500, alta: 4500 }
 
@@ -589,6 +598,9 @@ export default function EnVivoPage() {
     phoneStreamRef.current?.getTracks().forEach(t => t.stop())
     try { pcHostRef.current?.close() } catch {}
     try { camSocketRef.current?.close() } catch {}
+    try { emiSocketRef.current?.emit("emision:fin") } catch {}
+    emiPeersRef.current.forEach(pc => { try { pc.close() } catch {} })
+    try { emiSocketRef.current?.close() } catch {}
   }, [])
 
   // Refrescar la lista cuando conectas/desconectas una cámara (o el celular por
@@ -1082,6 +1094,78 @@ export default function EnVivoPage() {
     })
     socket.on("camara:par-fin", () => cerrarCamaraCelular(false))
     socket.on("connect_error", () => { setCamEstado("error"); setCamError("No se pudo abrir la señalización.") })
+  }
+
+  // ── Emisión directa ─────────────────────────────────────────────────────────
+  // El PC mantiene una RTCPeerConnection por cada espectador y les manda la MISMA
+  // salida (lienzo + audio). Sirve para la congregación en la red local; para
+  // muchísimos espectadores por internet convendría una plataforma (Facebook/YT).
+  const iniciarEmision = async () => {
+    const tx = (window as any).transmision
+    if (!tx?.infoRedCamara) { setErrorTx("La emisión directa funciona solo en la app de escritorio."); return }
+    if (!canvasRef.current) { setErrorTx("La vista aún no está lista."); return }
+    setErrorTx(null)
+    const info = await tx.infoRedCamara()
+    if (!info?.ok) { setErrorTx("No se pudo obtener la IP de la red."); return }
+    setVerUrl(`http://${info.ip}:${info.web}/ver`)
+
+    // Una sola captura de salida; sus tracks se comparten entre todos los peers.
+    emiStreamRef.current = streamSalida()
+    if (!emiStreamRef.current) { setErrorTx("No se pudo capturar la salida."); return }
+
+    const socket = io(getSocketUrl(), { transports: ["websocket", "polling"], forceNew: true })
+    emiSocketRef.current = socket
+    socket.on("connect", () => socket.emit("emision:host"))
+
+    // Un espectador nuevo → crear su PC, agregar la salida y mandarle la oferta.
+    socket.on("emision:nuevo-espectador", async ({ id }: { id: string }) => {
+      try {
+        const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] })
+        emiPeersRef.current.set(id, pc)
+        setNumVer(emiPeersRef.current.size)
+        emiStreamRef.current!.getTracks().forEach(t => pc.addTrack(t, emiStreamRef.current!))
+        pc.onicecandidate = e => { if (e.candidate) socket.emit("emision:senal", { para: id, data: { tipo: "ice", candidate: e.candidate } }) }
+        pc.onconnectionstatechange = () => {
+          if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+            try { pc.close() } catch {}
+            emiPeersRef.current.delete(id); setNumVer(emiPeersRef.current.size)
+          }
+        }
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
+        socket.emit("emision:senal", { para: id, data: { tipo: "offer", sdp: pc.localDescription } })
+      } catch {}
+    })
+
+    // Respuesta/ICE de un espectador (dirigida por su socket.id en `de`).
+    socket.on("emision:senal", async ({ data, de }: { data?: any; de?: string }) => {
+      const pc = de ? emiPeersRef.current.get(de) : null
+      if (!pc || !data) return
+      try {
+        if (data.tipo === "answer") await pc.setRemoteDescription(data.sdp)
+        else if (data.tipo === "ice" && data.candidate) await pc.addIceCandidate(data.candidate)
+      } catch {}
+    })
+
+    socket.on("emision:espectador-fin", ({ id }: { id: string }) => {
+      const pc = emiPeersRef.current.get(id)
+      if (pc) { try { pc.close() } catch {}; emiPeersRef.current.delete(id); setNumVer(emiPeersRef.current.size) }
+    })
+
+    setEmisionOn(true)
+  }
+
+  const detenerEmision = () => {
+    try { emiSocketRef.current?.emit("emision:fin") } catch {}
+    emiPeersRef.current.forEach(pc => { try { pc.close() } catch {} })
+    emiPeersRef.current.clear()
+    try { emiSocketRef.current?.close() } catch {}; emiSocketRef.current = null
+    emiStreamRef.current = null
+    setEmisionOn(false); setNumVer(0); setVerUrl("")
+  }
+
+  const copiarLink = async () => {
+    try { await navigator.clipboard.writeText(verUrl); setCopiado(true); setTimeout(() => setCopiado(false), 1500) } catch {}
   }
 
   // Formato de captura preferido (H264 mkv → menos CPU en el i3).
@@ -1745,6 +1829,36 @@ export default function EnVivoPage() {
               </div>
             </details>
           )}
+        </Seccion>
+
+        {/* Emisión directa: link propio en la red, sin plataformas */}
+        <Seccion titulo="Emisión directa" sub="Link propio en la red">
+          <div style={{ fontSize: 11.5, color: C.tenue, marginBottom: 12, lineHeight: 1.55 }}>
+            Reparte un link y quien esté en la misma red WiFi ve el culto en vivo, <strong style={{ color: C.suave }}>sin pasar por Facebook ni YouTube</strong>. Ideal para la congregación o una sala. Para mucha gente por internet, usa las plataformas de arriba.
+          </div>
+          {!emisionOn
+            ? <button onClick={iniciarEmision} disabled={!esEscritorio}
+                style={botonBase({ background: "rgba(37,99,235,0.15)", color: "#93c5fd", padding: "10px 14px", fontSize: 13, border: `1px solid ${C.azul}`, opacity: esEscritorio ? 1 : 0.5 })}>
+                📡 Emitir en la red
+              </button>
+            : <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <span style={{ fontSize: 12.5, color: "#4ade80", fontWeight: 700 }}>● Emitiendo</span>
+                  <span style={{ fontSize: 12, color: C.tenue }}>· {numVer} {numVer === 1 ? "persona viendo" : "personas viendo"}</span>
+                </div>
+                <div style={{ fontSize: 11.5, color: C.tenue, marginBottom: 6 }}>Comparte este link (o dícelo en voz alta):</div>
+                <div style={{ display: "flex", gap: 8, alignItems: "stretch", flexWrap: "wrap" }}>
+                  <input readOnly value={verUrl} onFocus={e => e.currentTarget.select()}
+                    style={{ flex: 1, minWidth: 160, padding: "9px 11px", borderRadius: 8, border: `1px solid ${C.borde}`, background: "rgba(255,255,255,0.05)", color: C.texto, fontSize: 13, fontFamily: "monospace" }} />
+                  <button onClick={copiarLink} style={botonBase({ background: copiado ? C.verde : "rgba(255,255,255,0.08)", color: copiado ? "#fff" : C.texto, padding: "9px 13px", fontSize: 12.5 })}>
+                    {copiado ? "✓ Copiado" : "📋 Copiar"}
+                  </button>
+                </div>
+                <button onClick={detenerEmision} style={botonBase({ background: C.rojo, color: "#fff", padding: "9px 13px", fontSize: 12.5, marginTop: 12 })}>
+                  Detener emisión
+                </button>
+              </div>}
+          {!esEscritorio && <div style={{ fontSize: 11.5, color: C.tenue, marginTop: 8 }}>Disponible solo en la app de escritorio.</div>}
         </Seccion>
 
         {/* Aviso de conexión */}

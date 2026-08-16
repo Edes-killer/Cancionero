@@ -1002,6 +1002,42 @@ try {
       if (c) socket.broadcast.to(salaCam(c)).emit("camara:par-fin", { de: socket.data.camaraRol })
     })
 
+    // ── Señalización WebRTC: "emisión directa" (link propio en la red) ──────────
+    // El PC (emisor) mantiene una RTCPeerConnection por CADA espectador, así que
+    // aquí la señalización es DIRIGIDA por socket.id (no broadcast como la cámara).
+    // El video/audio va directo PC→espectador por la LAN; el servidor solo hace de
+    // relay de la señalización (SDP/ICE) y avisa al emisor cuando llega un nuevo par.
+    const emisorDeEmision = () => {
+      const set = io.sockets.adapter.rooms.get("emision")
+      return set && [...set].find(id => io.sockets.sockets.get(id)?.data?.emisionRol === "emisor")
+    }
+
+    socket.on("emision:host", () => {
+      socket.data.emisionRol = "emisor"
+      socket.join("emision")
+      console.log("📡 emisor de emisión directa listo")
+    })
+
+    socket.on("emision:ver", (_ = {}, cb) => {
+      const emisorId = emisorDeEmision()
+      if (!emisorId) { if (typeof cb === "function") cb({ ok: false, error: "sin-emision" }); return }
+      socket.data.emisionRol = "espectador"
+      socket.join("emision")
+      io.to(emisorId).emit("emision:nuevo-espectador", { id: socket.id })
+      if (typeof cb === "function") cb({ ok: true })
+      console.log("📡 espectador unido:", socket.id)
+    })
+
+    // Señal dirigida a un socket concreto (oferta/respuesta/ICE entre emisor y par).
+    socket.on("emision:senal", ({ para, data } = {}) => {
+      if (!para || !data) return
+      io.to(para).emit("emision:senal", { data, de: socket.id })
+    })
+
+    socket.on("emision:fin", () => {
+      if (socket.data?.emisionRol === "emisor") socket.broadcast.to("emision").emit("emision:fin")
+    })
+
     socket.on("disconnect", () => {
       const sala = socket.data?.sala
       const pantalla = socket.data?.pantalla
@@ -1013,6 +1049,14 @@ try {
       // Avisar al otro peer de la cámara si uno se cae.
       if (socket.data?.camaraCodigo) {
         socket.broadcast.to(salaCam(socket.data.camaraCodigo)).emit("camara:par-fin", { de: socket.data.camaraRol })
+      }
+      // Emisión directa: si cae un espectador, avisar al emisor para que cierre su
+      // PC; si cae el emisor, avisar a todos los espectadores.
+      if (socket.data?.emisionRol === "espectador") {
+        const emisorId = emisorDeEmision()
+        if (emisorId) io.to(emisorId).emit("emision:espectador-fin", { id: socket.id })
+      } else if (socket.data?.emisionRol === "emisor") {
+        socket.broadcast.to("emision").emit("emision:fin")
       }
     })
   })
