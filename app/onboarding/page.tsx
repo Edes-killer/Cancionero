@@ -10,9 +10,10 @@ const STEPS = ["bienvenida", "iglesia", "logo", "tour"] as const
 type Step = typeof STEPS[number]
 
 const FEATURES = [
-  { icon: "📱", titulo: "Control desde el celular", desc: "Maneja la proyección desde tu teléfono vía WiFi sin cables" },
-  { icon: "🎵", titulo: "1000 himnos incluidos", desc: "Cancionero completo listo para usar desde el primer día" },
-  { icon: "🎸", titulo: "Vista músicos", desc: "Acordes en notación latina y transposición en tiempo real" },
+  { icon: "📱", titulo: "Control desde el celular", desc: "Maneja la proyección desde tu teléfono por WiFi, sin cables" },
+  { icon: "🎥", titulo: "Transmisión en vivo", desc: "Saca el culto al aire a Facebook y YouTube — hasta con la cámara de tu celular" },
+  { icon: "🎵", titulo: "Cancionero e himnos", desc: "Himnos, acordes y tonos listos para proyectar desde el primer día" },
+  { icon: "🎸", titulo: "Vista músicos", desc: "Acordes en notación latina, transposición y modo improvisación" },
 ]
 
 export default function OnboardingPage() {
@@ -235,7 +236,7 @@ export default function OnboardingPage() {
           <div>
             <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 6px" }}>✅ ¡Todo listo!</h2>
             <p style={{ fontSize: 14, opacity: 0.5, margin: "0 0 20px" }}>
-              Antes de empezar, conoce las 3 funciones principales
+              Antes de empezar, conoce lo que puedes hacer con Selah
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
               {FEATURES.map(f => (
