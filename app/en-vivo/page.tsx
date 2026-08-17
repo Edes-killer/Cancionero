@@ -216,8 +216,12 @@ export default function EnVivoPage() {
       const nom = localStorage.getItem("en-vivo-nombre"); if (nom) { const o = JSON.parse(nom); if (o.pos) setNombrePos(o.pos); if (o.tam) setNombreTam(o.tam) }
       const let_ = localStorage.getItem("en-vivo-letra"); if (let_) { const o = JSON.parse(let_); if (o.pos) setLetraPos(o.pos); if (o.tam) setLetraTam(o.tam) }
       const mp = localStorage.getItem("en-vivo-mensaje-pos"); if (mp === "arriba" || mp === "abajo") setMensajePos(mp)
+      const mv = localStorage.getItem("en-vivo-mensaje"); if (mv) setMensajeVivo(mv)
+      const vm = localStorage.getItem("en-vivo-vol-mic"); if (vm) { const n = Number(vm); if (n >= 0 && n <= 150) { setVolMic(n); volMicRef.current = n } }
     } catch {}
   }, [])
+  // Persistir el texto del mensaje (con leve retardo para no escribir en cada tecla).
+  useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-mensaje", mensajeVivo) } catch {} }, 400); return () => clearTimeout(t) }, [mensajeVivo])
   const guardarColor = (c: string) => { setColorLetra(c); try { localStorage.setItem("en-vivo-color-letra", c) } catch {} }
   const guardarAcento = (c: string) => { setAcento(c); try { localStorage.setItem("en-vivo-acento", c) } catch {} }
   const guardarDiseno = (d: Diseno) => { setDiseno(d); try { localStorage.setItem("en-vivo-diseno", d) } catch {} }
@@ -290,6 +294,16 @@ export default function EnVivoPage() {
   const [audioGen, setAudioGen] = useState(0) // sube cada vez que hay un track de audio nuevo listo
   const audioCtxRef = useRef<any>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
+  // Volumen del micrófono. El audio de salida pasa por un grafo WebAudio estable
+  // (fuente→ganancia→destino): el track de salida NO cambia al cambiar de micro,
+  // así la transmisión no se queda muda. La ganancia también silencia en "espera".
+  const [volMic, setVolMic] = useState(100) // 0..150 (%)
+  const volMicRef = useRef(100)
+  const escenaRef = useRef<string>("camara-letra")
+  const salidaCtxRef = useRef<AudioContext | null>(null)
+  const gainRef = useRef<GainNode | null>(null)
+  const destRef = useRef<MediaStreamAudioDestinationNode | null>(null)
+  const srcNodeRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const vuFillRef = useRef<HTMLDivElement | null>(null)   // barra de nivel (se anima por DOM, sin re-render)
   const vuPeakRef = useRef<HTMLDivElement | null>(null)   // marca de pico
   const rafVuRef = useRef<number>(0)
@@ -548,6 +562,21 @@ export default function EnVivoPage() {
     }
   }, [audioGen, microId, celularOn])
 
+  // Re-enchufar el micro ACTIVO al grafo de salida cuando cambia (device o celular).
+  // El track de salida (destino) no cambia → la transmisión/emisión no se corta.
+  useEffect(() => {
+    conectarMicSalida(trackMicActivo())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioGen, microId, celularOn])
+
+  // Volumen del micro + silenciar en "espera" (gain=0), sin cortar el track.
+  useEffect(() => {
+    escenaRef.current = escena
+    volMicRef.current = volMic
+    aplicarVolumenSalida()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [escena, volMic])
+
   // Aviso de "sin audio": el micro lleva >4s en silencio mientras hay cámara.
   useEffect(() => {
     if (permiso !== "ok") return
@@ -601,6 +630,9 @@ export default function EnVivoPage() {
     try { emiSocketRef.current?.emit("emision:fin") } catch {}
     emiPeersRef.current.forEach(pc => { try { pc.close() } catch {} })
     try { emiSocketRef.current?.close() } catch {}
+    try { srcNodeRef.current?.disconnect() } catch {}
+    try { salidaCtxRef.current?.close() } catch {}
+    salidaCtxRef.current = null; gainRef.current = null; destRef.current = null; srcNodeRef.current = null
   }, [])
 
   // Refrescar la lista cuando conectas/desconectas una cámara (o el celular por
@@ -880,14 +912,53 @@ export default function EnVivoPage() {
   const construirUrls = (): string[] =>
     PLATAFORMAS.filter(p => destinos[p.key].activo).map(p => urlDeDestino(p.key, destinos[p.key].valor)).filter(Boolean)
 
-  // Un MediaStream nuevo del lienzo + audio (cada captureStream da un track
-  // propio; el audio se puede compartir entre varios streams sin problema).
+  // ── Grafo de audio de salida (WebAudio) ──────────────────────────────────────
+  // fuente(mic activo) → ganancia → destino. El track del DESTINO es estable: la
+  // transmisión/emisión lo captura una vez y no se corta aunque cambies de micro
+  // (solo re-enchufamos la fuente a la ganancia). La ganancia da volumen y silencia
+  // en la escena "espera" (gain=0), sin cortar el track.
+  const asegurarAudioSalida = (): AudioContext | null => {
+    if (!salidaCtxRef.current) {
+      const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext
+      if (!Ctx) return null
+      const ctx: AudioContext = new Ctx()
+      salidaCtxRef.current = ctx
+      gainRef.current = ctx.createGain()
+      destRef.current = ctx.createMediaStreamDestination()
+      gainRef.current.connect(destRef.current)
+    }
+    try { salidaCtxRef.current.resume?.() } catch {}
+    return salidaCtxRef.current
+  }
+  const aplicarVolumenSalida = () => {
+    if (gainRef.current) gainRef.current.gain.value = escenaRef.current === "espera" ? 0 : volMicRef.current / 100
+  }
+  const trackMicActivo = (): MediaStreamTrack | null => {
+    const cel = phoneStreamRef.current?.getAudioTracks?.()[0]
+    if (microId === CELULAR) return cel || null
+    return streamRef.current?.getAudioTracks()[0] || null
+  }
+  const conectarMicSalida = (track: MediaStreamTrack | null) => {
+    const ctx = asegurarAudioSalida()
+    if (!ctx || !gainRef.current) return
+    try { srcNodeRef.current?.disconnect() } catch {}
+    srcNodeRef.current = null
+    if (track) {
+      try {
+        const src = ctx.createMediaStreamSource(new MediaStream([track]))
+        src.connect(gainRef.current)
+        srcNodeRef.current = src
+      } catch {}
+    }
+    aplicarVolumenSalida()
+  }
+
+  // Un MediaStream nuevo del lienzo + el audio del grafo (track de destino ESTABLE).
   const streamSalida = (): MediaStream | null => {
     if (!canvasRef.current) return null
-    // Audio: del CELULAR si es el micrófono elegido (y trae audio); si no, del PC.
-    const audioCel = phoneStreamRef.current?.getAudioTracks?.() || []
-    const audio = (microId === CELULAR && audioCel.length > 0) ? audioCel
-                : (streamRef.current?.getAudioTracks() || [])
+    asegurarAudioSalida()
+    if (!srcNodeRef.current) conectarMicSalida(trackMicActivo())
+    const audio = destRef.current ? destRef.current.stream.getAudioTracks() : []
     return new MediaStream([
       ...canvasRef.current.captureStream(30).getVideoTracks(),
       ...audio,
@@ -1337,6 +1408,13 @@ export default function EnVivoPage() {
             <div style={{ position: "relative", height: 12, borderRadius: 99, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
               <div ref={vuFillRef} style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "0%", background: "#4ade80", borderRadius: 99 }} />
               <div ref={vuPeakRef} style={{ position: "absolute", top: -2, bottom: -2, left: "0%", width: 2, background: "rgba(255,255,255,0.9)" }} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+              <span style={{ fontSize: 11.5, color: C.suave, fontWeight: 700, minWidth: 62 }}>🔊 Volumen</span>
+              <input type="range" min={0} max={150} value={volMic}
+                onChange={e => { const v = Number(e.target.value); setVolMic(v); volMicRef.current = v; try { localStorage.setItem("en-vivo-vol-mic", String(v)) } catch {} }}
+                style={{ flex: 1 }} aria-label="Volumen del micrófono" />
+              <span style={{ fontSize: 12, fontWeight: 800, color: volMic === 0 ? "#f87171" : C.texto, minWidth: 40, textAlign: "right" }}>{volMic}%</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 11, color: C.tenue, flex: 1, minWidth: 150 }}>
