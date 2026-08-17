@@ -443,11 +443,13 @@ export default function ConfiguracionPage() {
   // JSX de abajo para resaltar la seleccionada).
   const [escalaFuente, setEscalaFuente] = useState(100)
   const [familiaFuente, setFamiliaFuente] = useState("system")
+  const [recordarUltima, setRecordarUltima] = useState(true)
   useEffect(() => {
     const escalaGuardada = localStorage.getItem("proyector-escala-fuente")
     if (escalaGuardada) setEscalaFuente(Number(escalaGuardada))
     const familiaGuardada = localStorage.getItem("proyector-font-family")
     if (familiaGuardada) setFamiliaFuente(familiaGuardada)
+    setRecordarUltima(localStorage.getItem("selah-recordar-ultima") !== "0")
   }, [])
 
   const mostrarFlash = (msg: string, tipo: "ok" | "error" | "info" = "ok") => {
@@ -1273,6 +1275,39 @@ export default function ConfiguracionPage() {
                   </button>
                 ))}
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── ÚLTIMA ALABANZA ───────────────────────────────────────────── */}
+        <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>🎵 Al abrir el Control</div>
+            <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2 }}>Qué pasa con la última alabanza proyectada</div>
+          </div>
+          <div style={{ padding: "16px 20px" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>Recordar la última alabanza</div>
+                <div style={{ fontSize: 12.5, opacity: 0.55, marginTop: 3, lineHeight: 1.5 }}>
+                  Si está activo, al reabrir el Control vuelve la última alabanza que proyectaste (útil para recuperar tras un corte). Si lo apagas, el Control siempre abre limpio.
+                </div>
+              </div>
+              <button type="button" role="switch" aria-checked={recordarUltima}
+                aria-label="Recordar la última alabanza"
+                onClick={() => {
+                  const v = !recordarUltima
+                  setRecordarUltima(v)
+                  localStorage.setItem("selah-recordar-ultima", v ? "1" : "0")
+                  if (!v) localStorage.removeItem("selah_control_estado")
+                  mostrarFlash(v ? "✅ Recordará la última alabanza" : "✅ El Control abrirá limpio", "ok")
+                }}
+                style={{ position: "relative", width: 46, height: 26, borderRadius: 99, border: "none",
+                  cursor: "pointer", flexShrink: 0, marginTop: 2,
+                  background: recordarUltima ? "#22c55e" : "rgba(255,255,255,0.16)", transition: "background .15s" }}>
+                <span style={{ position: "absolute", top: 3, left: recordarUltima ? 23 : 3, width: 20, height: 20,
+                  borderRadius: 99, background: "#fff", transition: "left .15s" }} />
+              </button>
             </div>
           </div>
         </div>

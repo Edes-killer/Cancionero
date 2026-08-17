@@ -145,7 +145,10 @@ export default function ControlPage() {
   const [sesionExpirando, setSesionExpirando] = useState(false)
   const [canciones, setCanciones] = useState<Cancion[]>([])
   const STORAGE_KEY = "selah_control_estado"
-  const estadoGuardado = typeof window !== "undefined" ? (() => {
+  // El usuario puede desactivar en Configuración que se recuerde la última
+  // alabanza (selah-recordar-ultima="0"): entonces el Control siempre abre limpio.
+  const recordarUltima = typeof window !== "undefined" ? localStorage.getItem("selah-recordar-ultima") !== "0" : true
+  const estadoGuardado = (typeof window !== "undefined" && recordarUltima) ? (() => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") } catch (e) { return null }
   })() : null
 
@@ -1712,9 +1715,11 @@ useEffect(() => {
   siguienteRef.current = siguiente
   anteriorRef.current = anterior
 
-  // ✅ Persistir estado en localStorage para recuperar tras bloqueo
+  // ✅ Persistir estado en localStorage para recuperar tras bloqueo (salvo que el
+  // usuario haya desactivado "Recordar la última alabanza" en Configuración).
   if (typeof window !== "undefined") {
-    if (partes.length > 0) {
+    const recordar = localStorage.getItem("selah-recordar-ultima") !== "0"
+    if (recordar && partes.length > 0) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         partes, index, titulo: tituloActual, activaId
       }))
