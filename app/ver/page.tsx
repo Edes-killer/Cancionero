@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react"
 import { io, type Socket } from "socket.io-client"
 import { getSocketUrl } from "@/lib/servidor"
+import { opusHiFi } from "@/lib/webrtc"
 
 type Estado = "conectando" | "esperando" | "en-vivo" | "finalizada" | "sin-emision"
 
@@ -61,6 +62,8 @@ export default function Ver() {
         }
         await pc.setRemoteDescription(new RTCSessionDescription(data.sdp))
         const answer = await pc.createAnswer()
+        // Pedir audio estéreo de alta calidad (por defecto opus llega mono).
+        answer.sdp = opusHiFi(answer.sdp || "")
         await pc.setLocalDescription(answer)
         socket.emit("emision:senal", { para: de, data: { tipo: "answer", sdp: pc.localDescription } })
       } else if (data.tipo === "ice" && pcRef.current) {
