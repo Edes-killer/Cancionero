@@ -11,6 +11,13 @@ import { getSocketUrl } from "@/lib/servidor"
 
 type Estado = "abriendo" | "listo" | "conectando" | "conectado" | "error"
 
+// Audio en ALTA FIDELIDAD (música): sin procesamiento de voz (echo/ruido/AGC), que
+// arruina cantos e instrumentos. Estéreo y 48 kHz si el equipo los da.
+const AUDIO_HIFI: MediaTrackConstraints = {
+  echoCancellation: false, noiseSuppression: false, autoGainControl: false,
+  sampleRate: { ideal: 48000 }, channelCount: { ideal: 2 },
+}
+
 export default function CamaraMovil() {
   const [estado, setEstado] = useState<Estado>("abriendo")
   const [error, setError] = useState("")
@@ -51,10 +58,10 @@ export default function CamaraMovil() {
         // exact para forzar la cámara pedida (frontal/trasera), no una "parecida".
         // Mejor resolución posible (hasta 1080p); baja sola si el equipo no da.
         video: { facingMode: { exact: modo } as any, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
-        audio: incluirAudio ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false,
+        audio: incluirAudio ? AUDIO_HIFI : false,
       }).catch(async () => {
         // Si "exact" falla (equipo con una sola cámara, etc.), reintentar suave.
-        return navigator.mediaDevices.getUserMedia({ video: { facingMode: modo, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: incluirAudio ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false })
+        return navigator.mediaDevices.getUserMedia({ video: { facingMode: modo, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: incluirAudio ? AUDIO_HIFI : false })
       })
       const nuevoVideo = s.getVideoTracks()[0] || null
       if (incluirAudio) { const a = s.getAudioTracks()[0]; if (a) audioTrackRef.current = a }
