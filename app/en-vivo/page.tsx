@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation"
 import { io, Socket } from "socket.io-client"
 import { navegarSPA } from "@/lib/navegar"
 import { getSocketUrl } from "@/lib/servidor"
+import { opusHiFi, subirBitrateAudio } from "@/lib/webrtc"
 import { getIglesiaId } from "@/lib/getIglesia"
 import { useApp } from "@/context/AppContext"
 import ObjetoEditable from "@/components/ObjetoEditable"
@@ -1210,7 +1211,10 @@ export default function EnVivoPage() {
           }
         }
         const offer = await pc.createOffer()
+        // Audio de música: opus estéreo + bitrate alto (por defecto sería mono ~32k).
+        offer.sdp = opusHiFi(offer.sdp || "")
         await pc.setLocalDescription(offer)
+        await subirBitrateAudio(pc, 256)
         socket.emit("emision:senal", { para: id, data: { tipo: "offer", sdp: pc.localDescription } })
       } catch {}
     })
