@@ -206,7 +206,7 @@ export default function EnVivoPage() {
       const ac = localStorage.getItem("en-vivo-acento"); if (ac) setAcento(ac)
       const ds = localStorage.getItem("en-vivo-diseno"); if (ds && ES_DISENO(ds)) setDiseno(ds)
       const gr = localStorage.getItem("en-vivo-grabar"); if (gr === "0") setGrabar(false)
-      const la = localStorage.getItem("en-vivo-limpiar-audio"); if (la === "0") setLimpiarAudio(false)
+      const la = localStorage.getItem("en-vivo-limpiar-audio"); if (la === "1") { setLimpiarAudio(true); limpiarAudioRef.current = true }
       const ca = localStorage.getItem("en-vivo-calidad"); if (ca === "baja" || ca === "media" || ca === "alta") setCalidad(ca)
       const tr = localStorage.getItem("en-vivo-transiciones"); if (tr === "0") setTransiciones(false)
       const et = localStorage.getItem("en-vivo-espera-texto"); if (et) setEsperaTexto(et)
@@ -216,6 +216,7 @@ export default function EnVivoPage() {
       const nom = localStorage.getItem("en-vivo-nombre"); if (nom) { const o = JSON.parse(nom); if (o.pos) setNombrePos(o.pos); if (o.tam) setNombreTam(o.tam) }
       const let_ = localStorage.getItem("en-vivo-letra"); if (let_) { const o = JSON.parse(let_); if (o.pos) setLetraPos(o.pos); if (o.tam) setLetraTam(o.tam) }
       const mp = localStorage.getItem("en-vivo-mensaje-pos"); if (mp === "arriba" || mp === "abajo") setMensajePos(mp)
+      const ea = localStorage.getItem("en-vivo-espera-auto"); if (ea === "0") setEsperaAutoIniciar(false)
       const mv = localStorage.getItem("en-vivo-mensaje"); if (mv) setMensajeVivo(mv)
       const vm = localStorage.getItem("en-vivo-vol-mic"); if (vm) { const n = Number(vm); if (n >= 0 && n <= 150) { setVolMic(n); volMicRef.current = n } }
     } catch {}
@@ -288,8 +289,10 @@ export default function EnVivoPage() {
   const intentoRef = useRef(0)
 
   // ── Audio: reducción de ruido + medidor de nivel (VU) ───────────────────────
-  const [limpiarAudio, setLimpiarAudio] = useState(true) // supresión de ruido/eco/AGC
-  const limpiarAudioRef = useRef(true)
+  // Por defecto OFF = alta fidelidad para música (el procesamiento de voz arruina
+  // la música). Se activa solo para servicios hablados. [[modulo-transmision-obs]]
+  const [limpiarAudio, setLimpiarAudio] = useState(false) // supresión de ruido/eco/AGC
+  const limpiarAudioRef = useRef(false)
   const [sinAudio, setSinAudio] = useState(false) // el micro lleva un rato en silencio
   const [audioGen, setAudioGen] = useState(0) // sube cada vez que hay un track de audio nuevo listo
   const audioCtxRef = useRef<any>(null)
@@ -350,6 +353,7 @@ export default function EnVivoPage() {
   const [esperaTexto, setEsperaTexto] = useState("El culto comienza pronto")
   const [esperaHasta, setEsperaHasta] = useState<number | null>(null) // timestamp objetivo (ms) o null
   const [esperaMin, setEsperaMin] = useState(10) // minutos para el contador
+  const [esperaAutoIniciar, setEsperaAutoIniciar] = useState(true) // al llegar a 0, pasar a cámara
 
   // Grabar sin transmitir (modo "solo grabar").
   const [grabandoSolo, setGrabandoSolo] = useState(false)
@@ -440,13 +444,14 @@ export default function EnVivoPage() {
         // Detener el stream anterior si cambiamos de dispositivo
         streamRef.current?.getTracks().forEach(t => t.stop())
 
-        // Audio con limpieza opcional (supresión de ruido, eco y ganancia
-        // automática). Clave en iglesias: quita el zumbido del salón.
-        const audioBase: MediaTrackConstraints = {
-          echoCancellation: limpiarAudioRef.current,
-          noiseSuppression: limpiarAudioRef.current,
-          autoGainControl: limpiarAudioRef.current,
-        }
+        // Audio. Por defecto = ALTA FIDELIDAD (música): SIN procesamiento de voz,
+        // porque echoCancellation/noiseSuppression/autoGainControl están pensados
+        // para llamadas y arruinan la música (bombean, meten artefactos). Solo si
+        // el usuario activa "Reducir ruido (voz)" se aplican, para servicios hablados.
+        const audioBase: MediaTrackConstraints = limpiarAudioRef.current
+          ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+          : { echoCancellation: false, noiseSuppression: false, autoGainControl: false,
+              sampleRate: { ideal: 48000 }, channelCount: { ideal: 2 } }
         // El video puede venir del CELULAR (WebRTC) → acá no se pide cámara.
         // El audio puede venir del CELULAR (mic del celular) → acá no se pide mic.
         const constraints: MediaStreamConstraints = {
@@ -921,7 +926,9 @@ export default function EnVivoPage() {
     if (!salidaCtxRef.current) {
       const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext
       if (!Ctx) return null
-      const ctx: AudioContext = new Ctx()
+      // 48 kHz: la tasa nativa del códec opus → sin remuestreos que degraden.
+      let ctx: AudioContext
+      try { ctx = new Ctx({ sampleRate: 48000 }) } catch { ctx = new Ctx() }
       salidaCtxRef.current = ctx
       gainRef.current = ctx.createGain()
       destRef.current = ctx.createMediaStreamDestination()
@@ -975,7 +982,7 @@ export default function EnVivoPage() {
     if (!res?.ok) { setErrorTx(res?.error || "No se pudo iniciar la transmisión."); return false }
     try {
       const salida = streamSalida(); if (!salida) return false
-      const rec = new MediaRecorder(salida, { mimeType: mimeRef.current, videoBitsPerSecond: bitrateRef.current * 1000, audioBitsPerSecond: 128_000 })
+      const rec = new MediaRecorder(salida, { mimeType: mimeRef.current, videoBitsPerSecond: bitrateRef.current * 1000, audioBitsPerSecond: 256_000 })
       rec.ondataavailable = async ev => {
         if (!ev.data || !ev.data.size) return
         try {
@@ -1252,6 +1259,19 @@ export default function EnVivoPage() {
   const guardarEsperaTexto = (t: string) => { setEsperaTexto(t); try { localStorage.setItem("en-vivo-espera-texto", t) } catch {} }
   const iniciarEspera = () => { setEsperaHasta(Date.now() + Math.max(0, esperaMin) * 60000); setEscena("espera") }
 
+  // Al terminar el conteo: sostener "¡Comenzamos!" ~3 s y pasar solo a la escena de
+  // cámara (el micro se des-silencia al salir de "espera"). Se puede desactivar.
+  useEffect(() => {
+    if (!esperaAutoIniciar || escena !== "espera" || !esperaHasta) return
+    const id = setInterval(() => {
+      if (Date.now() >= esperaHasta + 3000) {
+        setEscena("camara-letra")
+        setEsperaHasta(null)
+      }
+    }, 500)
+    return () => clearInterval(id)
+  }, [esperaAutoIniciar, escena, esperaHasta])
+
   // ── Grabar sin transmitir (solo a disco) ────────────────────────────────────
   const grabarSolo = async () => {
     const tx = (window as any).transmision
@@ -1265,7 +1285,7 @@ export default function EnVivoPage() {
     try {
       const salida = streamSalida(); if (!salida) return
       mimeRef.current = elegirMime()
-      const rec = new MediaRecorder(salida, { mimeType: mimeRef.current, videoBitsPerSecond: CALIDAD_KBPS[calidad] * 1000, audioBitsPerSecond: 128_000 })
+      const rec = new MediaRecorder(salida, { mimeType: mimeRef.current, videoBitsPerSecond: CALIDAD_KBPS[calidad] * 1000, audioBitsPerSecond: 256_000 })
       rec.ondataavailable = async ev => {
         if (!ev.data || !ev.data.size) return
         try { const buf = new Uint8Array(await ev.data.arrayBuffer()); tx.enviarChunkGrabacion?.(buf); grabBytesRef.current += buf.byteLength; setGrabMB(Math.round(grabBytesRef.current / 1048576)) } catch {}
@@ -1418,11 +1438,14 @@ export default function EnVivoPage() {
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 11, color: C.tenue, flex: 1, minWidth: 150 }}>
-                {sinAudio ? "No se detecta sonido — revisa el micrófono o que no esté silenciado." : "Habla o toca: la barra debe moverse en verde. Rojo = satura."}
+                {sinAudio ? "No se detecta sonido — revisa el micrófono o que no esté silenciado."
+                          : limpiarAudio ? "Modo voz: reduce ruido para prédica/anuncios. Para música, apágalo."
+                                         : "Modo música (alta fidelidad): sin procesamiento, mejor para cantos e instrumentos."}
               </span>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                <span style={{ fontSize: 11.5, color: C.suave, fontWeight: 700 }}>Reducir ruido</span>
-                <button type="button" onClick={() => { const v = !limpiarAudio; setLimpiarAudio(v); try { localStorage.setItem("en-vivo-limpiar-audio", v ? "1" : "0") } catch {} }} aria-label="Reducir ruido del micrófono"
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+                title="Actívalo solo para servicios hablados. Para música déjalo apagado: el procesamiento de voz arruina el sonido.">
+                <span style={{ fontSize: 11.5, color: C.suave, fontWeight: 700 }}>Reducir ruido (voz)</span>
+                <button type="button" onClick={() => { const v = !limpiarAudio; setLimpiarAudio(v); try { localStorage.setItem("en-vivo-limpiar-audio", v ? "1" : "0") } catch {} }} aria-label="Reducir ruido del micrófono (modo voz)"
                   style={{ position: "relative", width: 42, height: 24, borderRadius: 99, border: "none", cursor: "pointer", background: limpiarAudio ? C.verde : "rgba(255,255,255,0.14)", flexShrink: 0 }}>
                   <span style={{ position: "absolute", top: 3, left: limpiarAudio ? 21 : 3, width: 18, height: 18, borderRadius: 99, background: "#fff", transition: "left .15s" }} />
                 </button>
@@ -1549,6 +1572,14 @@ export default function EnVivoPage() {
                   <button onClick={iniciarEspera} style={botonBase({ background: C.azul, color: "#fff", padding: "8px 14px", fontSize: 12.5 })}>▶ Iniciar cuenta</button>
                   {esperaHasta && <button onClick={() => setEsperaHasta(null)} style={botonBase({ background: "rgba(255,255,255,0.06)", color: C.suave, padding: "8px 12px", fontSize: 12.5 })}>Quitar contador</button>}
                 </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 12, cursor: "pointer" }}
+                  title="Al llegar a 0, pasa solo a la cámara (y el micrófono deja de estar silenciado).">
+                  <button type="button" onClick={() => { const v = !esperaAutoIniciar; setEsperaAutoIniciar(v); try { localStorage.setItem("en-vivo-espera-auto", v ? "1" : "0") } catch {} }} aria-label="Comenzar solo al terminar el conteo"
+                    style={{ position: "relative", width: 42, height: 24, borderRadius: 99, border: "none", cursor: "pointer", background: esperaAutoIniciar ? C.verde : "rgba(255,255,255,0.14)", flexShrink: 0 }}>
+                    <span style={{ position: "absolute", top: 3, left: esperaAutoIniciar ? 21 : 3, width: 18, height: 18, borderRadius: 99, background: "#fff", transition: "left .15s" }} />
+                  </button>
+                  <span style={{ fontSize: 12.5, color: C.suave }}>Al terminar, comenzar solo (pasar a la cámara)</span>
+                </label>
               </div>
             )}
 
