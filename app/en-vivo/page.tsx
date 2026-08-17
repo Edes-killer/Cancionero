@@ -217,7 +217,7 @@ export default function EnVivoPage() {
       const nom = localStorage.getItem("en-vivo-nombre"); if (nom) { const o = JSON.parse(nom); if (o.pos) setNombrePos(o.pos); if (o.tam) setNombreTam(o.tam) }
       const let_ = localStorage.getItem("en-vivo-letra"); if (let_) { const o = JSON.parse(let_); if (o.pos) setLetraPos(o.pos); if (o.tam) setLetraTam(o.tam) }
       const mp = localStorage.getItem("en-vivo-mensaje-pos"); if (mp === "arriba" || mp === "abajo") setMensajePos(mp)
-      const ea = localStorage.getItem("en-vivo-espera-auto"); if (ea === "0") setEsperaAutoIniciar(false)
+      const ea = localStorage.getItem("en-vivo-espera-accion"); if (ea === "camara" || ea === "camara-letra" || ea === "letra" || ea === "nada") setEsperaAccion(ea)
       const mv = localStorage.getItem("en-vivo-mensaje"); if (mv) setMensajeVivo(mv)
       const vm = localStorage.getItem("en-vivo-vol-mic"); if (vm) { const n = Number(vm); if (n >= 0 && n <= 150) { setVolMic(n); volMicRef.current = n } }
     } catch {}
@@ -354,7 +354,8 @@ export default function EnVivoPage() {
   const [esperaTexto, setEsperaTexto] = useState("El culto comienza pronto")
   const [esperaHasta, setEsperaHasta] = useState<number | null>(null) // timestamp objetivo (ms) o null
   const [esperaMin, setEsperaMin] = useState(10) // minutos para el contador
-  const [esperaAutoIniciar, setEsperaAutoIniciar] = useState(true) // al llegar a 0, pasar a cámara
+  // Al llegar a 0 el conteo: qué escena mostrar (o "nada" para no cambiar solo).
+  const [esperaAccion, setEsperaAccion] = useState<Escena | "nada">("camara")
 
   // Grabar sin transmitir (modo "solo grabar").
   const [grabandoSolo, setGrabandoSolo] = useState(false)
@@ -1263,18 +1264,18 @@ export default function EnVivoPage() {
   const guardarEsperaTexto = (t: string) => { setEsperaTexto(t); try { localStorage.setItem("en-vivo-espera-texto", t) } catch {} }
   const iniciarEspera = () => { setEsperaHasta(Date.now() + Math.max(0, esperaMin) * 60000); setEscena("espera") }
 
-  // Al terminar el conteo: sostener "¡Comenzamos!" ~3 s y pasar solo a la escena de
-  // cámara (el micro se des-silencia al salir de "espera"). Se puede desactivar.
+  // Al terminar el conteo: sostener "¡Comenzamos!" ~3 s y pasar solo a la escena
+  // elegida (el micro se des-silencia al salir de "espera"). "nada" = no cambiar.
   useEffect(() => {
-    if (!esperaAutoIniciar || escena !== "espera" || !esperaHasta) return
+    if (esperaAccion === "nada" || escena !== "espera" || !esperaHasta) return
     const id = setInterval(() => {
       if (Date.now() >= esperaHasta + 3000) {
-        setEscena("camara-letra")
+        setEscena(esperaAccion)
         setEsperaHasta(null)
       }
     }, 500)
     return () => clearInterval(id)
-  }, [esperaAutoIniciar, escena, esperaHasta])
+  }, [esperaAccion, escena, esperaHasta])
 
   // ── Grabar sin transmitir (solo a disco) ────────────────────────────────────
   const grabarSolo = async () => {
@@ -1576,14 +1577,17 @@ export default function EnVivoPage() {
                   <button onClick={iniciarEspera} style={botonBase({ background: C.azul, color: "#fff", padding: "8px 14px", fontSize: 12.5 })}>▶ Iniciar cuenta</button>
                   {esperaHasta && <button onClick={() => setEsperaHasta(null)} style={botonBase({ background: "rgba(255,255,255,0.06)", color: C.suave, padding: "8px 12px", fontSize: 12.5 })}>Quitar contador</button>}
                 </div>
-                <label style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 12, cursor: "pointer" }}
-                  title="Al llegar a 0, pasa solo a la cámara (y el micrófono deja de estar silenciado).">
-                  <button type="button" onClick={() => { const v = !esperaAutoIniciar; setEsperaAutoIniciar(v); try { localStorage.setItem("en-vivo-espera-auto", v ? "1" : "0") } catch {} }} aria-label="Comenzar solo al terminar el conteo"
-                    style={{ position: "relative", width: 42, height: 24, borderRadius: 99, border: "none", cursor: "pointer", background: esperaAutoIniciar ? C.verde : "rgba(255,255,255,0.14)", flexShrink: 0 }}>
-                    <span style={{ position: "absolute", top: 3, left: esperaAutoIniciar ? 21 : 3, width: 18, height: 18, borderRadius: 99, background: "#fff", transition: "left .15s" }} />
-                  </button>
-                  <span style={{ fontSize: 12.5, color: C.suave }}>Al terminar, comenzar solo (pasar a la cámara)</span>
-                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 12, flexWrap: "wrap" }}
+                  title="Qué mostrar automáticamente al llegar a 0 (el micrófono deja de estar silenciado al salir de la espera).">
+                  <span style={{ fontSize: 12.5, color: C.suave }}>Al terminar →</span>
+                  <select value={esperaAccion} onChange={e => { const v = e.target.value as Escena | "nada"; setEsperaAccion(v); try { localStorage.setItem("en-vivo-espera-accion", v) } catch {} }}
+                    style={{ ...selectEstilo, marginTop: 0, width: "auto", minWidth: 150 }} aria-label="Acción al terminar el conteo">
+                    <option value="camara">📹 Mostrar cámara</option>
+                    <option value="camara-letra">📹 Cámara + letra</option>
+                    <option value="letra">📝 Solo letra</option>
+                    <option value="nada">⏸ No hacer nada</option>
+                  </select>
+                </div>
               </div>
             )}
 
