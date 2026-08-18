@@ -9,6 +9,7 @@ import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } fro
 import { ocultarGlobalesConCopia } from "@/context/AppContext"
 import PitchDetector from "@/components/PitchDetector"
 import Improvisador from "@/components/Improvisador"
+import Ensayo from "@/components/Ensayo"
 
 export default function MusicosPage() {
   const [partes, setPartes] = useState<any[]>([])
@@ -102,6 +103,7 @@ export default function MusicosPage() {
   const [modo, setModo] = useState<"vivo" | "repertorio">("repertorio")
   const [tunerAbierto, setTunerAbierto] = useState(false)
   const [improvAbierto, setImprovAbierto] = useState(false)
+  const [ensayoAbierto, setEnsayoAbierto] = useState(false)
   const [cancionesRepo, setCancionesRepo] = useState<any[]>([])
   const [cargandoRepo, setCargandoRepo] = useState(false)
   const [busquedaRepo, setBusquedaRepo] = useState("")
@@ -742,6 +744,19 @@ export default function MusicosPage() {
           }}
         ><span style={{ fontSize: esMovil ? 17 : 19 }}>🎼</span><span style={{ fontSize: 9, fontWeight: 700, opacity: 0.85 }}>Improvisar</span></button>
 
+        {/* ── Botón Ensayo (metrónomo + nota de partida) ── */}
+        <button
+          onClick={() => setEnsayoAbierto(v => !v)}
+          title="Metrónomo y nota de partida"
+          style={{
+            minWidth: esMovil ? 48 : 58, height: esMovil ? 46 : 52, padding: "4px 8px",
+            borderRadius: 12, border: `1px solid ${ensayoAbierto ? "rgba(34,197,94,0.5)" : "rgba(255,255,255,0.12)"}`,
+            background: ensayoAbierto ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.07)",
+            color: "white", cursor: "pointer", flexShrink: 0,
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1
+          }}
+        ><span style={{ fontSize: esMovil ? 17 : 19 }}>🥁</span><span style={{ fontSize: 9, fontWeight: 700, opacity: 0.85 }}>Ensayo</span></button>
+
         {/* Botón abrir panel */}
         <button
           className="ctrl-m"
@@ -821,6 +836,28 @@ export default function MusicosPage() {
           }}>
             <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.15)", margin: "0 auto 14px" }} />
             <Improvisador
+              tono={modo === "repertorio" ? (cancionRepo?.tono || "") : tono}
+              pasos={modo === "repertorio" ? transposicionRepo : transposicion}
+              americano={usarAmericano}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL ENSAYO (metrónomo + nota de partida) ────────────────────────── */}
+      {ensayoAbierto && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 200,
+          background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)",
+          display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "0 0 20px"
+        }} onClick={() => setEnsayoAbierto(false)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            width: "100%", maxWidth: 460, background: "rgba(10,18,38,0.98)",
+            border: "1px solid rgba(255,255,255,0.08)", borderRadius: "20px 20px 16px 16px",
+            padding: "6px 16px 18px", fontFamily: "'Segoe UI',system-ui,sans-serif", maxHeight: "88vh", overflowY: "auto"
+          }}>
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.15)", margin: "0 auto 14px" }} />
+            <Ensayo
               tono={modo === "repertorio" ? (cancionRepo?.tono || "") : tono}
               pasos={modo === "repertorio" ? transposicionRepo : transposicion}
               americano={usarAmericano}
