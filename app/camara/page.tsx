@@ -21,6 +21,7 @@ const AUDIO_HIFI: MediaTrackConstraints = {
 export default function CamaraMovil() {
   const [estado, setEstado] = useState<Estado>("abriendo")
   const [error, setError] = useState("")
+  const [diag, setDiag] = useState("")   // diagnóstico si falla el cambio de cámara
   const [codigo, setCodigo] = useState("")
   const [facing, setFacing] = useState<"environment" | "user">("environment")
 
@@ -58,11 +59,11 @@ export default function CamaraMovil() {
     const audio = incluirAudio ? AUDIO_HIFI : false
     const vBase = { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }
     const gUM = (video: MediaTrackConstraints) => navigator.mediaDevices.getUserMedia({ video, audio })
-    try { return await gUM({ facingMode: { exact: modo } as any, ...vBase }) } catch {}
-    try { return await gUM({ facingMode: modo as any, ...vBase }) } catch {}
+    const errs: string[] = []
+    try { return await gUM({ facingMode: { exact: modo } as any, ...vBase }) } catch (e: any) { errs.push("exact=" + (e?.name || "?")) }
+    try { return await gUM({ facingMode: modo as any, ...vBase }) } catch (e: any) { errs.push("suave=" + (e?.name || "?")) }
     // Fallback definitivo: elegir por deviceId.
     const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput")
-    if (cams.length === 0) throw new Error("sin-camaras")
     const frontal = modo === "user"
     const reFront = /front|frontal|face|self|user/i
     const reBack = /back|rear|tras|environment|world|main/i
@@ -70,7 +71,10 @@ export default function CamaraMovil() {
     // Sin etiquetas útiles: heurística — la trasera suele ser la 1ª, la frontal la última.
     if (!elegida && cams.length > 1) elegida = frontal ? cams[cams.length - 1] : cams[0]
     if (!elegida) elegida = cams[0]
-    return await gUM({ deviceId: { exact: elegida.deviceId }, ...vBase })
+    const lista = cams.map(c => c.label || "(sin nombre)").join(" | ")
+    if (!elegida) { setDiag(`0 cámaras · ${errs.join(" ")}`); throw new Error("sin-camaras") }
+    try { return await gUM({ deviceId: { exact: elegida.deviceId }, ...vBase }) }
+    catch (e: any) { errs.push("id=" + (e?.name || "?")); setDiag(`${cams.length} cám: ${lista} · ${errs.join(" ")}`); throw e }
   }
 
   // Aplica un stream ya obtenido (preview + reemplazo del track en la conexión).
@@ -86,22 +90,35 @@ export default function CamaraMovil() {
   // Abre la cámara. incluirAudio SOLO la primera vez (al voltear no se re-pide
   // permiso ni se corta el audio). Devuelve true si quedó video listo.
   const abrirCamara = async (modo: "environment" | "user", incluirAudio: boolean): Promise<boolean> => {
+    // VOLTEAR (ya hay una cámara abierta): varias estrategias, en orden.
+    if (!incluirAudio && videoTrackRef.current) {
+      // A) Abrir la nueva SIN soltar la actual (muchos equipos permiten ambas un
+      //    instante). Si funciona, recién ahí soltamos la vieja.
+      try {
+        const s = await obtenerStreamCamara(modo, false)
+        try { videoTrackRef.current?.stop() } catch {}
+        await aplicarStream(s, false); facingRef.current = modo; setDiag(""); return true
+      } catch {}
+      // B) Soltar la actual, ESPERAR a que el equipo libere la cámara, reintentar.
+      try {
+        videoTrackRef.current?.stop(); videoTrackRef.current = null
+        await new Promise(r => setTimeout(r, 350))
+        const s = await obtenerStreamCamara(modo, false)
+        await aplicarStream(s, false); facingRef.current = modo; setDiag(""); return true
+      } catch {}
+      // C) No se pudo: recuperar la cámara anterior para no quedar en negro.
+      try { await aplicarStream(await obtenerStreamCamara(facingRef.current, false), false) } catch {}
+      setError("No se pudo abrir la cámara frontal (puede estar en uso o no disponible).")
+      setEstado("error")
+      return false
+    }
+    // Montaje o apertura con audio.
     try {
-      // Liberar la cámara actual ANTES de abrir la otra: muchos celulares no
-      // permiten frontal y trasera a la vez, y así el cambio SÍ ocurre de verdad.
       videoTrackRef.current?.stop(); videoTrackRef.current = null
       await aplicarStream(await obtenerStreamCamara(modo, incluirAudio), incluirAudio)
       facingRef.current = modo
       return true
     } catch {
-      // Si el cambio falló, recuperar la cámara anterior para no dejar preview muerto.
-      if (!incluirAudio) {
-        try {
-          await aplicarStream(await obtenerStreamCamara(facingRef.current, false), false)
-          setError("No se pudo abrir la cámara frontal (puede estar en uso o no disponible).")
-          return false
-        } catch {}
-      }
       setError(incluirAudio
         ? "No se pudo abrir la cámara. Da permiso de cámara y reintenta."
         : "No se pudo cambiar de cámara. Reintenta.")
@@ -218,6 +235,7 @@ export default function CamaraMovil() {
       {/* Panel inferior */}
       <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "18px 16px calc(20px + env(safe-area-inset-bottom))", display: "flex", flexDirection: "column", gap: 12, background: "linear-gradient(0deg, rgba(0,0,0,0.72), rgba(0,0,0,0))" }}>
         {error && <div style={{ background: "rgba(220,38,38,0.85)", borderRadius: 12, padding: "10px 14px", fontSize: 13.5, fontWeight: 600 }}>⚠️ {error}</div>}
+        {diag && <div style={{ background: "rgba(0,0,0,0.55)", borderRadius: 10, padding: "8px 12px", fontSize: 11, fontFamily: "monospace", color: "#fca5a5", wordBreak: "break-word" }}>🔧 {diag}</div>}
 
         {!conectado && (
           <div style={{ display: "flex", gap: 8 }}>
