@@ -10,6 +10,7 @@ import { ocultarGlobalesConCopia } from "@/context/AppContext"
 import PitchDetector from "@/components/PitchDetector"
 import Improvisador from "@/components/Improvisador"
 import Ensayo from "@/components/Ensayo"
+import { useMetronomo } from "@/components/useMetronomo"
 
 export default function MusicosPage() {
   const [partes, setPartes] = useState<any[]>([])
@@ -104,6 +105,7 @@ export default function MusicosPage() {
   const [tunerAbierto, setTunerAbierto] = useState(false)
   const [improvAbierto, setImprovAbierto] = useState(false)
   const [ensayoAbierto, setEnsayoAbierto] = useState(false)
+  const metro = useMetronomo()   // motor del metrónomo a nivel de página (sigue sonando al cerrar el panel)
   const [cancionesRepo, setCancionesRepo] = useState<any[]>([])
   const [cargandoRepo, setCargandoRepo] = useState(false)
   const [busquedaRepo, setBusquedaRepo] = useState("")
@@ -858,11 +860,34 @@ export default function MusicosPage() {
           }}>
             <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.15)", margin: "0 auto 14px" }} />
             <Ensayo
+              metro={metro}
               tono={modo === "repertorio" ? (cancionRepo?.tono || "") : tono}
               pasos={modo === "repertorio" ? transposicionRepo : transposicion}
               americano={usarAmericano}
             />
           </div>
+        </div>
+      )}
+
+      {/* Indicador flotante del metrónomo (si suena con el panel cerrado) */}
+      {metro.sonando && !ensayoAbierto && (
+        <div style={{
+          position: "fixed", right: 14, bottom: 14, zIndex: 210,
+          display: "flex", alignItems: "center", gap: 10, padding: "8px 10px 8px 14px",
+          background: "rgba(10,18,38,0.96)", border: "1px solid rgba(59,130,246,0.5)",
+          borderRadius: 999, boxShadow: "0 6px 20px rgba(0,0,0,0.4)"
+        }}>
+          <span style={{
+            width: 9, height: 9, borderRadius: 99,
+            background: metro.beatVis === 0 ? "#fbbf24" : "#3b82f6",
+            transform: metro.beatVis >= 0 ? "scale(1.4)" : "scale(1)", transition: "transform .06s, background .06s"
+          }} />
+          <span style={{ color: "#fff", fontSize: 13, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{metro.bpm}</span>
+          <span style={{ color: "rgba(255,255,255,0.45)", fontSize: 11, fontWeight: 700 }}>BPM</span>
+          <button onClick={() => metro.toggle()} aria-label="Detener metrónomo" style={{
+            marginLeft: 2, width: 30, height: 30, borderRadius: 99, border: "none", cursor: "pointer",
+            background: "#ef4444", color: "#fff", fontSize: 12, fontWeight: 800
+          }}>■</button>
         </div>
       )}
 

@@ -1,17 +1,22 @@
 "use client"
 
 // ── Herramientas de ensayo: Metrónomo + Nota de partida ──────────────────────
-// Ambas usan WebAudio (sin librerías). El metrónomo usa un scheduler con
-// "lookahead" para que el clic sea preciso (setInterval solo no basta). La nota
-// de partida saca la tónica del tono de la canción (reusa lib/improvisacion).
+// El METRÓNOMO vive en la página (hook useMetronomo) para que siga sonando aunque
+// cierres este panel; acá solo va su UI. La NOTA DE PARTIDA es de un solo toque,
+// así que su audio es local. Ambas con WebAudio, sin librerías.
 
-import { useEffect, useRef, useState } from "react"
+import { useRef, useState } from "react"
 import { improvisar } from "@/lib/improvisacion"
+import type { Metronomo } from "@/components/useMetronomo"
 
 const AZUL = "#3b82f6"
 const AMBAR = "#fbbf24"
 
-export default function Ensayo({ tono, pasos = 0, americano = false }: { tono: string; pasos?: number; americano?: boolean }) {
+export default function Ensayo({ metro, tono, pasos = 0, americano = false }:
+  { metro: Metronomo; tono: string; pasos?: number; americano?: boolean }) {
+  const { sonando, bpm, setBpm, compas, setCompas, beatVis, toggle, tap } = metro
+
+  // ── Nota de partida (audio local, de un solo toque) ──────────────────────────
   const ctxRef = useRef<AudioContext | null>(null)
   const getCtx = (): AudioContext => {
     if (!ctxRef.current) {
@@ -21,71 +26,6 @@ export default function Ensayo({ tono, pasos = 0, americano = false }: { tono: s
     try { ctxRef.current!.resume?.() } catch {}
     return ctxRef.current!
   }
-
-  // ── Metrónomo ──────────────────────────────────────────────────────────────
-  const [sonando, setSonando] = useState(false)
-  const [bpm, setBpm] = useState(90)
-  const [compas, setCompas] = useState(4)
-  const [beatVis, setBeatVis] = useState(-1)
-  const bpmRef = useRef(90), compasRef = useRef(4), sonandoRef = useRef(false)
-  const nextTimeRef = useRef(0), beatRef = useRef(0), timerRef = useRef<any>(0)
-  useEffect(() => { bpmRef.current = bpm }, [bpm])
-  useEffect(() => { compasRef.current = compas }, [compas])
-
-  const clic = (t: number, acento: boolean) => {
-    const ctx = getCtx()
-    const osc = ctx.createOscillator(), g = ctx.createGain()
-    osc.frequency.value = acento ? 1600 : 1000
-    g.gain.setValueAtTime(0.0001, t)
-    g.gain.exponentialRampToValueAtTime(acento ? 0.6 : 0.32, t + 0.001)
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05)
-    osc.connect(g); g.connect(ctx.destination)
-    osc.start(t); osc.stop(t + 0.06)
-  }
-
-  const scheduler = () => {
-    const ctx = getCtx()
-    while (nextTimeRef.current < ctx.currentTime + 0.12) {
-      const idx = beatRef.current % compasRef.current
-      clic(nextTimeRef.current, idx === 0)
-      const dt = Math.max(0, (nextTimeRef.current - ctx.currentTime) * 1000)
-      window.setTimeout(() => { if (sonandoRef.current) setBeatVis(idx) }, dt)
-      nextTimeRef.current += 60 / bpmRef.current
-      beatRef.current++
-    }
-    timerRef.current = window.setTimeout(scheduler, 25)
-  }
-
-  const arrancar = () => {
-    const ctx = getCtx()
-    beatRef.current = 0
-    nextTimeRef.current = ctx.currentTime + 0.06
-    sonandoRef.current = true; setSonando(true)
-    scheduler()
-  }
-  const detener = () => {
-    window.clearTimeout(timerRef.current)
-    sonandoRef.current = false; setSonando(false); setBeatVis(-1)
-  }
-  const toggle = () => (sonando ? detener() : arrancar())
-
-  // Tap tempo: promedio de los últimos toques (dentro de 2 s).
-  const tapsRef = useRef<number[]>([])
-  const tap = () => {
-    const now = performance.now()
-    const taps = [...tapsRef.current.filter(t => now - t < 2000), now]
-    tapsRef.current = taps
-    if (taps.length >= 2) {
-      const difs = taps.slice(1).map((t, i) => t - taps[i])
-      const prom = difs.reduce((a, b) => a + b, 0) / difs.length
-      const n = Math.round(60000 / prom)
-      if (n >= 40 && n <= 240) setBpm(n)
-    }
-  }
-
-  useEffect(() => () => { window.clearTimeout(timerRef.current); try { ctxRef.current?.close() } catch {} }, [])
-
-  // ── Nota de partida ──────────────────────────────────────────────────────────
   const [octava, setOctava] = useState(4)
   const imp = tono ? improvisar(tono, pasos, americano) : null   // root ya transpuesto
   const freqMidi = (m: number) => 440 * Math.pow(2, (m - 69) / 12)
@@ -120,7 +60,10 @@ export default function Ensayo({ tono, pasos = 0, americano = false }: { tono: s
     <div style={{ color: "#fff", display: "flex", flexDirection: "column", gap: 20 }}>
       {/* ─── METRÓNOMO ─── */}
       <section>
-        <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", color: AZUL, marginBottom: 12 }}>🥁 Metrónomo</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", color: AZUL }}>🥁 Metrónomo</span>
+          {sonando && <span style={{ fontSize: 10.5, fontWeight: 700, color: "#4ade80" }}>● sigue sonando al cerrar</span>}
+        </div>
 
         {/* Puntos del compás */}
         <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 14 }}>
@@ -141,9 +84,9 @@ export default function Ensayo({ tono, pasos = 0, americano = false }: { tono: s
 
         {/* Slider + −/+ */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-          <button onClick={() => setBpm(b => Math.max(40, b - 1))} style={{ ...btn(false, AZUL), width: 40, textAlign: "center" }}>−</button>
+          <button onClick={() => setBpm(Math.max(40, bpm - 1))} style={{ ...btn(false, AZUL), width: 40, textAlign: "center" }}>−</button>
           <input type="range" min={40} max={240} value={bpm} onChange={e => setBpm(Number(e.target.value))} style={{ flex: 1 }} aria-label="Tempo (BPM)" />
-          <button onClick={() => setBpm(b => Math.min(240, b + 1))} style={{ ...btn(false, AZUL), width: 40, textAlign: "center" }}>+</button>
+          <button onClick={() => setBpm(Math.min(240, bpm + 1))} style={{ ...btn(false, AZUL), width: 40, textAlign: "center" }}>+</button>
         </div>
 
         {/* Compás */}

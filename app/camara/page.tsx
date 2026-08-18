@@ -47,33 +47,65 @@ export default function CamaraMovil() {
     if (videoRef.current) { videoRef.current.srcObject = s; videoRef.current.play().catch(() => {}) }
   }
 
-  // Abre la cámara. incluirAudio SOLO la primera vez (así al voltear no se
-  // re-pide permiso ni se corta el audio). Devuelve true si quedó video listo.
+  // Cámara realmente activa (para recuperar si un cambio falla).
+  const facingRef = useRef<"environment" | "user">("environment")
+
+  // Obtiene un stream para la cámara pedida probando VARIAS estrategias, porque el
+  // facingMode es poco fiable en algunos WebView de Android (no resuelven "user"):
+  //   1) facingMode exact  2) facingMode suave  3) por deviceId (enumerando y
+  // eligiendo la frontal/trasera por etiqueta, o por heurística si no hay labels).
+  const obtenerStreamCamara = async (modo: "environment" | "user", incluirAudio: boolean): Promise<MediaStream> => {
+    const audio = incluirAudio ? AUDIO_HIFI : false
+    const vBase = { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }
+    const gUM = (video: MediaTrackConstraints) => navigator.mediaDevices.getUserMedia({ video, audio })
+    try { return await gUM({ facingMode: { exact: modo } as any, ...vBase }) } catch {}
+    try { return await gUM({ facingMode: modo as any, ...vBase }) } catch {}
+    // Fallback definitivo: elegir por deviceId.
+    const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput")
+    if (cams.length === 0) throw new Error("sin-camaras")
+    const frontal = modo === "user"
+    const reFront = /front|frontal|face|self|user/i
+    const reBack = /back|rear|tras|environment|world|main/i
+    let elegida = cams.find(d => (frontal ? reFront : reBack).test(d.label))
+    // Sin etiquetas útiles: heurística — la trasera suele ser la 1ª, la frontal la última.
+    if (!elegida && cams.length > 1) elegida = frontal ? cams[cams.length - 1] : cams[0]
+    if (!elegida) elegida = cams[0]
+    return await gUM({ deviceId: { exact: elegida.deviceId }, ...vBase })
+  }
+
+  // Aplica un stream ya obtenido (preview + reemplazo del track en la conexión).
+  const aplicarStream = async (s: MediaStream, incluirAudio: boolean) => {
+    const nuevoVideo = s.getVideoTracks()[0] || null
+    if (incluirAudio) { const a = s.getAudioTracks()[0]; if (a) audioTrackRef.current = a }
+    if (videoSenderRef.current && nuevoVideo) { try { await videoSenderRef.current.replaceTrack(nuevoVideo) } catch {} }
+    videoTrackRef.current = nuevoVideo
+    ponerPreview(nuevoVideo)
+    setEstado(prev => (prev === "conectado" ? "conectado" : "listo")); setError("")
+  }
+
+  // Abre la cámara. incluirAudio SOLO la primera vez (al voltear no se re-pide
+  // permiso ni se corta el audio). Devuelve true si quedó video listo.
   const abrirCamara = async (modo: "environment" | "user", incluirAudio: boolean): Promise<boolean> => {
     try {
       // Liberar la cámara actual ANTES de abrir la otra: muchos celulares no
       // permiten frontal y trasera a la vez, y así el cambio SÍ ocurre de verdad.
       videoTrackRef.current?.stop(); videoTrackRef.current = null
-      const s = await navigator.mediaDevices.getUserMedia({
-        // exact para forzar la cámara pedida (frontal/trasera), no una "parecida".
-        // Mejor resolución posible (hasta 1080p); baja sola si el equipo no da.
-        video: { facingMode: { exact: modo } as any, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
-        audio: incluirAudio ? AUDIO_HIFI : false,
-      }).catch(async () => {
-        // Si "exact" falla (equipo con una sola cámara, etc.), reintentar suave.
-        return navigator.mediaDevices.getUserMedia({ video: { facingMode: modo, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: incluirAudio ? AUDIO_HIFI : false })
-      })
-      const nuevoVideo = s.getVideoTracks()[0] || null
-      if (incluirAudio) { const a = s.getAudioTracks()[0]; if (a) audioTrackRef.current = a }
-      // Si ya hay conexión, cambiar el video enviado sin renegociar.
-      if (videoSenderRef.current && nuevoVideo) { try { await videoSenderRef.current.replaceTrack(nuevoVideo) } catch {} }
-      videoTrackRef.current = nuevoVideo
-      ponerPreview(nuevoVideo)
-      setEstado(prev => (prev === "conectado" ? "conectado" : "listo")); setError("")
+      await aplicarStream(await obtenerStreamCamara(modo, incluirAudio), incluirAudio)
+      facingRef.current = modo
       return true
     } catch {
-      if (incluirAudio) { setError("No se pudo abrir la cámara. Da permiso de cámara y reintenta."); setEstado("error") }
-      else setError("No se pudo cambiar de cámara (tu equipo puede tener una sola).")
+      // Si el cambio falló, recuperar la cámara anterior para no dejar preview muerto.
+      if (!incluirAudio) {
+        try {
+          await aplicarStream(await obtenerStreamCamara(facingRef.current, false), false)
+          setError("No se pudo abrir la cámara frontal (puede estar en uso o no disponible).")
+          return false
+        } catch {}
+      }
+      setError(incluirAudio
+        ? "No se pudo abrir la cámara. Da permiso de cámara y reintenta."
+        : "No se pudo cambiar de cámara. Reintenta.")
+      setEstado("error")
       return false
     }
   }

@@ -1630,7 +1630,7 @@ export default function EnVivoPage() {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                 <div style={{ flex: 1, minWidth: 180 }}>
                   <div style={{ fontSize: 14, fontWeight: 700 }}>📱 Usar celular como cámara</div>
-                  <div style={{ fontSize: 11.5, color: C.tenue, marginTop: 2 }}>Tu celular como cámara inalámbrica por WiFi: escaneas un QR y listo. Sin apps de terceros ni cable.</div>
+                  <div style={{ fontSize: 11.5, color: C.tenue, marginTop: 2 }}>Tu celular como cámara inalámbrica por WiFi: abres Selah en el celular y escribes un código. Sin apps de terceros ni cable.</div>
                 </div>
                 {celularOn
                   ? <button onClick={() => cerrarCamaraCelular(true)} style={botonBase({ background: C.rojo, color: "#fff", padding: "9px 13px", fontSize: 12.5 })}>Desconectar</button>
