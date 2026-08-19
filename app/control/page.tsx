@@ -985,6 +985,7 @@ const _fetchCanciones = async (igId: string | null, cacheKey: string, intento = 
         await new Promise(r => setTimeout(r, intento * 1000))
         return _fetchCanciones(igId, cacheKey, intento + 1)
       }
+      logError(`No se pudieron cargar las canciones (3 intentos): ${error?.message || "?"}`, { tipo: "supabase", pagina: "/control" })
       return
     }
     if (!data || data.length === 0) break
@@ -2607,7 +2608,7 @@ const importarPPT = async (modo: "imagenes" | "diapositivas") => {
         const file = new File([blob], nombre, { type: blob.type || "image/png" })
         const res = await subirImagen(file)
         if (res?.url) { subidas++; try { localStorage.setItem("img-nombre-" + res.url, nombre.replace(/\.[^.]+$/, "")) } catch {} }
-      } catch {}
+      } catch (e: any) { logError(`Importar imagen ${i + 1}/${r.imagenes.length} (${modo}): ${e?.message || e}`, { tipo: "ppt", pagina: "/control" }) }
     }
     setPptProg("")
     const imgs = await cargarGaleriaImagenes(); setGaleriaImagenes(imgs); setGaleriaAbierta(true)
