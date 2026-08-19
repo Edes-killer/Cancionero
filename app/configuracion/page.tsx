@@ -30,15 +30,28 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
 
   const cargar = async () => {
     setCargando(true)
-    let q = supabase
-      .from("errores_log")
-      .select("id, tipo, mensaje, pagina, plataforma, version, creado_en, detalle")
-      .eq("iglesia_id", iglesiaId)
-      .order("creado_en", { ascending: false })
-      .limit(50)
-    if (filtroTipo) q = q.eq("tipo", filtroTipo)
-    const { data } = await q
-    setErrores(data || [])
+    // 1) Registro LOCAL de este equipo (siempre disponible).
+    const { getLocalLog } = await import("@/lib/Errorlogger")
+    let locales = getLocalLog().map((e, i) => ({
+      id: "local-" + e.ts + "-" + i, tipo: e.tipo, mensaje: e.mensaje, pagina: e.pagina,
+      plataforma: e.plataforma, version: null as any, creado_en: new Date(e.ts).toISOString(), _local: true,
+    }))
+    if (filtroTipo) locales = locales.filter(e => e.tipo === filtroTipo)
+    // 2) Registro CENTRAL (Supabase), si se puede.
+    let remotos: any[] = []
+    try {
+      let q = supabase
+        .from("errores_log")
+        .select("id, tipo, mensaje, pagina, plataforma, version, creado_en, detalle")
+        .eq("iglesia_id", iglesiaId)
+        .order("creado_en", { ascending: false })
+        .limit(50)
+      if (filtroTipo) q = q.eq("tipo", filtroTipo)
+      const { data } = await q
+      remotos = data || []
+    } catch {}
+    const todo = [...locales, ...remotos].sort((a, b) => new Date(b.creado_en).getTime() - new Date(a.creado_en).getTime())
+    setErrores(todo)
     setCargando(false)
   }
 
@@ -46,7 +59,9 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
 
   const borrarTodos = async () => {
     if (!(await confirmar("¿Borrar todos los errores registrados?", { textoOk: "Borrar", peligro: true }))) return
-    await supabase.from("errores_log").delete().eq("iglesia_id", iglesiaId)
+    const { clearLocalLog } = await import("@/lib/Errorlogger")
+    clearLocalLog()
+    try { await supabase.from("errores_log").delete().eq("iglesia_id", iglesiaId) } catch {}
     setErrores([])
   }
 
@@ -105,7 +120,7 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
                   </div>
                   <div style={{ fontSize:12, fontWeight:600, marginBottom:2 }}>{e.mensaje}</div>
                   <div style={{ fontSize:10, opacity:0.3 }}>
-                    {e.plataforma} {e.version && `· v${e.version}`}
+                    {e.plataforma} {e.version && `· v${e.version}`} {e._local && "· local"}
                   </div>
                 </div>
               ))}
