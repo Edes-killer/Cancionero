@@ -1555,6 +1555,11 @@ export default function ConfiguracionPage() {
           </button>
         </div>
 
+        {/* Versión (para confirmar que la app actualizó) */}
+        <div style={{ textAlign: "center", fontSize: 12, opacity: 0.35, marginTop: 8 }}>
+          Selah Live · versión {process.env.NEXT_PUBLIC_APP_VERSION || "—"}
+        </div>
+
       </div>
     </div>
   )

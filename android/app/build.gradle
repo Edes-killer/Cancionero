@@ -10,6 +10,14 @@ if (tieneKeystore) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
+// ✅ Versión sincronizada desde package.json (una sola fuente de verdad, igual que
+// Electron). Así, al subir "version" en package.json, la APK se ve como una
+// actualización sin tocar nada aquí. versionCode se calcula del semver para que
+// SIEMPRE aumente (Android exige que suba para instalar encima).
+def pkgVersion = new groovy.json.JsonSlurper().parseText(rootProject.file("../package.json").text).version
+def (vMajor, vMinor, vPatch) = pkgVersion.tokenize('.').collect { it.toInteger() }
+def computedVersionCode = vMajor * 1000000 + vMinor * 10000 + vPatch
+
 android {
     namespace = "com.tuiglesia.cancionero"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -17,8 +25,8 @@ android {
         applicationId "com.tuiglesia.cancionero"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode computedVersionCode
+        versionName pkgVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
