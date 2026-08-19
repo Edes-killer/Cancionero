@@ -12,6 +12,7 @@ import { io, Socket } from "socket.io-client"
 import { navegarSPA } from "@/lib/navegar"
 import { getSocketUrl } from "@/lib/servidor"
 import { opusHiFi, subirBitrateAudio } from "@/lib/webrtc"
+import { logError } from "@/lib/Errorlogger"
 import { getIglesiaId } from "@/lib/getIglesia"
 import { useApp } from "@/context/AppContext"
 import ObjetoEditable from "@/components/ObjetoEditable"
@@ -988,7 +989,7 @@ export default function EnVivoPage() {
     const tx = (window as any).transmision
     if (!tx) return false
     const res = await tx.iniciar({ rtmpUrls: urlsTxRef.current, bitrateKbps: bitrateRef.current })
-    if (!res?.ok) { setErrorTx(res?.error || "No se pudo iniciar la transmisión."); return false }
+    if (!res?.ok) { setErrorTx(res?.error || "No se pudo iniciar la transmisión."); logError(`Transmisión no inició: ${res?.error || "?"}`, { tipo: "socket", pagina: "/en-vivo" }); return false }
     try {
       const salida = streamSalida(); if (!salida) return false
       const rec = new MediaRecorder(salida, { mimeType: mimeRef.current, videoBitsPerSecond: bitrateRef.current * 1000, audioBitsPerSecond: 256_000 })
@@ -1176,7 +1177,7 @@ export default function EnVivoPage() {
                 setCamaraId(CELULAR); setCamaraActiva(1)
               }
             }
-            else if (pc.connectionState === "failed") { setCamEstado("error"); setCamError("No se pudo enlazar con el celular. ¿Están en la misma red?") }
+            else if (pc.connectionState === "failed") { setCamEstado("error"); setCamError("No se pudo enlazar con el celular. ¿Están en la misma red?"); logError("Cámara celular: enlace WebRTC falló", { tipo: "socket", pagina: "/en-vivo" }) }
           }
           await pc.setRemoteDescription(data.sdp)
           const answer = await pc.createAnswer()
@@ -1194,7 +1195,7 @@ export default function EnVivoPage() {
       try { pcHostRef.current?.close() } catch {}; pcHostRef.current = null
       setCamEstado("esperando")
     })
-    socket.on("connect_error", () => { setCamEstado("error"); setCamError("No se pudo abrir la señalización.") })
+    socket.on("connect_error", (e: any) => { setCamEstado("error"); setCamError("No se pudo abrir la señalización."); logError(`Cámara celular: señalización connect_error: ${e?.message || e}`, { tipo: "socket", pagina: "/en-vivo" }) })
   }
 
   // ── Emisión directa ─────────────────────────────────────────────────────────

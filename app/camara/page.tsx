@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react"
 import { io, Socket } from "socket.io-client"
 import { getSocketUrl } from "@/lib/servidor"
+import { logError } from "@/lib/Errorlogger"
 
 type Estado = "abriendo" | "listo" | "conectando" | "conectado" | "error"
 
@@ -41,6 +42,13 @@ export default function CamaraMovil() {
   const quiereConectadoRef = useRef(false)
   const reconectandoRef = useRef(false)
   const reintentoTimerRef = useRef<any>(0)
+  const ultimoLogConexRef = useRef(0)   // throttle del log de errores de conexión
+  const logConex = (m: string) => {
+    const now = Date.now()
+    if (now - ultimoLogConexRef.current < 15000) return   // máx 1 cada 15 s (reintentos)
+    ultimoLogConexRef.current = now
+    logError(m, { tipo: "socket", pagina: "/camara" })
+  }
 
   // Código desde la URL (?code=XXXX) o del último uso (localStorage).
   useEffect(() => {
@@ -82,7 +90,13 @@ export default function CamaraMovil() {
     const lista = cams.map(c => c.label || "(sin nombre)").join(" | ")
     if (!elegida) { setDiag(`0 cámaras · ${errs.join(" ")}`); throw new Error("sin-camaras") }
     try { return await gUM({ deviceId: { exact: elegida.deviceId }, ...vBase }) }
-    catch (e: any) { errs.push("id=" + (e?.name || "?")); setDiag(`${cams.length} cám: ${lista} · ${errs.join(" ")}`); throw e }
+    catch (e: any) {
+      errs.push("id=" + (e?.name || "?"))
+      const d = `${cams.length} cám: ${lista} · ${errs.join(" ")}`
+      setDiag(d)
+      logError(`No se pudo abrir la cámara (${modo}): ${d}`, { tipo: "general", pagina: "/camara" })
+      throw e
+    }
   }
 
   // Aplica un stream ya obtenido (preview + reemplazo del track en la conexión).
@@ -206,8 +220,9 @@ export default function CamaraMovil() {
           if (resp?.error === "no-host") {
             // El PC aún no está esperando: reintentar en unos segundos.
             setError("Esperando a que el PC abra “Usar celular como cámara”…")
+            logConex(`camara:unir sin host (código ${cod})`)
             if (quiereConectadoRef.current) programarReconexion()
-          } else { setError("No se pudo unir a la sala."); setEstado("error") }
+          } else { setError("No se pudo unir a la sala."); setEstado("error"); logConex("camara:unir falló (sala)") }
           return
         }
         try { localStorage.setItem("selah-camara-codigo", cod) } catch {}
@@ -225,7 +240,7 @@ export default function CamaraMovil() {
     socket.on("camara:par-fin", () => { quiereConectadoRef.current = false; setError("El PC cerró la cámara."); cerrar(false) })
     // Caídas de red / socket → reintentar mientras el usuario quiera estar conectado.
     socket.on("disconnect", () => { if (quiereConectadoRef.current) programarReconexion() })
-    socket.on("connect_error", () => { if (quiereConectadoRef.current) programarReconexion() })
+    socket.on("connect_error", (e: any) => { logConex(`connect_error a ${url}: ${e?.message || e}`); if (quiereConectadoRef.current) programarReconexion() })
   }
 
   const conectar = async () => {

@@ -26,24 +26,52 @@ const getIds = async () => {
   return { iglesiaId: _iglesiaId, userId: _userId }
 }
 
+// ── Registro LOCAL (siempre disponible) ──────────────────────────────────────
+// El registro central en Supabase falla justo cuando más se necesita (sin login,
+// sin internet, Supabase caído, RLS mal). Por eso guardamos SIEMPRE un búfer local
+// en este dispositivo (últimas 200 entradas), que se ve en Configuración → Log.
+const LOCAL_KEY = "selah-log-local"
+const LOCAL_MAX = 200
+
+export interface EntradaLog { ts: number; tipo: string; pagina: string; mensaje: string; plataforma: string; detalle?: any }
+
+export const getLocalLog = (): EntradaLog[] => {
+  try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || "[]") } catch { return [] }
+}
+export const clearLocalLog = (): void => { try { localStorage.removeItem(LOCAL_KEY) } catch {} }
+
+const appendLocal = (e: EntradaLog): void => {
+  try {
+    const arr = getLocalLog()
+    arr.unshift(e)
+    localStorage.setItem(LOCAL_KEY, JSON.stringify(arr.slice(0, LOCAL_MAX)))
+  } catch {}
+}
+
 export const logError = async (mensaje: string, opciones: OpcionesLog = {}): Promise<void> => {
-  if (process.env.NODE_ENV === "development") {
-    console.warn(`[ErrorLog] ${opciones.tipo || "general"}: ${mensaje}`)
-    return
+  const entrada: EntradaLog = {
+    ts: Date.now(),
+    tipo: opciones.tipo || "general",
+    pagina: opciones.pagina || (typeof window !== "undefined" ? window.location.pathname : ""),
+    mensaje: (mensaje || "").slice(0, 500),
+    plataforma: detectarPlataforma(),
+    detalle: opciones.detalle,
   }
-  // ✅ Registrar un error mientras Supabase está caído solo generaría otro
-  // error de red — no vale la pena intentarlo hasta que se recupere.
+  // 1) SIEMPRE al búfer local (aunque sea dev, sin login o sin red).
+  appendLocal(entrada)
+  if (typeof console !== "undefined") console.warn(`[ErrorLog] ${entrada.tipo}: ${entrada.mensaje}`)
+
+  // 2) Central (Supabase): mejor esfuerzo. En dev no lo intentamos.
+  if (process.env.NODE_ENV === "development") return
   if (supabaseProbablementeCaido()) return
   try {
     const { iglesiaId, userId } = await getIds()
     if (!userId) return
     const { error } = await supabase.from("errores_log").insert({
       iglesia_id: iglesiaId, user_id: userId,
-      pagina: opciones.pagina || (typeof window !== "undefined" ? window.location.pathname : ""),
-      tipo: opciones.tipo || "general",
-      mensaje: mensaje.slice(0, 500),
-      detalle: opciones.detalle || null,
-      plataforma: detectarPlataforma(),
+      pagina: entrada.pagina, tipo: entrada.tipo,
+      mensaje: entrada.mensaje, detalle: entrada.detalle || null,
+      plataforma: entrada.plataforma,
     })
     if (error) marcarSupabaseCaido(); else marcarSupabaseOk()
   } catch { marcarSupabaseCaido() }
