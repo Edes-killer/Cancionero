@@ -444,12 +444,18 @@ export default function ConfiguracionPage() {
   const [escalaFuente, setEscalaFuente] = useState(100)
   const [familiaFuente, setFamiliaFuente] = useState("system")
   const [recordarUltima, setRecordarUltima] = useState(true)
+  // Firewall (solo en la app de escritorio / Electron): estado de la regla que deja
+  // que el celular llegue a este PC por la red.
+  const [fw, setFw] = useState<"desconocido" | "ok" | "falta" | "reparando">("desconocido")
+  const esEscritorio = typeof window !== "undefined" && !!(window as any).firewall
   useEffect(() => {
     const escalaGuardada = localStorage.getItem("proyector-escala-fuente")
     if (escalaGuardada) setEscalaFuente(Number(escalaGuardada))
     const familiaGuardada = localStorage.getItem("proyector-font-family")
     if (familiaGuardada) setFamiliaFuente(familiaGuardada)
     setRecordarUltima(localStorage.getItem("selah-recordar-ultima") !== "0")
+    const f = (window as any).firewall
+    if (f) f.estado().then((r: any) => setFw(r?.existe ? "ok" : "falta")).catch(() => {})
   }, [])
 
   const mostrarFlash = (msg: string, tipo: "ok" | "error" | "info" = "ok") => {
@@ -1311,6 +1317,43 @@ export default function ConfiguracionPage() {
             </div>
           </div>
         </div>
+
+        {/* ── CONEXIÓN DEL CELULAR (firewall) — solo escritorio ──────────── */}
+        {esEscritorio && (
+          <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+            <div style={{ padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ fontWeight: 800, fontSize: 15 }}>📱 Conexión con el celular</div>
+              <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2 }}>Deja que el celular llegue a este PC por la red (firewall de Windows)</div>
+            </div>
+            <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700 }}>
+                  {fw === "ok" ? "✅ Firewall abierto para Selah"
+                    : fw === "reparando" ? "Aplicando…"
+                    : fw === "falta" ? "⚠️ El firewall podría estar bloqueando el celular"
+                    : "Estado del firewall"}
+                </div>
+                <div style={{ fontSize: 12.5, opacity: 0.55, marginTop: 3, lineHeight: 1.5 }}>
+                  Si el celular no conecta (usarlo como cámara, control, etc.) aunque estén en la misma WiFi, toca “Reparar”. Windows pedirá permiso de administrador una sola vez.
+                </div>
+              </div>
+              <button type="button" disabled={fw === "reparando"}
+                onClick={async () => {
+                  setFw("reparando")
+                  try {
+                    await (window as any).firewall.reparar()
+                    await new Promise(r => setTimeout(r, 2500))
+                    const r = await (window as any).firewall.estado()
+                    setFw(r?.existe ? "ok" : "falta")
+                    mostrarFlash(r?.existe ? "✅ Firewall configurado para el celular" : "No se pudo confirmar (¿cancelaste el permiso de administrador?)", r?.existe ? "ok" : "error")
+                  } catch { setFw("falta") }
+                }}
+                style={{ ...btnPrincipal, flexShrink: 0, opacity: fw === "reparando" ? 0.6 : 1 }}>
+                {fw === "reparando" ? "Aplicando…" : "Reparar"}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── INVITACIONES ──────────────────────────────────────────────── */}
         <div style={{ ...card, padding: 0, overflow: "hidden" }}>

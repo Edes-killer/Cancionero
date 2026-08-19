@@ -46,6 +46,12 @@ contextBridge.exposeInMainWorld("transmision", {
   },
 })
 
+// ── Firewall (permitir la conexión del celular por la red local) ─────────────
+contextBridge.exposeInMainWorld("firewall", {
+  estado: () => ipcRenderer.invoke("firewall:estado"),
+  reparar: () => ipcRenderer.invoke("firewall:reparar"),
+})
+
 // ── Importar desde PowerPoint ────────────────────────────────────────────────
 contextBridge.exposeInMainWorld("powerpoint", {
   elegir: () => ipcRenderer.invoke("ppt:elegir"),

@@ -418,6 +418,38 @@ ipcMain.handle("camara:infoRed", () => {
   catch (e) { return { ok: false, error: e.message } }
 })
 
+// ── Firewall: permitir que el CELULAR se conecte por la red local ──────────────
+// El Firewall de Windows suele bloquear los puertos del servidor de Selah (3000
+// web, 4000 socket) desde otros equipos. El instalador ya crea la regla en la
+// instalación manual; esto la repara desde la app (útil si el PC ya estaba
+// instalado o se actualizó en silencio). Abrir el firewall requiere admin → se
+// lanza un PowerShell ELEVADO (UAC) que borra la regla vieja y crea la nueva.
+ipcMain.handle("firewall:estado", async () => {
+  return await new Promise((resolve) => {
+    try {
+      const ps = spawn("netsh", ["advfirewall", "firewall", "show", "rule", "name=SelahLive"], { windowsHide: true })
+      let out = ""
+      ps.stdout && ps.stdout.on("data", d => { out += d.toString() })
+      ps.on("close", () => resolve({ existe: /localport/i.test(out) }))
+      ps.on("error", () => resolve({ existe: false }))
+    } catch { resolve({ existe: false }) }
+  })
+})
+ipcMain.handle("firewall:reparar", async () => {
+  return await new Promise((resolve) => {
+    // powershell no elevado que lanza netsh ELEVADO (UAC) con cada parámetro como
+    // un ítem del ArgumentList → sin comillas anidadas frágiles. Nombre de regla
+    // fijo (SelahLive); si se repite, Windows la vuelve a crear (inofensivo).
+    const items = ["advfirewall", "firewall", "add", "rule", "name=SelahLive", "dir=in", "action=allow", "protocol=TCP", "localport=3000,4000", "profile=any"]
+    const arg = "Start-Process netsh -Verb RunAs -WindowStyle Hidden -ArgumentList " + items.map(x => "'" + x + "'").join(",")
+    try {
+      const ps = spawn("powershell.exe", ["-NoProfile", "-Command", arg], { windowsHide: true })
+      ps.on("close", (code) => resolve({ ok: code === 0 }))
+      ps.on("error", (e) => resolve({ ok: false, error: e.message }))
+    } catch (e) { resolve({ ok: false, error: e.message }) }
+  })
+})
+
 // Calentar la detección de encoder unos segundos tras arrancar, para que al
 // dar "Salir en vivo" ya esté elegido (conecta más rápido). Se cachea en memoria.
 if (ffmpegPath) setTimeout(() => { elegirEncoder().catch(() => {}) }, 4000)

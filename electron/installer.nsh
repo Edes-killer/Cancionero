@@ -71,3 +71,17 @@
 !macro customUnInit
   !insertmacro matarSelahLive
 !macroend
+
+; ── Firewall: permitir que el CELULAR se conecte por la red local ─────────────
+; Sin esto, el Firewall de Windows suele bloquear los puertos del servidor de
+; Selah (3000 = web, 4000 = socket) desde otros equipos, y el celular no conecta
+; aunque estén en la misma WiFi. Como el instalador NO es admin (perMachine:false),
+; abrimos el firewall con UNA elevación UAC puntual: un PowerShell que borra la
+; regla vieja y crea la nueva (nombre sin espacios = sin líos de comillas). Si el
+; usuario cancela el UAC, la instalación sigue igual (solo no queda la regla).
+!macro customInstall
+  ; Solo en instalación MANUAL (interactiva). En auto-updates silenciosos se salta:
+  ; la regla ya quedó puesta en la primera instalación y no queremos UAC en cada update.
+  IfSilent +2
+  ExecShellWait "runas" "powershell.exe" "-NoProfile -WindowStyle Hidden -Command netsh advfirewall firewall delete rule name=SelahLive ; netsh advfirewall firewall add rule name=SelahLive dir=in action=allow protocol=TCP localport=3000,4000 profile=any" SW_HIDE
+!macroend
