@@ -58,3 +58,6 @@ correccion*.log
 *.keystore
 *.jks
 android/keystore.properties
+
+# versión generada en cada build (next.config)
+public/version.json
