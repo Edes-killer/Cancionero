@@ -11,7 +11,9 @@ const version = JSON.parse(readFileSync("./package.json", "utf8")).version as st
 try {
   writeFileSync("./public/version.json", JSON.stringify({
     version,
-    apkUrl: process.env.NEXT_PUBLIC_APK_URL || "",
+    // URL fija de GitHub que SIEMPRE apunta al APK del último release publicado.
+    // Requiere subir el APK a cada release con el nombre "selah-live.apk".
+    apkUrl: process.env.NEXT_PUBLIC_APK_URL || "https://github.com/Edes-killer/Cancionero/releases/latest/download/selah-live.apk",
   }))
 } catch {}
 
