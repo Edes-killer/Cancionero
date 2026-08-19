@@ -1155,11 +1155,13 @@ export default function EnVivoPage() {
       if (!data) return
       try {
         if (data.tipo === "offer") {
+          try { pcHostRef.current?.close() } catch {}   // reconexión: cerrar el pc viejo
           const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] })
           pcHostRef.current = pc
           pc.ontrack = (e) => {
             phoneStreamRef.current = e.streams[0]
             if (phoneVideoRef.current) { phoneVideoRef.current.srcObject = e.streams[0]; phoneVideoRef.current.play().catch(() => {}) }
+            setAudioGen(g => g + 1)   // re-enganchar el audio del celular + VU (también al reconectar)
           }
           pc.onicecandidate = (e) => { if (e.candidate) socket.emit("camara:senal", { codigo, data: { tipo: "ice", candidate: e.candidate } }) }
           pc.onconnectionstatechange = () => {
@@ -1185,7 +1187,13 @@ export default function EnVivoPage() {
         }
       } catch {}
     })
-    socket.on("camara:par-fin", () => cerrarCamaraCelular(false))
+    // El celular se cayó (2º plano, red…). NO cerramos: el PC sigue esperando en la
+    // sala para que el celular se reconecte solo con el mismo código (queda el último
+    // cuadro congelado hasta que vuelve). Solo "Desconectar" cierra de verdad.
+    socket.on("camara:par-fin", () => {
+      try { pcHostRef.current?.close() } catch {}; pcHostRef.current = null
+      setCamEstado("esperando")
+    })
     socket.on("connect_error", () => { setCamEstado("error"); setCamError("No se pudo abrir la señalización.") })
   }
 
