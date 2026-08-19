@@ -35,11 +35,19 @@ export default function CamaraMovil() {
   const codigoRef = useRef("")
   useEffect(() => { codigoRef.current = codigo }, [codigo])
 
-  // Código desde la URL (?code=XXXX del QR).
+  // Reconexión automática: recordamos que el usuario QUIERE estar conectado, para
+  // volver a enlazar solo al regresar a la app o tras un corte, sin re-escribir el
+  // código. reconectandoRef evita apilar reintentos; reintentoTimerRef los agenda.
+  const quiereConectadoRef = useRef(false)
+  const reconectandoRef = useRef(false)
+  const reintentoTimerRef = useRef<any>(0)
+
+  // Código desde la URL (?code=XXXX) o del último uso (localStorage).
   useEffect(() => {
     const p = new URLSearchParams(window.location.search)
     const c = (p.get("code") || p.get("codigo") || "").toUpperCase().trim()
-    if (c) setCodigo(c)
+    if (c) { setCodigo(c); return }
+    try { const g = localStorage.getItem("selah-camara-codigo"); if (g) setCodigo(g) } catch {}
   }, [])
 
   const ponerPreview = (vt: MediaStreamTrack | null) => {
@@ -135,6 +143,7 @@ export default function CamaraMovil() {
   }
 
   const iniciarWebRTC = async (socket: Socket) => {
+    try { pcRef.current?.close() } catch {}
     const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] })
     pcRef.current = pc
     const salida = new MediaStream()
@@ -143,36 +152,66 @@ export default function CamaraMovil() {
     for (const t of salida.getTracks()) { const snd = pc.addTrack(t, salida); if (t.kind === "video") videoSenderRef.current = snd }
     pc.onicecandidate = e => { if (e.candidate) socket.emit("camara:senal", { codigo: codigoRef.current, data: { tipo: "ice", candidate: e.candidate } }) }
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "connected") setEstado("conectado")
-      else if (pc.connectionState === "failed") { setError("No se pudo enlazar con el PC. Reintenta."); setEstado("error") }
+      const st = pc.connectionState
+      if (st === "connected") { setEstado("conectado"); setError("") }
+      else if ((st === "failed" || st === "disconnected") && quiereConectadoRef.current) programarReconexion()
     }
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
     socket.emit("camara:senal", { codigo: codigoRef.current, data: { tipo: "offer", sdp: pc.localDescription } })
   }
 
-  const conectar = async () => {
+  // Vigila el track de video: si el equipo lo mata (típico al ir a 2º plano), reconecta.
+  const vigilarTrack = () => {
+    const t = videoTrackRef.current
+    if (t) t.onended = () => { if (quiereConectadoRef.current) programarReconexion() }
+  }
+
+  // Programa un reintento (con guarda para no apilar varios).
+  const programarReconexion = () => {
+    if (!quiereConectadoRef.current || reconectandoRef.current) return
+    reconectandoRef.current = true
+    setEstado("conectando")
+    clearTimeout(reintentoTimerRef.current)
+    reintentoTimerRef.current = setTimeout(async () => {
+      reconectandoRef.current = false
+      if (quiereConectadoRef.current) await establecerConexion()
+    }, 1500)
+  }
+
+  // Establece (o restablece) la conexión con el PC usando el código guardado.
+  const establecerConexion = async () => {
     const cod = codigoRef.current.trim().toUpperCase()
     if (!cod) { setError("Escribe el código que muestra el PC."); return }
-    if (!videoTrackRef.current) { if (!(await abrirCamara(facing, true))) return }
-    setEstado("conectando"); setError("")
+    try { pcRef.current?.close() } catch {}; pcRef.current = null
+    try { socketRef.current?.close() } catch {}; socketRef.current = null
+    videoSenderRef.current = null
+    // Cámara viva: si el track murió o quedó congelado (2º plano), re-tomarla.
+    const t = videoTrackRef.current
+    const vivo = t && t.readyState === "live" && !t.muted
+    if (!vivo) { if (!(await abrirCamara(facingRef.current, true))) { if (quiereConectadoRef.current) programarReconexion(); return } }
+    vigilarTrack()
+    setEstado("conectando")
     // En la APK (Capacitor) la página está empaquetada → window.location es
     // "localhost"; usamos el servidor configurado (IP del PC). En navegador
     // servido por el PC, usamos el host del propio URL.
     const esApp = typeof window !== "undefined" && !!(window as any).Capacitor
     const url = esApp ? getSocketUrl() : `http://${window.location.hostname}:4000`
-    const socket = io(url, { transports: ["websocket", "polling"], forceNew: true })
+    const socket = io(url, { transports: ["websocket", "polling"], forceNew: true, reconnection: false })
     socketRef.current = socket
 
     socket.on("connect", () => {
       socket.emit("camara:unir", { codigo: cod }, (resp: any) => {
         if (!resp?.ok) {
-          setError(resp?.error === "no-host"
-            ? "No hay un PC esperando con ese código. En el PC abre “Usar celular como cámara”."
-            : "No se pudo unir a la sala.")
-          setEstado("error"); socket.close(); return
+          if (resp?.error === "no-host") {
+            // El PC aún no está esperando: reintentar en unos segundos.
+            setError("Esperando a que el PC abra “Usar celular como cámara”…")
+            if (quiereConectadoRef.current) programarReconexion()
+          } else { setError("No se pudo unir a la sala."); setEstado("error") }
+          return
         }
-        iniciarWebRTC(socket)
+        try { localStorage.setItem("selah-camara-codigo", cod) } catch {}
+        setError(""); iniciarWebRTC(socket)
       })
     })
     socket.on("camara:senal", async ({ data }: any) => {
@@ -182,11 +221,23 @@ export default function CamaraMovil() {
         else if (data.tipo === "ice" && data.candidate) await pc.addIceCandidate(data.candidate)
       } catch {}
     })
-    socket.on("camara:par-fin", () => { setError("El PC cerró la cámara."); cerrar(false) })
-    socket.on("connect_error", () => { setError("No se pudo conectar al PC. ¿Están en la MISMA red WiFi?"); setEstado("error") })
+    // El PC cerró la cámara A PROPÓSITO → dejar de reintentar.
+    socket.on("camara:par-fin", () => { quiereConectadoRef.current = false; setError("El PC cerró la cámara."); cerrar(false) })
+    // Caídas de red / socket → reintentar mientras el usuario quiera estar conectado.
+    socket.on("disconnect", () => { if (quiereConectadoRef.current) programarReconexion() })
+    socket.on("connect_error", () => { if (quiereConectadoRef.current) programarReconexion() })
+  }
+
+  const conectar = async () => {
+    const cod = codigoRef.current.trim().toUpperCase()
+    if (!cod) { setError("Escribe el código que muestra el PC."); return }
+    quiereConectadoRef.current = true
+    await establecerConexion()
   }
 
   const cerrar = (avisar = true) => {
+    quiereConectadoRef.current = false
+    clearTimeout(reintentoTimerRef.current); reconectandoRef.current = false
     try { if (avisar) socketRef.current?.emit("camara:fin", { codigo: codigoRef.current }) } catch {}
     try { pcRef.current?.close() } catch {}; pcRef.current = null
     try { socketRef.current?.close() } catch {}; socketRef.current = null
@@ -194,18 +245,28 @@ export default function CamaraMovil() {
     setEstado(videoTrackRef.current ? "listo" : "error")
   }
 
-  // Mantener la pantalla encendida mientras transmite.
+  // Mantener la pantalla encendida y RECONECTAR al volver a primer plano.
   useEffect(() => {
     let wl: any
-    const pedir = async () => { try { wl = await (navigator as any).wakeLock?.request("screen") } catch {} }
-    pedir()
-    const onVis = () => { if (document.visibilityState === "visible") pedir() }
+    const pedirWake = async () => { try { wl = await (navigator as any).wakeLock?.request("screen") } catch {} }
+    pedirWake()
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return
+      pedirWake()
+      if (!quiereConectadoRef.current) return
+      // Al volver: si la cámara murió/congeló o la conexión no está sana, reconectar.
+      const t = videoTrackRef.current
+      const sano = t && t.readyState === "live" && !t.muted && pcRef.current?.connectionState === "connected"
+      if (!sano) programarReconexion()
+    }
     document.addEventListener("visibilitychange", onVis)
     return () => { document.removeEventListener("visibilitychange", onVis); try { wl?.release() } catch {} }
   }, [])
 
   // Limpiar al salir.
   useEffect(() => () => {
+    quiereConectadoRef.current = false
+    clearTimeout(reintentoTimerRef.current)
     videoTrackRef.current?.stop()
     audioTrackRef.current?.stop()
     try { pcRef.current?.close() } catch {}
