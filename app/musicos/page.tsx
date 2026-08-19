@@ -273,9 +273,15 @@ export default function MusicosPage() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!activo) return
       const s = io(getSocketUrl(), {
-        auth: { token: session?.access_token || "" }
+        auth: { token: session?.access_token || "" },
+        reconnection: true, reconnectionAttempts: Infinity, reconnectionDelay: 1000, reconnectionDelayMax: 5000,
       })
       socketLocal = s
+      let _ultimoLogConex = 0
+      const logConex = (m: string) => {
+        const n = Date.now(); if (n - _ultimoLogConex < 15000) return; _ultimoLogConex = n
+        import("@/lib/Errorlogger").then(({ logError }) => logError(m, { tipo: "socket", pagina: "/musicos" }))
+      }
 
       s.on("connect", async () => {
         try {
@@ -299,7 +305,8 @@ export default function MusicosPage() {
         }
       })
 
-      s.on("connect_error", () => {
+      s.on("connect_error", (e: any) => {
+        logConex(`connect_error a ${getSocketUrl()}: ${e?.message || e}`)
         if (!activo) return
         setMsgConexion("No se pudo conectar. Revisa que Selah Live esté abierto en el PC y que estén en la misma red WiFi.")
       })

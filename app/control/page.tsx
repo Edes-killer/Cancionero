@@ -8,6 +8,7 @@ import { TOUR_CONTROL } from "@/lib/tours"
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { logCatch } from "@/lib/Errorlogger"
 import { getSocketUrl } from "@/lib/servidor"
+import { logError } from "@/lib/Errorlogger"
 import { limitesDe } from "@/lib/planes"
 import { supabase } from "@/lib/supabase"
 import { io } from "socket.io-client"
@@ -550,7 +551,15 @@ useEffect(() => {
     return
   }
 
-  const s = io(getSocketUrl())
+  const s = io(getSocketUrl(), { reconnection: true, reconnectionAttempts: Infinity, reconnectionDelay: 1000, reconnectionDelayMax: 5000 })
+  // Log de errores de conexión con throttle (evita llenar el registro con reintentos).
+  let _ultimoLogConex = 0
+  const logConex = (m: string) => {
+    const n = Date.now()
+    if (n - _ultimoLogConex < 15000) return
+    _ultimoLogConex = n
+    logError(m, { tipo: "socket", pagina: "/control" })
+  }
   s.on("connect", async () => {
     try {
       const sala = (await getIglesiaIdCached()) || "global"
@@ -582,11 +591,12 @@ useEffect(() => {
     flashCtrl("🔒 " + (data?.mensaje || "PIN incorrecto. Verifica en configuración."))
   })
 
-  s.on("connect_error", () => {
-    // No redirigir — solo limpiar socket para mostrar "Sin conexión"
-    if ((window as any).Capacitor) {
-      localStorage.removeItem("servidor_ip")
-    }
+  s.on("connect_error", (e: any) => {
+    // ❌ ANTES: borrábamos servidor_ip aquí. Eso rompía TODO: al primer error de
+    // conexión (firewall, PC no listo, bajón de WiFi) el celular olvidaba la IP,
+    // getSocketUrl caía a localhost y ya no reconectaba nunca (había que re-escribir
+    // la IP a mano). Ahora NO se borra: el socket reintenta solo y conserva la IP.
+    logConex(`connect_error a ${getSocketUrl()}: ${e?.message || e}`)
   })
 
   s.on("cancion-activa", (data: { id?: string }) => {
