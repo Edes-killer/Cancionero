@@ -61,3 +61,7 @@ android/keystore.properties
 
 # versión generada en cada build (next.config)
 public/version.json
+
+# APKs generados por 'npm run apk'
+selah-live.apk
+selah-live-debug.apk
