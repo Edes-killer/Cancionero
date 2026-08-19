@@ -42,7 +42,15 @@ export default function AvisoActualizacion() {
   if (!nueva) return null
 
   const posponer = () => { try { localStorage.setItem("aviso-version-ignorada", nueva) } catch {}; setNueva(null) }
-  const actualizar = () => { if (apkUrl) window.open(apkUrl, "_blank") }
+  const actualizar = async () => {
+    if (!apkUrl) return
+    // Abrir en el navegador (Custom Tab) → el gestor de descargas de Android baja el
+    // APK; al tocarlo, Android pide permiso de "instalar apps desconocidas" (normal).
+    try {
+      const { Browser } = await import("@capacitor/browser")
+      await Browser.open({ url: apkUrl })
+    } catch { window.open(apkUrl, "_blank") }
+  }
 
   return (
     <div style={{
