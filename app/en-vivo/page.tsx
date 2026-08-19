@@ -919,6 +919,13 @@ export default function EnVivoPage() {
   const construirUrls = (): string[] =>
     PLATAFORMAS.filter(p => destinos[p.key].activo).map(p => urlDeDestino(p.key, destinos[p.key].valor)).filter(Boolean)
 
+  // ¿Hay alguna fuente de video alimentando el lienzo? Puede ser la cámara del PC,
+  // la 2ª cámara, la PANTALLA compartida o la cámara del CELULAR. Sin esto, "Salir
+  // en vivo" y "Grabar" fallaban con "la cámara aún no está lista" cuando la única
+  // fuente era el celular (no hay getUserMedia local → streamRef queda en null).
+  const hayFuenteVideo = (): boolean =>
+    !!(streamRef.current?.getVideoTracks().length || stream2Ref.current || phoneStreamRef.current || screenStreamRef.current)
+
   // ── Grafo de audio de salida (WebAudio) ──────────────────────────────────────
   // fuente(mic activo) → ganancia → destino. El track del DESTINO es estable: la
   // transmisión/emisión lo captura una vez y no se corta aunque cambies de micro
@@ -1048,7 +1055,7 @@ export default function EnVivoPage() {
     if (!tx) { setErrorTx("Esto solo funciona en la app de escritorio de Selah Live."); return }
     const rtmpUrls = construirUrls()
     if (rtmpUrls.length === 0) { setErrorTx("Activa al menos una plataforma y pega su clave / URL."); return }
-    if (!canvasRef.current || !streamRef.current) { setErrorTx("La cámara aún no está lista."); return }
+    if (!canvasRef.current || !hayFuenteVideo()) { setErrorTx("La cámara aún no está lista. Conecta una cámara, comparte pantalla o conecta el celular."); return }
 
     setLogsTx([]); setSalud(null); setIntento(0); intentoRef.current = 0
     detenidoRef.current = false
@@ -1158,8 +1165,14 @@ export default function EnVivoPage() {
           pc.onconnectionstatechange = () => {
             if (pc.connectionState === "connected") {
               setCelularOn(true); setCamEstado("conectado")
-              // Queda disponible como Cámara 2 (se puede cambiar a 1 o "ambas").
-              setCamara2Id(prev => prev ? prev : CELULAR)
+              const hayCam1 = !!streamRef.current?.getVideoTracks().length
+              if (hayCam1) {
+                // Ya hay cámara del PC: el celular entra como Cámara 2.
+                setCamara2Id(prev => prev ? prev : CELULAR)
+              } else {
+                // No hay cámara del PC: el celular pasa a ser la Cámara 1 (la que se ve).
+                setCamaraId(CELULAR); setCamaraActiva(1)
+              }
             }
             else if (pc.connectionState === "failed") { setCamEstado("error"); setCamError("No se pudo enlazar con el celular. ¿Están en la misma red?") }
           }
@@ -1281,7 +1294,7 @@ export default function EnVivoPage() {
   const grabarSolo = async () => {
     const tx = (window as any).transmision
     if (!tx?.iniciarGrabacion) { setErrorTx("Grabar funciona solo en la app de escritorio."); return }
-    if (!canvasRef.current || !streamRef.current) { setErrorTx("La cámara aún no está lista."); return }
+    if (!canvasRef.current || !hayFuenteVideo()) { setErrorTx("La cámara aún no está lista. Conecta una cámara, comparte pantalla o conecta el celular."); return }
     setErrorTx(null)
     const r = await tx.iniciarGrabacion({ nombre: nombreIglesia || "Culto" })
     if (!r?.ok) { setErrorTx(r?.error || "No se pudo iniciar la grabación."); return }
