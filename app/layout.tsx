@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar"
 import AuthProvider from "@/components/AuthProvider"
 import { DeepLinkHandler } from "@/components/DeepLinkHandler"
 import { AppProvider } from "@/context/AppContext"
+import AvisoActualizacion from "@/components/AvisoActualizacion"
 
 export const metadata: Metadata = {
   title: "Selah Live",
@@ -25,6 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <DeepLinkHandler />
               <Navbar />
               {children}
+              <AvisoActualizacion />
             </AppProvider>
           </AuthProvider>
         </ThemeProvider>
