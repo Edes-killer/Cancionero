@@ -47,8 +47,15 @@ export default function AvisoActualizacion() {
   const posponer = () => { try { localStorage.setItem("aviso-version-ignorada", nueva) } catch {}; setNueva(null) }
   const actualizar = async () => {
     if (!apkUrl) return
-    // Abrir en el navegador (Custom Tab) → el gestor de descargas de Android baja el
-    // APK; al tocarlo, Android pide permiso de "instalar apps desconocidas" (normal).
+    // Abrir en el navegador EXTERNO (Chrome). El navegador integrado (Custom Tab)
+    // a veces descarga el APK pero no lo entrega (no aparece en Descargas). Chrome
+    // lo baja bien y ofrece instalar. Al tocarlo, Android pide permiso de "instalar
+    // apps desconocidas" (normal la 1ª vez).
+    try {
+      const { AppLauncher } = await import("@capacitor/app-launcher")
+      await AppLauncher.openUrl({ url: apkUrl })
+      return
+    } catch {}
     try {
       const { Browser } = await import("@capacitor/browser")
       await Browser.open({ url: apkUrl })
