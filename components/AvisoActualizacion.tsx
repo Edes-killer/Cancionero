@@ -7,7 +7,10 @@
 
 import { useEffect, useState } from "react"
 
-const BASE = process.env.NEXT_PUBLIC_SITE_URL || "https://selah-live.vercel.app"
+// Se lee de GitHub (raw) en vez de la web/Vercel: se actualiza al instante con cada
+// push y no depende de que Vercel despliegue. Es el mismo public/version.json del repo.
+const URL_VERSION = process.env.NEXT_PUBLIC_UPDATE_URL
+  || "https://raw.githubusercontent.com/Edes-killer/Cancionero/main/public/version.json"
 
 // ¿a > b? (semver simple X.Y.Z)
 const esMayor = (a: string, b: string): boolean => {
@@ -27,7 +30,7 @@ export default function AvisoActualizacion() {
   useEffect(() => {
     if (typeof window === "undefined" || !(window as any).Capacitor) return  // solo APK
     const actual = process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"
-    fetch(`${BASE}/version.json?t=${Date.now()}`, { cache: "no-store" })
+    fetch(`${URL_VERSION}?t=${Date.now()}`, { cache: "no-store" })
       .then(r => r.json())
       .then((d: any) => {
         if (!d?.version || !esMayor(d.version, actual)) return
