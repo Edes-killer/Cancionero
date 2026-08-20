@@ -112,23 +112,25 @@ export default function CamaraMovil() {
   // Abre la cámara. incluirAudio SOLO la primera vez (al voltear no se re-pide
   // permiso ni se corta el audio). Devuelve true si quedó video listo.
   const abrirCamara = async (modo: "environment" | "user", incluirAudio: boolean): Promise<boolean> => {
-    // VOLTEAR (ya hay una cámara abierta): varias estrategias, en orden.
+    // VOLTEAR (ya hay una cámara abierta).
     if (!incluirAudio && videoTrackRef.current) {
-      // A) Abrir la nueva SIN soltar la actual (muchos equipos permiten ambas un
-      //    instante). Si funciona, recién ahí soltamos la vieja.
-      try {
-        const s = await obtenerStreamCamara(modo, false)
-        try { videoTrackRef.current?.stop() } catch {}
-        await aplicarStream(s, false); facingRef.current = modo; setDiag(""); return true
-      } catch {}
-      // B) Soltar la actual, ESPERAR a que el equipo libere la cámara, reintentar.
-      try {
-        videoTrackRef.current?.stop(); videoTrackRef.current = null
-        await new Promise(r => setTimeout(r, 350))
-        const s = await obtenerStreamCamara(modo, false)
-        await aplicarStream(s, false); facingRef.current = modo; setDiag(""); return true
-      } catch {}
-      // C) No se pudo: recuperar la cámara anterior para no quedar en negro.
+      // Soltar del TODO la cámara actual (track + stream + preview) para que el
+      // equipo la LIBERE. En Samsung/One UI la cámara física tarda ~1-2 s en
+      // liberarse; si abrimos la otra de inmediato da NotReadableError ("ocupada").
+      try { videoTrackRef.current.stop() } catch {}
+      videoTrackRef.current = null
+      try { streamRef.current?.getTracks().forEach(t => t.stop()) } catch {}
+      if (videoRef.current) videoRef.current.srcObject = null
+      // Reintentar con esperas CRECIENTES (NotReadableError suele ser transitorio).
+      const esperas = [250, 500, 900, 1400]
+      for (const ms of esperas) {
+        await new Promise(r => setTimeout(r, ms))
+        try {
+          const s = await obtenerStreamCamara(modo, false)
+          await aplicarStream(s, false); facingRef.current = modo; setDiag(""); return true
+        } catch { /* aún ocupada — seguir reintentando */ }
+      }
+      // No se pudo: recuperar la cámara anterior para no quedar en negro.
       try { await aplicarStream(await obtenerStreamCamara(facingRef.current, false), false) } catch {}
       setError("No se pudo abrir la cámara frontal (puede estar en uso o no disponible).")
       setEstado("error")
