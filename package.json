@@ -1,6 +1,7 @@
 {
   "name": "selah-live",
-  "version": "0.5.25",
+  "version": "0.5.26",
+  "minApk": "0.5.26",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -10,7 +11,8 @@
     "electron:dev": "npm run build && electron electron/main.js",
     "electron:build:win": "npm run build && electron-builder --win --publish always --config electron-builder.json",
     "apk": "node scripts/build-apk.mjs",
-    "apk:debug": "node scripts/build-apk.mjs debug"
+    "apk:debug": "node scripts/build-apk.mjs debug",
+    "ota": "node scripts/build-ota.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.4",
@@ -20,6 +22,7 @@
     "@capacitor/cli": "^8.3.4",
     "@capacitor/core": "^8.3.4",
     "@capacitor/push-notifications": "^8.1.1",
+    "@capgo/capacitor-updater": "^8.51.14",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.108.2",
     "docx": "^9.7.1",

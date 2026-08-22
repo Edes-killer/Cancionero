@@ -33,11 +33,14 @@ export default function AvisoActualizacion() {
     fetch(`${URL_VERSION}?t=${Date.now()}`, { cache: "no-store" })
       .then(r => r.json())
       .then((d: any) => {
-        if (!d?.version || !esMayor(d.version, actual)) return
+        // Dispara según minApk (versión mínima que exige un cambio NATIVO). Los
+        // cambios solo-web NO cuentan acá: esos se actualizan solos por OTA.
+        const requerida = d?.minApk || d?.version
+        if (!requerida || !esMayor(requerida, actual)) return
         let ignorada = ""
         try { ignorada = localStorage.getItem("aviso-version-ignorada") || "" } catch {}
-        if (ignorada === d.version) return   // ya la pospuso
-        setNueva(d.version); setApkUrl(d.apkUrl || "")
+        if (ignorada === requerida) return   // ya la pospuso
+        setNueva(requerida); setApkUrl(d.apkUrl || "")
       })
       .catch(() => {})
   }, [])

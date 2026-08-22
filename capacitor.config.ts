@@ -23,6 +23,13 @@ const config: CapacitorConfig = {
     },
     Browser: {
       androidExternalBrowser: false
+    },
+    // OTA: actualizar la parte WEB sin reinstalar el APK. Modo MANUAL (autoUpdate
+    // false): el chequeo/descarga/aplicado lo controla la app (components/OtaUpdater),
+    // leyendo el manifiesto de GitHub. La red de seguridad de Capgo revierte solo si
+    // un bundle sale malo (por eso se llama notifyAppReady al arrancar).
+    CapacitorUpdater: {
+      autoUpdate: false
     }
   }
 };
