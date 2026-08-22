@@ -1,114 +1,84 @@
 # Cómo publicar una versión de Selah Live
 
-Guía para sacar una versión nueva (escritorio **y** celular). Todo sale de **un
-solo número**: la `version` en `package.json`.
+Todo sale de **un número**: la `version` en `package.json`.
+
+Hay **dos tipos de actualización** para el celular:
+
+| Tipo de cambio | Canal | Qué hace el usuario |
+|---|---|---|
+| **Solo web** (React/JS: pantallas, arreglos, lógica) | **OTA** | Al abrir, "Actualización lista → Aplicar". **Sin reinstalar.** |
+| **Nativo** (plugin/permiso nuevo de Capacitor) | **APK** | "Hay versión nueva → Actualizar" → descarga e instala el APK. |
+
+> El **95%** de los cambios son solo-web → van por **OTA** (rápido, sin reinstalar).
+> El escritorio (Electron) siempre se actualiza solo con el `.exe`.
 
 ---
 
-## Paso 0 — Subir la versión (la fuente única)
+## Release SOLO-WEB (lo normal)
 
-En `package.json`, línea 3, cambia el número:
+1. **Sube la versión** en `package.json` (deja `minApk` igual):
+   ```json
+   "version": "0.5.27",
+   "minApk": "0.5.26",
+   ```
+2. **Commit + push** (actualiza `version.json` y `ota.json` en GitHub):
+   ```bash
+   git add -A && git commit -m "chore: 0.5.27" && git push
+   ```
+3. **Compila** los 3 artefactos:
+   ```bash
+   $env:GH_TOKEN = "TU_TOKEN"   # PowerShell
+   npm run electron:build:win   # .exe (crea el release)
+   npm run apk                  # selah-live.apk
+   npm run ota                  # bundle.zip (la parte web para el OTA)
+   ```
+4. **Sube al release** vX.Y.Z (github.com/Edes-killer/Cancionero/releases → ✏️):
+   arrastra **`selah-live.apk`** y **`bundle.zip`** (junto al `.exe`).
+5. **Publish release**.
+
+Resultado:
+- **Celulares** → al abrir, "Actualización lista" → Aplicar (OTA, sin reinstalar).
+- **Escritorio** → se actualiza solo con el `.exe`.
+
+---
+
+## Release con cambio NATIVO (plugin/permiso nuevo)
+
+Cuando agregas un plugin de Capacitor o cambias permisos, el OTA **no basta** — hace
+falta un APK nuevo. Ahí, además de subir `version`, **sube también `minApk`** al mismo
+número:
 
 ```json
-  "version": "0.5.26",
+"version": "0.5.30",
+"minApk": "0.5.30",
 ```
 
-O por comando:
+Con eso, el aviso de **"instala el APK nuevo"** aparece en los celulares (además del
+OTA). El resto del flujo es igual (pasos 2-5).
 
-```bash
-npm version 0.5.26 --no-git-tag-version
-```
-
-> De ese número salen solos: el `.exe`, la versión del APK, y el `version.json`
-> que dispara el aviso de actualización en los celulares.
-
----
-
-## Paso 1 — Commit + push
-
-```bash
-git add -A
-git commit -m "chore: 0.5.26"
-git push
-```
-
-Esto publica el nuevo `version.json` en GitHub → los celulares con versión vieja
-verán el aviso al abrir (GitHub tarda ~5 min en refrescar el archivo).
-
----
-
-## Paso 2 — Compilar y publicar el .exe (escritorio)
-
-En **PowerShell** (necesita tu token de GitHub):
-
-```powershell
-$env:GH_TOKEN = "TU_TOKEN"
-```
-```powershell
-npm run electron:build:win
-```
-
-Crea el release **vX.Y.Z como borrador** en GitHub con el `.exe` y `latest.yml`.
-
-> El token es un GitHub PAT classic con scope `repo`. **Vencen** — si falla el
-> publish, regenera uno en github.com/settings/tokens.
-
----
-
-## Paso 3 — Compilar el APK (celular)
-
-```bash
-npm run apk
-```
-
-Deja **`selah-live.apk`** (firmado con el keystore de release) en la raíz.
-Debe decir **"✅ Listo"** — si dice "SIN FIRMAR", revisar el keystore.
-
-> Usa SIEMPRE `npm run apk` (release), **nunca** `apk:debug` para lo que subas.
-> Todas las release comparten el mismo keystore → se instalan encima sin desinstalar.
-
----
-
-## Paso 4 — Subir el APK al release y publicar
-
-1. Ve a **github.com/Edes-killer/Cancionero/releases**
-2. Abre el borrador **vX.Y.Z** (arriba, recién creado por el paso 2) → lápiz ✏️
-3. Arrastra **`selah-live.apk`** a los assets (junto al `.exe`)
-4. Baja y dale a **"Publish release"** (botón verde)
-
-Listo. `latest/download/selah-live.apk` ya apunta a la versión nueva.
-
----
-
-## Qué pasa después
-
-- **Escritorio:** las iglesias con Electron se actualizan solas.
-- **Celular:** al abrir la app, ven "🔄 Hay una versión nueva" → botón "Actualizar"
-  → Chrome baja el APK → instalar (encima de la anterior, misma firma).
+> Regla simple: **¿tocaste algo en `android/`, `capacitor.config.ts`, o agregaste un
+> plugin?** → sube `minApk`. Si solo tocaste código web → deja `minApk` igual.
 
 ---
 
 ## Cosas que NO hay que olvidar
 
-- **Respalda el keystore** fuera de este PC (Drive/USB): `android/app/selah-live-release.keystore`
-  + la contraseña (`android/keystore.properties`) + alias `selah-live`. Si lo pierdes,
-  **no podrás volver a actualizar** los celulares ya instalados.
-- **Nunca crees un release solo-APK** (sin el `.exe`): el auto-update de escritorio se
-  guía por el mismo release y daría error si no encuentra el `.exe`/`latest.yml`.
-- **Firma:** debug → release necesita desinstalar; release → release se instala encima.
-  Para las iglesias, siempre release.
-- **Firewall (conexión del celular):** en cada PC de iglesia, la instalación MANUAL
-  abre el firewall sola (UAC una vez), o Config → "Reparar" en escritorio.
-- Los **borradores viejos** (0.3.x de junio) en Releases son basura — se pueden borrar.
+- **Respalda el keystore** fuera del PC: `android/app/selah-live-release.keystore` +
+  contraseña (`android/keystore.properties`) + alias `selah-live`. Sin él no se puede
+  actualizar la APK nunca más.
+- **Nunca release solo-APK** sin el `.exe`: el auto-update de escritorio se guía por el
+  mismo release y daría error si no encuentra el `.exe`/`latest.yml`.
+- **Firma:** debug → release exige desinstalar; release → release instala encima.
+- **GitHub raw cachea ~5 min** los manifiestos → el aviso puede tardar unos minutos.
+- Los **assets** del release deben llamarse EXACTO: `selah-live.apk` y `bundle.zip`.
 
 ---
 
-## Resumen ultra-corto
+## Resumen ultra-corto (release solo-web)
 
 ```
-1. package.json → nuevo número
+1. package.json → sube "version" (deja "minApk")
 2. git add -A && git commit -m "chore: X.Y.Z" && git push
-3. $env:GH_TOKEN="..." ; npm run electron:build:win
-4. npm run apk
-5. GitHub → release → subir selah-live.apk → Publish
+3. $env:GH_TOKEN="..." ; npm run electron:build:win ; npm run apk ; npm run ota
+4. GitHub → release → subir selah-live.apk + bundle.zip → Publish
 ```

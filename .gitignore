@@ -65,3 +65,4 @@ android/keystore.properties
 # APKs generados por 'npm run apk'
 selah-live.apk
 selah-live-debug.apk
+bundle.zip
