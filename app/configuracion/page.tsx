@@ -3,6 +3,7 @@
 import { CSSProperties, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
+import { copiarTexto } from "@/lib/copiar"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId } from "@/lib/getIglesia"
 import { buscarServidorEnRed } from "@/lib/servidor"
@@ -251,7 +252,8 @@ export default function ConfiguracionPage() {
     const texto = hayWebPublica
       ? `Te invito a Selah Live 🎵\n\nAbre este enlace: ${site}/unirse?codigo=${codigo}\n\nO instala la app e ingresa el código: ${codigo}`
       : `Te invito a Selah Live 🎵\n\nInstalá la app e ingresá este código en "Unirse a una iglesia":\n\n${codigo}`
-    navigator.clipboard.writeText(texto).then(() => {
+    copiarTexto(texto).then(ok => {
+      if (!ok) return
       setLinkCopiado(codigo)
       setTimeout(() => setLinkCopiado(""), 2500)
     })
@@ -1176,7 +1178,7 @@ export default function ConfiguracionPage() {
                   </span>
                 </div>
                 <button
-                  onClick={() => { navigator.clipboard?.writeText(`selah://${servidorIp}:4000`); mostrarFlash("✅ URL copiada", "ok") }}
+                  onClick={() => { copiarTexto(`selah://${servidorIp}:4000`).then(ok => mostrarFlash(ok ? "✅ URL copiada" : "No se pudo copiar", ok ? "ok" : "error")) }}
                   style={{ marginTop: 6, fontSize: 11, padding: "3px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.1)",
                     background: "transparent", color: "rgba(255,255,255,0.5)", cursor: "pointer" }}>
                   📋 Copiar URL
