@@ -1,8 +1,17 @@
 // lib/servidor.ts
+// Limpia lo que el usuario haya escrito como IP: quita esquema (http/https/selah),
+// puerto, barras y espacios. Así "https://192.168.1.10:4000/" → "192.168.1.10".
+const limpiarIp = (raw: string): string =>
+  (raw || "").trim()
+    .replace(/^\w+:\/\//i, "")   // http:// https:// selah://
+    .replace(/[/\\].*$/, "")      // path o barra final
+    .replace(/:\d+$/, "")         // :4000
+    .trim()
+
 export const getSocketUrl = (): string => {
   if (typeof window === "undefined") return ""
   if (process.env.NEXT_PUBLIC_SOCKET_URL) return process.env.NEXT_PUBLIC_SOCKET_URL
-  const ip = localStorage.getItem("servidor_ip") || window.location.hostname
+  const ip = limpiarIp(localStorage.getItem("servidor_ip") || "") || window.location.hostname
   return `http://${ip}:4000`
 }
 
