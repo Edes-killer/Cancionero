@@ -464,6 +464,7 @@ export default function ConfiguracionPage() {
   // Firewall (solo en la app de escritorio / Electron): estado de la regla que deja
   // que el celular llegue a este PC por la red.
   const [fw, setFw] = useState<"desconocido" | "ok" | "falta" | "reparando">("desconocido")
+  const [ipsPC, setIpsPC] = useState<string[]>([])   // IPs de este PC (para escribir en el celular)
   const esEscritorio = typeof window !== "undefined" && !!(window as any).firewall
   useEffect(() => {
     const escalaGuardada = localStorage.getItem("proyector-escala-fuente")
@@ -473,6 +474,8 @@ export default function ConfiguracionPage() {
     setRecordarUltima(localStorage.getItem("selah-recordar-ultima") !== "0")
     const f = (window as any).firewall
     if (f) f.estado().then((r: any) => setFw(r?.existe ? "ok" : "falta")).catch(() => {})
+    const tx = (window as any).transmision
+    if (tx?.infoRedCamara) tx.infoRedCamara().then((r: any) => { if (r?.ok) setIpsPC(r.ips || (r.ip ? [r.ip] : [])) }).catch(() => {})
   }, [])
 
   const mostrarFlash = (msg: string, tipo: "ok" | "error" | "info" = "ok") => {
@@ -1342,6 +1345,30 @@ export default function ConfiguracionPage() {
               <div style={{ fontWeight: 800, fontSize: 15 }}>📱 Conexión con el celular</div>
               <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2 }}>Deja que el celular llegue a este PC por la red (firewall de Windows)</div>
             </div>
+
+            {ipsPC.length > 0 && (
+              <div style={{ padding: "12px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                <div style={{ fontSize: 12.5, color: "rgba(255,255,255,0.6)", marginBottom: 7 }}>
+                  IP de este PC — escríbela en el celular (toca para copiar):
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {ipsPC.map(ip => (
+                    <button key={ip} type="button"
+                      onClick={() => copiarTexto(ip).then(ok => mostrarFlash(ok ? `✅ ${ip} copiada` : ip, "ok"))}
+                      style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(59,130,246,0.35)",
+                        background: "rgba(59,130,246,0.1)", color: "#93c5fd", fontSize: 14, fontWeight: 700,
+                        fontFamily: "monospace", cursor: "pointer" }}>
+                      {ip}
+                    </button>
+                  ))}
+                </div>
+                {ipsPC.length > 1 && (
+                  <div style={{ fontSize: 11.5, color: "rgba(251,191,36,0.9)", marginTop: 8, lineHeight: 1.5 }}>
+                    ⚠️ Hay varias redes (¿repetidor WiFi?). El celular y el PC deben estar en la <strong>MISMA</strong>. Prueba cada IP abriendo <span style={{ fontFamily: "monospace" }}>http://IP:4000/info</span> en el navegador del celular — la que cargue es la correcta.
+                  </div>
+                )}
+              </div>
+            )}
             <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
               <div style={{ flex: 1, minWidth: 200 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700 }}>

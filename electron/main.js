@@ -414,7 +414,7 @@ registrarIPCPowerPoint()
 // IP local + puertos, para que /en-vivo arme el QR de "cámara desde el celular"
 // (el celular abre http://<ip>:3000/camara y señaliza por el socket en :4000).
 ipcMain.handle("camara:infoRed", () => {
-  try { return { ok: true, ip: getLocalIP(), web: 3000, socket: 4000 } }
+  try { const ips = getLocalIPs(); return { ok: true, ip: ips[0], ips, web: 3000, socket: 4000 } }
   catch (e) { return { ok: false, error: e.message } }
 })
 
@@ -465,33 +465,36 @@ if (!gotTheLock) {
 // ✅ Filtra adaptadores virtuales (VPN, VirtualBox, Hyper-V, etc.) que en
 //    Windows suelen aparecer ANTES que el WiFi/Ethernet real, causando que
 //    el QR apunte a una IP inalcanzable desde el celular.
-function getLocalIP() {
+// Prioridad de rangos LAN: 192.168 y 10.x primero (routers domésticos), 172.16-31
+// después, y CGNAT (100.64-127.x, típico de repetidores/mesh raros) AL FINAL, porque
+// esas IPs muchas veces NO son alcanzables desde el celular.
+function _esCGNAT(a) { const p = a.split(".").map(Number); return p[0] === 100 && p[1] >= 64 && p[1] <= 127 }
+function _es172priv(a) { const p = a.split(".").map(Number); return p[0] === 172 && p[1] >= 16 && p[1] <= 31 }
+function _prioridadIP(a) {
+  if (a.startsWith("192.168.")) return 0
+  if (a.startsWith("10.")) return 1
+  if (_es172priv(a)) return 2
+  if (_esCGNAT(a)) return 9
+  return 5
+}
+
+// Devuelve TODAS las IPv4 LAN del equipo, mejor-primero. El repetidor puede darle
+// varias al PC; mostrarlas todas deja al usuario elegir la que sí ve el celular.
+function getLocalIPs() {
   const interfaces = os.networkInterfaces()
-  const candidatos = []
-
   const NOMBRES_IGNORAR = /virtualbox|vmware|hyper-v|vethernet|loopback|tailscale|zerotier|tap-|tun|vpn|docker|wsl|bluetooth/i
-
+  const cand = []
   for (const name of Object.keys(interfaces)) {
     if (NOMBRES_IGNORAR.test(name)) continue
     for (const iface of interfaces[name] || []) {
-      if (iface.family === "IPv4" && !iface.internal) {
-        candidatos.push({ name, address: iface.address })
-      }
+      if (iface.family === "IPv4" && !iface.internal) cand.push(iface.address)
     }
   }
-
-  if (candidatos.length === 0) return "127.0.0.1"
-
-  // Preferir rangos típicos de red doméstica (192.168.x.x)
-  const domestica = candidatos.find(c => c.address.startsWith("192.168."))
-  if (domestica) return domestica.address
-
-  // Luego 10.x.x.x (también común en routers, menos en VPNs corporativas)
-  const privada10 = candidatos.find(c => c.address.startsWith("10."))
-  if (privada10) return privada10.address
-
-  return candidatos[0].address
+  cand.sort((a, b) => _prioridadIP(a) - _prioridadIP(b))
+  return cand.length ? cand : ["127.0.0.1"]
 }
+
+function getLocalIP() { return getLocalIPs()[0] }
 
 // ── Biblia local (lógica compartida con app/server/index.js) ──────────────────
 const { buscarVersiculosLocal: buscarVersiculosCompartido } = require("../lib/biblia-server")
