@@ -552,6 +552,22 @@ useEffect(() => {
   }
 
   const s = io(getSocketUrl(), { reconnection: true, reconnectionAttempts: Infinity, reconnectionDelay: 1000, reconnectionDelayMax: 5000 })
+
+  // ── Respaldo por la NUBE (Supabase Realtime) ────────────────────────────────
+  // Si el socket LOCAL está caído (repetidor/firewall/sub-red distinta), los
+  // comandos igual llegan al proyector por un canal de Supabase. Se parchea el
+  // emit del socket UNA vez: conectado → local (rápido); si no → nube. Así los ~30
+  // call sites de s.emit(...) del control no cambian.
+  const salaNube = (typeof window !== "undefined" && localStorage.getItem("cancionero_iglesia_activa_id")) || "global"
+  const canalNube = supabase.channel(`sala:${salaNube}`, { config: { broadcast: { self: false } } })
+  canalNube.subscribe()
+  const _emitLocal = s.emit.bind(s)
+  ;(s as any).emit = (evento: string, ...args: any[]) => {
+    if (s.connected) return _emitLocal(evento, ...args)
+    try { canalNube.send({ type: "broadcast", event: "ev", payload: { evento, data: args[0] } }) } catch {}
+    return s
+  }
+
   // Log de errores de conexión con throttle (evita llenar el registro con reintentos).
   let _ultimoLogConex = 0
   const logConex = (m: string) => {
@@ -698,6 +714,7 @@ useEffect(() => {
     s.off("cambiar-parte", onCambiarParteRemoto)
     s.off("cambiar-pagina-biblia", onCambiarPaginaRemoto)
     s.disconnect()
+    try { supabase.removeChannel(canalNube) } catch {}
   }
 }, [])
 

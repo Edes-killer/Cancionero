@@ -884,6 +884,13 @@ try {
       upsertEstadoCulto(sala, "cancion", data)
     })
 
+    // Puente NUBE→local: el proyector recibe un evento por Supabase (cuando el
+    // control no pudo por la red local) y lo reinyecta acá para repartirlo a la
+    // sala como cualquier evento normal, sin tocar los handlers del proyector.
+    socket.on("bridge-nube", ({ evento, data } = {}) => {
+      if (evento) io.to(salaDe(socket)).emit(evento, data)
+    })
+
     socket.on("cambiar-parte", (index) => {
       const sala = salaDe(socket)
       const estado = estadosPorSala[sala]
