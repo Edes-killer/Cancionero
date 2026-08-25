@@ -553,6 +553,7 @@ export default function ProyectarPage() {
 
   useEffect(() => {
     let activo = true
+    let canalNube: any = null   // puente Supabase Realtime → servidor local
     const dev = process.env.NODE_ENV === "development"
 
     // ✅ Socket se crea inmediatamente — sin esperar getSession
@@ -577,6 +578,16 @@ export default function ProyectarPage() {
         setCargandoProyector(true)
         setEstadoInicialRevisado(false)
         s.emit("unirse-sala", { sala, pantalla: "proyectar" })
+        // Puente NUBE: si el control no puede por la red local, sus comandos llegan
+        // por Supabase; acá los reinyectamos al servidor local para repartirlos a la
+        // sala como cualquier evento (sin tocar los handlers de abajo).
+        if (!canalNube) {
+          canalNube = supabase.channel(`sala:${sala}`, { config: { broadcast: { self: false } } })
+          canalNube.on("broadcast", { event: "ev" }, ({ payload }: any) => {
+            if (payload?.evento && activo) s.emit("bridge-nube", { evento: payload.evento, data: payload.data })
+          })
+          canalNube.subscribe()
+        }
         setTimeout(() => s.emit("get-estado"), 150)
         if (timeoutCargaProyectorRef.current) clearTimeout(timeoutCargaProyectorRef.current)
         timeoutCargaProyectorRef.current = setTimeout(() => {
@@ -734,6 +745,7 @@ export default function ProyectarPage() {
       activo = false
       if (timeoutCargaProyectorRef.current) clearTimeout(timeoutCargaProyectorRef.current)
       s.disconnect()
+      try { if (canalNube) supabase.removeChannel(canalNube) } catch {}
     }
   }, [])
 
