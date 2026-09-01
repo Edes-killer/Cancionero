@@ -1,3 +1,10 @@
+// Electron puede sobrevivir al cierre de la terminal que lo lanzó. En Windows,
+// escribir luego en esa tubería cerrada genera EPIPE; sin listener Node lo trata
+// como excepción no capturada y Electron muestra un cuadro de "JavaScript error".
+const { protegerSalida } = require("./safe-output")
+protegerSalida(process.stdout)
+protegerSalida(process.stderr)
+
 try { require("dotenv").config() } catch(e) {}
 const { app, BrowserWindow, shell, Menu, ipcMain, dialog, session, desktopCapturer } = require("electron")
 const path = require("path")
