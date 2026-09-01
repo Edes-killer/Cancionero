@@ -874,6 +874,17 @@ export default function ProyectarPage() {
 
   const hayContenido = !!estadoEspecial || !!imagen || !!biblia || partes.length > 0 || !!titulo
 
+  // Si el servidor local no está disponible, no dejar una pantalla de carga
+  // eterna. Al conectar más tarde, el handler del socket vuelve a solicitar el
+  // estado y la proyección se recupera normalmente.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setEstadoInicialRevisado(true)
+      setCargandoProyector(false)
+    }, 5000)
+    return () => clearTimeout(timer)
+  }, [])
+
   // ── Pantalla de carga ─────────────────────────────────────────────────────
   if (cargandoProyector) return (
     <div style={{ width:"100vw",height:"100vh",background:"linear-gradient(180deg,#020617 0%,#0f172a 100%)",color:"white",display:"flex",alignItems:"center",justifyContent:"center",position:"fixed",inset:0 }}>
