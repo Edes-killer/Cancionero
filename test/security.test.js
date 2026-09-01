@@ -2,6 +2,8 @@ const test = require("node:test")
 const assert = require("node:assert/strict")
 const path = require("node:path")
 const { rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb } = require("../electron/security")
+const { EventEmitter } = require("node:events")
+const { protegerSalida } = require("../electron/safe-output")
 
 test("las rutas estáticas no pueden escapar de la carpeta pública", () => {
   const raiz = path.resolve("out")
@@ -24,4 +26,12 @@ test("Electron solo confía en su origen interno y abre enlaces web", () => {
   assert.equal(esEnlaceWeb("https://selah-live.vercel.app/"), true)
   assert.equal(esEnlaceWeb("javascript:alert(1)"), false)
   assert.equal(esEnlaceWeb("file:///C:/secreto.txt"), false)
+})
+
+test("cerrar la consola no derriba el proceso principal", () => {
+  const salida = new EventEmitter()
+  protegerSalida(salida)
+  protegerSalida(salida)
+  assert.equal(salida.listenerCount("error"), 1)
+  assert.doesNotThrow(() => salida.emit("error", Object.assign(new Error("broken pipe"), { code: "EPIPE" })))
 })
