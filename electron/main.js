@@ -1319,8 +1319,9 @@ function createWindow() {
       return { action: "deny" }
     }
 
-    // ✅ Proyector: cubre la pantalla pero sin fullscreen real
-    // Así Alt+Tab funciona y se puede cambiar de ventana en emergencias
+    // ✅ Pantalla completa real: cubre también la barra de tareas. No usamos
+    // alwaysOnTop, por lo que Alt+Tab sigue permitiendo volver a otra ventana
+    // durante una emergencia sin que el proyector quede superpuesto.
     if (url.includes("/proyectar")) {
       const displays = require("electron").screen.getAllDisplays()
       const secondDisplay = displays.find(d => d.id !== require("electron").screen.getPrimaryDisplay().id)
@@ -1333,9 +1334,10 @@ function createWindow() {
           y: target.bounds.y,
           width: target.bounds.width,
           height: target.bounds.height,
-          fullscreen: false,         // ← Sin fullscreen real → Alt+Tab funciona
+          fullscreen: true,
+          fullscreenable: true,
           frame: false,              // Sin bordes
-          alwaysOnTop: false,        // Libre por defecto — ESC lo fija encima
+          alwaysOnTop: false,
           backgroundColor: "#000",
           title: "Selah Live — Proyector",
           webPreferences: {
@@ -1380,10 +1382,8 @@ app.whenReady().then(async () => {
   // ── Atajos de teclado globales ────────────────────────────────────────────
   const { globalShortcut } = require("electron")
 
-  // ESC — cierra la pantalla de proyección. Antes un ESC solo cambiaba
-  // "siempre encima" y hacía falta doble ESC para cerrar, lo que se sentía
-  // como que "no cierra". El proyector no es fullscreen real (fullscreen:false),
-  // así que Alt+Tab ya funciona sin necesidad de despinnearlo.
+  // ESC — cierra la pantalla de proyección. Alt+Tab continúa disponible porque
+  // la ventana no está configurada como alwaysOnTop.
   // ✅ Guardamos la referencia de la ventana del proyector directamente. Antes
   // se la buscaba por título ("Proyector"), pero layout.tsx pone
   // document.title = "Selah Live" al cargar la página, así que getTitle() ya no

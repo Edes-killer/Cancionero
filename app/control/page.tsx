@@ -1523,10 +1523,13 @@ const iniciarAprendizaje = () => {
   setAprendiendo(true)
 }
 
-const registrarCambioParte = (cancionId?: string) => {
+const registrarCambioParte = (cancionId?: string, parteSalida = index) => {
   if (!aprendiendo || tiempoInicioParte.current === null) return
   const elapsed = Date.now() - tiempoInicioParte.current
-  tiemposRegistrados.current.push(elapsed)
+  // Guardar por índice de parte, no por cantidad de pulsaciones. Si el operador
+  // retrocede y vuelve a avanzar, el tiempo se reemplaza en vez de crear un
+  // paso fantasma que desordena el auto-avance.
+  tiemposRegistrados.current[parteSalida] = elapsed
   tiempoInicioParte.current = Date.now()
   // ✅ Guardar tiempos parciales en cada cambio — no esperar al final
   if (cancionId && tiemposRegistrados.current.length > 0) {
@@ -1541,6 +1544,12 @@ const finalizarAprendizaje = (cancionId: string) => {
   setTiemposAprendidos(tiemposRegistrados.current)
   setAprendiendo(false)
   tiemposRegistrados.current = []
+}
+
+const reposicionarAprendizaje = () => {
+  // Retroceder es una corrección manual: no se guarda como duración ni se deja
+  // corriendo el cronómetro de la parte anterior.
+  if (aprendiendo) tiempoInicioParte.current = Date.now()
 }
 
 // ── Ir al Coro y volver al siguiente verso ───────────────────────────────
@@ -1656,7 +1665,7 @@ const siguiente = async () => {
   if (indiceLista === null) {
     const nuevo = calcSiguienteParte()
     if (nuevo !== null) {
-      registrarCambioParte(activaId || undefined)
+      registrarCambioParte(activaId || undefined, index)
       setIndex(nuevo)
       socket.emit("cambiar-parte", nuevo)
       if (autoAvanceActivo) iniciarAutoAvance(tiemposAprendidos, nuevo)
@@ -1680,7 +1689,7 @@ const siguiente = async () => {
   if (itemActual?.tipo === "cancion") {
     const nuevo = calcSiguienteParte()
     if (nuevo !== null) {
-      registrarCambioParte(activaId || undefined)
+      registrarCambioParte(activaId || undefined, index)
       setIndex(nuevo)
       socket.emit("cambiar-parte", nuevo)
       if (autoAvanceActivo) iniciarAutoAvance(tiemposAprendidos, nuevo)
@@ -1700,6 +1709,8 @@ const siguiente = async () => {
 
 const anterior = async () => {
   if (!socket) return
+
+  reposicionarAprendizaje()
 
   // Biblia proyectada directa, fuera de lista
   if (indiceLista === null && paginasBiblia.length > 0) {
