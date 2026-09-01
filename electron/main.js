@@ -611,6 +611,14 @@ const EVENTOS_PUENTE_NUBE = new Set([
   "cambiar-fondo", "control-siguiente", "control-anterior", "precargar-imagenes",
   "ajustar-zoom", "reenviar-estado-a-proyectar",
 ])
+const EVENTOS_OPERADOR = new Set([
+  "cargar-cancion", "cambiar-parte", "cancion-activa", "mostrar-imagen",
+  "mostrar-biblia", "cambiar-pagina-biblia", "mostrar-estado",
+  "mostrar-banner-urgente", "ocultar-banner-urgente", "modo-limpio",
+  "cambiar-fondo", "precargar-imagenes", "ajustar-zoom", "zoom-info",
+  "reenviar-estado-a-proyectar",
+])
+const EVENTOS_NAVEGACION_PROYECTOR = new Set(["control-siguiente", "control-anterior"])
 
 function startSocketServer(port) {
   const estadoPath = path.join(app.getPath("userData"), "estado.json")
@@ -900,13 +908,30 @@ try {
   io.on("connection", (socket) => {
     console.log("📱 Cliente conectado:", socket.id)
 
-    socket.on("unirse-sala", ({ sala, pantalla, pin }) => {
+    // Autorización por evento. Antes un cliente podía unirse como "musicos" y
+    // emitir comandos de operador (por ejemplo un banner) dentro de la sala.
+    // El PIN protegía el ingreso de Control, pero no el envío posterior según
+    // el rol. Ahora cada paquete sensible exige haber ingresado como operador.
+    socket.use(([evento], next) => {
+      if (!EVENTOS_OPERADOR.has(evento) && !EVENTOS_NAVEGACION_PROYECTOR.has(evento)) return next()
+      const pantalla = socket.data.pantalla
+      const unido = !!socket.data.sala
+      const operador = pantalla === "control" || pantalla === "canciones"
+      const navegacionLocal = EVENTOS_NAVEGACION_PROYECTOR.has(evento) && pantalla === "proyectar"
+      if (unido && (operador || navegacionLocal)) return next()
+      console.warn(`⛔ Evento rechazado: ${evento} · pantalla=${pantalla || "sin-unir"}`)
+      socket.emit("accion-no-autorizada", { evento })
+      next(new Error("accion_no_autorizada"))
+    })
+
+    socket.on("unirse-sala", ({ sala, pantalla, pin }, callback) => {
       const salaFinal = sala || "global"
 
       if (pantalla === "control" || pantalla === "canciones") {
         const pinG = pinesPorSala[salaFinal]
         if (pinG && String(pin || "") !== String(pinG)) {
           socket.emit("pin-invalido", { mensaje: "PIN incorrecto. Verifica en configuración." })
+          if (typeof callback === "function") callback({ ok: false, error: "pin_invalido" })
           return
         }
         if (!pinG && pin) pinesPorSala[salaFinal] = String(pin)
@@ -915,6 +940,7 @@ try {
       socket.data.sala = salaFinal
       socket.data.pantalla = pantalla || "desconocida"
       socket.join(salaFinal)
+      if (typeof callback === "function") callback({ ok: true, sala: salaFinal, pantalla: socket.data.pantalla })
       console.log(`🏠 ${socket.id} → sala: ${salaFinal} | pantalla: ${pantalla}`)
 
       if (pantalla === "control" && estadosPorSala[salaFinal]) {
