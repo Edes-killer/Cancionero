@@ -536,10 +536,9 @@ useEffect(() => {
 
 // Audio silencioso para activar Media Session en Android
 const audioRef = useRef<HTMLAudioElement | null>(null)
-// Solicitar permiso de notificaciones (Android 13+)
-if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
-  Notification.requestPermission()
-}
+// No pedir permisos durante el render. Las notificaciones aún no se usan en
+// Control y Android/navegadores solo deben solicitarlas tras una acción clara
+// del usuario; pedirlas aquí producía avisos inesperados y repetidos.
 
 useEffect(() => {
   // ✅ Sin servidor igual carga el control — solo avisa al intentar proyectar
@@ -558,23 +557,34 @@ useEffect(() => {
   // comandos igual llegan al proyector por un canal de Supabase. Se parchea el
   // emit del socket UNA vez: conectado → local (rápido); si no → nube. Así los ~30
   // call sites de s.emit(...) del control no cambian.
-  const salaNube = (typeof window !== "undefined" && localStorage.getItem("cancionero_iglesia_activa_id")) || "global"
-  const canalNube = supabase.channel(`sala:${salaNube}`, { config: { broadcast: { self: false } } })
-  canalNube.subscribe()
-  const _emitLocal = s.emit.bind(s)
-  ;(s as any).emit = (evento: string, ...args: any[]) => {
-    if (s.connected) return _emitLocal(evento, ...args)
-    try { canalNube.send({ type: "broadcast", event: "ev", payload: { evento, data: args[0] } }) } catch {}
-    return s
-  }
-
-  // Log de errores de conexión con throttle (evita llenar el registro con reintentos).
+  // Log con throttle: evita llenar el registro durante los reintentos.
   let _ultimoLogConex = 0
   const logConex = (m: string) => {
     const n = Date.now()
     if (n - _ultimoLogConex < 15000) return
     _ultimoLogConex = n
     logError(m, { tipo: "socket", pagina: "/control" })
+  }
+  const salaNube = (typeof window !== "undefined" && localStorage.getItem("cancionero_iglesia_activa_id")) || "global"
+  const canalNube = supabase.channel(`sala:${salaNube}`, { config: { broadcast: { self: false } } })
+  let nubeLista = false
+  canalNube.subscribe((estado) => {
+    nubeLista = estado === "SUBSCRIBED"
+    if (estado === "CHANNEL_ERROR" || estado === "TIMED_OUT") {
+      logConex(`Respaldo por nube no disponible: ${estado}`)
+    }
+  })
+  const _emitLocal = s.emit.bind(s)
+  ;(s as any).emit = (evento: string, ...args: any[]) => {
+    if (s.connected) return _emitLocal(evento, ...args)
+    if (!nubeLista) {
+      logConex(`Sin conexión local y el respaldo por nube aún no está listo (${evento})`)
+      return s
+    }
+    canalNube.send({ type: "broadcast", event: "ev", payload: { evento, data: args[0] } })
+      .then(estado => { if (estado !== "ok") logConex(`Falló el envío por nube (${evento}): ${estado}`) })
+      .catch(e => logConex(`Falló el envío por nube (${evento}): ${e?.message || e}`))
+    return s
   }
   s.on("connect", async () => {
     try {

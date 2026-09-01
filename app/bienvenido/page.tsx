@@ -314,7 +314,7 @@ export default function Bienvenido() {
             <div style={{ fontSize: 13, color: C.tenue, marginBottom: 18 }}>Para siempre. Todo lo del domingo.</div>
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
               {[
-                "Himnario completo (300+ himnos)",
+                "Himnario completo incluido",
                 "200 canciones propias",
                 "Proyección, Biblia y cultos",
                 "Vista Músicos en tiempo real",
@@ -386,7 +386,7 @@ export default function Bienvenido() {
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
               {[
                 "Todo lo del plan Pro",
-                "🎥 Módulo de Transmisión (OBS)",
+                "🎥 Transmisión nativa multicámara, sin OBS",
                 "Overlays en vivo con tu logo y banners",
                 "Multi-sede en una sola cuenta",
                 "10 GB de multimedia en la nube",

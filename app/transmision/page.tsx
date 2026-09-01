@@ -103,6 +103,23 @@ export default function TransmisionPage() {
       </div>
 
       <div style={{ maxWidth: 860, margin: "0 auto", padding: "24px" }}>
+        <div style={{
+          background: "linear-gradient(135deg,rgba(37,99,235,.16),rgba(14,165,233,.08))",
+          border: "1px solid rgba(96,165,250,.32)", borderRadius: 16,
+          padding: "16px 18px", marginBottom: 20,
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap",
+        }}>
+          <div style={{ flex: "1 1 380px" }}>
+            <div style={{ fontWeight: 850, marginBottom: 5 }}>Integración opcional con OBS</div>
+            <div style={{ color: C.suave, fontSize: 13.5, lineHeight: 1.5 }}>
+              Selah puede transmitir por sí solo. Usa esta pantalla únicamente si tu iglesia ya trabaja con OBS y quiere controlarlo desde Selah.
+            </div>
+          </div>
+          <button onClick={() => navegarSPA(router, "/en-vivo")} style={boton({
+            background: C.azul, color: "white", whiteSpace: "nowrap",
+          })}>Ir a Transmisión nativa →</button>
+        </div>
+
         {/* Sin conexión: guía + formulario */}
         {!estado.conectado && (
           <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, padding: 24, marginBottom: 20 }}>

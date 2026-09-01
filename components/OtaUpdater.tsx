@@ -12,6 +12,7 @@
 // necesitando un APK nuevo (lo avisa AvisoActualizacion con el campo minApk).
 
 import { useEffect, useState } from "react"
+import { logCatch } from "@/lib/Errorlogger"
 
 const MANIFEST = process.env.NEXT_PUBLIC_OTA_MANIFEST
   || "https://raw.githubusercontent.com/Edes-killer/Cancionero/main/public/ota.json"
@@ -44,8 +45,17 @@ export default function OtaUpdater() {
       // 2) Chequear manifiesto.
       try {
         const r = await fetch(`${MANIFEST}?t=${Date.now()}`, { cache: "no-store" })
+        if (!r.ok) throw new Error(`Manifiesto OTA respondió HTTP ${r.status}`)
         const man = await r.json()
         if (cancelado || !man?.version || !man?.url) return
+        // No aplicar código web que dependa de cambios nativos ausentes. La
+        // versión de App.getInfo() es la APK realmente instalada y no cambia
+        // cuando se aplica un bundle OTA.
+        if (man.minApk) {
+          const { App } = await import("@capacitor/app")
+          const info = await App.getInfo()
+          if (esMayor(man.minApk, info.version || "0.0.0")) return
+        }
         // Versión efectiva actual: la del bundle OTA si es válida; si no, la del APK.
         const actual = await Updater.current().catch(() => null)
         const otaV = actual?.bundle?.version
@@ -59,7 +69,11 @@ export default function OtaUpdater() {
         const bundle = await Updater.download({ url: man.url, version: man.version })
         if (cancelado || !bundle?.id) return
         setBundleListo(bundle); setVersion(man.version)
-      } catch { /* sin conexión / manifiesto no disponible: no pasa nada */ }
+      } catch (e) {
+        // Una caída de internet al abrir no es un error de la app. Sí dejamos
+        // rastro de respuestas/manifiestos inválidos para poder diagnosticar OTA.
+        if (navigator.onLine) logCatch(e, "No se pudo preparar la actualización OTA", { pagina: "ota", tipo: "general" })
+      }
     })()
     return () => { cancelado = true }
   }, [])
@@ -67,7 +81,8 @@ export default function OtaUpdater() {
   if (!bundleListo || !updater) return null
 
   const aplicar = async () => {
-    try { await updater.set(bundleListo) } catch {}   // aplica y recarga la app
+    try { await updater.set(bundleListo) }
+    catch (e) { logCatch(e, "No se pudo aplicar la actualización OTA", { pagina: "ota", tipo: "general" }) }
   }
   const posponer = () => setBundleListo(null)
 

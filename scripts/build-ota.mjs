@@ -18,4 +18,4 @@ run(`npx --yes @capgo/cli@latest bundle zip ${appId} --path out --name bundle.zi
 
 console.log(`\n✅ Listo: bundle.zip  (v${version})`)
 console.log('→ Súbelo al release de GitHub como asset con el nombre "bundle.zip".')
-console.log('   Los celulares (con APK >= la que trae Capgo) lo aplican solos al abrir, sin reinstalar.')
+console.log('   Los celulares compatibles lo descargan y muestran “Aplicar”; no interrumpe el culto por sí solo.')
