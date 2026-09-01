@@ -24,11 +24,18 @@ try {
   // más nuevo. url = zip fijo del último release (subir "bundle.zip" a cada release).
   writeFileSync("./public/ota.json", JSON.stringify({
     version,
+    minApk,
     url: process.env.NEXT_PUBLIC_OTA_URL || "https://github.com/Edes-killer/Cancionero/releases/latest/download/bundle.zip",
   }))
 } catch {}
 
 const nextConfig: NextConfig = {
+  // Evita que `next dev` escriba AGENTS.md/CLAUDE.md dentro del repositorio.
+  agentRules: false,
+  // QA local puede abrirse como localhost o 127.0.0.1. Next 16 bloquea por
+  // defecto el HMR si el hostname visible no coincide con el origen del dev
+  // server, dejando la consola llena de fallos WebSocket.
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   output: "export",
   trailingSlash: true,
   images: {

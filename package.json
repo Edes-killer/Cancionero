@@ -1,5 +1,7 @@
 {
   "name": "selah-live",
+  "description": "Proyección, músicos y transmisión en vivo para iglesias",
+  "author": "Emanuel — Selah Live",
   "version": "0.5.26",
   "minApk": "0.5.26",
   "private": true,
@@ -7,6 +9,8 @@
   "scripts": {
     "dev": "next dev --webpack -H 0.0.0.0",
     "build": "next build",
+    "test": "node --test test/*.test.js",
+    "lint": "eslint app components context lib --max-warnings=0",
     "start": "next start -H 0.0.0.0 -p 3000",
     "electron:dev": "npm run build && electron electron/main.js",
     "electron:build:win": "npm run build && electron-builder --win --publish always --config electron-builder.json",

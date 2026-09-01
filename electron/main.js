@@ -3,6 +3,7 @@ const { app, BrowserWindow, shell, Menu, ipcMain, dialog, session, desktopCaptur
 const path = require("path")
 const http = require("http")
 const { Server } = require("socket.io")
+const { rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb } = require("./security")
 const fs = require("fs")
 const net = require("net")
 const os = require("os")
@@ -528,15 +529,21 @@ function startStaticServer(outDir, port) {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       // Limpiar query strings y hash
-      let urlPath = req.url.split("?")[0].split("#")[0]
+      let urlPath
+      try { urlPath = decodeURIComponent(req.url.split("?")[0].split("#")[0]) }
+      catch { res.writeHead(400); res.end("Ruta inválida"); return }
       if (urlPath === "/") urlPath = "/index.html"
 
+      // Nunca permitir que una URL con ../ salga de la exportación estática.
+      const raiz = path.resolve(outDir)
+      const relativo = urlPath.replace(/^[/\\]+/, "")
+
       const tryPaths = [
-        path.join(outDir, urlPath),
-        path.join(outDir, urlPath + ".html"),
-        path.join(outDir, urlPath, "index.html"),
+        rutaDentroDe(raiz, relativo),
+        rutaDentroDe(raiz, relativo + ".html"),
+        rutaDentroDe(raiz, path.join(relativo, "index.html")),
         path.join(outDir, "404.html"),
-      ]
+      ].filter(Boolean)
 
       let filePath = tryPaths.find(p => {
         try { return fs.statSync(p).isFile() } catch { return false }
@@ -597,6 +604,13 @@ const pinesPorSala = {}
 // a disco -es intencionalmente efímero.
 let bannerPorSala = {}
 let modoLimpioPorSala = {}
+const EVENTOS_PUENTE_NUBE = new Set([
+  "cargar-cancion", "cambiar-parte", "cancion-activa", "mostrar-imagen",
+  "mostrar-biblia", "cambiar-pagina-biblia", "mostrar-estado",
+  "mostrar-banner-urgente", "ocultar-banner-urgente", "modo-limpio",
+  "cambiar-fondo", "control-siguiente", "control-anterior", "precargar-imagenes",
+  "ajustar-zoom", "reenviar-estado-a-proyectar",
+])
 
 function startSocketServer(port) {
   const estadoPath = path.join(app.getPath("userData"), "estado.json")
@@ -658,7 +672,7 @@ function startSocketServer(port) {
     }
     if (req.url === "/ping") {
       res.writeHead(200, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ ok: true }))
+      res.end(JSON.stringify({ ok: true, app: "selah-live", puerto: 4000 }))
       return
     }
     if (req.url?.startsWith("/api/imagenes/listar")) {
@@ -671,7 +685,10 @@ function startSocketServer(port) {
     }
 
     if (req.url?.startsWith("/imagenes/")) {
-      const nombre = req.url.replace("/imagenes/", "")
+      let nombre = ""
+      try { nombre = decodeURIComponent(req.url.split("?")[0].replace("/imagenes/", "")) }
+      catch { res.writeHead(400); res.end(); return }
+      if (!nombreArchivoSeguro(nombre)) { res.writeHead(400); res.end(); return }
       const filePath = path.join(app.getPath("userData"), "imagenes", nombre)
       if (fs.existsSync(filePath)) {
         res.writeHead(200, {"Content-Type":"image/webp"})
@@ -684,10 +701,24 @@ function startSocketServer(port) {
 
     if (req.url === "/api/imagenes/eliminar" && req.method === "DELETE") {
       let body = ""
-      req.on("data", c => body += c)
+      let excedido = false
+      req.on("data", c => {
+        if (excedido) return
+        body += c
+        if (body.length > 10_000) {
+          excedido = true
+          res.writeHead(413, {"Content-Type":"application/json"})
+          res.end(JSON.stringify({ error: "solicitud_demasiado_grande" }))
+        }
+      })
       req.on("end", () => {
+        if (excedido) return
         try {
           const { nombre } = JSON.parse(body)
+          if (!nombreArchivoSeguro(nombre)) {
+            res.writeHead(400, {"Content-Type":"application/json"})
+            res.end(JSON.stringify({ error: "nombre_invalido" })); return
+          }
           const filePath = path.join(app.getPath("userData"), "imagenes", nombre)
           if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
           res.writeHead(200, {"Content-Type":"application/json"})
@@ -705,8 +736,20 @@ function startSocketServer(port) {
     // con error claro y el frontend muestra instrucciones manuales.
     if (req.url === "/api/ppt/convertir" && req.method === "POST") {
       const chunksPpt = []
-      req.on("data", c => chunksPpt.push(c))
+      let bytesPpt = 0, excedidoPpt = false
+      req.on("data", c => {
+        if (excedidoPpt) return
+        bytesPpt += c.length
+        if (bytesPpt > 100 * 1024 * 1024) {
+          excedidoPpt = true
+          res.writeHead(413, {"Content-Type":"application/json"})
+          res.end(JSON.stringify({ error: "ppt_demasiado_grande" }))
+          return
+        }
+        chunksPpt.push(c)
+      })
       req.on("end", () => {
+        if (excedidoPpt) return
         const body = Buffer.concat(chunksPpt)
         const boundary = req.headers["content-type"]?.split("boundary=")[1]
         if (!boundary) { res.writeHead(400); res.end(JSON.stringify({error:"sin_boundary"})); return }
@@ -790,8 +833,20 @@ try {
       const dir = path.join(app.getPath("userData"), "imagenes")
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
       const chunks = []
-      req.on("data", c => chunks.push(c))
+      let bytesImagen = 0, excedidoImagen = false
+      req.on("data", c => {
+        if (excedidoImagen) return
+        bytesImagen += c.length
+        if (bytesImagen > 25 * 1024 * 1024) {
+          excedidoImagen = true
+          res.writeHead(413, {"Content-Type":"application/json"})
+          res.end(JSON.stringify({ error: "imagen_demasiado_grande" }))
+          return
+        }
+        chunks.push(c)
+      })
       req.on("end", () => {
+        if (excedidoImagen) return
         const body = Buffer.concat(chunks)
         const boundary = req.headers["content-type"]?.split("boundary=")[1]
         if (!boundary) { res.writeHead(400); res.end(); return }
@@ -805,7 +860,11 @@ try {
           if (!header.includes("filename=")) continue
           const fnMatch = header.match(/filename="([^"]+)"/)
           if (!fnMatch) continue
-          const filename = fnMatch[1]
+          const filename = nombreArchivoSeguro(fnMatch[1], /\.(webp|jpg|jpeg|png|gif)$/i)
+          if (!filename) {
+            res.writeHead(415, {"Content-Type":"application/json"})
+            res.end(JSON.stringify({ error: "formato_no_permitido" })); return
+          }
           const content = part.slice(headerEnd + 4, part.lastIndexOf("\r\n"))
           const filePath = path.join(dir, filename)
           fs.writeFileSync(filePath, Buffer.from(content, "binary"))
@@ -888,7 +947,11 @@ try {
     // control no pudo por la red local) y lo reinyecta acá para repartirlo a la
     // sala como cualquier evento normal, sin tocar los handlers del proyector.
     socket.on("bridge-nube", ({ evento, data } = {}) => {
-      if (evento) io.to(salaDe(socket)).emit(evento, data)
+      // Solo el proyector legítimamente suscrito al canal de Supabase actúa
+      // como puente. Un cliente LAN cualquiera no puede inyectar eventos.
+      if (socket.data.pantalla === "proyectar" && EVENTOS_PUENTE_NUBE.has(evento)) {
+        io.to(salaDe(socket)).emit(evento, data)
+      }
     })
 
     socket.on("cambiar-parte", (index) => {
@@ -1216,8 +1279,9 @@ function createWindow() {
   // ✅ Permitir cámara y micrófono para la Transmisión en vivo. Sin esto,
   // getUserMedia queda bloqueado en la app empaquetada y la cámara no abre.
   try {
-    session.defaultSession.setPermissionRequestHandler((_wc, permiso, permitir) => {
-      permitir(permiso === "media" || permiso === "camera" || permiso === "microphone")
+    session.defaultSession.setPermissionRequestHandler((wc, permiso, permitir) => {
+      const origenPermitido = esOrigenInterno(wc.getURL())
+      permitir(origenPermitido && (permiso === "media" || permiso === "camera" || permiso === "microphone"))
     })
   } catch (e) { console.error("No se pudo configurar permisos de medios:", e) }
 
@@ -1251,7 +1315,7 @@ function createWindow() {
   // Abrir links externos en el browser del sistema
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (!url.startsWith("http://localhost")) {
-      shell.openExternal(url)
+      if (esEnlaceWeb(url)) shell.openExternal(url)
       return { action: "deny" }
     }
 
@@ -1283,6 +1347,13 @@ function createWindow() {
     }
 
     return { action: "allow" }
+  })
+
+  // La ventana principal nunca debe navegar fuera del servidor interno. Si una
+  // página remota lograra cargarse aquí, heredaría acceso a los puentes IPC.
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (esOrigenInterno(url)) return
+    event.preventDefault()
   })
 
   mainWindow.once("ready-to-show", () => {

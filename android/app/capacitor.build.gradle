@@ -13,6 +13,7 @@ dependencies {
     implementation project(':capacitor-app-launcher')
     implementation project(':capacitor-browser')
     implementation project(':capacitor-push-notifications')
+    implementation project(':capgo-capacitor-updater')
 
 }
 

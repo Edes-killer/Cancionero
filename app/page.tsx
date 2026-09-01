@@ -510,7 +510,7 @@ export default function InicioPage() {
           )}
 
           <div style={{ textAlign:"center", fontSize:11, color:"rgba(255,255,255,0.15)", paddingTop:4 }}>
-            Selah Live v0.2.0
+            Selah Live v{process.env.NEXT_PUBLIC_APP_VERSION || "—"}
           </div>
         </div>
       </div>
