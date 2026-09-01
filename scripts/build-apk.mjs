@@ -7,7 +7,7 @@
 // Pasos: next build → cap sync android → gradlew assemble → copiar/renombrar.
 
 import { execSync } from "node:child_process"
-import { existsSync, copyFileSync, readFileSync } from "node:fs"
+import { existsSync, copyFileSync, mkdirSync, readFileSync } from "node:fs"
 import { platform } from "node:os"
 
 const debug = process.argv.includes("debug")
@@ -22,7 +22,19 @@ run("npx cap sync android")
 
 // 2) Compilar el APK.
 const gradlew = platform() === "win32" ? "gradlew.bat" : "./gradlew"
-run(`${gradlew} ${debug ? "assembleDebug" : "assembleRelease"}`, { cwd: "android" })
+// En algunos hosts de escritorio Windows, Java NIO no puede crear su socket
+// interno si TEMP/TMP apunta a una ruta virtualizada o demasiado larga. Gradle
+// falla antes de compilar con "Unable to establish loopback connection".
+// Una ruta temporal corta y local evita el problema sin modificar el sistema.
+const gradleEnv = { ...process.env }
+if (platform() === "win32") {
+  const tempJava = "C:\\jtmp"
+  mkdirSync(tempJava, { recursive: true })
+  gradleEnv.TEMP = tempJava
+  gradleEnv.TMP = tempJava
+  gradleEnv.TMPDIR = tempJava
+}
+run(`${gradlew} ${debug ? "assembleDebug" : "assembleRelease"}`, { cwd: "android", env: gradleEnv })
 
 // 3) Ubicar el APK generado y renombrarlo al nombre que espera el auto-aviso.
 const salida = debug ? "selah-live-debug.apk" : "selah-live.apk"
