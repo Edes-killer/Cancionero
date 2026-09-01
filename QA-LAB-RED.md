@@ -17,7 +17,21 @@ También se puede probar otro PC indicando su dirección:
 npm.cmd run qa:red -- http://192.168.100.11:4000
 ```
 
-Comprueba: identificación del servidor, PIN incorrecto, sincronización entre dos controles, recepción del proyector, ausencia de eco, aislamiento entre iglesias y rechazo de comandos desde roles no autorizados.
+Comprueba: identificación del servidor, PIN incorrecto, sincronización entre dos controles, confirmación autoritativa al emisor, recepción del proyector, aislamiento entre iglesias y rechazo de comandos desde roles no autorizados.
+
+La tanda automática actual contiene 15 pruebas. También fuerza comandos simultáneos, reconexión, índices inválidos, mensajes grandes, rutas manipuladas, solicitudes sobredimensionadas y archivos con extensión ejecutable.
+
+## Prueba física corta (20 minutos)
+
+1. Abre Electron y proyecta una canción de al menos cinco partes.
+2. Vincula la APK y confirma que ambas pantallas indiquen conexión local.
+3. Alterna 20 veces siguiente/anterior desde Electron y APK, incluyendo cinco pulsaciones casi simultáneas. Resultado esperado: ambos controles y el proyector terminan en la misma parte.
+4. Apaga el Wi-Fi del teléfono durante 20 segundos. Avanza una parte desde Electron y vuelve a encenderlo. Resultado esperado: la APK reconecta y recupera la parte vigente.
+5. Conecta el teléfono al repetidor y deja el PC en el router principal. Ejecuta detección automática y, si falla, prueba la IP manual. Guarda ambos resultados.
+6. Conecta ambos al repetidor. Si ahora funciona, queda demostrado que el repetidor aislaba las dos redes y no era un error de Selah.
+7. Activa el punto de acceso de Windows y conecta el teléfono. Resultado esperado: la APK descubre la nueva dirección del PC y vuelve a sincronizar.
+8. Cierra Electron durante una proyección y ábrelo nuevamente. Resultado esperado: la APK informa la caída y recupera conexión cuando vuelve el puerto 4000.
+9. Revisa Configuración → Log de errores y toma una captura. No debe haber cuadros de error JavaScript ni datos silenciosamente perdidos.
 
 ## Escenarios físicos recomendados
 

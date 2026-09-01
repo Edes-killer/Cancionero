@@ -990,14 +990,20 @@ try {
     socket.on("cambiar-parte", (index) => {
       const sala = salaDe(socket)
       const estado = estadosPorSala[sala]
+      const totalPartes = estado?.tipo === "cancion" && Array.isArray(estado.data?.partes)
+        ? estado.data.partes.length : null
+      if (!Number.isInteger(index) || index < 0 || index > 500 || (totalPartes !== null && index >= totalPartes)) {
+        socket.emit("entrada-invalida", { evento: "cambiar-parte", valor: index })
+        return
+      }
       if (estado?.tipo === "cancion") {
         estado.data.index = index
         guardarEstadoSala(sala, estado)
       }
-      // ✅ A los DEMÁS, no al emisor: así el Control que avanzó no recibe eco de
-      // su propio cambio, pero el proyector, los músicos y OTROS controles
-      // (Electron ↔ APK) sí se sincronizan.
-      socket.broadcast.to(sala).emit("cambiar-parte", index)
+      // Confirmación autoritativa para TODOS, incluido el emisor. Con dos
+      // controles simultáneos, todos reciben el mismo orden procesado por el
+      // servidor y convergen en la misma parte.
+      io.to(sala).emit("cambiar-parte", index)
       if (sala !== "global") {
         fetch(`${SUPABASE_URL}/rest/v1/estado_culto?iglesia_id=eq.${sala}`, {
           method: "PATCH",
@@ -1026,13 +1032,15 @@ try {
     socket.on("cambiar-pagina-biblia", (pagina) => {
       const sala = salaDe(socket)
       const estado = estadosPorSala[sala]
+      if (!Number.isInteger(pagina) || pagina < 0 || pagina > 500) {
+        socket.emit("entrada-invalida", { evento: "cambiar-pagina-biblia", valor: pagina })
+        return
+      }
       if (estado?.tipo === "biblia") {
         estado.data.pagina = pagina
         guardarEstadoSala(sala, estado)
       }
-      // ✅ A los demás (mismo motivo que cambiar-parte): sincroniza otros
-      // controles/proyector sin hacer eco al emisor.
-      socket.broadcast.to(sala).emit("cambiar-pagina-biblia", pagina)
+      io.to(sala).emit("cambiar-pagina-biblia", pagina)
     })
 
     socket.on("mostrar-estado", (data) => {

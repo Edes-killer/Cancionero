@@ -673,11 +673,9 @@ useEffect(() => {
   s.on("control-siguiente", onSiguiente)
   s.on("control-anterior", onAnterior)
 
-  // ✅ Sincronizar cuando OTRO dispositivo (otro Control: Electron ↔ APK) avanza.
-  // Antes Control emitía cambiar-parte pero NO lo escuchaba, así que dos
-  // controles se desincronizaban: al avanzar en uno, el otro quedaba pegado en
-  // su índice viejo y al retomar saltaba mal. El servidor emite cambiar-parte
-  // solo a los DEMÁS (no al emisor), así que esto nunca hace eco de uno mismo.
+  // ✅ Estado autoritativo del servidor. También confirma al emisor: si dos
+  // controles actúan simultáneamente, ambos aplican el mismo orden procesado
+  // por el servidor y no terminan en partes diferentes.
   const onCambiarParteRemoto = (i: number) => {
     if (typeof i === "number" && i >= 0) setIndex(i)
   }
