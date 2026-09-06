@@ -683,7 +683,15 @@ function startSocketServer(port) {
 
     if (req.url === "/info") {
       res.writeHead(200, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ ok: true, ip: getLocalIP(), puerto: 4000, app: "selah-live" }))
+      res.end(JSON.stringify({
+        ok: true,
+        ip: getLocalIP(),
+        ips: getLocalIPs(),
+        puerto: 4000,
+        app: "selah-live",
+        version: SELAH_VERSION,
+        qaProtocol: 2,
+      }))
       return
     }
     if (req.url === "/ping") {

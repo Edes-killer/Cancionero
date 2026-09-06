@@ -7,6 +7,9 @@ import { copiarTexto } from "@/lib/copiar"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId } from "@/lib/getIglesia"
 import { buscarServidorEnRed } from "@/lib/servidor"
+import { io } from "socket.io-client"
+import { DiagnosticoRed, formatearDiagnosticoRed, interpretarDiagnosticoRed } from "@/lib/diagnosticoRed"
+import { logError } from "@/lib/Errorlogger"
 import { useConfirm } from "@/components/useConfirm"
 import { useApp } from "@/context/AppContext"
 import { limitesDe, nombrePlan, esIlimitado } from "@/lib/planes"
@@ -277,6 +280,8 @@ export default function ConfiguracionPage() {
   }, [])
   const [servidorPing, setServidorPing] = useState<"idle" | "testing" | "ok" | "error">("idle")
   const [servidorOk, setServidorOk] = useState(false)
+  const [diagnosticoRed, setDiagnosticoRed] = useState<DiagnosticoRed | null>(null)
+  const [diagnosticandoRed, setDiagnosticandoRed] = useState(false)
   const [buscandoServidor, setBuscandoServidor] = useState(false)
   const [qrUrl, setQrUrl] = useState("")
   const [escaneandoQR, setEscaneandoQR] = useState(false)
@@ -317,6 +322,73 @@ export default function ConfiguracionPage() {
       setServidorPing(ok ? "ok" : "error")
       setServidorOk(ok)
     } catch { setServidorPing("error") }
+  }
+
+  const diagnosticarRed = async () => {
+    const host = servidorIp.trim() || "localhost"
+    const base = `http://${host}:4000`
+    const plataforma: DiagnosticoRed["plataforma"] = isElectron ? "electron" : isCapacitor ? "apk" : "web"
+    const resultado: DiagnosticoRed = {
+      fecha: new Date().toLocaleString("es-CL"), objetivo: base, plataforma,
+      online: navigator.onLine,
+      http: { ok: false, ms: null }, socket: { ok: false, ms: null },
+    }
+    setDiagnosticandoRed(true)
+    setDiagnosticoRed(null)
+    setServidorPing("testing")
+
+    const inicioHttp = performance.now()
+    try {
+      const r = await fetch(`${base}/ping`, { signal: AbortSignal.timeout(4500), cache: "no-store" })
+      const d = await r.json()
+      resultado.http = {
+        ok: r.ok && d?.ok === true && d?.app === "selah-live",
+        ms: Math.round(performance.now() - inicioHttp), status: r.status,
+        app: d?.app, version: d?.version, qaProtocol: d?.qaProtocol,
+        ...(!r.ok ? { error: `HTTP ${r.status}` } : {}),
+      }
+      try {
+        const infoRes = await fetch(`${base}/info`, { signal: AbortSignal.timeout(2500), cache: "no-store" })
+        const info = await infoRes.json()
+        resultado.info = { ip: info?.ip, ips: info?.ips, puerto: info?.puerto }
+      } catch { /* /ping ya entrega el diagnóstico HTTP principal */ }
+    } catch (e) {
+      resultado.http.error = e instanceof Error ? e.message : String(e)
+      resultado.http.ms = Math.round(performance.now() - inicioHttp)
+    }
+
+    if (resultado.http.ok) {
+      const inicioSocket = performance.now()
+      await new Promise<void>(resolve => {
+        const socket = io(base, { transports: ["websocket", "polling"], timeout: 4500, reconnection: false, forceNew: true })
+        let terminado = false
+        const cerrar = (ok: boolean, error?: string) => {
+          if (terminado) return
+          terminado = true
+          resultado.socket = {
+            ok, ms: Math.round(performance.now() - inicioSocket), error,
+            transporte: socket.io.engine?.transport?.name,
+          }
+          socket.disconnect()
+          resolve()
+        }
+        socket.once("connect", () => cerrar(true))
+        socket.once("connect_error", e => cerrar(false, e.message))
+        setTimeout(() => cerrar(false, "Tiempo de espera agotado"), 5000)
+      })
+    } else {
+      resultado.socket.error = "No se probó porque HTTP no respondió correctamente"
+    }
+
+    setDiagnosticoRed(resultado)
+    setDiagnosticandoRed(false)
+    setServidorOk(resultado.http.ok && resultado.socket.ok)
+    setServidorPing(resultado.http.ok && resultado.socket.ok ? "ok" : "error")
+    if (!resultado.http.ok || !resultado.socket.ok) {
+      void logError("Diagnóstico de conexión local fallido", {
+        tipo: "socket", pagina: "/configuracion", detalle: resultado as unknown as Record<string, any>,
+      })
+    }
   }
 
   const guardarServidorIp = async () => {
@@ -1129,6 +1201,46 @@ export default function ConfiguracionPage() {
                 </div>
               )}
             </div>
+
+            <button onClick={diagnosticarRed} disabled={diagnosticandoRed}
+              style={{ ...btnSecundario, width: "100%", opacity: diagnosticandoRed ? 0.6 : 1 }}>
+              {diagnosticandoRed ? "🩺 Revisando HTTP y sincronización..." : "🩺 Ejecutar diagnóstico completo"}
+            </button>
+
+            {diagnosticoRed && (
+              <div style={{ padding: 14, borderRadius: 12,
+                border: `1px solid ${diagnosticoRed.http.ok && diagnosticoRed.socket.ok ? "rgba(34,197,94,.38)" : "rgba(248,113,113,.4)"}`,
+                background: diagnosticoRed.http.ok && diagnosticoRed.socket.ok ? "rgba(34,197,94,.08)" : "rgba(239,68,68,.08)",
+                display: "flex", flexDirection: "column", gap: 9 }}>
+                <div style={{ fontSize: 14, fontWeight: 800 }}>
+                  {diagnosticoRed.http.ok && diagnosticoRed.socket.ok ? "✅ Comunicación completa" : "⚠️ Se encontró un problema"}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8, fontSize: 12 }}>
+                  <div style={{ padding: 9, borderRadius: 8, background: "rgba(0,0,0,.18)" }}>
+                    <b>{diagnosticoRed.http.ok ? "✅" : "❌"} Servidor HTTP</b><br />
+                    <span style={{ opacity: .7 }}>{diagnosticoRed.http.ms ?? "—"} ms · {diagnosticoRed.http.version ? `v${diagnosticoRed.http.version}` : "sin versión"}</span>
+                  </div>
+                  <div style={{ padding: 9, borderRadius: 8, background: "rgba(0,0,0,.18)" }}>
+                    <b>{diagnosticoRed.socket.ok ? "✅" : "❌"} Sincronización</b><br />
+                    <span style={{ opacity: .7 }}>{diagnosticoRed.socket.ms ?? "—"} ms · {diagnosticoRed.socket.transporte || "sin canal"}</span>
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, lineHeight: 1.55, color: "rgba(255,255,255,.78)" }}>
+                  {interpretarDiagnosticoRed(diagnosticoRed)}
+                </div>
+                {diagnosticoRed.info?.ips && diagnosticoRed.info.ips.length > 1 && (
+                  <div style={{ fontSize: 11, color: "#fbbf24" }}>
+                    El PC tiene varias direcciones: {diagnosticoRed.info.ips.join(", ")}. En un repetidor, usa la que el celular pueda abrir.
+                  </div>
+                )}
+                <button onClick={async () => {
+                  const ok = await copiarTexto(formatearDiagnosticoRed(diagnosticoRed))
+                  mostrarFlash(ok ? "✅ Informe copiado" : "No se pudo copiar el informe", ok ? "ok" : "error")
+                }} style={{ ...btnSecundario, width: "100%", fontSize: 12 }}>
+                  📋 Copiar informe técnico
+                </button>
+              </div>
+            )}
 
             {/* ✅ Auto-discovery + QR scanner para APK */}
             {isCapacitor && (
