@@ -43,6 +43,9 @@ try {
   }
   const info = await ping.json()
   registrar("Servidor identificable", ping.ok && info.app === "selah-live", JSON.stringify(info))
+  if (!Number.isInteger(info.qaProtocol) || info.qaProtocol < 2) {
+    throw new Error(`El servidor abierto es Selah ${info.version || "antiguo"}, pero no incluye el protocolo QA actual. Cierra por completo la versión instalada y abre el código nuevo con "npm.cmd run electron:dev".`)
+  }
 
   const traversal = await fetch(`${servidor}/imagenes/..%2Festado.json`)
   registrar("La galería bloquea rutas manipuladas", traversal.status === 400, `HTTP ${traversal.status}`)

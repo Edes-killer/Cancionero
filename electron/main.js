@@ -15,6 +15,7 @@ const fs = require("fs")
 const net = require("net")
 const os = require("os")
 const { spawn } = require("child_process")
+const SELAH_VERSION = require("../package.json").version
 
 // ── Transmisión en vivo (Incremento 2): canvas+audio (webm) → ffmpeg → RTMP ──
 // ffmpeg va empaquetado (ffmpeg-static). En la app empaquetada el binario se
@@ -687,7 +688,13 @@ function startSocketServer(port) {
     }
     if (req.url === "/ping") {
       res.writeHead(200, { "Content-Type": "application/json" })
-      res.end(JSON.stringify({ ok: true, app: "selah-live", puerto: 4000 }))
+      res.end(JSON.stringify({
+        ok: true,
+        app: "selah-live",
+        version: SELAH_VERSION,
+        qaProtocol: 2,
+        puerto: 4000,
+      }))
       return
     }
     if (req.url?.startsWith("/api/imagenes/listar")) {
