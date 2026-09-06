@@ -38,9 +38,11 @@ La tanda automática actual contiene 15 pruebas. También fuerza comandos simult
 ### 1. Cambio de IP del PC
 
 - Conecta APK y Electron normalmente.
-- Cambia el PC de Wi-Fi o renueva su dirección DHCP.
+- **No uses `New-NetIPAddress` ni reemplaces la IP del adaptador Wi-Fi/Ethernet activo.** En Windows esto puede desactivar la configuración DHCP efectiva y dejar el equipo sin internet.
+- Para cambiar de dirección de forma segura, conecta el PC a otra red o punto de acceso y deja que DHCP asigne la IP automáticamente.
 - La APK debe perder conexión, descubrir la nueva IP o permitir ingresarla manualmente y reconectar sin borrar datos.
-- No conviene fijar una IP arbitraria fuera de la subred: puede dejar el PC sin internet. Para una IP fija, reserva la dirección desde el router.
+- Para probar la entrada manual sin cambiar ninguna configuración de Windows, escribe en la APK la IP actual que muestra `ipconfig`.
+- Si necesitas una IP permanente, resérvala desde el DHCP del router; no la fuerces desde el adaptador del PC.
 
 ### 2. Repetidor con aislamiento
 
