@@ -272,6 +272,7 @@ export default function EnVivoPage() {
     setDestinos(prev => { const next = { ...prev, [k]: { ...prev[k], ...patch } }; try { localStorage.setItem("en-vivo-destinos", JSON.stringify(next)) } catch {}; return next })
   }
   const [txEstado, setTxEstado] = useState<"idle" | "conectando" | "vivo" | "reconectando" | "error">("idle")
+  const [preflightAbierto, setPreflightAbierto] = useState(false)
   const [errorTx, setErrorTx] = useState<string | null>(null)
   const [segundos, setSegundos] = useState(0)
   const [logsTx, setLogsTx] = useState<string[]>([])
@@ -927,6 +928,11 @@ export default function EnVivoPage() {
   const hayFuenteVideo = (): boolean =>
     !!(streamRef.current?.getVideoTracks().length || stream2Ref.current || phoneStreamRef.current || screenStreamRef.current)
 
+  // Una espera o la proyección completa se generan en el lienzo y son una salida
+  // válida aun sin cámara. Las escenas "Cámara" sí exigen una fuente real.
+  const haySalidaVisual = (): boolean =>
+    !!canvasRef.current && (hayFuenteVideo() || escenaRef.current === "letra" || escenaRef.current === "espera")
+
   // ── Grafo de audio de salida (WebAudio) ──────────────────────────────────────
   // fuente(mic activo) → ganancia → destino. El track del DESTINO es estable: la
   // transmisión/emisión lo captura una vez y no se corta aunque cambies de micro
@@ -1051,12 +1057,13 @@ export default function EnVivoPage() {
   reconectarRef.current = reconectar
 
   const salirEnVivo = async () => {
+    setPreflightAbierto(false)
     setErrorTx(null)
     const tx = (window as any).transmision
     if (!tx) { setErrorTx("Esto solo funciona en la app de escritorio de Selah Live."); return }
     const rtmpUrls = construirUrls()
     if (rtmpUrls.length === 0) { setErrorTx("Activa al menos una plataforma y pega su clave / URL."); return }
-    if (!canvasRef.current || !hayFuenteVideo()) { setErrorTx("La cámara aún no está lista. Conecta una cámara, comparte pantalla o conecta el celular."); return }
+    if (!haySalidaVisual()) { setErrorTx("La escena elegida necesita una cámara. Conecta una, comparte pantalla o usa Proyección/Espera para emitir sin cámara."); return }
 
     setLogsTx([]); setSalud(null); setIntento(0); intentoRef.current = 0
     detenidoRef.current = false
@@ -1083,6 +1090,19 @@ export default function EnVivoPage() {
     const ok = await arrancarStreamRecorder()
     if (!ok) { setTxEstado("error"); await detenerGrabacion(); return }
     setTxEstado("vivo")
+  }
+
+  const itemsPreflight = () => {
+    const urls = construirUrls()
+    const mic = trackMicActivo()
+    return [
+      { nombre: "Aplicación de escritorio", ok: esEscritorio, critico: true, detalle: esEscritorio ? "Motor de transmisión disponible" : "Abre esta pantalla en Selah Live para Windows" },
+      { nombre: "Salida visual", ok: haySalidaVisual(), critico: true, detalle: hayFuenteVideo() ? "Cámara, celular o pantalla detectada" : haySalidaVisual() ? "Escena generada por Selah, no necesita cámara" : "Esta escena necesita una cámara o pantalla" },
+      { nombre: "Micrófono", ok: !!mic && mic.readyState === "live" && mic.enabled && !sinAudio, critico: false, detalle: !mic ? "No hay micrófono activo" : sinAudio ? "Está conectado, pero no se detecta sonido" : "Señal disponible" },
+      { nombre: "Destino", ok: urls.length > 0, critico: true, detalle: urls.length ? `${urls.length} destino${urls.length > 1 ? "s" : ""} configurado${urls.length > 1 ? "s" : ""}` : "Activa una plataforma y pega su clave o URL" },
+      { nombre: "Conexión a internet", ok: navigator.onLine, critico: true, detalle: navigator.onLine ? "El equipo informa conexión" : "Windows informa que estás sin conexión" },
+      { nombre: "Grabación de respaldo", ok: grabar, critico: false, detalle: grabar ? "Se guardará una copia local" : "Recomendado si cae internet" },
+    ]
   }
 
   const terminar = async () => {
@@ -1303,7 +1323,7 @@ export default function EnVivoPage() {
   const grabarSolo = async () => {
     const tx = (window as any).transmision
     if (!tx?.iniciarGrabacion) { setErrorTx("Grabar funciona solo en la app de escritorio."); return }
-    if (!canvasRef.current || !hayFuenteVideo()) { setErrorTx("La cámara aún no está lista. Conecta una cámara, comparte pantalla o conecta el celular."); return }
+    if (!haySalidaVisual()) { setErrorTx("La escena elegida necesita una cámara. Conecta una, comparte pantalla o usa Proyección/Espera para grabar sin cámara."); return }
     setErrorTx(null)
     const r = await tx.iniciarGrabacion({ nombre: nombreIglesia || "Culto" })
     if (!r?.ok) { setErrorTx(r?.error || "No se pudo iniciar la grabación."); return }
@@ -1920,13 +1940,33 @@ export default function EnVivoPage() {
                 </div>
               </label>
 
-              <button onClick={salirEnVivo} disabled={permiso !== "ok"}
-                style={botonBase({ background: C.rojo, color: "#fff", width: "100%", padding: "14px", opacity: permiso !== "ok" ? 0.5 : 1 })}>
-                ● Salir en vivo
+              <button onClick={() => { setErrorTx(null); setPreflightAbierto(true) }} disabled={permiso !== "ok" && escena !== "letra" && escena !== "espera"}
+                style={botonBase({ background: C.rojo, color: "#fff", width: "100%", padding: "14px", opacity: permiso !== "ok" && escena !== "letra" && escena !== "espera" ? 0.5 : 1 })}>
+                ✓ Revisar y salir en vivo
               </button>
 
-              <button onClick={grabarSolo} disabled={permiso !== "ok"}
-                style={botonBase({ background: "rgba(255,255,255,0.06)", color: C.texto, width: "100%", padding: "11px", marginTop: 8, opacity: permiso !== "ok" ? 0.5 : 1 })}>
+              {preflightAbierto && (() => {
+                const items = itemsPreflight()
+                const bloqueado = items.some(i => i.critico && !i.ok)
+                return <div style={{ marginTop:12, padding:14, borderRadius:12, border:`1px solid ${bloqueado ? "rgba(248,113,113,.38)" : "rgba(74,222,128,.35)"}`, background:bloqueado ? "rgba(127,29,29,.14)" : "rgba(20,83,45,.14)" }}>
+                  <div style={{ fontSize:14, fontWeight:850, marginBottom:10 }}>Revisión antes de transmitir</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
+                    {items.map(i => <div key={i.nombre} style={{ display:"flex", gap:9, alignItems:"flex-start", fontSize:12 }}>
+                      <span style={{ flexShrink:0 }}>{i.ok ? "✅" : i.critico ? "❌" : "⚠️"}</span>
+                      <div><b>{i.nombre}</b><div style={{ color:C.tenue, marginTop:1 }}>{i.detalle}</div></div>
+                    </div>)}
+                  </div>
+                  <div style={{ display:"flex", gap:8, marginTop:13 }}>
+                    <button onClick={() => setPreflightAbierto(false)} style={botonBase({ background:"rgba(255,255,255,.06)", color:C.suave, flex:1, padding:"9px" })}>Volver</button>
+                    <button onClick={salirEnVivo} disabled={bloqueado} style={botonBase({ background:bloqueado ? "rgba(255,255,255,.08)" : C.rojo, color:bloqueado ? C.tenue : "#fff", flex:2, padding:"9px", cursor:bloqueado ? "not-allowed" : "pointer" })}>
+                      {bloqueado ? "Corrige los puntos rojos" : "● Confirmar salida al aire"}
+                    </button>
+                  </div>
+                </div>
+              })()}
+
+              <button onClick={grabarSolo} disabled={permiso !== "ok" && escena !== "letra" && escena !== "espera"}
+                style={botonBase({ background: "rgba(255,255,255,0.06)", color: C.texto, width: "100%", padding: "11px", marginTop: 8, opacity: permiso !== "ok" && escena !== "letra" && escena !== "espera" ? 0.5 : 1 })}>
                 ⏺️ Grabar sin transmitir
               </button>
               <div style={{ fontSize: 11, color: C.tenue, marginTop: 6, textAlign: "center" }}>Graba el culto a tu PC sin sacarlo al aire (ensayo o respaldo).</div>

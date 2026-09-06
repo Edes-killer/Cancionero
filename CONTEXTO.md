@@ -1,6 +1,6 @@
 # Selah Live — Documento de Diseño (SDD) y Contexto de Desarrollo
 
-> Versión del documento: 2026-08-13 · App: **v0.5.20** · Mantener al día al cerrar cada release.
+> Versión del documento: 2026-09-05 · App: **v0.5.26** · Mantener al día al cerrar cada release.
 
 ---
 
@@ -27,7 +27,7 @@
 | Frontend | Next.js 16 (App Router) + React 19 + TypeScript, `output: "export"` (estático) |
 | Estilos | Estilos inline + Tailwind 4 (PostCSS) |
 | Backend datos | Supabase (PostgreSQL + RLS + Storage) |
-| Tiempo real | Socket.IO 4.8 (`server/index.js`, puerto 4000) |
+| Tiempo real | Socket.IO 4.8 (servidor integrado en `electron/main.js`, puerto 4000) |
 | Mobile | Capacitor 8 → APK Android |
 | Desktop | Electron 42 + electron-updater 6.8 (auto-update desde GitHub Releases) |
 | Streaming | `ffmpeg-static` 5.3 (empaquetado) → RTMP; `obs-websocket-js` 5 (modo OBS avanzado opcional) |
@@ -48,7 +48,7 @@
                          │   Storage: imagenes-culto)   │
                          └──────────────┬──────────────┘
                                         │ HTTPS
-   Celular (Control) ──socket:4000──►  server/index.js  ──broadcast──►  Proyector (PC, fullscreen)
+   Celular (Control) ──socket:4000──►  electron/main.js ──broadcast──►  Proyector (PC, fullscreen)
                                         │ (hub tiempo real                └──────────►  Músicos (celulares)
                                         │  + API Biblia HTTP)
                                         │

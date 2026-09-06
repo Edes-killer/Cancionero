@@ -38,7 +38,7 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
     const { getLocalLog } = await import("@/lib/Errorlogger")
     let locales = getLocalLog().map((e, i) => ({
       id: "local-" + e.ts + "-" + i, tipo: e.tipo, mensaje: e.mensaje, pagina: e.pagina,
-      plataforma: e.plataforma, version: null as any, creado_en: new Date(e.ts).toISOString(), _local: true,
+      plataforma: e.plataforma, version: null as any, creado_en: new Date(e.ts).toISOString(), detalle: e.detalle, _local: true,
     }))
     if (filtroTipo) locales = locales.filter(e => e.tipo === filtroTipo)
     // 2) Registro CENTRAL (Supabase), si se puede.
@@ -67,6 +67,20 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
     clearLocalLog()
     try { await supabase.from("errores_log").delete().eq("iglesia_id", iglesiaId) } catch {}
     setErrores([])
+  }
+
+  const descargarInforme = () => {
+    const contenido = JSON.stringify({
+      producto: "Selah Live",
+      generado_en: new Date().toISOString(),
+      navegador: typeof navigator !== "undefined" ? navigator.userAgent : "",
+      errores,
+    }, null, 2)
+    const url = URL.createObjectURL(new Blob([contenido], { type: "application/json;charset=utf-8" }))
+    const a = document.createElement("a")
+    a.href = url; a.download = `selah-diagnostico-${new Date().toISOString().slice(0, 10)}.json`
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
   const colorTipo: Record<string, string> = {
@@ -103,6 +117,9 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
             <button onClick={borrarTodos} style={{ marginLeft:"auto", padding:"3px 10px", borderRadius:6, fontSize:11, fontWeight:700, cursor:"pointer", border:"1px solid rgba(239,68,68,0.3)", background:"rgba(239,68,68,0.08)", color:"#fca5a5" }}>
               🗑 Borrar todo
             </button>
+            <button onClick={descargarInforme} disabled={errores.length === 0} style={{ padding:"3px 10px", borderRadius:6, fontSize:11, fontWeight:700, cursor:errores.length ? "pointer" : "default", border:"1px solid rgba(96,165,250,0.3)", background:"rgba(59,130,246,0.08)", color:"#93c5fd", opacity:errores.length ? 1 : .45 }}>
+              ⬇ Descargar informe
+            </button>
           </div>
 
           {cargando ? (
@@ -126,6 +143,10 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
                   <div style={{ fontSize:10, opacity:0.3 }}>
                     {e.plataforma} {e.version && `· v${e.version}`} {e._local && "· local"}
                   </div>
+                  {e.detalle && <details style={{ marginTop:5 }}>
+                    <summary style={{ fontSize:10, opacity:.55, cursor:"pointer" }}>Ver detalle técnico</summary>
+                    <pre style={{ margin:"6px 0 0", whiteSpace:"pre-wrap", wordBreak:"break-word", fontSize:9.5, opacity:.55 }}>{JSON.stringify(e.detalle, null, 2)}</pre>
+                  </details>}
                 </div>
               ))}
             </div>
