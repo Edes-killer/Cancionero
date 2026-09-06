@@ -32,7 +32,15 @@ const unir = (socket, datos) => new Promise(resolve => {
 
 let sockets = []
 try {
-  const ping = await fetch(`${servidor}/ping`, { signal: AbortSignal.timeout(3000) })
+  let ping
+  try {
+    ping = await fetch(`${servidor}/ping`, { signal: AbortSignal.timeout(3000) })
+  } catch (error) {
+    const local = /127\.0\.0\.1|localhost/.test(servidor)
+    throw new Error(local
+      ? `No hay un servidor Selah escuchando en ${servidor}. Abre otra terminal, ejecuta "npm.cmd run electron:dev", espera que aparezca Selah y vuelve a lanzar esta prueba.`
+      : `No se pudo alcanzar ${servidor}. Confirma que Selah esté abierto en el PC remoto, el puerto 4000 y que ambos equipos tengan acceso entre sí.`)
+  }
   const info = await ping.json()
   registrar("Servidor identificable", ping.ok && info.app === "selah-live", JSON.stringify(info))
 
