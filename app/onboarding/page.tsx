@@ -5,6 +5,7 @@ import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
 import { setIglesiaActivaId } from "@/lib/getIglesia"
 import { conTimeout } from "@/lib/timeout"
+import { logCatch } from "@/lib/Errorlogger"
 
 const STEPS = ["bienvenida", "iglesia", "logo", "tour"] as const
 type Step = typeof STEPS[number]
@@ -15,6 +16,14 @@ const FEATURES = [
   { icon: "🎵", titulo: "Cancionero e himnos", desc: "Himnos, acordes y tonos listos para proyectar desde el primer día" },
   { icon: "🎸", titulo: "Vista músicos", desc: "Acordes en notación latina, transposición y modo improvisación" },
 ]
+
+const PRIMER_CULTO = [
+  { n:"1", titulo:"Abre el proyector", desc:"Conecta el segundo monitor y confirma que la salida aparezca completa." },
+  { n:"2", titulo:"Prepara el orden", desc:"Agrega canciones, Biblia, imágenes y pantallas de espera a la lista." },
+  { n:"3", titulo:"Revisa antes de comenzar", desc:"Usa “Revisar culto” para comprobar conexión, proyector y contenido." },
+]
+
+const NOMBRES_PASOS = ["Bienvenida", "Iglesia", "Identidad", "Primer culto"]
 
 export default function OnboardingPage() {
   const router = useRouter()
@@ -27,6 +36,7 @@ export default function OnboardingPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const [subiendoLogo, setSubiendoLogo] = useState(false)
+  const [logoError, setLogoError] = useState("")
 
   const stepIdx = STEPS.indexOf(step)
 
@@ -48,15 +58,17 @@ export default function OnboardingPage() {
       if (errIglesia || !iglesia) throw new Error("No se pudo crear la iglesia")
 
       // Vincular usuario
-      await supabase.from("usuarios_iglesia").insert({
+      const { error: errVinculo } = await supabase.from("usuarios_iglesia").insert({
         user_id: user.id, iglesia_id: iglesia.id
       })
+      if (errVinculo) throw new Error("La iglesia se creó, pero no pudimos vincular tu cuenta. Revisa el registro de errores.")
 
       await setIglesiaActivaId(iglesia.id)
       setIglesiaId(iglesia.id)
       setStep("logo")
     } catch (e: any) {
       setError(e.message || "Error al crear la iglesia")
+      logCatch(e, "No se pudo completar la creación de la iglesia", { tipo:"autenticacion", pagina:"/onboarding" })
     } finally {
       setGuardando(false)
     }
@@ -65,16 +77,20 @@ export default function OnboardingPage() {
   const subirLogo = async () => {
     if (!logoFile || !iglesiaId) return
     setSubiendoLogo(true)
+    setLogoError("")
     try {
       const ext = logoFile.name.split(".").pop()
       const path = `logos/${iglesiaId}.${ext}`
       const { error: errUp } = await supabase.storage.from("logos").upload(path, logoFile, { upsert: true })
       if (errUp) throw errUp
       const { data: { publicUrl } } = supabase.storage.from("logos").getPublicUrl(path)
-      await supabase.from("iglesias").update({ logo_url: publicUrl, logo_nombre: logoFile.name }).eq("id", iglesiaId)
-    } catch (e) { console.error("Error subiendo logo:", e) }
-    finally { setSubiendoLogo(false) }
-    setStep("tour")
+      const { error: errGuardar } = await supabase.from("iglesias").update({ logo_url: publicUrl, logo_nombre: logoFile.name }).eq("id", iglesiaId)
+      if (errGuardar) throw errGuardar
+      setStep("tour")
+    } catch (e) {
+      setLogoError("No pudimos guardar el logo. Puedes intentarlo otra vez o saltar este paso.")
+      logCatch(e, "No se pudo guardar el logo del onboarding", { tipo:"imagen", pagina:"/onboarding", detalle:{ nombre:logoFile.name, tipo:logoFile.type, bytes:logoFile.size } })
+    } finally { setSubiendoLogo(false) }
   }
 
   const s: React.CSSProperties = {
@@ -107,7 +123,7 @@ export default function OnboardingPage() {
       </div>
 
       {/* Indicador de pasos */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 32 }}>
+      <div aria-label={`Paso ${stepIdx + 1} de ${STEPS.length}: ${NOMBRES_PASOS[stepIdx]}`} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         {STEPS.map((s, i) => (
           <div key={s} style={{
             width: i === stepIdx ? 24 : 8, height: 8, borderRadius: 4,
@@ -116,12 +132,13 @@ export default function OnboardingPage() {
           }} />
         ))}
       </div>
+      <div style={{ fontSize:11.5, color:"rgba(255,255,255,.48)", marginBottom:20 }}>Paso {stepIdx + 1} de {STEPS.length} · {NOMBRES_PASOS[stepIdx]}</div>
 
       {/* Card */}
       <div style={{
         background: "rgba(17,27,46,0.95)", borderRadius: 20,
         border: "1px solid rgba(255,255,255,0.08)",
-        padding: 32, width: "100%", maxWidth: 460,
+        padding: 32, width: "100%", maxWidth: 520, maxHeight:"calc(100vh - 190px)", overflowY:"auto", boxSizing:"border-box",
         boxShadow: "0 24px 64px rgba(0,0,0,0.4)"
       }}>
 
@@ -131,7 +148,7 @@ export default function OnboardingPage() {
             <div style={{ fontSize: 56, marginBottom: 16 }}>🎶</div>
             <h1 style={{ fontSize: 26, fontWeight: 800, margin: "0 0 12px" }}>¡Bienvenido a Selah Live!</h1>
             <p style={{ fontSize: 15, opacity: 0.6, lineHeight: 1.6, margin: "0 0 32px" }}>
-              Tu sistema de proyección para cultos. En 3 pasos rápidos configuramos todo para que empieces a usar la app hoy.
+              Configuremos la identidad de tu iglesia y dejemos preparado el camino para tu primer culto.
             </p>
             <button onClick={() => setStep("iglesia")} style={{
               width: "100%", padding: "14px", borderRadius: 12, border: "none",
@@ -188,7 +205,7 @@ export default function OnboardingPage() {
           <div style={{ textAlign: "center" }}>
             <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 6px" }}>🖼️ Logo de tu iglesia</h2>
             <p style={{ fontSize: 14, opacity: 0.5, margin: "0 0 24px" }}>
-              Se mostrará en la pantalla de espera del proyector
+              Se mostrará en la proyección y en tus diseños de transmisión. Recomendamos PNG con fondo transparente.
             </p>
             <label style={{
               display: "flex", flexDirection: "column", alignItems: "center", gap: 12,
@@ -206,12 +223,27 @@ export default function OnboardingPage() {
               )}
               <input type="file" accept="image/*" style={{ display: "none" }}
                 onChange={e => {
-                  const file = e.target.files?.[0]
+                  const input = e.target
+                  const file = input.files?.[0]
                   if (!file) return
+                  setLogoError("")
+                  const ext = (file.name.split(".").pop() || "").toLowerCase()
+                  if (!["png","jpg","jpeg","webp","gif","avif","svg"].includes(ext) || !file.type.startsWith("image/")) {
+                    setLogoError("Formato no compatible. Usa PNG, JPG, WEBP, GIF, AVIF o SVG.")
+                    input.value = ""
+                    return
+                  }
+                  if (file.size > 10 * 1024 * 1024) {
+                    setLogoError("El archivo supera 10 MB. Usa una imagen más liviana.")
+                    input.value = ""
+                    return
+                  }
+                  if (logoPreview) URL.revokeObjectURL(logoPreview)
                   setLogoFile(file)
                   setLogoPreview(URL.createObjectURL(file))
                 }} />
             </label>
+            {logoError && <div role="alert" style={{ margin:"-8px 0 16px", padding:"9px 11px", borderRadius:9, background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.25)", color:"#fca5a5", fontSize:12.5, lineHeight:1.4 }}>⚠️ {logoError}</div>}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {logoFile && (
                 <button onClick={subirLogo} disabled={subiendoLogo} style={{
@@ -235,24 +267,27 @@ export default function OnboardingPage() {
         {step === "tour" && (
           <div>
             <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 6px" }}>✅ ¡Todo listo!</h2>
-            <p style={{ fontSize: 14, opacity: 0.5, margin: "0 0 20px" }}>
-              Antes de empezar, conoce lo que puedes hacer con Selah
+            <p style={{ fontSize: 14, opacity: 0.55, margin: "0 0 18px", lineHeight:1.5 }}>
+              Sigue este flujo el día del culto. Dentro de Control encontrarás una guía paso a paso.
             </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
-              {FEATURES.map(f => (
-                <div key={f.titulo} style={{
+            <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 18 }}>
+              {PRIMER_CULTO.map(p => (
+                <div key={p.n} style={{
                   display: "flex", gap: 14, alignItems: "flex-start",
-                  padding: "14px 16px", borderRadius: 12,
+                  padding: "12px 14px", borderRadius: 12,
                   background: "rgba(255,255,255,0.04)",
                   border: "1px solid rgba(255,255,255,0.07)"
                 }}>
-                  <div style={{ fontSize: 28, flexShrink: 0 }}>{f.icon}</div>
+                  <div style={{ width:27, height:27, borderRadius:99, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(37,99,235,.2)", border:"1px solid rgba(96,165,250,.35)", color:"#bfdbfe", fontSize:12, fontWeight:900 }}>{p.n}</div>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 3 }}>{f.titulo}</div>
-                    <div style={{ fontSize: 13, opacity: 0.55, lineHeight: 1.4 }}>{f.desc}</div>
+                    <div style={{ fontWeight: 750, fontSize: 13.5, marginBottom: 2 }}>{p.titulo}</div>
+                    <div style={{ fontSize: 12.5, opacity: 0.55, lineHeight: 1.4 }}>{p.desc}</div>
                   </div>
                 </div>
               ))}
+            </div>
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:20 }}>
+              {FEATURES.map(f => <span key={f.titulo} data-ayuda={f.desc} style={{ padding:"5px 8px", borderRadius:99, background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.07)", color:"rgba(255,255,255,.6)", fontSize:10.5 }}>{f.icon} {f.titulo}</span>)}
             </div>
             <button onClick={() => {
               localStorage.setItem("selah-onboarding-ok", "1")
