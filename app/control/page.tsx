@@ -2793,6 +2793,7 @@ const cargarGaleriaImagenes = async (): Promise<{url: string, nombre: string, lo
     } catch {}
   }
   // Aplicar metadatos compartidos y luego respaldo local por URL.
+  const metadataLegada: { iglesia_id:string; url:string; nombre:string; carpeta:string; actualizado_en:string }[] = []
   try {
     for (const img of resultado) {
       const remoto = metadataNube.get(img.url)
@@ -2801,8 +2802,17 @@ const cargarGaleriaImagenes = async (): Promise<{url: string, nombre: string, lo
       const carpetaLocal = localStorage.getItem("img-carpeta-" + img.url)
       if (!remoto && custom) img.nombre = custom
       if (!remoto && carpetaLocal) img.carpeta = carpetaLocal
+      if (iglesiaId && !img.local && !remoto && (custom || carpetaLocal)) metadataLegada.push({
+        iglesia_id: iglesiaId, url: img.url, nombre: img.nombre, carpeta: img.carpeta,
+        actualizado_en: new Date().toISOString()
+      })
     }
   } catch {}
+  if (metadataLegada.length) {
+    void supabase.from("media_biblioteca").upsert(metadataLegada, { onConflict: "iglesia_id,url" }).then(({ error }) => {
+      if (error && error.code !== "42P01") void logError(`Migrar biblioteca: ${error.message}`, { tipo: "imagen", pagina: "/control" })
+    })
+  }
   return resultado
 }
 
