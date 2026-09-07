@@ -1,6 +1,6 @@
 # Selah Live — Documento de Diseño (SDD) y Contexto de Desarrollo
 
-> Versión del documento: 2026-09-07 · App: **v0.5.28** · Mantener al día al cerrar cada release.
+> Versión del documento: 2026-09-07 · App: **v0.5.29** · Mantener al día al cerrar cada release.
 
 ---
 
@@ -324,6 +324,12 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 
 - Corrección de la ayuda contextual: los tooltips explican el efecto real de cada botón en vez de repetir su nombre.
 - Descripciones específicas para acciones ambiguas e iconos en Control, Canciones, Ajustes, Transmisión y navegación.
+
+### Entregado en v0.5.29
+
+- Vista previa en vivo reorganizada como monitor 16:9, con límites de pantalla y estado fijo/arrastrable claro.
+- Visor individual de canciones ordenado por título, tono, modo, partes y escenario de lectura.
+- Vista previa móvil más legible, con contenido y acciones visualmente separados.
 
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).
