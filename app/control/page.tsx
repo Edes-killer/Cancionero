@@ -3,6 +3,7 @@
 "use client"
 import BibleAutocomplete from "@/components/BibleAutocomplete"
 import OnboardingTour from "@/components/OnboardingTour"
+import EstadoOperativo from "@/components/ui/EstadoOperativo"
 import { TOUR_CONTROL } from "@/lib/tours"
 
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -899,6 +900,24 @@ const [mostrarCanciones, setMostrarCanciones] = useState(true)
 const [mostrarAcciones, setMostrarAcciones] = useState(false)
 const [mostrarPalabra, setMostrarPalabra] = useState(false)
 const [mostrarCultos, setMostrarCultos] = useState(false)
+const [modoOperacion, setModoOperacion] = useState<"preparar" | "culto">("preparar")
+const [revisionCultoAbierta, setRevisionCultoAbierta] = useState(false)
+useEffect(() => {
+  const guardado = localStorage.getItem("selah-modo-control")
+  if (guardado === "culto") {
+    setModoOperacion("culto"); setMostrarCanciones(false); setMostrarAcciones(false); setMostrarPalabra(false); setMostrarCultos(false)
+  }
+}, [])
+const cambiarModoOperacion = (modo: "preparar" | "culto") => {
+  setModoOperacion(modo)
+  try { localStorage.setItem("selah-modo-control", modo) } catch {}
+  if (modo === "culto") {
+    setMostrarCanciones(false); setMostrarAcciones(false); setMostrarPalabra(false); setMostrarCultos(false)
+    setPreviewHabilitado(true)
+  } else {
+    setMostrarCanciones(true)
+  }
+}
 const [estadoEspecialActivo, setEstadoEspecialActivo] = useState("")
 // Datos de la pantalla especial en curso (para mostrar el detalle en la vista previa)
 const [estadoEspData, setEstadoEspData] = useState<any>(null)
@@ -3975,6 +3994,33 @@ return (
 )}
 
 {/* ── MODAL CONECTAR SERVIDOR ───────────────────────────────────── */}
+{revisionCultoAbierta && (() => {
+  const revisiones = [
+    { nombre:"Servidor local", ok:socketConectado === true, detalle:socketConectado === true ? "Control sincronizado" : "Falta conectar este equipo", accion:() => setModalServidor(true) },
+    { nombre:"Proyector", ok:proyectorConectado, detalle:proyectorConectado ? "Pantalla de salida activa" : "Abre la pantalla de proyección", accion:() => { window.open(`${window.location.origin}/proyectar`, "_blank", "noopener,noreferrer"); setProyectorConectado(false) } },
+    { nombre:"Orden del culto", ok:lista.length > 0, detalle:lista.length ? `${lista.length} elementos preparados` : "Todavía puedes trabajar de forma improvisada", accion:() => setRevisionCultoAbierta(false) },
+    { nombre:"Lista guardada", ok:!!listaIdActual, detalle:listaIdActual ? "Los cambios se pueden recuperar" : "Guárdala para evitar perder el orden", accion:() => { setRevisionCultoAbierta(false); void guardarCulto() } },
+    { nombre:"Nube", ok:!sinConexion, detalle:sinConexion ? "Sin nube; la operación local puede continuar" : "Datos en línea", accion:() => navegarSPA(router, "/configuracion") },
+  ]
+  return <div role="dialog" aria-modal="true" aria-label="Revisión antes del culto" onMouseDown={e => { if (e.target === e.currentTarget) setRevisionCultoAbierta(false) }} style={{ position:"fixed", inset:0, zIndex:9994, background:"rgba(2,6,23,.78)", color:"white", fontFamily:"'Segoe UI', system-ui, sans-serif", backdropFilter:"blur(7px)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+    <div style={{ width:"min(480px,100%)", borderRadius:20, border:"1px solid rgba(255,255,255,.12)", background:"#101b2e", boxShadow:"0 28px 80px rgba(0,0,0,.55)", overflow:"hidden" }}>
+      <div style={{ padding:"18px 20px", borderBottom:"1px solid rgba(255,255,255,.07)", display:"flex", justifyContent:"space-between", gap:12 }}>
+        <div><div style={{ fontSize:17, fontWeight:900 }}>¿Todo listo para el culto?</div><div style={{ fontSize:12, opacity:.5, marginTop:3 }}>Revisión rápida del puesto de operación</div></div>
+        <button onClick={() => setRevisionCultoAbierta(false)} aria-label="Cerrar" style={{ width:32, height:32, borderRadius:9, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"white", cursor:"pointer" }}>✕</button>
+      </div>
+      <div style={{ padding:16, display:"flex", flexDirection:"column", gap:8 }}>
+        {revisiones.map(r => <button key={r.nombre} onClick={r.ok ? undefined : r.accion} style={{ width:"100%", display:"flex", alignItems:"center", gap:11, textAlign:"left", padding:"11px 12px", borderRadius:12, border:`1px solid ${r.ok ? "rgba(34,197,94,.2)" : "rgba(245,158,11,.2)"}`, background:r.ok ? "rgba(34,197,94,.07)" : "rgba(245,158,11,.065)", color:"white", cursor:r.ok ? "default" : "pointer" }}>
+          <span style={{ fontSize:17 }}>{r.ok ? "✅" : "⚠️"}</span><span style={{ flex:1 }}><b style={{ fontSize:13 }}>{r.nombre}</b><span style={{ display:"block", fontSize:11, opacity:.55, marginTop:2 }}>{r.detalle}</span></span>{!r.ok && <span style={{ opacity:.45 }}>›</span>}
+        </button>)}
+      </div>
+      <div style={{ padding:"4px 16px 16px", display:"flex", gap:8 }}>
+        <button onClick={() => setRevisionCultoAbierta(false)} style={{ flex:1, padding:11, borderRadius:11, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"white", fontWeight:750, cursor:"pointer" }}>Seguir preparando</button>
+        <button onClick={() => { setRevisionCultoAbierta(false); cambiarModoOperacion("culto") }} style={{ flex:1.35, padding:11, borderRadius:11, border:"none", background:"#dc2626", color:"white", fontWeight:850, cursor:"pointer" }}>● Entrar en modo Culto</button>
+      </div>
+    </div>
+  </div>
+})()}
+
 {modalServidor && (
   <div style={{
     position: "fixed", inset: 0, zIndex: 9995,
@@ -4254,19 +4300,19 @@ return (
         <div style={{ fontSize: isMobile ? 13 : 18, fontWeight: 800, lineHeight: 1.2, display: "flex", alignItems: "center", gap: 5 }}>
           🎛️ Control
           {(socketConectado === false || (socketConectado === null && !!(window as any).Capacitor)) && (
-            <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 5,
-              background: "rgba(239,68,68,0.15)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.25)"
-            }}>● SIN CONEXIÓN</span>
+            <EstadoOperativo compacto nivel="error" etiqueta="SIN CONEXIÓN" detalle="Toca para buscar el servidor" onClick={() => setModalServidor(true)} />
           )}
           {socketConectado === true && (
-            <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 5,
-              background: "rgba(34,197,94,0.12)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.2)"
-            }}>● EN LÍNEA</span>
+            <EstadoOperativo compacto nivel="ok" etiqueta="EN LÍNEA" detalle="Servidor local conectado" />
           )}
           {proyectorConectado && (
-            <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 5,
-              background: "rgba(99,102,241,0.15)", color: "#a5b4fc", border: "1px solid rgba(99,102,241,0.25)"
-            }}>🖥️ Proyector</span>
+            <EstadoOperativo compacto nivel="ok" icono="🖥️" etiqueta="PROYECTOR" detalle="Pantalla de proyección activa" />
+          )}
+          {socketConectado === true && !proyectorConectado && (
+            <EstadoOperativo compacto nivel="warning" icono="🖥️" etiqueta="SIN PROYECTOR" detalle="Abre Proyectar para mostrar contenido" />
+          )}
+          {sinConexion && (
+            <EstadoOperativo compacto nivel="warning" icono="☁️" etiqueta="SIN NUBE" detalle="Los controles locales pueden seguir funcionando" />
           )}
         </div>
         {nombreCulto && (
@@ -4275,6 +4321,23 @@ return (
           </div>
         )}
       </div>
+      {!isMobile && (
+        <div role="group" aria-label="Modo del Control" style={{ display:"flex", padding:3, borderRadius:11, background:"rgba(255,255,255,.055)", border:"1px solid rgba(255,255,255,.08)", flexShrink:0 }}>
+          {(["preparar", "culto"] as const).map(modo => (
+            <button key={modo} type="button" onClick={() => cambiarModoOperacion(modo)} style={{
+              padding:"7px 11px", borderRadius:8, border:"none", cursor:"pointer", fontSize:11.5, fontWeight:800,
+              background:modoOperacion === modo ? (modo === "culto" ? "rgba(220,38,38,.75)" : "rgba(37,99,235,.8)") : "transparent",
+              color:modoOperacion === modo ? "#fff" : "rgba(255,255,255,.5)",
+            }}>{modo === "preparar" ? "🛠 Preparar" : "● Culto"}</button>
+          ))}
+        </div>
+      )}
+      {!isMobile && modoOperacion === "preparar" && (
+        <button type="button" onClick={() => setRevisionCultoAbierta(true)} title="Revisar que todo esté listo antes del culto" style={{
+          height:38, padding:"0 12px", borderRadius:10, border:"1px solid rgba(96,165,250,.3)",
+          background:"rgba(37,99,235,.12)", color:"#bfdbfe", fontSize:11.5, fontWeight:800, cursor:"pointer", flexShrink:0,
+        }}>✓ Revisar culto</button>
+      )}
       <button data-tour="controles-nav" className="ctrl-btn" onClick={anterior} style={{
         width: isMobile ? 40 : 56, height: isMobile ? 40 : 56, borderRadius: 10, border: "none",
         background: "rgba(255,255,255,0.08)", color: "white", fontSize: isMobile ? 18 : 22,
@@ -4297,6 +4360,13 @@ return (
     {/* Fila 2 — solo mobile: botones secundarios compactos */}
     {isMobile && (
       <div style={{ display: "flex", gap: 6, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
+        <div role="group" aria-label="Modo del Control" style={{ display:"flex", padding:2, borderRadius:8, background:"rgba(255,255,255,.055)", border:"1px solid rgba(255,255,255,.08)" }}>
+          {(["preparar", "culto"] as const).map(modo => <button key={modo} type="button" onClick={() => cambiarModoOperacion(modo)} style={{
+            padding:"4px 7px", borderRadius:6, border:"none", cursor:"pointer", fontSize:10, fontWeight:800,
+            background:modoOperacion === modo ? (modo === "culto" ? "rgba(220,38,38,.78)" : "rgba(37,99,235,.82)") : "transparent",
+            color:modoOperacion === modo ? "#fff" : "rgba(255,255,255,.48)",
+          }}>{modo === "preparar" ? "Preparar" : "● Culto"}</button>)}
+        </div>
         {partes.some(p => /coro|estribillo/i.test(p?.tipo || "")) && (
           <button data-tour="btn-coro" onClick={irAlCoro} style={{
             padding: "4px 9px", borderRadius: 8, flexShrink: 0,
@@ -4498,7 +4568,7 @@ return (
 <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
 <div style={{
   display: "grid",
-  gridTemplateColumns: isMobile ? "1fr" : "1.3fr 1fr",
+  gridTemplateColumns: isMobile ? "1fr" : modoOperacion === "culto" ? ".82fr 1.38fr" : "1.3fr 1fr",
   alignItems: "start",
   padding: isMobile ? "4px 0px" : "20px",
   gap: isMobile ? 10 : 20,
@@ -4513,6 +4583,9 @@ return (
         maxHeight:0). Una fila ancha ahí adentro (ej. la de la cuenta
         regresiva) empujaba el ancho de toda la columna en mobile. */}
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 6 : 16, minWidth: 0 }}>
+      {!isMobile && <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"0 3px", color:"rgba(255,255,255,.38)", fontSize:10.5, fontWeight:850, letterSpacing:".12em" }}>
+        <span>BIBLIOTECA Y RECURSOS</span><span style={{ letterSpacing:0, fontWeight:650 }}>{modoOperacion === "culto" ? "Compacta" : "Preparación"}</span>
+      </div>}
 
       {/* ── Canciones ─────────────────────────────────────────────────── */}
       <div style={{
@@ -5775,6 +5848,9 @@ return (
       minWidth: 0, width: "100%",
       ...(isMobile ? {} : { position: "sticky", top: 20, alignSelf: "start", maxHeight: "calc(100vh - 40px)" })
     }}>
+      {!isMobile && <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"0 3px", color:"rgba(255,255,255,.38)", fontSize:10.5, fontWeight:850, letterSpacing:".12em" }}>
+        <span>ORDEN DEL CULTO</span><span style={{ letterSpacing:0, color:indiceActivoLista !== null ? "#4ade80" : "rgba(255,255,255,.38)" }}>{indiceActivoLista !== null ? "● En curso" : "Preparado"}</span>
+      </div>}
 
       {/* Tabs mobile: Preview | Lista — solo en desktop */}
       {false && isMobile && (
@@ -6035,8 +6111,9 @@ return (
                 onDrop={() => { if (!isMobile && dragIndex !== null) moverItemLista(dragIndex, i); setDragIndex(null) }}
                 onDragEnd={() => setDragIndex(null)}
                 style={{
-                  background: esActivo ? "rgba(22,163,74,0.85)" : esAgregado ? "rgba(59,130,246,0.12)" : "rgba(255,255,255,0.04)",
+                  background: esActivo ? "rgba(20,83,45,0.38)" : esAgregado ? "rgba(59,130,246,0.12)" : "rgba(255,255,255,0.04)",
                   border: `1px solid ${esActivo ? "rgba(34,197,94,0.5)" : esAgregado ? "rgba(59,130,246,0.35)" : "rgba(255,255,255,0.07)"}`,
+                  borderLeft: esActivo ? "4px solid #22c55e" : undefined,
                   borderRadius: 11, padding: "10px 12px",
                   display: "flex", alignItems: "center", gap: 10,
                   flexWrap: "wrap",
@@ -6068,6 +6145,7 @@ return (
                     }}>
                       {limpiarTituloLista(c?.titulo || "Sin título")}
                     </div>
+                    {esActivo && <div style={{ fontSize:9.5, color:"#86efac", fontWeight:900, letterSpacing:".08em", marginTop:2 }}>● AL AIRE</div>}
                     <div style={{ fontSize: 11, opacity: 0.55, marginTop: 1 }}>
                       {subtituloItemLista(c)}
                     </div>
