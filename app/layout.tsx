@@ -18,6 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es">
       <body style={{ margin: 0, padding: 0, background: "#060d1a" }}>
+        <a className="skip-link" href="#contenido-principal">Saltar al contenido principal</a>
         <ThemeProvider>
           <AuthProvider>
             {/* ✅ AppProvider estaba escrito (canciones cacheadas, sinConexion,
@@ -27,7 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <AppProvider>
               <DeepLinkHandler />
               <Navbar />
-              {children}
+              <main id="contenido-principal" style={{ display:"contents" }}>{children}</main>
               <OtaUpdater />
               <AvisoActualizacion />
               <AyudaBotones />

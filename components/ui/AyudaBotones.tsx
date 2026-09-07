@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 
-type Ayuda = { texto: string; x: number; y: number }
+type Ayuda = { texto: string; x: number; y: number; arriba: boolean }
 
 const EXPLICACIONES: Array<[RegExp, string]> = [
   [/revisar (salida|culto)/i, "Comprueba que todo esté listo antes de comenzar."],
@@ -73,7 +73,8 @@ export default function AyudaBotones() {
       activo.current = { el, title }
       timer.current = setTimeout(() => {
         const r = el.getBoundingClientRect()
-        setAyuda({ texto, x: Math.max(12, Math.min(innerWidth - 12, r.left + r.width / 2)), y: r.bottom + 9 })
+        const arriba = r.bottom + 110 > innerHeight
+        setAyuda({ texto, x: Math.max(12, Math.min(innerWidth - 12, r.left + r.width / 2)), y: arriba ? r.top - 9 : r.bottom + 9, arriba })
       }, 420)
     }
     const encontrar = (target: EventTarget | null) => target instanceof Element
@@ -105,7 +106,7 @@ export default function AyudaBotones() {
 
   if (!ayuda) return null
   return <div role="tooltip" style={{
-    position:"fixed", left:ayuda.x, top:ayuda.y, zIndex:100000, transform:"translateX(-50%)",
+    position:"fixed", left:ayuda.x, top:ayuda.y, zIndex:100000, transform:ayuda.arriba ? "translate(-50%,-100%)" : "translateX(-50%)",
     maxWidth:290, padding:"8px 11px", borderRadius:9, pointerEvents:"none",
     background:"#111827", color:"#f8fafc", border:"1px solid rgba(255,255,255,.18)",
     boxShadow:"0 10px 30px rgba(0,0,0,.48)", fontSize:12, lineHeight:1.4, fontWeight:600,

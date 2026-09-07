@@ -56,3 +56,46 @@ body {
   --accent:        #2563eb;
   --accent-light:  #1d4ed8;
 }
+
+/* Accesibilidad operativa: visible al usar teclado, discreta con mouse. */
+:where(button, a, input, select, textarea, [role="button"]):focus-visible {
+  outline: 3px solid #60a5fa !important;
+  outline-offset: 3px !important;
+}
+
+:where(button, input[type="button"], input[type="submit"]):disabled {
+  cursor: not-allowed !important;
+  filter: saturate(.55);
+}
+
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 10px;
+  z-index: 200000;
+  padding: 10px 14px;
+  border-radius: 9px;
+  background: #eff6ff;
+  color: #172554;
+  font: 800 13px/1.2 system-ui, sans-serif;
+  text-decoration: none;
+  transform: translateY(-150%);
+  transition: transform .15s ease;
+}
+
+.skip-link:focus { transform: translateY(0); }
+
+@media (pointer: coarse) {
+  :where(button, [role="button"], input[type="button"], input[type="submit"]) {
+    min-height: 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
