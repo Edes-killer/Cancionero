@@ -8,12 +8,28 @@ const EXPLICACIONES: Array<[RegExp, string]> = [
   [/revisar (salida|culto)/i, "Comprueba que todo esté listo antes de comenzar."],
   [/salir en vivo|iniciar transmisi[oó]n/i, "Comienza a enviar la señal a los destinos configurados."],
   [/terminar transmisi[oó]n/i, "Detiene la emisión en todos los destinos activos."],
+  [/grabar.*culto/i, "Activa o desactiva la grabación local mientras transmites."],
   [/grabar/i, "Guarda en este computador una copia de la salida actual."],
+  [/abrir.*proyector|proyector$/i, "Abre la salida que verá la congregación, normalmente en el segundo monitor."],
   [/proyectar ahora|proyectar$/i, "Muestra inmediatamente este contenido en la pantalla de proyección."],
-  [/vista previa/i, "Permite revisar el contenido sin mostrarlo al público."],
+  [/vista previa.*m[uú]sicos/i, "Muestra cómo verán la letra y los acordes quienes usan Vista Músicos."],
+  [/vista previa.*proyecci[oó]n/i, "Muestra cómo se dividirá y verá la letra en el proyector antes de guardarla."],
+  [/vista previa/i, "Permite revisar el contenido sin mostrarlo todavía al público."],
   [/agregar a la lista/i, "Añade este elemento al orden del culto."],
+  [/nueva canci[oó]n/i, "Abre el editor para crear una canción propia de esta iglesia."],
+  [/editar/i, "Abre este elemento para modificar sus datos."],
+  [/renombrar/i, "Cambia el nombre visible sin modificar el archivo original."],
+  [/duplicar/i, "Crea una copia independiente de este elemento."],
+  [/mover.*arriba|subir elemento|^↑$/i, "Mueve este elemento una posición hacia arriba."],
+  [/mover.*abajo|bajar elemento|^↓$/i, "Mueve este elemento una posición hacia abajo."],
+  [/m[aá]s opciones|^⋮$/i, "Muestra acciones adicionales para este elemento."],
+  [/detectar tono/i, "Busca el primer acorde escrito y propone ese tono para la canción."],
+  [/editor de acordes|acordes/i, "Abre las herramientas para insertar acordes en esta parte de la canción."],
   [/anterior/i, "Vuelve a la parte o elemento anterior."],
   [/siguiente/i, "Avanza a la parte o elemento siguiente."],
+  [/subir|cambiar logo/i, "Selecciona un archivo compatible y lo guarda para usarlo en Selah."],
+  [/importar.*powerpoint|importar ppt/i, "Convierte contenido de PowerPoint para incorporarlo a Selah."],
+  [/carrusel/i, "Permite seleccionar varios recursos y reproducirlos en el orden elegido."],
   [/repetir coro/i, "Intercala automáticamente el coro después de cada estrofa."],
   [/guardar armado/i, "Guarda las posiciones y tamaños actuales del diseño."],
   [/restaurar/i, "Recupera la última disposición guardada."],
@@ -27,29 +43,66 @@ const EXPLICACIONES: Array<[RegExp, string]> = [
   [/usar obs/i, "Abre el módulo de integración avanzada con OBS Studio."],
   [/abrir carpeta/i, "Abre la carpeta donde Selah guarda las grabaciones."],
   [/copiar/i, "Copia esta información al portapapeles."],
+  [/generar link/i, "Crea una invitación para que otra persona se una con el rol seleccionado."],
+  [/quitar pin/i, "Desactiva la protección por PIN para los controles de esta sala."],
+  [/guardar.*pin/i, "Guarda el PIN que deberán ingresar los dispositivos de control."],
   [/buscar.*autom[aá]ticamente/i, "Busca computadores con Selah disponibles en la red local."],
+  [/buscar actualizaciones/i, "Consulta GitHub para comprobar si existe una versión más reciente de Selah."],
+  [/ver tour/i, "Reinicia y abre la guía paso a paso de esta pantalla."],
   [/diagnosticar/i, "Ejecuta pruebas de conexión y registra los resultados."],
   [/afin(ar|ador)/i, "Abre el afinador usando el micrófono del dispositivo."],
   [/improvisar/i, "Muestra escalas y notas recomendadas para el tono actual."],
   [/ensayo|metr[oó]nomo/i, "Abre el metrónomo y la nota de partida."],
   [/ajustes|configuraci[oó]n/i, "Abre las opciones disponibles para esta pantalla."],
-  [/cerrar|cancelar|volver/i, "Cierra esta vista y vuelve a la pantalla anterior."],
-  [/guardar/i, "Guarda los cambios realizados."],
+  [/cerrar sesi[oó]n|salir$/i, "Cierra tu sesión en este dispositivo y vuelve al ingreso."],
+  [/cerrar|cancelar|volver/i, "Cierra esta vista sin ejecutar la acción pendiente."],
+  [/guardar canci[oó]n|actualizar canci[oó]n/i, "Valida la información y guarda la canción y todas sus partes."],
+  [/guardar culto|guardar lista/i, "Guarda el orden actual para poder recuperarlo en otro momento."],
+  [/guardar/i, "Conserva los cambios realizados en esta sección."],
   [/eliminar|borrar|quitar/i, "Elimina este elemento. Selah pedirá confirmación si es necesario."],
   [/reintentar/i, "Vuelve a ejecutar la operación que no pudo completarse."],
 ]
+
+const EXPLICACIONES_ICONOS: Record<string, string> = {
+  "✕": "Cierra este panel o quita el elemento al que pertenece.",
+  "×": "Cierra este panel o quita el elemento al que pertenece.",
+  "+": "Agrega este contenido a la sección o lista actual.",
+  "▶": "Inicia o muestra inmediatamente el elemento seleccionado.",
+  "⋮": "Abre más acciones disponibles para este elemento.",
+  "↑": "Mueve este elemento una posición hacia arriba.",
+  "↓": "Mueve este elemento una posición hacia abajo.",
+  "⧉": "Crea una copia de este elemento para editarla por separado.",
+  "📱": "Abre una vista previa sin cambiar lo que está proyectado.",
+  "🎸": "Cambia a la vista con información para músicos.",
+}
 
 function limpiar(texto: string) {
   return texto.replace(/[\n\r\t]+/g, " ").replace(/\s+/g, " ").replace(/^[^\p{L}\p{N}]+/u, "").trim()
 }
 
 function descripcion(el: HTMLElement) {
-  const propia = el.dataset.ayuda || el.getAttribute("title") || el.getAttribute("aria-label") || ""
-  if (propia.trim()) return propia.trim()
-  const nombre = limpiar(el.innerText || el.textContent || "")
-  if (!nombre) return "Activa este control."
-  const encontrada = EXPLICACIONES.find(([patron]) => patron.test(nombre))
-  return encontrada?.[1] || `Activa la opción “${nombre.slice(0, 70)}”.`
+  const propia = el.dataset.ayuda?.trim()
+  if (propia) return propia
+
+  const title = el.getAttribute("title")?.trim() || ""
+  const aria = el.getAttribute("aria-label")?.trim() || ""
+  const visibleCrudo = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim()
+  const visible = limpiar(visibleCrudo)
+
+  // Un title largo normalmente ya fue escrito como explicación específica.
+  if (title.length >= 32 || /[.!?]/.test(title)) return title
+
+  // Los textos cortos ("Cerrar", "Vista previa", "Renombrar") son nombres,
+  // no explicaciones: se traducen con el catálogo antes de mostrarlos.
+  const identidad = [aria, title, visible].filter(Boolean).join(" · ")
+  const encontrada = EXPLICACIONES.find(([patron]) => patron.test(identidad))
+  if (encontrada) return encontrada[1]
+
+  if (!aria && !title && EXPLICACIONES_ICONOS[visibleCrudo]) return EXPLICACIONES_ICONOS[visibleCrudo]
+
+  const nombre = aria || title || visible
+  if (!nombre) return "Ejecuta la acción disponible en este control."
+  return `Selecciona “${limpiar(nombre).slice(0, 70)}” para aplicar esa opción.`
 }
 
 export default function AyudaBotones() {

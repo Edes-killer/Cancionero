@@ -5211,7 +5211,7 @@ return (
                         </div>
                         <div style={{ display:"flex", gap:14, alignItems:"center" }}>
                           <span style={{ fontSize:11, opacity:0.4 }}>☁️ {galeriaImagenes.filter(i=>!i.local).length}/20 · 💾 {galeriaImagenes.filter(i=>i.local).length}</span>
-                          <button onClick={() => setGaleriaAbierta(false)} style={{ background:"none", border:"none", color:"white", fontSize:18, cursor:"pointer", opacity:0.5 }}>✕</button>
+                          <button data-ayuda="Cierra la biblioteca y vuelve a las herramientas del culto." onClick={() => setGaleriaAbierta(false)} style={{ background:"none", border:"none", color:"white", fontSize:18, cursor:"pointer", opacity:0.5 }}>✕</button>
                         </div>
                       </div>
                       {/* Búsqueda y filtros */}
@@ -5275,7 +5275,7 @@ return (
                                 {yaAgregada && !modoCarrusel && <span style={{ position:"absolute", left:5, bottom:23, padding:"2px 6px", borderRadius:99, background:"rgba(22,163,74,.92)", color:"white", fontSize:9, fontWeight:850 }}>✓ En el culto</span>}
                                 <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:"4px 6px", background:"linear-gradient(transparent,rgba(0,0,0,0.7))", fontSize:10, opacity:0.8, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{img.nombre}</div>
                                 {/* ✅ Botón renombrar */}
-                                <button onClick={async e => {
+                                <button data-ayuda="Elimina este archivo de la biblioteca visual." onClick={async e => {
                                   e.stopPropagation()
                                   const nuevo = await pedirTexto("Nuevo nombre para la imagen:", { valorInicial: img.nombre, textoOk: "Guardar" })
                                   if (nuevo == null) return
@@ -6191,11 +6191,11 @@ return (
 
                 {/* Acciones */}
                 <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                  <button className="ctrl-btn" onClick={() => proyectarDesdeLista(i)}
+                  <button data-ayuda="Proyecta inmediatamente este elemento del orden del culto." className="ctrl-btn" onClick={() => proyectarDesdeLista(i)}
                     style={{ width: 38, height: 38, borderRadius: 9, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     ▶
                   </button>
-                  <button className="ctrl-btn"
+                  <button data-ayuda="Muestra las acciones para reordenar o eliminar este elemento." className="ctrl-btn"
                     onClick={() => setMenuItemAbierto(prev => prev === i ? null : i)}
                     style={{ width: 38, height: 38, borderRadius: 9, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     ⋮

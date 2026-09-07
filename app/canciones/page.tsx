@@ -2126,10 +2126,10 @@ export default function CancionesPage() {
                       >
                         👁 Vista
                       </button>
-                      <button onClick={() => moverParte(i, -1)} disabled={i === 0} style={{ ...btnBase, padding: "5px 8px", background: "rgba(255,255,255,0.05)", color: colors.textMuted, opacity: i === 0 ? 0.3 : 1 }}>↑</button>
-                      <button onClick={() => moverParte(i, 1)} disabled={i === partes.length - 1} style={{ ...btnBase, padding: "5px 8px", background: "rgba(255,255,255,0.05)", color: colors.textMuted, opacity: i === partes.length - 1 ? 0.3 : 1 }}>↓</button>
-                      <button onClick={() => duplicarParte(i)} title="Duplicar" style={{ ...btnBase, padding: "5px 8px", background: "rgba(255,255,255,0.05)", color: colors.textMuted }}>⧉</button>
-                      <button onClick={() => eliminarParte(i)} disabled={partes.length === 1} style={{ ...btnBase, padding: "5px 8px", background: "rgba(239,68,68,0.08)", color: "#fca5a5", opacity: partes.length === 1 ? 0.3 : 1 }}>✕</button>
+                      <button data-ayuda="Mueve esta parte una posición hacia arriba en la canción." onClick={() => moverParte(i, -1)} disabled={i === 0} style={{ ...btnBase, padding: "5px 8px", background: "rgba(255,255,255,0.05)", color: colors.textMuted, opacity: i === 0 ? 0.3 : 1 }}>↑</button>
+                      <button data-ayuda="Mueve esta parte una posición hacia abajo en la canción." onClick={() => moverParte(i, 1)} disabled={i === partes.length - 1} style={{ ...btnBase, padding: "5px 8px", background: "rgba(255,255,255,0.05)", color: colors.textMuted, opacity: i === partes.length - 1 ? 0.3 : 1 }}>↓</button>
+                      <button onClick={() => duplicarParte(i)} data-ayuda="Duplica esta parte con su letra y acordes para editar la copia." style={{ ...btnBase, padding: "5px 8px", background: "rgba(255,255,255,0.05)", color: colors.textMuted }}>⧉</button>
+                      <button data-ayuda="Elimina esta parte de la canción. Debe quedar al menos una." onClick={() => eliminarParte(i)} disabled={partes.length === 1} style={{ ...btnBase, padding: "5px 8px", background: "rgba(239,68,68,0.08)", color: "#fca5a5", opacity: partes.length === 1 ? 0.3 : 1 }}>✕</button>
                     </div>
                   </div>
 

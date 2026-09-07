@@ -1848,7 +1848,7 @@ export default function EnVivoPage() {
                     <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 8, background: C.panel2, border: `1px solid ${C.borde}`, borderRadius: 10, padding: "6px 8px 6px 6px" }}>
                       <img src={g.url} alt="" style={{ width: 34, height: 34, objectFit: "contain", borderRadius: 6, background: "rgba(0,0,0,.3)" }} />
                       <span style={{ fontSize: 12, color: C.suave }}>Gráfico {i + 1}</span>
-                      <button onClick={() => quitarGrafico(g.id)} title="Quitar"
+                      <button onClick={() => quitarGrafico(g.id)} data-ayuda="Quita este gráfico del diseño de transmisión."
                         style={{ background: "transparent", border: "none", color: "#fca5a5", cursor: "pointer", fontSize: 15, fontWeight: 800, padding: "0 4px" }}>✕</button>
                     </div>
                   ))}
@@ -2121,7 +2121,7 @@ export default function EnVivoPage() {
           <div onClick={e => e.stopPropagation()} style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, padding: 20, maxWidth: 840, width: "100%", maxHeight: "82vh", overflow: "auto" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <div style={{ fontSize: 16, fontWeight: 800 }}>Elige qué compartir</div>
-              <button onClick={() => setPickerPantalla(false)} style={{ background: "transparent", border: "none", color: C.suave, fontSize: 20, cursor: "pointer" }}>✕</button>
+              <button data-ayuda="Cierra la selección sin compartir una pantalla." onClick={() => setPickerPantalla(false)} style={{ background: "transparent", border: "none", color: C.suave, fontSize: 20, cursor: "pointer" }}>✕</button>
             </div>
             {!fuentesPantalla ? <div style={{ color: C.tenue }}>Cargando…</div>
               : fuentesPantalla.length === 0 ? <div style={{ color: C.tenue }}>No se encontraron pantallas ni ventanas.</div>

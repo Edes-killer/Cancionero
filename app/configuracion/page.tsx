@@ -1594,7 +1594,7 @@ export default function ConfiguracionPage() {
                         style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: linkCopiado === inv.codigo ? "rgba(34,197,94,0.2)" : "rgba(37,99,235,0.2)", color: linkCopiado === inv.codigo ? "#4ade80" : "#93c5fd", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>
                         {linkCopiado === inv.codigo ? "✓ Copiado" : "📋 Copiar"}
                       </button>
-                      <button onClick={() => desactivarInvitacion(inv.id)}
+                      <button data-ayuda="Desactiva este código para que nadie más pueda usarlo." onClick={() => desactivarInvitacion(inv.id)}
                         style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.1)", color: "#fca5a5", fontSize: 13, cursor: "pointer", flexShrink: 0 }}>
                         ✕
                       </button>
@@ -1648,7 +1648,7 @@ export default function ConfiguracionPage() {
                       <option value="lider"  style={{ background: "#1e293b" }}>🎛️ Líder</option>
                       <option value="admin"  style={{ background: "#1e293b" }}>👑 Admin</option>
                     </select>
-                    <button onClick={() => quitarMiembro(m.user_id, m.email)} disabled={guardando}
+                    <button data-ayuda="Quita a esta persona de la iglesia y revoca su acceso." onClick={() => quitarMiembro(m.user_id, m.email)} disabled={guardando}
                       style={{ padding: "7px 10px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.1)", color: "#fca5a5", fontSize: 13, cursor: "pointer", flexShrink: 0 }}>
                       ✕
                     </button>

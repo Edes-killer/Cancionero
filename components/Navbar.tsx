@@ -210,7 +210,7 @@ export default function Navbar() {
 
           {/* ── Músicos (mobile) / Proyector (desktop) ── */}
           {isMobile ? (
-            <button onClick={() => isCapacitor ? navegarSPA(router, "/musicos") : window.open(`${window.location.origin}/musicos`, "_blank", "noopener")} style={{
+            <button data-ayuda="Abre letras, acordes, tonos y herramientas para los músicos." onClick={() => isCapacitor ? navegarSPA(router, "/musicos") : window.open(`${window.location.origin}/musicos`, "_blank", "noopener")} style={{
               padding: "5px 8px", borderRadius: 7,
               background: "rgba(251,191,36,0.08)",
               border: "1px solid rgba(251,191,36,0.2)",
