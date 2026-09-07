@@ -242,6 +242,7 @@ export default function CancionesPage() {
     { tipo: "Verso", texto: "", formato: "solo" }
   ])
   const [vistaPrevia, setVistaPrevia] = useState<number | null>(null)
+  const [vistaProyectorEditor, setVistaProyectorEditor] = useState(false)
   const [modoAcordes, setModoAcordes] = useState<number | null>(null)
 
   const NOTAS_ACORDES = ["Do","Do#","Reb","Re","Re#","Mib","Mi","Fa","Fa#","Solb","Sol","Sol#","Lab","La","La#","Sib","Si"]
@@ -867,10 +868,14 @@ export default function CancionesPage() {
     setNumero("")
     setPartes([{ tipo: "Verso", texto: "", formato: "solo" }])
     setVistaPrevia(null)
+    setVistaProyectorEditor(false)
   }
 
   const agregarParte = () =>
     setPartes(prev => [...prev, { tipo: "Verso", texto: "", formato: "solo" }])
+
+  const agregarParteTipo = (tipo: Parte["tipo"]) =>
+    setPartes(prev => [...prev, { tipo, texto: "", formato: "solo" }])
 
   const actualizarParte = (i: number, campo: keyof Parte, valor: string) => {
     setPartes(prev => {
@@ -915,6 +920,8 @@ export default function CancionesPage() {
   const guardarCancion = async () => {
     if (sinConexion) { flash("⚠️ Sin conexión con el servidor — no se puede guardar ahora"); return }
     if (!titulo.trim()) { flash("⚠️ El título es obligatorio"); return }
+    const vacia = partes.findIndex(p => !p.texto.trim())
+    if (vacia >= 0) { flash(`⚠️ La parte ${vacia + 1} está vacía. Escribe su letra o elimínala antes de guardar.`); return }
     // ✅ Límite del plan: solo cuando se AGREGA una canción propia (crear nueva,
     // o crear la copia de un himno global). Editar una propia no suma al cupo.
     if ((!editandoId || editandoEsGlobal) && iglesiaId) {
@@ -968,7 +975,7 @@ export default function CancionesPage() {
     const { error: errorPartes } = await supabase.from("partes_cancion").insert(partesInsert)
     if (errorPartes) { flash("❌ Error guardando la letra: " + (errorPartes.message || "intenta de nuevo")); setGuardando(false); return }
 
-    flash(editandoEsGlobal ? "✅ Se creó una copia de este himno para tu iglesia — el himno global quedó sin cambios. Si borrás tu copia, vuelve a aparecer el original."
+    flash(editandoEsGlobal ? "✅ Se creó una copia de este himno para tu iglesia — el himno global quedó sin cambios. Si borras tu copia, vuelve a aparecer el original."
       : editandoId ? "✅ Canción actualizada" : "✅ Canción guardada")
     resetEditor()
     await cargarCanciones()
@@ -1916,7 +1923,7 @@ export default function CancionesPage() {
                 <strong>📖 Este himno es del himnario global</strong> (lo comparten todas las iglesias, por eso no se puede modificar ni borrar).
                 <br />
                 Al guardar se creará <strong>una copia para tu iglesia</strong> con tus cambios, y tu iglesia pasará a usar esa versión.
-                Si más adelante borrás tu copia, vuelve a aparecer el himno global original.
+                Si más adelante borras tu copia, vuelve a aparecer el himno global original.
               </div>
             )}
 
@@ -2008,13 +2015,21 @@ export default function CancionesPage() {
 
             {/* ── Partes ── */}
             <div style={{ marginBottom: 20 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: colors.textMuted }}>
-                  Partes de la canción — {partes.length}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap:10, flexWrap:"wrap" }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: colors.textMuted }}>
+                    Partes de la canción — {partes.length}
+                  </div>
+                  <div style={{ fontSize:11.5, color:colors.textMuted, marginTop:4 }}>Cada parte será una pantalla navegable durante el culto.</div>
                 </div>
-                <button onClick={agregarParte} style={btnSecondary}>
-                  + Agregar parte
-                </button>
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                  {(["Verso","Coro","Puente"] as Parte["tipo"][]).map(tipo => <button key={tipo} data-ayuda={`Agrega una nueva parte de tipo ${tipo}.`} onClick={() => agregarParteTipo(tipo)} style={{ ...btnSecondary, padding:"7px 10px", fontSize:12 }}>+ {tipo}</button>)}
+                  <button data-ayuda="Agrega otra parte y permite elegir cualquier tipo." onClick={agregarParte} style={{ ...btnSecondary, padding:"7px 10px", fontSize:12 }}>+ Otra</button>
+                </div>
+              </div>
+
+              <div style={{ marginBottom:14, padding:"9px 12px", borderRadius:10, background:"rgba(59,130,246,.06)", border:"1px solid rgba(59,130,246,.15)", color:"rgba(255,255,255,.55)", fontSize:11.5, lineHeight:1.5 }}>
+                💡 Usa <strong style={{ color:"#bfdbfe" }}>Verso</strong> para estrofas, <strong style={{ color:"#ddd6fe" }}>Coro</strong> para la sección repetida y <strong style={{ color:"#a7f3d0" }}>Puente</strong> para una sección distinta antes del cierre.
               </div>
 
               {partes.map((p, i) => (
@@ -2193,6 +2208,19 @@ export default function CancionesPage() {
                   </div>
                 </div>
               ))}
+            </div>
+
+            {/* Vista previa limpia: representa lo que verá la congregación, sin acordes. */}
+            <div style={{ marginBottom:20, border:`1px solid ${colors.border}`, borderRadius:14, overflow:"hidden", background:colors.surface }}>
+              <button data-ayuda="Muestra cómo se dividirá la canción en las pantallas del proyector antes de guardarla." onClick={() => setVistaProyectorEditor(v => !v)} style={{ width:"100%", padding:"12px 15px", border:"none", background:"transparent", color:colors.text, display:"flex", alignItems:"center", justifyContent:"space-between", cursor:"pointer", fontWeight:750, fontSize:13.5 }}>
+                <span>🖥️ Vista previa de proyección</span><span style={{ opacity:.45 }}>{vistaProyectorEditor ? "▾" : "▸"}</span>
+              </button>
+              {vistaProyectorEditor && <div style={{ padding:"0 14px 14px", display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))", gap:10 }}>
+                {partes.map((p,i) => <div key={i} style={{ aspectRatio:"16/9", borderRadius:10, padding:14, boxSizing:"border-box", background:"radial-gradient(circle at 50% 20%,#172554,#060d1a 70%)", border:`1px solid ${!p.texto.trim() ? "rgba(239,68,68,.35)" : "rgba(255,255,255,.1)"}`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", textAlign:"center" }}>
+                  <div style={{ color:"#93c5fd", fontSize:9, fontWeight:850, letterSpacing:".08em", textTransform:"uppercase", marginBottom:8 }}>{p.tipo} · pantalla {i+1}</div>
+                  <div style={{ color:"white", fontSize:13, lineHeight:1.4, whiteSpace:"pre-wrap", maxHeight:"75%", overflow:"hidden" }}>{p.texto.replace(/\[[^\]]+\]/g, "").trim() || "Esta parte está vacía"}</div>
+                </div>)}
+              </div>}
             </div>
 
             {/* ── Acciones guardar ── */}
