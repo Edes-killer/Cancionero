@@ -123,10 +123,15 @@ export default function ControlPage() {
   const [colorLetraCtrl, setColorLetraCtrl] = useState(() =>
     typeof window !== "undefined" ? localStorage.getItem("proyector-color-letra") || "#ffffff" : "#ffffff"
   )
-  const [galeriaImagenes, setGaleriaImagenes] = useState<{url:string,nombre:string,local:boolean}[]>([])
+  const [galeriaImagenes, setGaleriaImagenes] = useState<{url:string,nombre:string,local:boolean,carpeta:string}[]>([])
   const [galeriaAbierta, setGaleriaAbierta] = useState(false)
   const [busquedaGaleria, setBusquedaGaleria] = useState("")
   const [filtroGaleria, setFiltroGaleria] = useState<"todo" | "imagen" | "video">("todo")
+  const [carpetaGaleria, setCarpetaGaleria] = useState("__todas__")
+  const [carpetasGaleria, setCarpetasGaleria] = useState<string[]>(() => {
+    if (typeof window === "undefined") return []
+    try { return JSON.parse(localStorage.getItem("selah-galeria-carpetas") || "[]") } catch { return [] }
+  })
   // Importar desde PowerPoint (solo escritorio): menú de 2 opciones + progreso.
   const [pptMenu, setPptMenu] = useState(false)
   const [pptProg, setPptProg] = useState("")
@@ -2664,7 +2669,13 @@ const importarPPT = async (modo: "imagenes" | "diapositivas") => {
           : `${base} - ${r.imagenes[i].nombre}`
         const file = new File([blob], nombre, { type: blob.type || "image/png" })
         const res = await subirImagen(file)
-        if (res?.url) { subidas++; try { localStorage.setItem("img-nombre-" + res.url, nombre.replace(/\.[^.]+$/, "")) } catch {} }
+        if (res?.url) {
+          subidas++
+          try {
+            localStorage.setItem("img-nombre-" + res.url, nombre.replace(/\.[^.]+$/, ""))
+            if (carpetaGaleria !== "__todas__" && carpetaGaleria !== "__sin__") localStorage.setItem("img-carpeta-" + res.url, carpetaGaleria)
+          } catch {}
+        }
       } catch (e: any) { logError(`Importar imagen ${i + 1}/${r.imagenes.length} (${modo}): ${e?.message || e}`, { tipo: "ppt", pagina: "/control" }) }
     }
     setPptProg("")
@@ -2741,10 +2752,10 @@ const subirVideo = async (file: File) => {
 }
 
 // ✅ Cargar galería de imágenes de la iglesia
-const cargarGaleriaImagenes = async (): Promise<{url: string, nombre: string, local: boolean}[]> => {
+const cargarGaleriaImagenes = async (): Promise<{url: string, nombre: string, local: boolean, carpeta: string}[]> => {
   const iglesiaId = await getIglesiaIdCached()
   const isElectron = typeof window !== "undefined" && navigator.userAgent.includes("Electron")
-  const resultado: {url: string, nombre: string, local: boolean}[] = []
+  const resultado: {url: string, nombre: string, local: boolean, carpeta: string}[] = []
 
   // Imágenes locales (Electron)
   if (isElectron) {
@@ -2752,7 +2763,7 @@ const cargarGaleriaImagenes = async (): Promise<{url: string, nombre: string, lo
       const res = await fetch("http://localhost:4000/api/imagenes/listar")
       if (res.ok) {
         const { imagenes } = await res.json()
-        imagenes.forEach((img: any) => resultado.push({ ...img, local: true }))
+        imagenes.forEach((img: any) => resultado.push({ ...img, local: true, carpeta: "" }))
       }
     } catch(e) {}
   }
@@ -2765,7 +2776,7 @@ const cargarGaleriaImagenes = async (): Promise<{url: string, nombre: string, lo
       data.forEach(f => {
         const { data: pub } = supabase.storage.from("imagenes-culto")
           .getPublicUrl(`${iglesiaId}/${f.name}`)
-        resultado.push({ url: pub.publicUrl, nombre: f.name.replace(/^\d+-[a-z0-9]+\.webp$/, "Imagen"), local: false })
+        resultado.push({ url: pub.publicUrl, nombre: f.name.replace(/^\d+-[a-z0-9]+\.webp$/, "Imagen"), local: false, carpeta: "" })
       })
     }
   }
@@ -2774,6 +2785,7 @@ const cargarGaleriaImagenes = async (): Promise<{url: string, nombre: string, lo
     for (const img of resultado) {
       const custom = localStorage.getItem("img-nombre-" + img.url)
       if (custom) img.nombre = custom
+      img.carpeta = localStorage.getItem("img-carpeta-" + img.url) || ""
     }
   } catch {}
   return resultado
@@ -3397,7 +3409,7 @@ const agregarItemAListaConFeedback = (item: any, mensaje: string) => {
   mostrarFeedbackLista(mensaje)
 }
 
-const agregarMediaDesdeGaleria = (img: { url:string; nombre:string; local:boolean }) => {
+const agregarMediaDesdeGaleria = (img: { url:string; nombre:string; local:boolean; carpeta:string }) => {
   if (lista.some(item => item.url === img.url)) {
     mostrarFeedbackLista(`⚠️ ${img.nombre} ya está en el orden del culto`)
     return
@@ -3406,15 +3418,88 @@ const agregarMediaDesdeGaleria = (img: { url:string; nombre:string; local:boolea
   agregarItemAListaConFeedback({ tipo, url:img.url, titulo:img.nombre }, `✅ Agregada: ${img.nombre}`)
 }
 
+const guardarCarpetasGaleria = (carpetas: string[]) => {
+  const limpias = Array.from(new Set(carpetas.map(c => c.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "es"))
+  setCarpetasGaleria(limpias)
+  try { localStorage.setItem("selah-galeria-carpetas", JSON.stringify(limpias)) } catch {}
+  return limpias
+}
+
+const crearCarpetaGaleria = async () => {
+  const nuevo = await pedirTexto("Nombre de la nueva carpeta:", { textoOk: "Crear carpeta" })
+  const nombre = nuevo?.trim()
+  if (!nombre) return
+  const existentes = carpetasGaleria.some(c => c.toLocaleLowerCase("es") === nombre.toLocaleLowerCase("es"))
+  if (!existentes) guardarCarpetasGaleria([...carpetasGaleria, nombre])
+  setCarpetaGaleria(nombre)
+  flashCtrl(existentes ? `📁 Abierta: ${nombre}` : `✅ Carpeta creada: ${nombre}`)
+}
+
+const renombrarCarpetaGaleria = async () => {
+  if (carpetaGaleria === "__todas__" || carpetaGaleria === "__sin__") return
+  const nuevo = await pedirTexto("Nuevo nombre para la carpeta:", { valorInicial: carpetaGaleria, textoOk: "Renombrar" })
+  const nombre = nuevo?.trim()
+  if (!nombre || nombre === carpetaGaleria) return
+  if (carpetasGaleria.some(c => c !== carpetaGaleria && c.toLocaleLowerCase("es") === nombre.toLocaleLowerCase("es"))) {
+    flashCtrl("Ya existe una carpeta con ese nombre")
+    return
+  }
+  const anterior = carpetaGaleria
+  const afectadas = galeriaImagenes.filter(img => img.carpeta === anterior)
+  try { afectadas.forEach(img => localStorage.setItem("img-carpeta-" + img.url, nombre)) } catch {}
+  guardarCarpetasGaleria(carpetasGaleria.map(c => c === anterior ? nombre : c))
+  setGaleriaImagenes(prev => prev.map(img => img.carpeta === anterior ? { ...img, carpeta: nombre } : img))
+  setCarpetaGaleria(nombre)
+  flashCtrl(`✅ Carpeta renombrada: ${nombre}`)
+}
+
+const eliminarCarpetaGaleria = async () => {
+  if (carpetaGaleria === "__todas__" || carpetaGaleria === "__sin__") return
+  const nombre = carpetaGaleria
+  if (!(await confirmar(`¿Eliminar la carpeta “${nombre}”? Los archivos quedarán en Sin carpeta.`, { textoOk: "Eliminar carpeta", peligro: true }))) return
+  const afectadas = galeriaImagenes.filter(img => img.carpeta === nombre)
+  try { afectadas.forEach(img => localStorage.removeItem("img-carpeta-" + img.url)) } catch {}
+  guardarCarpetasGaleria(carpetasGaleria.filter(c => c !== nombre))
+  setGaleriaImagenes(prev => prev.map(img => img.carpeta === nombre ? { ...img, carpeta: "" } : img))
+  setCarpetaGaleria("__sin__")
+  flashCtrl(`Carpeta eliminada; ${afectadas.length} recurso(s) quedaron en Sin carpeta`)
+}
+
+const moverMediaACarpeta = (url: string, carpeta: string) => {
+  try {
+    if (carpeta) localStorage.setItem("img-carpeta-" + url, carpeta)
+    else localStorage.removeItem("img-carpeta-" + url)
+  } catch {}
+  setGaleriaImagenes(prev => prev.map(img => img.url === url ? { ...img, carpeta } : img))
+}
+
+const guardarEnCarpetaActual = (url: string) => {
+  if (carpetaGaleria === "__todas__" || carpetaGaleria === "__sin__") return
+  try { localStorage.setItem("img-carpeta-" + url, carpetaGaleria) } catch {}
+}
+
+const agregarCarpetaComoCarrusel = () => {
+  const recursos = galeriaImagenes.filter(img => carpetaGaleria === "__sin__" ? !img.carpeta : img.carpeta === carpetaGaleria)
+  if (!recursos.length) { flashCtrl("Esta carpeta no tiene recursos para agregar"); return }
+  const titulo = carpetaGaleria === "__sin__" ? "Sin carpeta" : carpetaGaleria
+  agregarItemAListaConFeedback(
+    { tipo: "carrusel", urls: recursos.map(img => img.url), seg: carruselSeg, titulo: `📁 ${titulo} (${recursos.length})` },
+    `✅ Carpeta agregada como carrusel: ${titulo}`
+  )
+  setGaleriaAbierta(false)
+}
+
 const galeriaFiltrada = useMemo(() => {
   const q = busquedaGaleria.trim().toLocaleLowerCase("es")
   return galeriaImagenes.filter(img => {
     const video = esUrlVideo(img.url)
     if (filtroGaleria === "video" && !video) return false
     if (filtroGaleria === "imagen" && video) return false
+    if (carpetaGaleria === "__sin__" && img.carpeta) return false
+    if (carpetaGaleria !== "__todas__" && carpetaGaleria !== "__sin__" && img.carpeta !== carpetaGaleria) return false
     return !q || img.nombre.toLocaleLowerCase("es").includes(q)
   })
-}, [galeriaImagenes, busquedaGaleria, filtroGaleria])
+}, [galeriaImagenes, busquedaGaleria, filtroGaleria, carpetaGaleria])
 
 useEffect(() => {
   const indice = indicePendienteScrollRef.current
@@ -5135,6 +5220,7 @@ return (
                         const esVideo = val.tipo === "video"
                         const resultado = esVideo ? await subirVideo(file) : await subirImagen(file)
                         if (resultado?.url) {
+                          guardarEnCarpetaActual(resultado.url)
                           agregarItemAListaConFeedback(
                             { tipo: esVideo ? "video" : "imagen", url:resultado.url, titulo:resultado.nombre },
                             `✅ ${esVideo ? "Video agregado" : "Imagen agregada"}${resultado.local ? " (local)" : " (nube)"}: ${resultado.nombre}`
@@ -5239,6 +5325,20 @@ return (
                           ))}
                         </div>
                       </div>
+                      {/* Carpetas: organización lógica; no mueve ni cambia las URL de los archivos. */}
+                      <div style={{ padding:"8px 16px", borderBottom:"1px solid rgba(255,255,255,0.08)", display:"flex", gap:6, alignItems:"center", overflowX:"auto" }}>
+                        <button data-ayuda="Crea una carpeta para ordenar imágenes y videos sin cambiar los cultos guardados." onClick={crearCarpetaGaleria} style={{ flexShrink:0, padding:"6px 10px", borderRadius:8, border:"1px dashed rgba(96,165,250,.45)", background:"rgba(37,99,235,.1)", color:"#bfdbfe", fontSize:11, fontWeight:800, cursor:"pointer" }}>＋ Carpeta</button>
+                        {([{ id:"__todas__", nombre:"Todas" }, { id:"__sin__", nombre:"Sin carpeta" }, ...carpetasGaleria.map(c => ({ id:c, nombre:c }))]).map(c => (
+                          <button key={c.id} data-ayuda={`Muestra únicamente los recursos de ${c.nombre}.`} onClick={() => setCarpetaGaleria(c.id)} style={{ flexShrink:0, padding:"6px 10px", borderRadius:8, border:`1px solid ${carpetaGaleria===c.id ? "rgba(245,158,11,.55)" : "rgba(255,255,255,.09)"}`, background:carpetaGaleria===c.id ? "rgba(245,158,11,.14)" : "rgba(255,255,255,.03)", color:carpetaGaleria===c.id ? "#fcd34d" : "rgba(255,255,255,.58)", fontSize:11, fontWeight:750, cursor:"pointer" }}>📁 {c.nombre}</button>
+                        ))}
+                        {carpetaGaleria !== "__todas__" && (
+                          <button data-ayuda="Agrega todos los recursos de esta carpeta al orden del culto como un solo carrusel." onClick={agregarCarpetaComoCarrusel} style={{ flexShrink:0, marginLeft:"auto", padding:"6px 10px", borderRadius:8, border:"1px solid rgba(34,197,94,.45)", background:"rgba(22,163,74,.14)", color:"#86efac", fontSize:11, fontWeight:800, cursor:"pointer" }}>＋ Carpeta al culto</button>
+                        )}
+                        {carpetaGaleria !== "__todas__" && carpetaGaleria !== "__sin__" && (<>
+                          <button data-ayuda="Cambia el nombre de esta carpeta y conserva dentro todos sus archivos." onClick={renombrarCarpetaGaleria} style={{ flexShrink:0, padding:"6px 8px", borderRadius:8, border:"1px solid rgba(255,255,255,.12)", background:"rgba(255,255,255,.04)", color:"rgba(255,255,255,.72)", fontSize:11, cursor:"pointer" }}>✎</button>
+                          <button data-ayuda="Elimina únicamente la carpeta; sus archivos pasan a Sin carpeta y no se borran." onClick={eliminarCarpetaGaleria} style={{ flexShrink:0, padding:"6px 8px", borderRadius:8, border:"1px solid rgba(239,68,68,.3)", background:"rgba(239,68,68,.08)", color:"#fca5a5", fontSize:11, cursor:"pointer" }}>✕</button>
+                        </>)}
+                      </div>
                       {/* Barra de carrusel */}
                       <div style={{ padding:"8px 16px", borderBottom:"1px solid rgba(255,255,255,0.08)", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
                         <button onClick={() => { setModoCarrusel(m => !m); setSelCarrusel([]) }} style={{
@@ -5287,7 +5387,13 @@ return (
                                 {esUrlVideo(img.url) && <span style={{ position:"absolute", top:3, right:3, fontSize:11, background:"rgba(0,0,0,0.7)", borderRadius:3, padding:"1px 4px" }}>🎬</span>}
                                 {img.local && <span style={{ position:"absolute", top:3, left:3, fontSize:9, background:"rgba(0,0,0,0.7)", borderRadius:3, padding:"1px 4px" }}>💾</span>}
                                 {yaAgregada && !modoCarrusel && <span style={{ position:"absolute", left:5, bottom:23, padding:"2px 6px", borderRadius:99, background:"rgba(22,163,74,.92)", color:"white", fontSize:9, fontWeight:850 }}>✓ En el culto</span>}
-                                <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:"4px 6px", background:"linear-gradient(transparent,rgba(0,0,0,0.7))", fontSize:10, opacity:0.8, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{img.nombre}</div>
+                                <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:"12px 5px 4px", background:"linear-gradient(transparent,rgba(0,0,0,0.92))", display:"flex", alignItems:"center", gap:4 }}>
+                                  <span title={img.nombre} style={{ minWidth:0, flex:1, fontSize:10, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{img.nombre}</span>
+                                  <select aria-label={`Carpeta de ${img.nombre}`} value={img.carpeta} onClick={e => e.stopPropagation()} onChange={e => { e.stopPropagation(); moverMediaACarpeta(img.url, e.target.value) }} style={{ width:82, minWidth:0, padding:"2px 3px", borderRadius:5, border:"1px solid rgba(255,255,255,.18)", background:"#111827", color:"rgba(255,255,255,.78)", fontSize:9, cursor:"pointer" }}>
+                                    <option value="">Sin carpeta</option>
+                                    {carpetasGaleria.map(c => <option key={c} value={c}>{c}</option>)}
+                                  </select>
+                                </div>
                                 {/* ✅ Botón renombrar */}
                                 <button data-ayuda="Elimina este archivo de la biblioteca visual." onClick={async e => {
                                   e.stopPropagation()
@@ -5321,7 +5427,10 @@ return (
                                       }
                                     }
                                     // Limpiar también el nombre a medida guardado localmente
-                                    try { localStorage.removeItem("img-nombre-" + img.url) } catch {}
+                                    try {
+                                      localStorage.removeItem("img-nombre-" + img.url)
+                                      localStorage.removeItem("img-carpeta-" + img.url)
+                                    } catch {}
                                     const actualizadas = await cargarGaleriaImagenes()
                                     setGaleriaImagenes(actualizadas)
                                   } catch(e:any) { flashCtrl("No se pudo eliminar: " + (e?.message || "")) }
