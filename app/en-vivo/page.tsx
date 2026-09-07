@@ -16,6 +16,8 @@ import { logError } from "@/lib/Errorlogger"
 import { getIglesiaId } from "@/lib/getIglesia"
 import { useApp } from "@/context/AppContext"
 import ObjetoEditable from "@/components/ObjetoEditable"
+import EstadoOperativo from "@/components/ui/EstadoOperativo"
+import { copiarTexto } from "@/lib/copiar"
 
 type Escena = "camara" | "camara-letra" | "letra" | "espera"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
@@ -1290,7 +1292,9 @@ export default function EnVivoPage() {
   }
 
   const copiarLink = async () => {
-    try { await navigator.clipboard.writeText(verUrl); setCopiado(true); setTimeout(() => setCopiado(false), 1500) } catch {}
+    const ok = await copiarTexto(verUrl)
+    if (ok) { setCopiado(true); setTimeout(() => setCopiado(false), 1500) }
+    else flash("No se pudo copiar; mantén presionado el enlace")
   }
 
   // Formato de captura preferido (H264 mkv → menos CPU en el i3).
@@ -1393,9 +1397,14 @@ export default function EnVivoPage() {
             <div style={{ fontSize: 12.5, color: C.tenue, marginTop: 2 }}>Cámara + la letra que proyectas, sin instalar nada más</div>
           </div>
         </div>
-        <button onClick={() => navegarSPA(router, "/transmision")} style={botonBase({ background: "transparent", color: C.suave, border: `1px solid ${C.borde}`, padding: "8px 12px", fontSize: 13 })}>
-          Usar OBS (avanzado)
-        </button>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", gap:7, flexWrap:"wrap" }}>
+          <EstadoOperativo nivel={permiso === "ok" ? "ok" : permiso === "pidiendo" ? "warning" : "error"} etiqueta="Cámara/audio" detalle={permiso === "ok" ? "Listos" : permiso === "pidiendo" ? "Abriendo" : "Revisar"} />
+          <EstadoOperativo nivel={conectadoSala ? "ok" : "warning"} etiqueta="Proyección" detalle={conectadoSala ? "Sincronizada" : "Conectando"} />
+          <EstadoOperativo nivel={txEstado === "vivo" ? "live" : txEstado === "reconectando" ? "warning" : txEstado === "error" ? "error" : "idle"} etiqueta={txEstado === "vivo" ? "AL AIRE" : txEstado === "reconectando" ? "RECONECTANDO" : txEstado === "error" ? "ERROR" : "FUERA DEL AIRE"} />
+          <button onClick={() => navegarSPA(router, "/transmision")} style={botonBase({ background: "transparent", color: C.suave, border: `1px solid ${C.borde}`, padding: "8px 12px", fontSize: 13 })}>
+            Usar OBS (avanzado)
+          </button>
+        </div>
       </div>
 
       <div style={{ maxWidth: esAncho ? 1280 : 920, margin: "0 auto", padding: "24px", display: esAncho ? "grid" : "block", gridTemplateColumns: esAncho ? "minmax(0,1.55fr) minmax(0,1fr)" : undefined, gap: 22, alignItems: "start" }}>
@@ -1472,10 +1481,11 @@ export default function EnVivoPage() {
               <span style={{ fontSize: 11.5, fontWeight: 800, color: C.suave, display: "flex", alignItems: "center", gap: 6 }}>🎙️ Audio del micrófono</span>
               {sinAudio && <span style={{ fontSize: 11, fontWeight: 800, color: "#f87171" }}>⚠ Sin señal</span>}
             </div>
-            <div style={{ position: "relative", height: 12, borderRadius: 99, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+            <div style={{ position: "relative", height: 12, borderRadius: 99, background: "linear-gradient(90deg,rgba(74,222,128,.16) 0 68%,rgba(251,191,36,.2) 68% 86%,rgba(248,113,113,.2) 86%)", overflow: "hidden" }}>
               <div ref={vuFillRef} style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "0%", background: "#4ade80", borderRadius: 99 }} />
               <div ref={vuPeakRef} style={{ position: "absolute", top: -2, bottom: -2, left: "0%", width: 2, background: "rgba(255,255,255,0.9)" }} />
             </div>
+            <div style={{ display:"flex", justifyContent:"space-between", marginTop:3, fontSize:8.5, color:C.tenue, fontVariantNumeric:"tabular-nums" }}><span>silencio</span><span>nivel recomendado</span><span>saturación</span></div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
               <span style={{ fontSize: 11.5, color: C.suave, fontWeight: 700, minWidth: 62 }}>🔊 Volumen</span>
               <input type="range" min={0} max={150} value={volMic}
@@ -1523,6 +1533,25 @@ export default function EnVivoPage() {
 
         {/* Columna derecha: controles (con scroll propio en escritorio) */}
         <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0, ...(esAncho ? { maxHeight: "calc(100vh - 48px)", overflowY: "auto", paddingRight: 4 } : {}) }}>
+        {/* Barra operativa: permanece visible al recorrer los ajustes. */}
+        <div style={{ position:"sticky", top:0, zIndex:30, padding:10, borderRadius:14, border:"1px solid rgba(255,255,255,.13)", background:"rgba(6,13,26,.94)", backdropFilter:"blur(12px)", boxShadow:"0 8px 28px rgba(0,0,0,.34)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, flexWrap:"wrap" }}>
+          <div style={{ minWidth:130 }}>
+            <div style={{ fontSize:10, color:C.tenue, fontWeight:850, letterSpacing:".08em" }}>CONTROL DE SALIDA</div>
+            <div style={{ fontSize:12.5, fontWeight:850, marginTop:2, color:txEstado === "vivo" ? "#fca5a5" : grabandoSolo ? "#fca5a5" : C.texto }}>
+              {txEstado === "vivo" ? `● Al aire · ${fmtTiempo(segundos)}` : txEstado === "reconectando" ? `Reconectando · intento ${intento}` : grabandoSolo ? `● Grabando · ${fmtTiempo(segundos)}` : "Vista previa preparada"}
+            </div>
+          </div>
+          {(txEstado === "vivo" || txEstado === "conectando" || txEstado === "reconectando") ? (
+            <button onClick={terminar} style={botonBase({ background:C.rojo, color:"#fff", padding:"10px 14px" })}>■ Terminar transmisión</button>
+          ) : grabandoSolo ? (
+            <button onClick={detenerGrabarSolo} style={botonBase({ background:C.rojo, color:"#fff", padding:"10px 14px" })}>■ Detener grabación</button>
+          ) : (
+            <div style={{ display:"flex", gap:7 }}>
+              <button onClick={grabarSolo} disabled={!esEscritorio || (permiso !== "ok" && escena !== "letra" && escena !== "espera")} style={botonBase({ background:"rgba(255,255,255,.07)", color:C.texto, padding:"9px 11px", opacity:!esEscritorio ? .45 : 1 })}>⏺ Grabar</button>
+              <button onClick={() => { document.getElementById("panel-salida")?.scrollIntoView({ behavior:"smooth", block:"start" }); setPreflightAbierto(true) }} disabled={!esEscritorio} style={botonBase({ background:C.rojo, color:"#fff", padding:"9px 13px", opacity:esEscritorio ? 1 : .45 })}>✓ Revisar salida</button>
+            </div>
+          )}
+        </div>
         {/* Cámaras y micrófono */}
         <Seccion titulo="Cámaras y micrófono" defaultOpen>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -1595,12 +1624,13 @@ export default function EnVivoPage() {
               ] as const).map(([id, txt, sub]) => (
                 <button key={id} onClick={() => setEscena(id)} style={{
                   padding: "12px 10px", borderRadius: 12, cursor: "pointer", textAlign: "center",
-                  background: escena === id ? "rgba(37,99,235,0.2)" : C.panel2,
-                  border: `1.5px solid ${escena === id ? C.azul : C.borde}`,
-                  color: escena === id ? "#93c5fd" : C.texto,
+                  background: escena === id ? (txEstado === "vivo" ? "rgba(220,38,38,.18)" : "rgba(37,99,235,0.2)") : C.panel2,
+                  border: `1.5px solid ${escena === id ? (txEstado === "vivo" ? C.rojo : C.azul) : C.borde}`,
+                  color: escena === id ? (txEstado === "vivo" ? "#fecaca" : "#93c5fd") : C.texto,
                 }}>
+                  {escena === id && <div style={{ fontSize:9, fontWeight:900, letterSpacing:".08em", marginBottom:3 }}>{txEstado === "vivo" ? "● AL AIRE" : "● EN PREVIA"}</div>}
                   <div style={{ fontSize: 13.5, fontWeight: 800 }}>{txt}</div>
-                  <div style={{ fontSize: 10.5, color: escena === id ? "#93c5fd" : C.tenue, marginTop: 3 }}>{sub}</div>
+                  <div style={{ fontSize: 10.5, color: escena === id ? (txEstado === "vivo" ? "#fca5a5" : "#93c5fd") : C.tenue, marginTop: 3 }}>{sub}</div>
                 </button>
               ))}
             </div>
@@ -1828,7 +1858,7 @@ export default function EnVivoPage() {
         </Seccion>
 
         {/* Salir en vivo */}
-        <Seccion titulo="Salir en vivo" sub="Transmite a tu plataforma" defaultOpen>
+        <div id="panel-salida"><Seccion titulo="Salir en vivo" sub="Transmite a tu plataforma" defaultOpen>
           <div style={{ fontSize: 12.5, color: C.tenue, marginBottom: 16 }}>Transmite esta vista directo a tu plataforma.</div>
 
           {!esEscritorio ? (
@@ -2001,14 +2031,14 @@ export default function EnVivoPage() {
                 </pre>
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <button onClick={() => { navigator.clipboard?.writeText(logsTx.join("\n")).catch(() => {}) }}
+                <button onClick={async () => { const ok = await copiarTexto(logsTx.join("\n")); flash(ok ? "Registro copiado" : "No se pudo copiar el registro") }}
                   style={botonBase({ background: "rgba(255,255,255,0.06)", color: C.texto, padding: "7px 12px", fontSize: 12.5 })}>📋 Copiar</button>
                 <button onClick={() => (window as any).transmision?.abrirLog?.()}
                   style={botonBase({ background: "rgba(255,255,255,0.06)", color: C.texto, padding: "7px 12px", fontSize: 12.5 })}>📂 Abrir registro completo</button>
               </div>
             </details>
           )}
-        </Seccion>
+        </Seccion></div>
 
         {/* Emisión directa: link propio en la red, sin plataformas */}
         <Seccion titulo="Emisión directa" sub="Link propio en la red">
