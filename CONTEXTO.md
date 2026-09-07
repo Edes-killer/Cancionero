@@ -1,6 +1,6 @@
 # Selah Live — Documento de Diseño (SDD) y Contexto de Desarrollo
 
-> Versión del documento: 2026-09-05 · App: **v0.5.26** · Mantener al día al cerrar cada release.
+> Versión del documento: 2026-09-07 · App: **v0.5.27** · Mantener al día al cerrar cada release.
 
 ---
 
@@ -85,7 +85,6 @@ components/
 
 context/AppContext.tsx      → Estado global: session, iglesia, canciones, pinSala, cache
 lib/                        → cache.ts (IndexedDB), biblia.ts, getIglesia.ts, servidor.ts, timeout.ts
-server/index.js             → Socket.IO + HTTP (/api/biblia/buscar) + estáticos + guardado local de imágenes
 electron/
   main.js                   → Servidor estático + Socket.IO + ffmpeg + grabación + pantalla + PPT + updater
   preload.js                → Bridges: window.transmision, window.powerpoint, window.electron
@@ -303,6 +302,23 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 ---
 
 ## 11. Pendientes y futuro
+
+### Deuda técnica verificada
+
+- `npm run lint` todavía reporta 517 hallazgos heredados (394 errores y 123 advertencias), concentrados en tipos `any`, dependencias de hooks y reglas estrictas de React 19. No impiden `next build`, pero deben corregirse por módulos y con pruebas, nunca mediante un reemplazo masivo antes de un culto.
+- Dividir `app/control/page.tsx` y `app/en-vivo/page.tsx` en componentes y hooks más pequeños después de estabilizar la rama 0.5.x.
+
+### Entregado en v0.5.27
+
+- Control separado en modos **Preparar** y **Culto**, con revisión previa operativa.
+- Transmisión reorganizada como consola: estados, escenas en previa/al aire, medidor y preflight.
+- Biblioteca visual con búsqueda, filtros, agregado múltiple y prevención de duplicados.
+- Inicio orientado a tareas y onboarding enfocado en el primer culto.
+- Editor de canciones con partes rápidas, explicación, validación y vista de proyección.
+- Ajustes con índice por tarea y distinción entre preferencias locales y de iglesia.
+- Ayuda contextual global y mejoras de accesibilidad para teclado, tacto y movimiento reducido.
+- Diagnóstico de red completo, logs descargables y laboratorio hostil `qa:red` (15 escenarios).
+- Correcciones de pantalla completa, aprendizaje de auto-avance, concurrencia y cierre seguro de Electron.
 
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).
