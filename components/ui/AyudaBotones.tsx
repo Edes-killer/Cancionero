@@ -77,7 +77,7 @@ export default function AyudaBotones() {
       }, 420)
     }
     const encontrar = (target: EventTarget | null) => target instanceof Element
-      ? target.closest<HTMLElement>("button, [role='button'], input[type='button'], input[type='submit']")
+      ? target.closest<HTMLElement>("button, [role='button'], input[type='button'], input[type='submit'], nav a")
       : null
     const over = (e: PointerEvent) => {
       const el = encontrar(e.target)

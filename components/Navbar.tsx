@@ -15,11 +15,11 @@ const ROLES_INFO: Record<string, { icon: string; label: string }> = {
 }
 
 const LINKS = [
-  { href: "/",              label: "Inicio",    icon: "⌂"  },
-  { href: "/canciones",     label: "Canciones", icon: "🎵"  },
-  { href: "/control",       label: "Control",   icon: "🎛️"  },
-  { href: "/camara",        label: "Cámara",    icon: "📷", soloLider: true },
-  { href: "/configuracion", label: "Config",    icon: "⚙️"  },
+  { href: "/",              label: "Inicio",    icon: "⌂", ayuda:"Vuelve al resumen y los accesos principales." },
+  { href: "/canciones",     label: "Canciones", icon: "🎵", ayuda:"Administra letras, tonos, acordes y el repertorio." },
+  { href: "/control",       label: "Control",   icon: "🎛️", ayuda:"Prepara y opera la proyección del culto." },
+  { href: "/camara",        label: "Cámara",    icon: "📷", ayuda:"Usa este celular como cámara para la transmisión.", soloLider: true },
+  { href: "/configuracion", label: "Ajustes",   icon: "⚙️", ayuda:"Configura la iglesia, dispositivos, red y preferencias." },
 ]
 
 // ✅ /bienvenido es la landing pública: lleva su propia barra, no la de la app.
@@ -175,10 +175,10 @@ export default function Navbar() {
           {/* ── Links desktop ── */}
           {!isMobile && (
             <div style={{ display: "flex", alignItems: "center", gap: 2, flex: 1, overflow: "hidden" }}>
-              {linksVisibles.map(({ href, label, icon }) => {
+              {linksVisibles.map(({ href, label, icon, ayuda }) => {
                 const activo = isActive(href)
                 return (
-                  <Link key={href} href={href} style={{
+                  <Link key={href} href={href} data-ayuda={ayuda} style={{
                     display: "flex", alignItems: "center", gap: 5,
                     padding: "5px 10px", borderRadius: 8,
                     textDecoration: "none", fontSize: 13,
@@ -273,12 +273,13 @@ export default function Navbar() {
                 <span>{ROLES_INFO[rol].icon}</span>Tu rol: {ROLES_INFO[rol].label}
               </div>
             )}
-            {linksVisibles.map(({ href, label, icon }) => {
+            {linksVisibles.map(({ href, label, icon, ayuda }) => {
               const activo = isActive(href)
               return (
                 <Link
                   key={href}
                   href={href}
+                  data-ayuda={ayuda}
                   // ✅ Mismo elemento <Link> siempre (nunca cambiar el tipo de
                   // etiqueta según isCapacitor) -- eso fue lo que rompió la
                   // navegación entera: el HTML estático se genera en el build

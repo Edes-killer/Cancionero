@@ -244,6 +244,11 @@ export default function InicioPage() {
 
   const pct = (v:number) => totalCanciones > 0 ? Math.round((v/totalCanciones)*100) : 0
 
+  const abrirControl = (modo: "preparar" | "culto") => {
+    try { localStorage.setItem("selah-modo-control", modo) } catch {}
+    navegarSPA(router, "/control")
+  }
+
   if (cargando) return (
     <div style={{ ...f, minHeight:"100dvh", background:"#060d1a", display:"flex", alignItems:"center", justifyContent:"center", color:"white" }}>
       <div style={{ textAlign:"center" }}>
@@ -308,17 +313,25 @@ export default function InicioPage() {
 
         <div style={{ padding:"20px 16px", display:"flex", flexDirection:"column", gap:14 }}>
 
+          {/* ══ FLUJO PRINCIPAL ═════════════════════════════════════════════ */}
+          <div>
+            <div style={{ fontSize:11, fontWeight:850, letterSpacing:".09em", color:"rgba(255,255,255,.38)", margin:"2px 2px 9px" }}>¿QUÉ QUIERES HACER?</div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(230px,1fr))", gap:10 }}>
+              <button data-ayuda="Abre Control con todas las herramientas para preparar y guardar el orden del próximo culto." onClick={() => abrirControl("preparar")} style={{ padding:"17px", borderRadius:15, border:"1px solid rgba(59,130,246,.34)", background:"linear-gradient(135deg,rgba(37,99,235,.2),rgba(30,64,175,.08))", color:"white", cursor:"pointer", display:"flex", alignItems:"center", gap:13, textAlign:"left" }}>
+                <span style={{ width:44, height:44, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(37,99,235,.24)", fontSize:21, flexShrink:0 }}>🛠️</span>
+                <span style={{ flex:1 }}><span style={{ display:"block", fontWeight:850, fontSize:15.5 }}>Preparar próximo culto</span><span style={{ display:"block", marginTop:3, color:"rgba(255,255,255,.48)", fontSize:11.5, lineHeight:1.35 }}>Armar, ordenar y guardar contenido</span></span>
+                <span style={{ opacity:.35, fontSize:19 }}>→</span>
+              </button>
+              <button data-ayuda="Abre la consola simplificada para dirigir un culto que ya está preparado." onClick={() => abrirControl("culto")} style={{ padding:"17px", borderRadius:15, border:"1px solid rgba(239,68,68,.32)", background:"linear-gradient(135deg,rgba(185,28,28,.18),rgba(127,29,29,.07))", color:"white", cursor:"pointer", display:"flex", alignItems:"center", gap:13, textAlign:"left" }}>
+                <span style={{ width:44, height:44, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(220,38,38,.2)", fontSize:21, flexShrink:0 }}>●</span>
+                <span style={{ flex:1 }}><span style={{ display:"block", fontWeight:850, fontSize:15.5 }}>Operar el culto</span><span style={{ display:"block", marginTop:3, color:"rgba(255,255,255,.48)", fontSize:11.5, lineHeight:1.35 }}>Controles esenciales y vista en vivo</span></span>
+                <span style={{ opacity:.35, fontSize:19 }}>→</span>
+              </button>
+            </div>
+          </div>
+
           {/* ══ ACCESOS RÁPIDOS ════════════════════════════════════════════ */}
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-            <button onClick={() => navegarSPA(router, "/control")} style={{ gridColumn:"1 / -1", padding:"20px", borderRadius:16, border:"1px solid rgba(37,99,235,0.35)", background:"linear-gradient(135deg,rgba(37,99,235,0.2) 0%,rgba(99,102,241,0.12) 100%)", color:"white", cursor:"pointer", display:"flex", alignItems:"center", gap:16 }}>
-              <div style={{ width:52, height:52, borderRadius:14, background:"rgba(37,99,235,0.3)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, flexShrink:0 }}>🎛️</div>
-              <div style={{ textAlign:"left" }}>
-                <div style={{ fontWeight:900, fontSize:18 }}>Control de Culto</div>
-                <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)", marginTop:2 }}>Proyectar canciones y coordinar el servicio</div>
-              </div>
-              <div style={{ marginLeft:"auto", fontSize:22, opacity:0.4 }}>→</div>
-            </button>
-
             {[
               { icon:"🎵", label:"Canciones",       sub:"Gestionar repertorio",           border:"rgba(124,58,237,0.3)",  bg:"rgba(124,58,237,0.1)",  ibg:"rgba(124,58,237,0.25)",  action:() => navegarSPA(router, "/canciones") },
               { icon:"🖥️", label:"Proyector",       sub:"Abrir pantalla de proyección",   border:"rgba(14,116,144,0.3)", bg:"rgba(14,116,144,0.1)",  ibg:"rgba(14,116,144,0.25)",  action:() => window.open(`${window.location.origin}/proyectar`, "_blank") },
