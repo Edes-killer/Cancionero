@@ -2671,10 +2671,13 @@ const importarPPT = async (modo: "imagenes" | "diapositivas") => {
         const res = await subirImagen(file)
         if (res?.url) {
           subidas++
+          const nombreVisible = nombre.replace(/\.[^.]+$/, "")
+          const carpetaDestino = carpetaGaleria !== "__todas__" && carpetaGaleria !== "__sin__" ? carpetaGaleria : ""
           try {
-            localStorage.setItem("img-nombre-" + res.url, nombre.replace(/\.[^.]+$/, ""))
-            if (carpetaGaleria !== "__todas__" && carpetaGaleria !== "__sin__") localStorage.setItem("img-carpeta-" + res.url, carpetaGaleria)
+            localStorage.setItem("img-nombre-" + res.url, nombreVisible)
+            if (carpetaDestino) localStorage.setItem("img-carpeta-" + res.url, carpetaDestino)
           } catch {}
+          void sincronizarMetadataMedia({ ...res, nombre: nombreVisible, carpeta: carpetaDestino })
         }
       } catch (e: any) { logError(`Importar imagen ${i + 1}/${r.imagenes.length} (${modo}): ${e?.message || e}`, { tipo: "ppt", pagina: "/control" }) }
     }
@@ -2780,12 +2783,24 @@ const cargarGaleriaImagenes = async (): Promise<{url: string, nombre: string, lo
       })
     }
   }
-  // Aplicar nombres a medida (renombrados por el usuario; guardados por URL).
+  // Metadatos compartidos entre los equipos de la iglesia. Si la migración aún
+  // no está instalada o no hay red, la galería sigue usando el respaldo local.
+  const metadataNube = new Map<string, { nombre: string; carpeta: string }>()
+  if (iglesiaId) {
+    try {
+      const { data } = await supabase.from("media_biblioteca").select("url,nombre,carpeta").eq("iglesia_id", iglesiaId)
+      for (const meta of (data || [])) metadataNube.set(meta.url, { nombre: meta.nombre || "Recurso", carpeta: meta.carpeta || "" })
+    } catch {}
+  }
+  // Aplicar metadatos compartidos y luego respaldo local por URL.
   try {
     for (const img of resultado) {
+      const remoto = metadataNube.get(img.url)
+      if (remoto) { img.nombre = remoto.nombre; img.carpeta = remoto.carpeta }
       const custom = localStorage.getItem("img-nombre-" + img.url)
-      if (custom) img.nombre = custom
-      img.carpeta = localStorage.getItem("img-carpeta-" + img.url) || ""
+      const carpetaLocal = localStorage.getItem("img-carpeta-" + img.url)
+      if (!remoto && custom) img.nombre = custom
+      if (!remoto && carpetaLocal) img.carpeta = carpetaLocal
     }
   } catch {}
   return resultado
@@ -3447,6 +3462,7 @@ const renombrarCarpetaGaleria = async () => {
   const anterior = carpetaGaleria
   const afectadas = galeriaImagenes.filter(img => img.carpeta === anterior)
   try { afectadas.forEach(img => localStorage.setItem("img-carpeta-" + img.url, nombre)) } catch {}
+  afectadas.forEach(img => void sincronizarMetadataMedia({ ...img, carpeta: nombre }))
   guardarCarpetasGaleria(carpetasGaleria.map(c => c === anterior ? nombre : c))
   setGaleriaImagenes(prev => prev.map(img => img.carpeta === anterior ? { ...img, carpeta: nombre } : img))
   setCarpetaGaleria(nombre)
@@ -3459,10 +3475,25 @@ const eliminarCarpetaGaleria = async () => {
   if (!(await confirmar(`¿Eliminar la carpeta “${nombre}”? Los archivos quedarán en Sin carpeta.`, { textoOk: "Eliminar carpeta", peligro: true }))) return
   const afectadas = galeriaImagenes.filter(img => img.carpeta === nombre)
   try { afectadas.forEach(img => localStorage.removeItem("img-carpeta-" + img.url)) } catch {}
+  afectadas.forEach(img => void sincronizarMetadataMedia({ ...img, carpeta: "" }))
   guardarCarpetasGaleria(carpetasGaleria.filter(c => c !== nombre))
   setGaleriaImagenes(prev => prev.map(img => img.carpeta === nombre ? { ...img, carpeta: "" } : img))
   setCarpetaGaleria("__sin__")
   flashCtrl(`Carpeta eliminada; ${afectadas.length} recurso(s) quedaron en Sin carpeta`)
+}
+
+const sincronizarMetadataMedia = async (img: { url:string; nombre:string; local:boolean; carpeta:string }) => {
+  if (img.local) return
+  const iglesiaId = await getIglesiaIdCached()
+  if (!iglesiaId) return
+  try {
+    const { error } = await supabase.from("media_biblioteca").upsert({
+      iglesia_id: iglesiaId, url: img.url, nombre: img.nombre || "Recurso",
+      carpeta: img.carpeta || "", actualizado_en: new Date().toISOString()
+    }, { onConflict: "iglesia_id,url" })
+    // 42P01 = migración aún no instalada. El respaldo local sigue operativo.
+    if (error && error.code !== "42P01") logError(`Sincronizar biblioteca: ${error.message}`, { tipo: "imagen", pagina: "/control" })
+  } catch {}
 }
 
 const moverMediaACarpeta = (url: string, carpeta: string) => {
@@ -3470,12 +3501,18 @@ const moverMediaACarpeta = (url: string, carpeta: string) => {
     if (carpeta) localStorage.setItem("img-carpeta-" + url, carpeta)
     else localStorage.removeItem("img-carpeta-" + url)
   } catch {}
-  setGaleriaImagenes(prev => prev.map(img => img.url === url ? { ...img, carpeta } : img))
+  setGaleriaImagenes(prev => {
+    const actualizadas = prev.map(img => img.url === url ? { ...img, carpeta } : img)
+    const img = actualizadas.find(item => item.url === url)
+    if (img) void sincronizarMetadataMedia(img)
+    return actualizadas
+  })
 }
 
-const guardarEnCarpetaActual = (url: string) => {
-  if (carpetaGaleria === "__todas__" || carpetaGaleria === "__sin__") return
-  try { localStorage.setItem("img-carpeta-" + url, carpetaGaleria) } catch {}
+const guardarEnCarpetaActual = (img: { url:string; nombre:string; local:boolean }) => {
+  const carpeta = carpetaGaleria === "__todas__" || carpetaGaleria === "__sin__" ? "" : carpetaGaleria
+  try { if (carpeta) localStorage.setItem("img-carpeta-" + img.url, carpeta) } catch {}
+  void sincronizarMetadataMedia({ ...img, carpeta })
 }
 
 const agregarCarpetaComoCarrusel = () => {
@@ -5220,7 +5257,7 @@ return (
                         const esVideo = val.tipo === "video"
                         const resultado = esVideo ? await subirVideo(file) : await subirImagen(file)
                         if (resultado?.url) {
-                          guardarEnCarpetaActual(resultado.url)
+                          guardarEnCarpetaActual(resultado)
                           agregarItemAListaConFeedback(
                             { tipo: esVideo ? "video" : "imagen", url:resultado.url, titulo:resultado.nombre },
                             `✅ ${esVideo ? "Video agregado" : "Imagen agregada"}${resultado.local ? " (local)" : " (nube)"}: ${resultado.nombre}`
@@ -5401,6 +5438,7 @@ return (
                                   if (nuevo == null) return
                                   const n = nuevo.trim()
                                   try { if (n) localStorage.setItem("img-nombre-" + img.url, n); else localStorage.removeItem("img-nombre-" + img.url) } catch {}
+                                  if (n) await sincronizarMetadataMedia({ ...img, nombre: n })
                                   setGaleriaImagenes(await cargarGaleriaImagenes())
                                 }} title="Renombrar" style={{
                                   position:"absolute", top:3, right:26,
@@ -5425,6 +5463,8 @@ return (
                                         const { error } = await supabase.storage.from("imagenes-culto").remove([decodeURIComponent(path)])
                                         if (error) { flashCtrl("No se pudo eliminar: " + error.message); return }
                                       }
+                                      const igId = await getIglesiaIdCached()
+                                      if (igId) await supabase.from("media_biblioteca").delete().eq("iglesia_id", igId).eq("url", img.url)
                                     }
                                     // Limpiar también el nombre a medida guardado localmente
                                     try {
