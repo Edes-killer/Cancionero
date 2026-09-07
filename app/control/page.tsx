@@ -433,7 +433,7 @@ useEffect(() => {
     p = g ? JSON.parse(g) : { x: window.innerWidth - 372, y: window.innerHeight - 430 }
   } catch { p = { x: window.innerWidth - 372, y: window.innerHeight - 430 } }
   // Clamp: que no quede sobre la barra superior ni fuera de pantalla.
-  p = { x: Math.min(Math.max(4, p.x), window.innerWidth - 356), y: Math.min(Math.max(210, p.y), window.innerHeight - 120) }
+  p = { x: Math.min(Math.max(4, p.x), window.innerWidth - 384), y: Math.min(Math.max(210, p.y), window.innerHeight - 120) }
   previewPosRef.current = p
   setPreviewPos(p)
 }, [])
@@ -443,7 +443,7 @@ const PREVIEW_TOPE_Y = 210
 const moverPreview = (e: MouseEvent) => {
   const a = arrastrePreviewRef.current
   if (!a) return
-  const ANCHO = 356, ALTO = 120
+  const ANCHO = 384, ALTO = 120
   const x = Math.min(Math.max(4, a.ox + (e.clientX - a.sx)), window.innerWidth - ANCHO)
   const y = Math.min(Math.max(PREVIEW_TOPE_Y, a.oy + (e.clientY - a.sy)), window.innerHeight - ALTO)
   previewPosRef.current = { x, y }
@@ -3902,7 +3902,7 @@ return (
     {/* Sheet */}
     <div style={{
       position: "fixed", bottom: 0, left: 0, right: 0,
-      zIndex: 9991, background: "#0d1b2e",
+      zIndex: 9991, background: "#0b1424",
       borderTop: "1px solid rgba(255,255,255,0.1)",
       borderRadius: "16px 16px 0 0",
       padding: "0 0 env(safe-area-inset-bottom)",
@@ -3915,12 +3915,15 @@ return (
       </div>
 
       {/* Header */}
-      <div style={{ padding: "4px 16px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+      <div style={{ padding: "6px 16px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 800, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {previewCancion.titulo}
           </div>
-          {previewCancion.tono && <div style={{ fontSize: 12, opacity: 0.5 }}>{previewCancion.tono}</div>}
+          <div style={{ display: "flex", gap: 7, alignItems: "center", marginTop: 3, fontSize: 11 }}>
+            <span style={{ color: "#60a5fa", fontWeight: 800 }}>VISTA PREVIA</span>
+            {previewCancion.tono && <span style={{ opacity: 0.55 }}>Tono {previewCancion.tono}</span>}
+          </div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           <div style={{ display: "flex", background: "rgba(255,255,255,0.07)", borderRadius: 8, padding: 2 }}>
@@ -3942,7 +3945,7 @@ return (
 
       {/* Tabs de partes */}
       {previewPartes.length > 0 && (
-        <div style={{ display: "flex", gap: 4, padding: "0 14px 8px", overflowX: "auto" }}>
+        <div style={{ display: "flex", gap: 5, padding: "10px 14px 8px", overflowX: "auto" }}>
           {previewPartes.map((p, i) => (
             <button key={i} onClick={() => setPreviewIndex(i)} style={{
               padding: "4px 10px", borderRadius: 6, border: "none", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
@@ -3953,10 +3956,11 @@ return (
         </div>
       )}
 
-      {/* Contenido letra */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "4px 16px 12px", minHeight: 80 }}>
+      {/* Escenario de lectura */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "4px 14px 12px", minHeight: 100 }}>
+        <div style={{ minHeight: 116, padding: "14px 16px", borderRadius: 11, background: "linear-gradient(145deg,#08101d,#111f34)", border: "1px solid rgba(96,165,250,0.2)", boxShadow: "inset 0 0 35px rgba(0,0,0,0.28)" }}>
         {previewPartes.length === 0 ? (
-          <div style={{ opacity: 0.4, fontSize: 13 }}>Cargando...</div>
+          <div style={{ opacity: 0.45, fontSize: 13, textAlign: "center", paddingTop: 30 }}>Cargando contenido…</div>
         ) : (() => {
           const parte = previewPartes[previewIndex]
           if (!parte) return null
@@ -3971,7 +3975,7 @@ return (
               })
               .map((l: string) => l.replace(/\[[^\]]*\]/g, "").trim())
               .join("\n")
-            return <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", margin: 0, fontSize: 13, lineHeight: 1.7, fontWeight: 500, color: "rgba(255,255,255,0.92)" }}>{limpio.trim()}</pre>
+            return <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", margin: 0, fontSize: 14, lineHeight: 1.65, fontWeight: 600, color: "rgba(255,255,255,0.94)", textAlign: "center" }}>{limpio.trim()}</pre>
           }
           return (
             <div style={{ fontFamily: "'Courier New', monospace", fontSize: 13, lineHeight: 1.75, color: "white" }}>
@@ -3995,6 +3999,7 @@ return (
             </div>
           )
         })()}
+        </div>
       </div>
 
       {/* Acciones */}
@@ -4087,15 +4092,18 @@ return (
     <div style={{
       flexShrink: 0, display: "flex", alignItems: "center",
       justifyContent: "space-between",
-      padding: "12px 16px",
+      gap: 12, padding: "12px 16px", flexWrap: "wrap",
       background: "rgba(255,255,255,0.05)",
       borderBottom: "1px solid rgba(255,255,255,0.08)"
     }}>
-      <div>
+      <div style={{ minWidth: 180, flex: "1 1 260px" }}>
         <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.2 }}>{visorTitulo}</div>
-        {visorTono && <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2 }}>{visorTono}</div>}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 3, fontSize: 11 }}>
+          <span style={{ color: "#60a5fa", fontWeight: 800 }}>VISTA PREVIA</span>
+          {visorTono && <span style={{ opacity: 0.55 }}>Tono {visorTono}</span>}
+        </div>
       </div>
-      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
         {/* Toggle Letra / Músico */}
         <div style={{ display: "flex", background: "rgba(255,255,255,0.08)", borderRadius: 8, padding: 2 }}>
           <button onClick={() => setVisorModoMusico(false)} style={{
@@ -4127,17 +4135,22 @@ return (
       </div>
     </div>
 
-    {/* Indicador parte */}
+    {/* Navegador de partes */}
     <div style={{
-      flexShrink: 0, textAlign: "center", padding: "6px 16px",
-      fontSize: 12, fontWeight: 700, opacity: 0.5,
-      background: "rgba(255,255,255,0.03)"
+      flexShrink: 0, display: "flex", gap: 6, alignItems: "center", overflowX: "auto", padding: "9px 16px",
+      background: "rgba(255,255,255,0.025)", borderBottom: "1px solid rgba(255,255,255,0.05)"
     }}>
-      {visorPartes[visorIndex]?.tipo || "Parte"} {visorIndex + 1}/{visorPartes.length}
+      {visorPartes.map((parte: any, i: number) => <button key={i} onClick={() => setVisorIndex(i)} style={{
+        flexShrink: 0, padding: "6px 11px", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 800,
+        border: `1px solid ${i === visorIndex ? "rgba(96,165,250,0.55)" : "rgba(255,255,255,0.08)"}`,
+        background: i === visorIndex ? "rgba(37,99,235,0.28)" : "rgba(255,255,255,0.04)",
+        color: i === visorIndex ? "#dbeafe" : "rgba(255,255,255,0.5)"
+      }}>{parte?.tipo || `Parte ${i + 1}`}</button>)}
     </div>
 
     {/* Contenido letra */}
-    <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
+    <div style={{ flex: 1, overflowY: "auto", padding: "clamp(14px, 3vw, 30px)", display: "grid", placeItems: "center" }}>
+      <div style={{ width: "min(100%, 920px)", minHeight: "min(52vh, 440px)", boxSizing: "border-box", padding: "clamp(20px, 4vw, 46px)", borderRadius: 18, background: "radial-gradient(circle at 50% 15%,#15243a,#070c15 72%)", border: "1px solid rgba(96,165,250,0.2)", boxShadow: "0 22px 70px rgba(0,0,0,0.38), inset 0 0 60px rgba(0,0,0,0.2)", display: "flex", flexDirection: "column", justifyContent: "center" }}>
       {visorPartes[visorIndex] && (() => {
         const textoOriginal = visorPartes[visorIndex].texto_acordes || visorPartes[visorIndex].texto || ""
         const texto = transponerTexto(textoOriginal, visorSemitonos, visorFormatoAmericano)
@@ -4157,7 +4170,7 @@ return (
             .map((l: string) => l.replace(/\[[A-Za-z#b0-9m7dimsus/]+\]/g, "").trim())
             .filter((l: string, i: number, arr: string[]) => !(l === "" && arr[i-1] === ""))
             .join("\n")
-          return <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", margin: 0, lineHeight: 1.85, fontSize: "clamp(20px, 4.5vw, 30px)", fontWeight: 600 }}>{limpio.trim()}</pre>
+          return <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", margin: 0, lineHeight: 1.7, fontSize: "clamp(20px, 4.2vw, 34px)", fontWeight: 650, textAlign: "center" }}>{limpio.trim()}</pre>
         }
 
         // Modo Músico: renderizar acordes de forma limpia
@@ -4198,6 +4211,7 @@ return (
           </div>
         )
       })()}
+      </div>
     </div>
 
     {/* Transposición */}
@@ -5919,8 +5933,8 @@ return (
       {/* ── PANEL VISTA PREVIA — FLOTANTE y arrastrable (siempre visible) ──── */}
       {(!isMobile && previewHabilitado && previewPos) && (
         <div style={{
-          position: "fixed", left: previewPos.x, top: previewPos.y, width: 356, zIndex: 400,
-          background: "rgba(17,27,46,0.98)", border: "1px solid rgba(255,255,255,0.12)",
+          position: "fixed", left: previewPos.x, top: previewPos.y, width: 384, zIndex: 400,
+          background: "rgba(11,20,36,0.985)", border: "1px solid rgba(96,165,250,0.24)",
           borderRadius: 14, overflow: "hidden", boxShadow: "0 22px 55px rgba(0,0,0,0.55)",
           backdropFilter: "blur(8px)"
         }}>
@@ -5968,10 +5982,12 @@ return (
               avanza. Así ve en el PC lo mismo que la congregación, sin mirar el
               proyector. */}
           {!previewMinimizado && (
-            <div style={{ padding: "12px 14px", minHeight: 140, maxHeight: 340, overflowY: "auto" }}>
+            <>
+            <div style={{ margin: "12px 14px 8px", aspectRatio: "16 / 9", overflow: "hidden", borderRadius: 10, background: "#02050a", border: "2px solid rgba(148,163,184,0.38)", boxShadow: "0 0 0 4px rgba(255,255,255,0.025), inset 0 0 45px rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ width: "100%", maxHeight: "100%", overflowY: "auto", padding: 14, boxSizing: "border-box" }}>
               {(() => {
                 const it: any = (indiceActivoLista != null && lista[indiceActivoLista]) ? lista[indiceActivoLista] : null
-                const estiloMedia: React.CSSProperties = { width: "100%", maxHeight: 280, objectFit: "contain", borderRadius: 8, display: "block", background: "#000" }
+                const estiloMedia: React.CSSProperties = { width: "100%", height: "100%", maxHeight: 184, objectFit: "contain", display: "block", background: "#000" }
 
                 // 1) Carrusel proyectándose → imagen/video actual
                 if (carruselActivo && carruselUrlActual) {
@@ -5992,7 +6008,7 @@ return (
                     }).join("\n")
                   return (<>
                     <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 8, letterSpacing: "0.04em", color: parteActualEsCoro ? "#fbbf24" : "#93c5fd" }}>{etiquetaParteControl}</div>
-                    <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", margin: 0, fontSize: 14, lineHeight: 1.7, fontWeight: 500, color: "white" }}>{limpio.trim()}</pre>
+                    <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", margin: 0, fontSize: 13, lineHeight: 1.55, fontWeight: 600, color: "white", textAlign: "center" }}>{limpio.trim()}</pre>
                   </>)
                 }
 
@@ -6001,7 +6017,7 @@ return (
                   const txt = String(paginasBiblia[paginaBibliaActual] || "").replace(/<[^>]*>/g, " ").replace(/\[[^\]]*\]/g, "").replace(/\s+/g, " ").trim()
                   return (<>
                     <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 8, color: "#93c5fd" }}>📖 {it?.referencia || "Palabra"}{paginasBiblia.length > 1 ? ` · ${paginaBibliaActual + 1}/${paginasBiblia.length}` : ""}</div>
-                    <div style={{ fontSize: 14, lineHeight: 1.7, color: "white" }}>{txt}</div>
+                    <div style={{ fontSize: 13, lineHeight: 1.55, color: "white", textAlign: "center" }}>{txt}</div>
                   </>)
                 }
 
@@ -6050,7 +6066,13 @@ return (
 
                 return <div style={{ opacity: 0.4, fontSize: 13, textAlign: "center", paddingTop: 24 }}>Nada proyectándose todavía</div>
               })()}
+              </div>
             </div>
+            <div style={{ padding: "0 14px 11px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 10.5, color: "rgba(255,255,255,0.42)" }}>
+              <span>Salida del proyector · 16:9</span>
+              <span>{previewAnclado ? "📌 Fija" : "Arrastrable"}</span>
+            </div>
+            </>
           )}
         </div>
       )}
