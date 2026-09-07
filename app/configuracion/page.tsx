@@ -24,6 +24,14 @@ const cardStyle: CSSProperties = {
   marginBottom: 16
 }
 
+const SECCIONES_AJUSTES = [
+  { id:"identidad", icono:"🏛️", nombre:"Identidad", alcance:"iglesia" },
+  { id:"proyeccion", icono:"🖥️", nombre:"Proyección", alcance:"dispositivo" },
+  { id:"celulares", icono:"📱", nombre:"Celulares", alcance:"dispositivo" },
+  { id:"personas", icono:"👥", nombre:"Personas", alcance:"iglesia" },
+  { id:"ayuda", icono:"🛟", nombre:"Ayuda y log", alcance:"dispositivo" },
+] as const
+
 // ── Componente de log de errores ─────────────────────────────────────────────
 function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
   const { confirmar, ConfirmUI } = useConfirm()
@@ -926,6 +934,16 @@ export default function ConfiguracionPage() {
           </button>
         </div>
 
+        {/* Índice de ajustes: permanece disponible mientras se recorre la página. */}
+        <div style={{ position:"sticky", top:58, zIndex:40, display:"flex", gap:7, padding:"9px", overflowX:"auto", borderRadius:14, background:"rgba(6,13,26,.94)", border:"1px solid rgba(255,255,255,.09)", boxShadow:"0 10px 28px rgba(0,0,0,.28)", backdropFilter:"blur(12px)" }}>
+          {SECCIONES_AJUSTES.map(s => <button key={s.id} data-ayuda={`Ir a ${s.nombre}. Estos ajustes afectan ${s.alcance === "iglesia" ? "a toda la iglesia" : "sólo a este dispositivo"}.`} onClick={() => document.getElementById(`ajuste-${s.id}`)?.scrollIntoView({ behavior:"smooth", block:"start" })} style={{ padding:"8px 11px", borderRadius:9, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.04)", color:"rgba(255,255,255,.72)", fontSize:11.5, fontWeight:750, cursor:"pointer", whiteSpace:"nowrap" }}>{s.icono} {s.nombre}</button>)}
+        </div>
+
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", padding:"0 3px", color:"rgba(255,255,255,.42)", fontSize:11.5 }}>
+          <span style={{ padding:"4px 8px", borderRadius:99, background:"rgba(99,102,241,.08)", border:"1px solid rgba(99,102,241,.18)" }}>🏛️ Toda la iglesia: se sincroniza para todos</span>
+          <span style={{ padding:"4px 8px", borderRadius:99, background:"rgba(14,165,233,.07)", border:"1px solid rgba(14,165,233,.16)" }}>💻 Este dispositivo: queda guardado sólo aquí</span>
+        </div>
+
         {/* ── Plan de la iglesia ── */}
         {(() => {
           const lim = limitesDe(plan)
@@ -955,7 +973,7 @@ export default function ConfiguracionPage() {
         })()}
 
         {/* Grid principal */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "18px" }}>
+        <div id="ajuste-identidad" style={{ scrollMarginTop:130, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "18px" }}>
 
           {/* ── Datos generales ── */}
           <div style={{ ...card, padding: "24px" }}>
@@ -1150,7 +1168,7 @@ export default function ConfiguracionPage() {
         </div>
 
         {/* ── SERVIDOR DE PROYECCIÓN ─────────────────────────────────────── */}
-        <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+        <div id="ajuste-proyeccion" style={{ ...card, padding: 0, overflow: "hidden", scrollMarginTop:130 }}>
           <div style={{ padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>🖥️ Computador del proyector</div>
             <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2 }}>¿En qué equipo está corriendo el programa Selah?</div>
@@ -1473,7 +1491,7 @@ export default function ConfiguracionPage() {
 
         {/* ── CONEXIÓN DEL CELULAR (firewall) — solo escritorio ──────────── */}
         {esEscritorio && (
-          <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+          <div id="ajuste-celulares" style={{ ...card, padding: 0, overflow: "hidden", scrollMarginTop:130 }}>
             <div style={{ padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
               <div style={{ fontWeight: 800, fontSize: 15 }}>📱 Conexión con el celular</div>
               <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2 }}>Deja que el celular llegue a este PC por la red (firewall de Windows)</div>
@@ -1533,7 +1551,7 @@ export default function ConfiguracionPage() {
         )}
 
         {/* ── INVITACIONES ──────────────────────────────────────────────── */}
-        <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+        <div id="ajuste-personas" style={{ ...card, padding: 0, overflow: "hidden", scrollMarginTop:130 }}>
           <div style={{ padding: "14px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>👥 Invitar personas</div>
             <div style={{ fontSize: 12, opacity: 0.5, marginTop: 2 }}>Genera un link para que otros se unan a tu iglesia</div>
@@ -1645,7 +1663,7 @@ export default function ConfiguracionPage() {
         </div>
 
         {/* ── TUTORIALES ─────────────────────────────────────────────────── */}
-        <div style={card}>
+        <div id="ajuste-ayuda" style={{ ...card, scrollMarginTop:130 }}>
           <h2 style={{ margin: "0 0 16px", fontSize: "18px", fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}>
             🎓 Tutoriales
           </h2>
