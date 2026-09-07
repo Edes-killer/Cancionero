@@ -109,6 +109,7 @@ export default function MusicosPage() {
   const [cancionesRepo, setCancionesRepo] = useState<any[]>([])
   const [cargandoRepo, setCargandoRepo] = useState(false)
   const [busquedaRepo, setBusquedaRepo] = useState("")
+  const [filtroAcordesRepo, setFiltroAcordesRepo] = useState(false)
   const [cancionRepo, setCancionRepo] = useState<any>(null)
   const [partesRepo, setPartesRepo] = useState<any[]>([])
   const [transposicionRepo, setTransposicionRepo] = useState(0)
@@ -182,6 +183,18 @@ export default function MusicosPage() {
         continuar = data.length === PAGINA
         desde += PAGINA
       }
+
+      // Marcar canciones que realmente poseen al menos una parte con acordes.
+      // Se consulta por lotes para no superar el largo máximo de URL de PostgREST.
+      const idsConAcordes = new Set<string>()
+      for (let i = 0; i < todas.length; i += 200) {
+        const ids = todas.slice(i, i + 200).map(c => c.id)
+        if (!ids.length) continue
+        const { data: partesConAcordes } = await supabase
+          .from("partes_cancion").select("cancion_id").in("cancion_id", ids).eq("tiene_acordes", true)
+        for (const parte of (partesConAcordes || [])) idsConAcordes.add(parte.cancion_id)
+      }
+      todas = todas.map(c => ({ ...c, tiene_acordes: idsConAcordes.has(c.id) }))
 
       marcarSupabaseOk()
       if (todas.length > 0) {
@@ -645,6 +658,10 @@ export default function MusicosPage() {
         .scroll-musicos::-webkit-scrollbar { display: none }
         .ctrl-m { transition: all 0.12s }
         .ctrl-m:active { transform: scale(0.92) }
+        @media (max-width: 767px) {
+          .musicos-tools { width: 100%; overflow-x: auto; padding: 2px 0 4px; scrollbar-width: none }
+          .musicos-tools::-webkit-scrollbar { display: none }
+        }
       `}</style>
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
@@ -654,7 +671,7 @@ export default function MusicosPage() {
         borderBottom: "1px solid rgba(255,255,255,0.06)",
         background: "rgba(0,0,0,0.4)",
         backdropFilter: "blur(10px)",
-        display: "flex", alignItems: "center", gap: 12
+        display: "flex", alignItems: "center", gap: 12, flexWrap: esMovil ? "wrap" : "nowrap"
       }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
@@ -707,6 +724,7 @@ export default function MusicosPage() {
           </div>
         </div>
 
+        <div className="musicos-tools" style={{ display:"flex", alignItems:"center", gap:7, flexShrink:0 }}>
         {/* Botón Repertorio */}
         <button
           className="ctrl-m"
@@ -778,6 +796,7 @@ export default function MusicosPage() {
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1
           }}
         ><span style={{ fontSize: esMovil ? 17 : 19 }}>⚙️</span><span style={{ fontSize: 9, fontWeight: 700, opacity: 0.85 }}>Ajustes</span></button>
+        </div>
       </div>
 
       {/* ── MODAL AFINADOR ─────────────────────────────────────────────────── */}
@@ -1077,6 +1096,7 @@ export default function MusicosPage() {
                       const esNumero = /^\d+$/.test(q)
                       const matchNum = q.match(/^(\d+)\s+(.+)$/)
                       return cancionesRepo.filter(c => {
+                        if (filtroAcordesRepo && !c.tiene_acordes) return false
                         const titulo = norm(c.titulo)
                         const numero = String(c.numero || "")
                         if (!q) return true
@@ -1087,6 +1107,10 @@ export default function MusicosPage() {
                     })()} resultados
                   </div>
                 )}
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8, marginTop:8 }}>
+                  <button data-ayuda="Muestra únicamente canciones que tienen acordes guardados para los músicos." onClick={() => setFiltroAcordesRepo(v => !v)} style={{ padding:"6px 10px", borderRadius:8, border:`1px solid ${filtroAcordesRepo ? "rgba(251,191,36,.5)" : "rgba(255,255,255,.1)"}`, background:filtroAcordesRepo ? "rgba(251,191,36,.14)" : "rgba(255,255,255,.035)", color:filtroAcordesRepo ? "#fcd34d" : "rgba(255,255,255,.55)", fontSize:11.5, fontWeight:800, cursor:"pointer" }}>🎸 {filtroAcordesRepo ? "Solo con acordes" : "Filtrar por acordes"}</button>
+                  <span style={{ fontSize:10.5, color:"rgba(255,255,255,.3)" }}>{cancionesRepo.filter(c => c.tiene_acordes).length} con acordes</span>
+                </div>
               </div>
 
               {/* Lista */}
@@ -1103,6 +1127,7 @@ export default function MusicosPage() {
 
                   const filtradas = cancionesRepo
                     .map(c => {
+                      if (filtroAcordesRepo && !c.tiene_acordes) return { c, score: 0, pass: false }
                       if (!q) return { c, score: 0, pass: true }
                       const titulo = norm(c.titulo)
                       const numero = String(c.numero || "")
@@ -1157,6 +1182,11 @@ export default function MusicosPage() {
                                 {c.categoria}
                               </span>
                             )}
+                            {c.tiene_acordes && (
+                              <span style={{ fontSize: 10.5, padding: "1px 7px", borderRadius: 5, background: "rgba(251,191,36,0.11)", border: "1px solid rgba(251,191,36,0.27)", color: "#fcd34d", fontWeight: 800 }}>
+                                🎸 Acordes
+                              </span>
+                            )}
                           </div>
                         </div>
                         {activa && <div style={{ color: "#3b82f6", fontSize: 18, flexShrink: 0 }}>›</div>}
@@ -1191,6 +1221,11 @@ export default function MusicosPage() {
                       {cancionRepo.categoria && (
                         <span style={{ fontSize: 12, padding: "3px 10px", borderRadius: 6, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)", fontWeight: 500 }}>
                           {cancionRepo.categoria}
+                        </span>
+                      )}
+                      {cancionRepo.tiene_acordes && (
+                        <span style={{ fontSize: 12, padding: "3px 10px", borderRadius: 6, background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.28)", color: "#fcd34d", fontWeight: 800 }}>
+                          🎸 Con acordes
                         </span>
                       )}
                     </div>

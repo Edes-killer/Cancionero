@@ -18,19 +18,24 @@ const frecANota = (freq: number): { nota: string; octava: number; cents: number 
 // Autocorelación para detectar tono fundamental
 const detectarTono = (buffer: Float32Array<ArrayBuffer>, sampleRate: number): number => {
   const SIZE = buffer.length
-  const MAX_PERIODO = Math.floor(sampleRate / 50)
-  const MIN_PERIODO = Math.floor(sampleRate / 1000)
-  let bestCorr = -1, bestPeriodo = -1
+  const MAX_PERIODO = Math.min(Math.floor(sampleRate / 55), SIZE - 2)
+  const MIN_PERIODO = Math.max(2, Math.floor(sampleRate / 1200))
+  let media = 0
+  for (let i = 0; i < SIZE; i++) media += buffer[i]
+  media /= SIZE
+  let bestCorr = 0, bestPeriodo = -1
 
   for (let periodo = MIN_PERIODO; periodo < MAX_PERIODO; periodo++) {
-    let corr = 0
+    let corr = 0, energiaA = 0, energiaB = 0
     for (let i = 0; i < SIZE - periodo; i++) {
-      corr += buffer[i] * buffer[i + periodo]
+      const a = buffer[i] - media, b = buffer[i + periodo] - media
+      corr += a * b; energiaA += a * a; energiaB += b * b
     }
-    if (corr > bestCorr) { bestCorr = corr; bestPeriodo = periodo }
+    const normalizada = corr / Math.sqrt(Math.max(energiaA * energiaB, 1e-12))
+    if (normalizada > bestCorr) { bestCorr = normalizada; bestPeriodo = periodo }
   }
 
-  if (bestCorr < 0.01 * SIZE) return -1  // señal muy débil
+  if (bestCorr < 0.62 || bestPeriodo < 0) return -1
   return sampleRate / bestPeriodo
 }
 
@@ -45,12 +50,15 @@ export default function PitchDetector({ onDetectar, style }: Props) {
   const [frecActual, setFrecActual] = useState<number | null>(null)
   const [error,     setError]     = useState("")
   const [volumen,   setVolumen]   = useState(0)
+  const [microfonos, setMicrofonos] = useState<MediaDeviceInfo[]>([])
+  const [microId, setMicroId] = useState("")
 
   const audioCtxRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const streamRef   = useRef<MediaStream | null>(null)
   const rafRef      = useRef<number>(0)
-  const bufferRef   = useRef<Float32Array<ArrayBuffer>>(new Float32Array(2048) as Float32Array<ArrayBuffer>)
+  const bufferRef   = useRef<Float32Array<ArrayBuffer>>(new Float32Array(4096) as Float32Array<ArrayBuffer>)
+  const ultimaMedicionRef = useRef(0)
 
   const detener = useCallback(() => {
     cancelAnimationFrame(rafRef.current)
@@ -68,20 +76,32 @@ export default function PitchDetector({ onDetectar, style }: Props) {
   const iniciar = async () => {
     setError("")
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("Este dispositivo no permite usar el micrófono desde esta pantalla")
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          ...(microId ? { deviceId: { exact: microId } } : {}),
+          echoCancellation: false, noiseSuppression: false, autoGainControl: false,
+          channelCount: 1
+        }, video: false
+      })
       streamRef.current = stream
 
       const ctx     = new (window.AudioContext || (window as any).webkitAudioContext)()
+      if (ctx.state === "suspended") await ctx.resume()
       const source  = ctx.createMediaStreamSource(stream)
       const analyser = ctx.createAnalyser()
-      analyser.fftSize = 2048
-      analyser.smoothingTimeConstant = 0.85
+      analyser.fftSize = 4096
+      analyser.smoothingTimeConstant = 0.65
       source.connect(analyser)
 
       audioCtxRef.current = ctx
       analyserRef.current = analyser
 
       setActivo(true)
+      try {
+        const dispositivos = await navigator.mediaDevices.enumerateDevices()
+        setMicrofonos(dispositivos.filter(d => d.kind === "audioinput"))
+      } catch {}
 
       const loop = () => {
         if (!analyserRef.current) return
@@ -91,7 +111,9 @@ export default function PitchDetector({ onDetectar, style }: Props) {
         const rms = Math.sqrt(bufferRef.current.reduce((s, v) => s + v * v, 0) / bufferRef.current.length)
         setVolumen(Math.min(100, Math.round(rms * 500)))
 
-        if (rms > 0.015) {
+        const ahora = performance.now()
+        if (rms > 0.008 && ahora - ultimaMedicionRef.current >= 80) {
+          ultimaMedicionRef.current = ahora
           const freq = detectarTono(bufferRef.current, ctx.sampleRate)
           if (freq > 0) {
             const info = frecANota(freq)
@@ -107,7 +129,13 @@ export default function PitchDetector({ onDetectar, style }: Props) {
       }
       rafRef.current = requestAnimationFrame(loop)
     } catch (e: any) {
-      setError(e.name === "NotAllowedError" ? "Sin permiso para el micrófono" : e.message)
+      const mensajes: Record<string,string> = {
+        NotAllowedError: "Selah no tiene permiso para usar el micrófono. Habilítalo en los permisos del sistema.",
+        NotFoundError: "No se encontró ningún micrófono disponible.",
+        NotReadableError: "El micrófono está siendo usado por otra aplicación. Ciérrala e intenta nuevamente.",
+        OverconstrainedError: "El micrófono seleccionado ya no está disponible. Elige otro dispositivo."
+      }
+      setError(mensajes[e?.name] || e?.message || "No se pudo iniciar el afinador")
     }
   }
 
@@ -143,6 +171,17 @@ export default function PitchDetector({ onDetectar, style }: Props) {
       </div>
 
       {error && <div style={{ color: "#fca5a5", fontSize: 13, marginBottom: 12 }}>⚠️ {error}</div>}
+
+      {microfonos.length > 1 && (
+        <label style={{ display:"block", marginBottom:12, fontSize:11, color:"rgba(255,255,255,.55)" }}>
+          Micrófono
+          <select value={microId} disabled={activo} onChange={e => setMicroId(e.target.value)} style={{ display:"block", width:"100%", marginTop:5, padding:"8px 10px", borderRadius:8, border:"1px solid rgba(255,255,255,.12)", background:"#0a1525", color:"white", fontSize:12 }}>
+            <option value="">Predeterminado del sistema</option>
+            {microfonos.map((m, i) => <option key={m.deviceId} value={m.deviceId}>{m.label || `Micrófono ${i + 1}`}</option>)}
+          </select>
+          {activo && <span style={{ display:"block", marginTop:4, opacity:.65 }}>Detén el afinador para cambiar de entrada.</span>}
+        </label>
+      )}
 
       {/* Nota principal */}
       <div style={{ textAlign: "center", padding: "20px 0" }}>
@@ -203,6 +242,9 @@ export default function PitchDetector({ onDetectar, style }: Props) {
             }}/>
           </div>
         </div>
+      )}
+      {activo && volumen < 4 && !notaActual && (
+        <div style={{ marginTop:10, textAlign:"center", fontSize:11.5, color:"rgba(251,191,36,.75)" }}>No entra suficiente señal. Acerca el instrumento al micrófono o elige otra entrada.</div>
       )}
     </div>
   )
