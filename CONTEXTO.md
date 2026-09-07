@@ -1,6 +1,6 @@
 # Selah Live — Documento de Diseño (SDD) y Contexto de Desarrollo
 
-> Versión del documento: 2026-09-07 · App: **v0.5.27** · Mantener al día al cerrar cada release.
+> Versión del documento: 2026-09-07 · App: **v0.5.28** · Mantener al día al cerrar cada release.
 
 ---
 
@@ -319,6 +319,11 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - Ayuda contextual global y mejoras de accesibilidad para teclado, tacto y movimiento reducido.
 - Diagnóstico de red completo, logs descargables y laboratorio hostil `qa:red` (15 escenarios).
 - Correcciones de pantalla completa, aprendizaje de auto-avance, concurrencia y cierre seguro de Electron.
+
+### Entregado en v0.5.28
+
+- Corrección de la ayuda contextual: los tooltips explican el efecto real de cada botón en vez de repetir su nombre.
+- Descripciones específicas para acciones ambiguas e iconos en Control, Canciones, Ajustes, Transmisión y navegación.
 
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).
