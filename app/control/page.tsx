@@ -125,6 +125,8 @@ export default function ControlPage() {
   )
   const [galeriaImagenes, setGaleriaImagenes] = useState<{url:string,nombre:string,local:boolean}[]>([])
   const [galeriaAbierta, setGaleriaAbierta] = useState(false)
+  const [busquedaGaleria, setBusquedaGaleria] = useState("")
+  const [filtroGaleria, setFiltroGaleria] = useState<"todo" | "imagen" | "video">("todo")
   // Importar desde PowerPoint (solo escritorio): menú de 2 opciones + progreso.
   const [pptMenu, setPptMenu] = useState(false)
   const [pptProg, setPptProg] = useState("")
@@ -3395,6 +3397,25 @@ const agregarItemAListaConFeedback = (item: any, mensaje: string) => {
   mostrarFeedbackLista(mensaje)
 }
 
+const agregarMediaDesdeGaleria = (img: { url:string; nombre:string; local:boolean }) => {
+  if (lista.some(item => item.url === img.url)) {
+    mostrarFeedbackLista(`⚠️ ${img.nombre} ya está en el orden del culto`)
+    return
+  }
+  const tipo = esUrlVideo(img.url) ? "video" : "imagen"
+  agregarItemAListaConFeedback({ tipo, url:img.url, titulo:img.nombre }, `✅ Agregada: ${img.nombre}`)
+}
+
+const galeriaFiltrada = useMemo(() => {
+  const q = busquedaGaleria.trim().toLocaleLowerCase("es")
+  return galeriaImagenes.filter(img => {
+    const video = esUrlVideo(img.url)
+    if (filtroGaleria === "video" && !video) return false
+    if (filtroGaleria === "imagen" && video) return false
+    return !q || img.nombre.toLocaleLowerCase("es").includes(q)
+  })
+}, [galeriaImagenes, busquedaGaleria, filtroGaleria])
+
 useEffect(() => {
   const indice = indicePendienteScrollRef.current
   if (indice === null) return
@@ -5177,17 +5198,31 @@ return (
                     background:"rgba(0,0,0,0.75)", backdropFilter:"blur(4px)"
                   }} onClick={() => setGaleriaAbierta(false)}>
                     <div onClick={e => e.stopPropagation()} style={{
-                      width:"min(92vw, 480px)", maxHeight:"80vh",
+                      width:"min(94vw, 760px)", maxHeight:"84vh",
                       background:"#111827", borderRadius:16,
                       border:"1px solid rgba(255,255,255,0.1)",
                       display:"flex", flexDirection:"column", overflow:"hidden"
                     }}>
                       {/* Header */}
                       <div style={{ padding:"14px 16px", borderBottom:"1px solid rgba(255,255,255,0.08)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                        <div style={{ fontWeight:800, fontSize:15 }}>🗂️ Galería de imágenes</div>
+                        <div>
+                          <div style={{ fontWeight:800, fontSize:15 }}>🗂️ Biblioteca visual</div>
+                          <div style={{ fontSize:10.5, color:"rgba(255,255,255,.45)", marginTop:2 }}>Elige varios recursos sin cerrar esta ventana</div>
+                        </div>
                         <div style={{ display:"flex", gap:14, alignItems:"center" }}>
                           <span style={{ fontSize:11, opacity:0.4 }}>☁️ {galeriaImagenes.filter(i=>!i.local).length}/20 · 💾 {galeriaImagenes.filter(i=>i.local).length}</span>
                           <button onClick={() => setGaleriaAbierta(false)} style={{ background:"none", border:"none", color:"white", fontSize:18, cursor:"pointer", opacity:0.5 }}>✕</button>
+                        </div>
+                      </div>
+                      {/* Búsqueda y filtros */}
+                      <div style={{ padding:"10px 16px", borderBottom:"1px solid rgba(255,255,255,0.08)", display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+                        <input value={busquedaGaleria} onChange={e => setBusquedaGaleria(e.target.value)} placeholder="Buscar por nombre…"
+                          aria-label="Buscar en la biblioteca visual"
+                          style={{ flex:"1 1 190px", minWidth:0, padding:"8px 10px", borderRadius:9, border:"1px solid rgba(255,255,255,.12)", background:"#0a1525", color:"white", outline:"none", fontSize:12.5 }} />
+                        <div style={{ display:"flex", gap:5 }}>
+                          {([['todo','Todo'],['imagen','Imágenes'],['video','Videos']] as const).map(([id,nombre]) => (
+                            <button key={id} data-ayuda={`Muestra ${nombre.toLocaleLowerCase("es")} de la biblioteca.`} onClick={() => setFiltroGaleria(id)} style={{ padding:"7px 10px", borderRadius:8, border:`1px solid ${filtroGaleria===id ? "rgba(96,165,250,.55)" : "rgba(255,255,255,.1)"}`, background:filtroGaleria===id ? "rgba(37,99,235,.18)" : "rgba(255,255,255,.03)", color:filtroGaleria===id ? "#bfdbfe" : "rgba(255,255,255,.62)", fontSize:11, fontWeight:750, cursor:"pointer" }}>{nombre}</button>
+                          ))}
                         </div>
                       </div>
                       {/* Barra de carrusel */}
@@ -5213,19 +5248,20 @@ return (
                       </div>
                       {/* Grid */}
                       <div style={{ overflowY:"auto", flex:1, padding:12 }}>
-                        {galeriaImagenes.length === 0 ? (
-                          <div style={{ textAlign:"center", padding:32, opacity:0.3, fontSize:13 }}>Sin imágenes guardadas</div>
+                        {galeriaFiltrada.length === 0 ? (
+                          <div style={{ textAlign:"center", padding:32, opacity:0.45, fontSize:13 }}>{galeriaImagenes.length ? "No hay resultados para esta búsqueda" : "Aún no hay imágenes ni videos guardados"}</div>
                         ) : (
-                          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
-                            {galeriaImagenes.map((img, i) => (
-                              <div key={i} style={{ position:"relative", aspectRatio:"16/9", borderRadius:8, overflow:"hidden", border:"1px solid rgba(255,255,255,0.08)" }}>
+                          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))", gap:10 }}>
+                            {galeriaFiltrada.map((img, i) => {
+                              const yaAgregada = lista.some(item => item.url === img.url)
+                              return <div key={img.url || i} style={{ position:"relative", aspectRatio:"16/9", borderRadius:10, overflow:"hidden", border:`1px solid ${yaAgregada ? "rgba(34,197,94,.5)" : "rgba(255,255,255,0.08)"}`, background:"#060d1a" }}>
                                 {esUrlVideo(img.url) ? (
                                   <video src={img.url} muted playsInline preload="metadata"
-                                    onClick={() => { if (modoCarrusel) { toggleSelCarrusel(img.url); return } agregarItemAListaConFeedback({ tipo:"video", url:img.url, titulo:img.nombre }, `✅ ${img.nombre}`); setGaleriaAbierta(false) }}
+                                    onClick={() => { if (modoCarrusel) { toggleSelCarrusel(img.url); return } agregarMediaDesdeGaleria(img) }}
                                     style={{ width:"100%", height:"100%", objectFit:"cover", cursor:"pointer" }} />
                                 ) : (
                                   <img src={img.url} alt={img.nombre}
-                                    onClick={() => { if (modoCarrusel) { toggleSelCarrusel(img.url); return } agregarItemAListaConFeedback({ tipo:"imagen", url:img.url, titulo:img.nombre }, `✅ ${img.nombre}`); setGaleriaAbierta(false) }}
+                                    onClick={() => { if (modoCarrusel) { toggleSelCarrusel(img.url); return } agregarMediaDesdeGaleria(img) }}
                                     style={{ width:"100%", height:"100%", objectFit:"cover", cursor:"pointer" }} />
                                 )}
                                 {/* Selección para carrusel (solo resalta las elegidas, no oscurece el resto) */}
@@ -5236,6 +5272,7 @@ return (
                                 )})()}
                                 {esUrlVideo(img.url) && <span style={{ position:"absolute", top:3, right:3, fontSize:11, background:"rgba(0,0,0,0.7)", borderRadius:3, padding:"1px 4px" }}>🎬</span>}
                                 {img.local && <span style={{ position:"absolute", top:3, left:3, fontSize:9, background:"rgba(0,0,0,0.7)", borderRadius:3, padding:"1px 4px" }}>💾</span>}
+                                {yaAgregada && !modoCarrusel && <span style={{ position:"absolute", left:5, bottom:23, padding:"2px 6px", borderRadius:99, background:"rgba(22,163,74,.92)", color:"white", fontSize:9, fontWeight:850 }}>✓ En el culto</span>}
                                 <div style={{ position:"absolute", bottom:0, left:0, right:0, padding:"4px 6px", background:"linear-gradient(transparent,rgba(0,0,0,0.7))", fontSize:10, opacity:0.8, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{img.nombre}</div>
                                 {/* ✅ Botón renombrar */}
                                 <button onClick={async e => {
@@ -5281,7 +5318,7 @@ return (
                                   color:"white", fontSize:11, cursor:"pointer", lineHeight:"1"
                                 }}>✕</button>
                               </div>
-                            ))}
+                            })}
                           </div>
                         )}
                       </div>
