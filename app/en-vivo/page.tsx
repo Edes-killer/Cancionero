@@ -1547,8 +1547,8 @@ export default function EnVivoPage() {
             <button onClick={detenerGrabarSolo} style={botonBase({ background:C.rojo, color:"#fff", padding:"10px 14px" })}>■ Detener grabación</button>
           ) : (
             <div style={{ display:"flex", gap:7 }}>
-              <button onClick={grabarSolo} disabled={!esEscritorio || (permiso !== "ok" && escena !== "letra" && escena !== "espera")} style={botonBase({ background:"rgba(255,255,255,.07)", color:C.texto, padding:"9px 11px", opacity:!esEscritorio ? .45 : 1 })}>⏺ Grabar</button>
-              <button onClick={() => { document.getElementById("panel-salida")?.scrollIntoView({ behavior:"smooth", block:"start" }); setPreflightAbierto(true) }} disabled={!esEscritorio} style={botonBase({ background:C.rojo, color:"#fff", padding:"9px 13px", opacity:esEscritorio ? 1 : .45 })}>✓ Revisar salida</button>
+              <button data-ayuda="Graba la salida final en este computador sin iniciar una transmisión." onClick={grabarSolo} disabled={!esEscritorio || (permiso !== "ok" && escena !== "letra" && escena !== "espera")} style={botonBase({ background:"rgba(255,255,255,.07)", color:C.texto, padding:"9px 11px", opacity:!esEscritorio ? .45 : 1 })}>⏺ Grabar</button>
+              <button data-ayuda="Revisa cámaras, audio, escena y destinos antes de salir en vivo." onClick={() => { document.getElementById("panel-salida")?.scrollIntoView({ behavior:"smooth", block:"start" }); setPreflightAbierto(true) }} disabled={!esEscritorio} style={botonBase({ background:C.rojo, color:"#fff", padding:"9px 13px", opacity:esEscritorio ? 1 : .45 })}>✓ Revisar salida</button>
             </div>
           )}
         </div>

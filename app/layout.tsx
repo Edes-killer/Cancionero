@@ -7,6 +7,7 @@ import { DeepLinkHandler } from "@/components/DeepLinkHandler"
 import { AppProvider } from "@/context/AppContext"
 import AvisoActualizacion from "@/components/AvisoActualizacion"
 import OtaUpdater from "@/components/OtaUpdater"
+import AyudaBotones from "@/components/ui/AyudaBotones"
 
 export const metadata: Metadata = {
   title: "Selah Live",
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               {children}
               <OtaUpdater />
               <AvisoActualizacion />
+              <AyudaBotones />
             </AppProvider>
           </AuthProvider>
         </ThemeProvider>
