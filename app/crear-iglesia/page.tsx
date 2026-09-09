@@ -57,36 +57,16 @@ export default function CrearIglesiaPage() {
 
       const nombreFinal = nombreCorto.trim() || nombreIglesia.trim()
 
-      // ✅ Generar el id en el cliente — evita que Supabase tenga que
-      // releer la fila recién creada (.select().single()), lo cual fallaba
-      // porque la política RLS de SELECT exige que el usuario ya esté
-      // vinculado en usuarios_iglesia, y eso recién pasa en el paso siguiente.
-      const nuevoId = crypto.randomUUID()
+      // Una sola transacción crea la iglesia y vincula al usuario como admin.
+      // Evita iglesias huérfanas y elimina la inserción directa de membresías.
+      const { data: nuevoId, error } = await supabase.rpc("crear_iglesia_segura", {
+        p_nombre: nombreFinal,
+        p_localidad: localidad.trim() || null
+      })
 
-      const { error: errorIglesia } = await supabase
-        .from("iglesias")
-        .insert({
-          id: nuevoId,
-          nombre: nombreFinal,
-          localidad: localidad.trim() || null
-        })
-
-      if (errorIglesia) {
-        console.error("Error creando iglesia:", errorIglesia)
-        alert("No se pudo crear la iglesia: " + (errorIglesia.message || "error desconocido"))
-        return
-      }
-
-      const { error: errorRelacion } = await supabase
-        .from("usuarios_iglesia")
-        .insert({
-          user_id: userId,
-          iglesia_id: nuevoId
-        })
-
-      if (errorRelacion) {
-        console.error("Error vinculando usuario a iglesia:", errorRelacion)
-        alert("La iglesia se creó, pero no se pudo vincular al usuario.")
+      if (error || !nuevoId) {
+        console.error("Error creando iglesia:", error)
+        alert("No se pudo crear la iglesia: " + (error?.message || "error desconocido"))
         return
       }
 

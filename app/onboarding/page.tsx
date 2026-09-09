@@ -50,21 +50,13 @@ export default function OnboardingPage() {
       const { data: { user } } = resultado
       if (!user) { navegarSPA(router, "/login", { replace: true }); return }
 
-      // Crear iglesia
-      const { data: iglesia, error: errIglesia } = await supabase
-        .from("iglesias")
-        .insert({ nombre: nombre.trim(), localidad: localidad.trim() })
-        .select().single()
-      if (errIglesia || !iglesia) throw new Error("No se pudo crear la iglesia")
-
-      // Vincular usuario
-      const { error: errVinculo } = await supabase.from("usuarios_iglesia").insert({
-        user_id: user.id, iglesia_id: iglesia.id
+      const { data: nuevaIglesiaId, error: errIglesia } = await supabase.rpc("crear_iglesia_segura", {
+        p_nombre: nombre.trim(), p_localidad: localidad.trim() || null
       })
-      if (errVinculo) throw new Error("La iglesia se creó, pero no pudimos vincular tu cuenta. Revisa el registro de errores.")
+      if (errIglesia || !nuevaIglesiaId) throw new Error(errIglesia?.message || "No se pudo crear la iglesia")
 
-      await setIglesiaActivaId(iglesia.id)
-      setIglesiaId(iglesia.id)
+      setIglesiaActivaId(nuevaIglesiaId)
+      setIglesiaId(nuevaIglesiaId)
       setStep("logo")
     } catch (e: any) {
       setError(e.message || "Error al crear la iglesia")
@@ -80,10 +72,10 @@ export default function OnboardingPage() {
     setLogoError("")
     try {
       const ext = logoFile.name.split(".").pop()
-      const path = `logos/${iglesiaId}.${ext}`
-      const { error: errUp } = await supabase.storage.from("logos").upload(path, logoFile, { upsert: true })
+      const path = `logos/${iglesiaId}/${Date.now()}.${ext}`
+      const { error: errUp } = await supabase.storage.from("imagenes-culto").upload(path, logoFile, { upsert: false })
       if (errUp) throw errUp
-      const { data: { publicUrl } } = supabase.storage.from("logos").getPublicUrl(path)
+      const { data: { publicUrl } } = supabase.storage.from("imagenes-culto").getPublicUrl(path)
       const { error: errGuardar } = await supabase.from("iglesias").update({ logo_url: publicUrl, logo_nombre: logoFile.name }).eq("id", iglesiaId)
       if (errGuardar) throw errGuardar
       setStep("tour")

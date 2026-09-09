@@ -259,7 +259,8 @@ export default function ConfiguracionPage() {
     const codigo = Math.random().toString(36).slice(2, 8).toUpperCase()
     const { data, error } = await supabase.from("invitaciones").insert({
       iglesia_id: iglesiaId, rol: rolInvitacion, codigo,
-      usos_max: 20, expira_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      usos_max: 20, expira_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      creado_por: miUserId
     }).select().single()
     if (!error && data) {
       setInvitaciones(prev => [data, ...prev])

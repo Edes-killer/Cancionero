@@ -13,6 +13,19 @@ const ROLES: Record<string, { label: string; icon: string; desc: string }> = {
   musico: { label: "Músico",            icon: "🎸", desc: "Vista de acordes en tiempo real" },
 }
 
+type InvitacionPublica = {
+  invitacion_id: string
+  iglesia_id: string
+  rol: "admin" | "lider" | "musico"
+  usos_actuales: number
+  usos_max: number
+  expira_at: string | null
+  iglesia_nombre: string
+  iglesia_logo_url: string | null
+}
+
+type VinculoAceptado = Pick<InvitacionPublica, "iglesia_id" | "rol">
+
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
     <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.716v2.259h2.908C16.658 14.015 17.64 11.707 17.64 9.2z" fill="#4285F4"/>
@@ -61,58 +74,43 @@ export default function UnirsePage() {
 
   const cargarInvitacion = async (cod: string) => {
     setCargando(true); setError("")
-    const { data: inv } = await supabase
-      .from("invitaciones").select("*")
-      .eq("codigo", cod).eq("activa", true).maybeSingle()
+    const { data, error: errorInv } = await supabase
+      .rpc("ver_invitacion", { p_codigo: cod }).maybeSingle()
+    const inv = data as InvitacionPublica | null
 
-    if (!inv) { setError("Código no encontrado o inválido."); setCargando(false); return }
-    if (inv.expira_at && new Date(inv.expira_at) < new Date()) {
-      setError("Este código ha expirado."); setCargando(false); return
-    }
-    if (inv.usos_actuales >= inv.usos_max) {
-      setError("Este código ya alcanzó el límite de usos."); setCargando(false); return
-    }
+    if (errorInv || !inv) { setError("Código no encontrado, vencido o sin cupos."); setCargando(false); return }
 
-    const { data: ig } = await supabase.from("iglesias")
-      .select("nombre, logo_url").eq("id", inv.iglesia_id).limit(1)
     setInvitacion(inv)
-    setIglesia((ig as any[])?.[0] || null)
+    setIglesia({ nombre: inv.iglesia_nombre, logo_url: inv.iglesia_logo_url })
     localStorage.setItem("selah_inv_codigo", cod)
 
     // Si ya hay sesión activa → unirse directamente
     const resultado = await conTimeout(supabase.auth.getSession(), 5000)
     if (resultado !== "timeout" && resultado.data.session?.user) {
-      await unirseAIglesia(resultado.data.session.user.id, inv); return
+      await unirseAIglesia(cod); return
     }
     setCargando(false)
   }
 
-  const unirseAIglesia = async (userId: string, inv: any) => {
-    const { data: ya } = await supabase.from("usuarios_iglesia")
-      .select("id").eq("user_id", userId).eq("iglesia_id", inv.iglesia_id).limit(1)
-    if (!ya?.length) {
-      const { error: errIns } = await supabase.from("usuarios_iglesia").insert({
-        user_id: userId, iglesia_id: inv.iglesia_id, rol: inv.rol
-      })
-      if (errIns) {
+  const unirseAIglesia = async (codigoInvitacion: string) => {
+    const { data, error: errIns } = await supabase.rpc("aceptar_invitacion", { p_codigo: codigoInvitacion })
+    const vinculo = (Array.isArray(data) ? data[0] : data) as VinculoAceptado | null
+    if (errIns || !vinculo) {
         // ✅ El trigger de la base rechaza si se alcanzó el límite de usuarios
         // del plan (mensaje "Límite de usuarios..."). Se muestra amigable.
-        const msg = /l[íi]mite de usuarios/i.test(errIns.message || "")
+        const msg = /l[íi]mite de usuarios/i.test(errIns?.message || "")
           ? "Esta iglesia alcanzó el límite de usuarios de su plan. El administrador debe pasar a Pro para sumar más personas."
-          : `No se pudo unir a la iglesia: ${errIns.message || "intenta de nuevo"}`
+          : `No se pudo unir a la iglesia: ${errIns?.message || "intenta de nuevo"}`
         setError(msg); setEnviando(false)
         return
-      }
-      await supabase.from("invitaciones")
-        .update({ usos_actuales: (inv.usos_actuales || 0) + 1 }).eq("id", inv.id)
     }
     // ✅ Si la cuenta ya estaba vinculada a OTRA iglesia (cacheada en este
     // dispositivo), sin esto seguía viendo los datos de la iglesia vieja
     // después de aceptar una invitación nueva — nada actualizaba cuál es
     // la "iglesia activa".
-    setIglesiaActivaId(inv.iglesia_id)
+    setIglesiaActivaId(vinculo.iglesia_id)
     localStorage.removeItem("selah_inv_codigo")
-    navegarSPA(router, inv.rol === "musico" ? "/musicos" : inv.rol === "lider" ? "/control" : "/", { replace: true })
+    navegarSPA(router, vinculo.rol === "musico" ? "/musicos" : vinculo.rol === "lider" ? "/control" : "/", { replace: true })
   }
 
   // ── Google OAuth — redirige de vuelta al /unirse?codigo=X ─────────────────
