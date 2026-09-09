@@ -109,18 +109,18 @@ historial_proyecciones (id, iglesia_id, cancion_id, titulo, tono, categoria, tip
 estado_culto      (iglesia_id, tipo, partes, index, titulo, tono, actualizado_en)
 errores_log       (iglesia_id, user_id, tipo, mensaje, pagina, plataforma, version, detalle)
 invitaciones      (iglesia_id, rol, codigo, usos_max, usos_actuales, activa, expira_at, creado_por)
-media_biblioteca  (iglesia_id, url, nombre, carpeta, actualizado_en) -- migración pendiente de aplicar
+media_biblioteca  (iglesia_id, url, nombre, carpeta, actualizado_en)
 ```
 
 **Storage:** bucket `imagenes-culto`, carpeta por iglesia (`{iglesiaId}/...`). Las políticas de escritura
 deben comprobar que el primer segmento de `storage.objects.name` corresponde a una iglesia del usuario.
 Nunca usar una policy que autorice solo por `bucket_id`: permitiría modificar o borrar archivos de otra iglesia.
 
-**Auditoría del esquema (2026-09-08):** el dump real confirmó las tablas anteriores y detectó deuda de
-seguridad pendiente: políticas de Storage sin aislamiento por iglesia; autoactualización del rol propio en
-`usuarios_iglesia`; inserción directa de membresías; invitaciones legibles globalmente; y escrituras de
-canciones/listas/iglesia autorizadas por membresía sin distinguir líder de músico. Endurecer mediante una
-migración coordinada con los flujos de crear iglesia/unirse, evitando bloquear usuarios legítimos.
+**Auditoría y saneamiento (2026-09-09, aplicado en producción):** el dump real permitió cerrar la
+autoasignación de roles y membresías, proteger invitaciones mediante RPC, aislar Storage por iglesia y
+limitar escrituras a líderes/administradores. Se eliminaron 8 canciones y 2 listas huérfanas originadas por
+antiguos defaults UUID, además de una iglesia vacía. Las FK y restricciones de roles/planes quedaron
+validadas contra los datos históricos mediante las migraciones `20260907` a `20260910`.
 
 **Roles (AuthProvider):** admin (todo), líder de alabanza (Control/Canciones/Historial/Transmisión, NO
 Configuración), músico (solo /musicos). PIN de sala opcional (`iglesias.pin_sala`, sincronizado por AppContext).
@@ -312,7 +312,7 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 
 ### Deuda técnica verificada
 
-- `npm run lint` todavía reporta 517 hallazgos heredados (394 errores y 123 advertencias), concentrados en tipos `any`, dependencias de hooks y reglas estrictas de React 19. No impiden `next build`, pero deben corregirse por módulos y con pruebas, nunca mediante un reemplazo masivo antes de un culto.
+- `npm run lint` todavía reporta 516 hallazgos heredados (393 errores y 123 advertencias), concentrados en tipos `any`, dependencias de hooks y reglas estrictas de React 19. No impiden `next build`, pero deben corregirse por módulos y con pruebas, nunca mediante un reemplazo masivo antes de un culto.
 - Dividir `app/control/page.tsx` y `app/en-vivo/page.tsx` en componentes y hooks más pequeños después de estabilizar la rama 0.5.x.
 
 ### Entregado en v0.5.27
@@ -340,7 +340,7 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).
-- [ ] Galería con carpetas.
+- [x] Galería con carpetas y metadatos sincronizados por iglesia.
 - [ ] Transmisión: de mi lista OBS quedan cosas menores descartadas por no ser para iglesias (atajos de
       teclado, chroma key, modo estudio).
 - [ ] Multi-iglesia sin relogin, CCLI reporting, analíticas.
