@@ -66,3 +66,7 @@ android/keystore.properties
 selah-live.apk
 selah-live-debug.apk
 bundle.zip
+
+# Supabase CLI: vínculo local y dumps de inspección (no versionar)
+/supabase/.temp/
+/supabase-schema.sql

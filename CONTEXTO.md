@@ -99,21 +99,28 @@ capacitor.config.ts         → webDir: "out"
 ## 5. Modelo de datos (Supabase)
 
 ```sql
-iglesias          (id, nombre, localidad, logo_url, logo_nombre, pin_sala, ...)
+iglesias          (id, nombre, creado_en, logo_url, logo_nombre, localidad, pin_sala, plan)
 usuarios_iglesia  (user_id, iglesia_id, rol)          -- rol: admin | lider | musico
-canciones         (id, titulo, tono, categoria, iglesia_id, numero, texto_busqueda)
-partes_cancion    (id, cancion_id, tipo, texto, texto_acordes, tiene_acordes, orden, formato)
+canciones         (id, iglesia_id, titulo, autor, tono, fecha_creacion, categoria, numero, texto_busqueda, eliminado_en)
+partes_cancion    (id, cancion_id, tipo, texto, orden, texto_letra, texto_acordes, tiene_acordes)
 listas_culto      (id, iglesia_id, nombre, fecha)
 items_lista       (id, lista_id, cancion_id, orden, tipo, imagen_url, estado_url, ...)
 historial_proyecciones (id, iglesia_id, cancion_id, titulo, tono, categoria, tipo, proyectado_en)
+estado_culto      (iglesia_id, tipo, partes, index, titulo, tono, actualizado_en)
+errores_log       (iglesia_id, user_id, tipo, mensaje, pagina, plataforma, version, detalle)
+invitaciones      (iglesia_id, rol, codigo, usos_max, usos_actuales, activa, expira_at, creado_por)
+media_biblioteca  (iglesia_id, url, nombre, carpeta, actualizado_en) -- migración pendiente de aplicar
 ```
 
-**Storage:** bucket `imagenes-culto`, carpeta por iglesia (`{iglesiaId}/...`). Requiere policy de DELETE
-para borrar desde la nube:
-```sql
-create policy "borrar imagenes-culto" on storage.objects
-  for delete to authenticated using (bucket_id = 'imagenes-culto');
-```
+**Storage:** bucket `imagenes-culto`, carpeta por iglesia (`{iglesiaId}/...`). Las políticas de escritura
+deben comprobar que el primer segmento de `storage.objects.name` corresponde a una iglesia del usuario.
+Nunca usar una policy que autorice solo por `bucket_id`: permitiría modificar o borrar archivos de otra iglesia.
+
+**Auditoría del esquema (2026-09-08):** el dump real confirmó las tablas anteriores y detectó deuda de
+seguridad pendiente: políticas de Storage sin aislamiento por iglesia; autoactualización del rol propio en
+`usuarios_iglesia`; inserción directa de membresías; invitaciones legibles globalmente; y escrituras de
+canciones/listas/iglesia autorizadas por membresía sin distinguir líder de músico. Endurecer mediante una
+migración coordinada con los flujos de crear iglesia/unirse, evitando bloquear usuarios legítimos.
 
 **Roles (AuthProvider):** admin (todo), líder de alabanza (Control/Canciones/Historial/Transmisión, NO
 Configuración), músico (solo /musicos). PIN de sala opcional (`iglesias.pin_sala`, sincronizado por AppContext).
