@@ -421,13 +421,19 @@ const [bottomSheetAbierto, setBottomSheetAbierto] = useState(false)
 const [previewHabilitado, setPreviewHabilitado] = useState(true)
 // ── Vista previa FLOTANTE (arrastrable, siempre visible en escritorio) ────────
 const [previewPos, setPreviewPos] = useState<{ x: number; y: number } | null>(null)
+const [previewAncho, setPreviewAncho] = useState(() => {
+  try { return Math.min(640, Math.max(280, Number(localStorage.getItem("selah-preview-ancho")) || 384)) }
+  catch { return 384 }
+})
 const [previewMinimizado, setPreviewMinimizado] = useState(false)
 const [previewAnclado, setPreviewAnclado] = useState(() => {
   try { return localStorage.getItem("selah-preview-anclado") === "1" } catch { return false }
 })
 const alternarAnclado = () => setPreviewAnclado(a => { const n = !a; try { localStorage.setItem("selah-preview-anclado", n ? "1" : "0") } catch {}; return n })
 const arrastrePreviewRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
+const redimensionPreviewRef = useRef<{ sx: number; ancho: number } | null>(null)
 const previewPosRef = useRef<{ x: number; y: number } | null>(null)
+const previewAnchoRef = useRef(previewAncho)
 
 // Posición inicial (esquina inferior derecha) y recuperar la guardada.
 useEffect(() => {
@@ -438,7 +444,7 @@ useEffect(() => {
     p = g ? JSON.parse(g) : { x: window.innerWidth - 372, y: window.innerHeight - 430 }
   } catch { p = { x: window.innerWidth - 372, y: window.innerHeight - 430 } }
   // Clamp: que no quede sobre la barra superior ni fuera de pantalla.
-  p = { x: Math.min(Math.max(4, p.x), window.innerWidth - 384), y: Math.min(Math.max(210, p.y), window.innerHeight - 120) }
+  p = { x: Math.min(Math.max(4, p.x), Math.max(4, window.innerWidth - previewAnchoRef.current)), y: Math.min(Math.max(210, p.y), window.innerHeight - 120) }
   previewPosRef.current = p
   setPreviewPos(p)
 }, [])
@@ -448,11 +454,39 @@ const PREVIEW_TOPE_Y = 210
 const moverPreview = (e: MouseEvent) => {
   const a = arrastrePreviewRef.current
   if (!a) return
-  const ANCHO = 384, ALTO = 120
+  const ANCHO = previewAnchoRef.current, ALTO = 120
   const x = Math.min(Math.max(4, a.ox + (e.clientX - a.sx)), window.innerWidth - ANCHO)
   const y = Math.min(Math.max(PREVIEW_TOPE_Y, a.oy + (e.clientY - a.sy)), window.innerHeight - ALTO)
   previewPosRef.current = { x, y }
   setPreviewPos({ x, y })
+}
+const cambiarAnchoPreview = (ancho: number) => {
+  const maximo = Math.max(280, Math.min(640, window.innerWidth - 8))
+  const nuevo = Math.round(Math.min(maximo, Math.max(280, ancho)))
+  previewAnchoRef.current = nuevo
+  setPreviewAncho(nuevo)
+  const p = previewPosRef.current
+  if (p) {
+    const corregida = { ...p, x: Math.min(p.x, Math.max(4, window.innerWidth - nuevo)) }
+    previewPosRef.current = corregida
+    setPreviewPos(corregida)
+  }
+  try { localStorage.setItem("selah-preview-ancho", String(nuevo)) } catch {}
+}
+const moverRedimensionPreview = (e: MouseEvent) => {
+  const r = redimensionPreviewRef.current
+  if (r) cambiarAnchoPreview(r.ancho + e.clientX - r.sx)
+}
+const soltarRedimensionPreview = () => {
+  redimensionPreviewRef.current = null
+  document.removeEventListener("mousemove", moverRedimensionPreview)
+  document.removeEventListener("mouseup", soltarRedimensionPreview)
+}
+const iniciarRedimensionPreview = (e: React.MouseEvent) => {
+  e.preventDefault(); e.stopPropagation()
+  redimensionPreviewRef.current = { sx: e.clientX, ancho: previewAnchoRef.current }
+  document.addEventListener("mousemove", moverRedimensionPreview)
+  document.addEventListener("mouseup", soltarRedimensionPreview)
 }
 const soltarPreview = () => {
   arrastrePreviewRef.current = null
@@ -4281,8 +4315,8 @@ return (
     </div>
 
     {/* Contenido letra */}
-    <div style={{ flex: 1, overflowY: "auto", padding: "clamp(14px, 3vw, 30px)", display: "grid", placeItems: "center" }}>
-      <div style={{ width: "min(100%, 920px)", minHeight: "min(52vh, 440px)", boxSizing: "border-box", padding: "clamp(20px, 4vw, 46px)", borderRadius: 18, background: "radial-gradient(circle at 50% 15%,#15243a,#070c15 72%)", border: "1px solid rgba(96,165,250,0.2)", boxShadow: "0 22px 70px rgba(0,0,0,0.38), inset 0 0 60px rgba(0,0,0,0.2)", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+    <div style={{ flex: 1, minHeight: 0, overflow: "hidden", padding: "clamp(8px, 1.8vw, 18px)", display: "grid", placeItems: "center" }}>
+      <div style={{ width: "min(100%, 920px, max(280px, calc((100dvh - 310px) * 1.7778)))", aspectRatio: "16 / 9", maxHeight: "100%", overflow: "hidden", boxSizing: "border-box", padding: "clamp(14px, 3vw, 38px)", borderRadius: 18, background: "radial-gradient(circle at 50% 15%,#15243a,#070c15 72%)", border: "2px solid rgba(96,165,250,0.34)", boxShadow: "0 0 0 5px rgba(96,165,250,0.06), 0 22px 70px rgba(0,0,0,0.38), inset 0 0 60px rgba(0,0,0,0.2)", display: "flex", flexDirection: "column", justifyContent: "center" }}>
       {visorPartes[visorIndex] && (() => {
         const textoOriginal = visorPartes[visorIndex].texto_acordes || visorPartes[visorIndex].texto || ""
         const texto = transponerTexto(textoOriginal, visorSemitonos, visorFormatoAmericano)
@@ -4302,7 +4336,11 @@ return (
             .map((l: string) => l.replace(/\[[A-Za-z#b0-9m7dimsus/]+\]/g, "").trim())
             .filter((l: string, i: number, arr: string[]) => !(l === "" && arr[i-1] === ""))
             .join("\n")
-          return <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", margin: 0, lineHeight: 1.7, fontSize: "clamp(20px, 4.2vw, 34px)", fontWeight: 650, textAlign: "center" }}>{limpio.trim()}</pre>
+          const lineasVisibles = limpio.trim().split("\n").filter(Boolean)
+          const lineaMayor = Math.max(1, ...lineasVisibles.map((l: string) => l.length))
+          const densidad = Math.max(1, lineasVisibles.length / 5, lineaMayor / 38)
+          const tamano = Math.max(15, Math.min(34, Math.round(34 / densidad)))
+          return <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: 0, lineHeight: 1.38, fontSize: `clamp(15px, 3.2vw, ${tamano}px)`, fontWeight: 650, textAlign: "center" }}>{limpio.trim()}</pre>
         }
 
         // Modo Músico: renderizar acordes de forma limpia
@@ -6092,7 +6130,7 @@ return (
       {/* ── PANEL VISTA PREVIA — FLOTANTE y arrastrable (siempre visible) ──── */}
       {(!isMobile && previewHabilitado && previewPos) && (
         <div style={{
-          position: "fixed", left: previewPos.x, top: previewPos.y, width: 384, zIndex: 400,
+          position: "fixed", left: previewPos.x, top: previewPos.y, width: previewAncho, zIndex: 400,
           background: "rgba(11,20,36,0.985)", border: "1px solid rgba(96,165,250,0.24)",
           borderRadius: 14, overflow: "hidden", boxShadow: "0 22px 55px rgba(0,0,0,0.55)",
           backdropFilter: "blur(8px)"
@@ -6120,6 +6158,14 @@ return (
               </div>
             </div>
             <div style={{ display: "flex", gap: 4, flexShrink: 0 }} onMouseDown={e => e.stopPropagation()}>
+              <button onClick={() => cambiarAnchoPreview(previewAncho - 40)} title="Achicar vista previa" style={{
+                padding: "3px 8px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)",
+                background: "rgba(255,255,255,0.06)", color: "white", fontSize: 13, fontWeight: 900, cursor: "pointer"
+              }}>−</button>
+              <button onClick={() => cambiarAnchoPreview(previewAncho + 40)} title="Agrandar vista previa" style={{
+                padding: "3px 8px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)",
+                background: "rgba(255,255,255,0.06)", color: "white", fontSize: 13, fontWeight: 900, cursor: "pointer"
+              }}>+</button>
               <button onClick={alternarAnclado} title={previewAnclado ? "Anclada (clic para soltar)" : "Anclar en su lugar"} style={{
                 padding: "3px 9px", borderRadius: 7,
                 border: `1px solid ${previewAnclado ? "rgba(245,158,11,0.5)" : "rgba(255,255,255,0.1)"}`,
@@ -6143,10 +6189,11 @@ return (
           {!previewMinimizado && (
             <>
             <div style={{ margin: "12px 14px 8px", aspectRatio: "16 / 9", overflow: "hidden", borderRadius: 10, background: "#02050a", border: "2px solid rgba(148,163,184,0.38)", boxShadow: "0 0 0 4px rgba(255,255,255,0.025), inset 0 0 45px rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <div style={{ width: "100%", maxHeight: "100%", overflowY: "auto", padding: 14, boxSizing: "border-box" }}>
+              <div style={{ width: "100%", height: "100%", overflow: "hidden", padding: Math.max(8, Math.round(previewAncho / 28)), boxSizing: "border-box", display: "flex", flexDirection: "column", justifyContent: "center" }}>
               {(() => {
                 const it: any = (indiceActivoLista != null && lista[indiceActivoLista]) ? lista[indiceActivoLista] : null
-                const estiloMedia: React.CSSProperties = { width: "100%", height: "100%", maxHeight: 184, objectFit: "contain", display: "block", background: "#000" }
+                const escalaPreview = previewAncho / 384
+                const estiloMedia: React.CSSProperties = { width: "100%", height: "100%", maxHeight: "100%", objectFit: "contain", display: "block", background: "#000" }
 
                 // 1) Carrusel proyectándose → imagen/video actual
                 if (carruselActivo && carruselUrlActual) {
@@ -6166,8 +6213,8 @@ return (
                       return !tokens.every((t: string) => t.match(/^(Do#?|Reb?|Re#?|Mib?|Mi|Fa#?|Solb?|Sol#?|Lab?|La#?|Sib?|Si|[A-G])(b|#)?(m|maj|min|sus|dim|aug|add)?\d*(\/[A-G])?$/))
                     }).join("\n")
                   return (<>
-                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 8, letterSpacing: "0.04em", color: parteActualEsCoro ? "#fbbf24" : "#93c5fd" }}>{etiquetaParteControl}</div>
-                    <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", margin: 0, fontSize: 13, lineHeight: 1.55, fontWeight: 600, color: "white", textAlign: "center" }}>{limpio.trim()}</pre>
+                    <div style={{ fontSize: Math.max(9, Math.round(11 * escalaPreview)), fontWeight: 800, marginBottom: Math.max(4, Math.round(8 * escalaPreview)), letterSpacing: "0.04em", color: parteActualEsCoro ? "#fbbf24" : "#93c5fd" }}>{etiquetaParteControl}</div>
+                    <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: 0, fontSize: Math.max(10, Math.round(13 * escalaPreview)), lineHeight: 1.4, fontWeight: 600, color: "white", textAlign: "center" }}>{limpio.trim()}</pre>
                   </>)
                 }
 
@@ -6175,8 +6222,8 @@ return (
                 if (paginasBiblia.length > 0) {
                   const txt = String(paginasBiblia[paginaBibliaActual] || "").replace(/<[^>]*>/g, " ").replace(/\[[^\]]*\]/g, "").replace(/\s+/g, " ").trim()
                   return (<>
-                    <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 8, color: "#93c5fd" }}>📖 {it?.referencia || "Palabra"}{paginasBiblia.length > 1 ? ` · ${paginaBibliaActual + 1}/${paginasBiblia.length}` : ""}</div>
-                    <div style={{ fontSize: 13, lineHeight: 1.55, color: "white", textAlign: "center" }}>{txt}</div>
+                    <div style={{ fontSize: Math.max(9, Math.round(11 * escalaPreview)), fontWeight: 800, marginBottom: 6, color: "#93c5fd" }}>📖 {it?.referencia || "Palabra"}{paginasBiblia.length > 1 ? ` · ${paginaBibliaActual + 1}/${paginasBiblia.length}` : ""}</div>
+                    <div style={{ fontSize: Math.max(10, Math.round(13 * escalaPreview)), lineHeight: 1.4, color: "white", textAlign: "center" }}>{txt}</div>
                   </>)
                 }
 
@@ -6231,6 +6278,10 @@ return (
               <span>Salida del proyector · 16:9</span>
               <span>{previewAnclado ? "📌 Fija" : "Arrastrable"}</span>
             </div>
+            <div onMouseDown={iniciarRedimensionPreview} title="Arrastra para cambiar el tamaño" style={{
+              position: "absolute", right: 2, bottom: 2, width: 18, height: 18, cursor: "nwse-resize",
+              color: "rgba(255,255,255,0.5)", fontSize: 15, lineHeight: "18px", textAlign: "center", userSelect: "none"
+            }}>◢</div>
             </>
           )}
         </div>

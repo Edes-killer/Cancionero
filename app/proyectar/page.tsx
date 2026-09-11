@@ -970,9 +970,9 @@ export default function ProyectarPage() {
       </>)}
 
       {/* ── Negro ─────────────────────────────────────────────── */}
-      {/* ── NEGRO: solo muestra el fondo sin contenido ─────────── */}
-      {/* No necesita render propio — estadoEspecial !== null oculta el texto */}
-      {/* y el fondoCss (background) se ve naturalmente */}
+      {/* Mantiene el nombre histórico "Pantalla negra", pero respeta el fondo
+          activo. Solo queda negro puro cuando el usuario no configuró fondo. */}
+      {estadoEspecial?.tipo === "negro" && renderFondoEspecial("#000")}
 
       {/* ── Descanso / Pantalla negra ─────────────────────────── */}
       {/* ✅ Si hay fondo configurado, renderFondoEspecial lo muestra; si NO hay
