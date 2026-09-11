@@ -6167,14 +6167,6 @@ return (
               </div>
             </div>
             <div style={{ display: "flex", gap: 4, flexShrink: 0 }} onMouseDown={e => e.stopPropagation()}>
-              <button onClick={() => cambiarAnchoPreview(previewAncho - 40)} title="Achicar vista previa" style={{
-                padding: `${Math.max(2, Math.round(3 * escalaPanelPreview))}px ${Math.max(5, Math.round(8 * escalaPanelPreview))}px`, borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)",
-                background: "rgba(255,255,255,0.06)", color: "white", fontSize: Math.max(10, Math.round(13 * escalaPanelPreview)), fontWeight: 900, cursor: "pointer"
-              }}>−</button>
-              <button onClick={() => cambiarAnchoPreview(previewAncho + 40)} title="Agrandar vista previa" style={{
-                padding: `${Math.max(2, Math.round(3 * escalaPanelPreview))}px ${Math.max(5, Math.round(8 * escalaPanelPreview))}px`, borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)",
-                background: "rgba(255,255,255,0.06)", color: "white", fontSize: Math.max(10, Math.round(13 * escalaPanelPreview)), fontWeight: 900, cursor: "pointer"
-              }}>+</button>
               <button onClick={alternarAnclado} title={previewAnclado ? "Anclada (clic para soltar)" : "Anclar en su lugar"} style={{
                 padding: `${Math.max(2, Math.round(3 * escalaPanelPreview))}px ${Math.max(6, Math.round(9 * escalaPanelPreview))}px`, borderRadius: 7,
                 border: `1px solid ${previewAnclado ? "rgba(245,158,11,0.5)" : "rgba(255,255,255,0.1)"}`,
