@@ -575,35 +575,6 @@ function startStaticServer(outDir, port) {
   })
 }
 
-// ── Supabase REST para músicos remotos ───────────────────────────────────────
-// Lee del .env.local del proyecto Next.js
-require("dotenv").config({ path: path.join(__dirname, "../.env.local") })
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
-
-const upsertEstadoCulto = async (sala, tipo, data = {}) => {
-  if (!SUPABASE_URL || !SUPABASE_KEY || !sala || sala === "global") return
-  try {
-    await fetch(`${SUPABASE_URL}/rest/v1/estado_culto`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "apikey": SUPABASE_KEY,
-        "Authorization": `Bearer ${SUPABASE_KEY}`,
-        "Prefer": "resolution=merge-duplicates"
-      },
-      body: JSON.stringify({
-        iglesia_id: sala, tipo,
-        titulo: data.titulo || "",
-        tono: data.tono || "",
-        partes: data.partes || [],
-        index: data.index || 0,
-        updated_at: new Date().toISOString()
-      })
-    })
-  } catch { /* sin internet, no crítico */ }
-}
-
 // ── Servidor Socket.IO ─────────────────────────────────────────────────────────
 let estadosPorSala = {}
 const pinesPorSala = {}
@@ -988,7 +959,6 @@ try {
       const sala = salaDe(socket)
       guardarEstadoSala(sala, { tipo: "cancion", data: { ...data, index: data.index || 0 } })
       io.to(sala).emit("cargar-cancion", data)
-      upsertEstadoCulto(sala, "cancion", data)
     })
 
     // Puente NUBE→local: el proyector recibe un evento por Supabase (cuando el
@@ -1019,13 +989,6 @@ try {
       // controles simultáneos, todos reciben el mismo orden procesado por el
       // servidor y convergen en la misma parte.
       io.to(sala).emit("cambiar-parte", index)
-      if (sala !== "global") {
-        fetch(`${SUPABASE_URL}/rest/v1/estado_culto?iglesia_id=eq.${sala}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` },
-          body: JSON.stringify({ index, updated_at: new Date().toISOString() })
-        }).catch(() => {})
-      }
     })
 
     socket.on("cancion-activa", (data) => {

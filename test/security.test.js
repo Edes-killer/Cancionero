@@ -60,3 +60,26 @@ test("crear y unirse a iglesias usa RPC atómicos, no inserciones directas", () 
     assert.doesNotMatch(codigo, /from\("usuarios_iglesia"\)[\s\S]{0,160}\.insert\(/)
   }
 })
+
+test("Electron distribuido nunca acepta credenciales elevadas de Supabase", () => {
+  const main = fs.readFileSync("electron/main.js", "utf8")
+  assert.doesNotMatch(main, /SUPABASE_SERVICE_KEY|SUPABASE_SECRET_KEY|service_role/i)
+})
+
+test("el código versionado no contiene formatos comunes de secretos", () => {
+  const { execFileSync } = require("node:child_process")
+  const archivos = execFileSync("git", ["ls-files", "-z"]).toString().split("\0").filter(Boolean)
+  const patrones = [
+    /ghp_[A-Za-z0-9]{20,}/,
+    /github_pat_[A-Za-z0-9_]{20,}/,
+    /sb_secret_[A-Za-z0-9_-]{20,}/,
+    /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
+  ]
+  for (const archivo of archivos) {
+    if (!fs.existsSync(archivo) || fs.statSync(archivo).size > 2_000_000) continue
+    const contenido = fs.readFileSync(archivo, "utf8")
+    for (const patron of patrones) {
+      assert.doesNotMatch(contenido, patron, `secreto potencial en ${archivo}`)
+    }
+  }
+})
