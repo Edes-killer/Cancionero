@@ -415,6 +415,7 @@ export default function ControlPage() {
 const [previewCancion, setPreviewCancion] = useState<any>(null)
 const [previewPartes, setPreviewPartes] = useState<any[]>([])
 const [previewIndex, setPreviewIndex] = useState(0)
+const previewSolicitudRef = useRef("")
 const [previewModoMusico, setPreviewModoMusico] = useState(false)
 const [tabDerechaMobile, setTabDerechaMobile] = useState<"lista"|"preview">("lista")
 const [bottomSheetAbierto, setBottomSheetAbierto] = useState(false)
@@ -434,6 +435,8 @@ const arrastrePreviewRef = useRef<{ sx: number; sy: number; ox: number; oy: numb
 const redimensionPreviewRef = useRef<{ sx: number; ancho: number } | null>(null)
 const previewPosRef = useRef<{ x: number; y: number } | null>(null)
 const previewAnchoRef = useRef(previewAncho)
+const previewEsSeleccion = !!previewCancion && previewCancion.id !== activaId
+const escalaPanelPreview = Math.min(1.35, Math.max(0.72, previewAncho / 384))
 
 // Posición inicial (esquina inferior derecha) y recuperar la guardada.
 useEffect(() => {
@@ -1501,8 +1504,10 @@ const transponerTexto = (texto: string, semitonos: number, americano: boolean): 
 }
 
 const cargarPreview = async (c: any) => {
+  previewSolicitudRef.current = c.id
   setPreviewCancion(c)
   setPreviewIndex(0)
+  if (!isMobile) setPreviewHabilitado(true)
   if (isMobile && previewHabilitado) setBottomSheetAbierto(true) // ✅ Abrir bottom sheet en mobile
   // Si ya está en caché → mostrar instantáneamente
   if (partesCacheRef.current.has(c.id)) {
@@ -1511,7 +1516,9 @@ const cargarPreview = async (c: any) => {
   }
   setPreviewPartes([]) // Mostrar "Cargando..." mientras llega
   const data = await getPartesCancion(c.id)
-  setPreviewPartes(data || [])
+  // Si el usuario eligió otra canción mientras cargaba, no dejar que una
+  // respuesta antigua reemplace la vista previa más reciente.
+  if (previewSolicitudRef.current === c.id) setPreviewPartes(data || [])
 }
 
 const abrirVisor = async (c: any) => {
@@ -6137,48 +6144,50 @@ return (
         }}>
           {/* Header = manija para arrastrar */}
           <div onMouseDown={iniciarArrastrePreview} style={{
-            padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)",
-            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+            padding: `${Math.round(10 * escalaPanelPreview)}px ${Math.round(12 * escalaPanelPreview)}px`, borderBottom: "1px solid rgba(255,255,255,0.06)",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: Math.max(4, Math.round(8 * escalaPanelPreview)),
             cursor: previewAnclado ? "default" : "move", userSelect: "none", background: "rgba(255,255,255,0.03)"
           }}>
-            <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ opacity: 0.35, fontSize: 13, flexShrink: 0 }}>⠿</span>
+            <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: Math.max(4, Math.round(8 * escalaPanelPreview)) }}>
+              <span style={{ opacity: 0.35, fontSize: Math.round(13 * escalaPanelPreview), flexShrink: 0 }}>⠿</span>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 800, fontSize: 14, color: "white", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: tituloActual ? 1 : 0.4 }}>
-                  {tituloActual || "Vista previa en vivo"}
+                <div style={{ fontWeight: 800, fontSize: Math.max(10, Math.round(14 * escalaPanelPreview)), color: "white", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: (previewEsSeleccion ? previewCancion?.titulo : tituloActual) ? 1 : 0.4 }}>
+                  {(previewEsSeleccion ? previewCancion?.titulo : tituloActual) || "Monitor de proyección"}
                 </div>
-                <div style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 8, marginTop: 1 }}>
-                  {(partes.length > 0 || paginasBiblia.length > 0 || estadoEspecialActivo || carruselActivo || (indiceActivoLista != null && ["imagen", "video", "carrusel"].includes((lista[indiceActivoLista] as any)?.tipo))) && (
+                <div style={{ fontSize: Math.max(8, Math.round(11 * escalaPanelPreview)), display: "flex", alignItems: "center", gap: Math.max(4, Math.round(8 * escalaPanelPreview)), marginTop: 1 }}>
+                  {previewEsSeleccion ? (
+                    <span style={{ color: "#60a5fa", fontWeight: 900 }}>● PREVIA</span>
+                  ) : (partes.length > 0 || paginasBiblia.length > 0 || estadoEspecialActivo || carruselActivo || (indiceActivoLista != null && ["imagen", "video", "carrusel"].includes((lista[indiceActivoLista] as any)?.tipo))) && (
                     <span style={{ color: "#4ade80", fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 4 }}>
                       <span style={{ width: 6, height: 6, borderRadius: 999, background: "#4ade80" }} />EN VIVO
                     </span>
                   )}
-                  {(() => { const t = (canciones.find((c: any) => c.id === activaId) as any)?.tono; return t ? <span style={{ color: "#86efac", fontWeight: 600 }}>Tono {t}</span> : null })()}
+                  {(() => { const t = previewEsSeleccion ? previewCancion?.tono : (canciones.find((c: any) => c.id === activaId) as any)?.tono; return t ? <span style={{ color: previewEsSeleccion ? "#93c5fd" : "#86efac", fontWeight: 600 }}>Tono {t}</span> : null })()}
                 </div>
               </div>
             </div>
             <div style={{ display: "flex", gap: 4, flexShrink: 0 }} onMouseDown={e => e.stopPropagation()}>
               <button onClick={() => cambiarAnchoPreview(previewAncho - 40)} title="Achicar vista previa" style={{
-                padding: "3px 8px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)",
-                background: "rgba(255,255,255,0.06)", color: "white", fontSize: 13, fontWeight: 900, cursor: "pointer"
+                padding: `${Math.max(2, Math.round(3 * escalaPanelPreview))}px ${Math.max(5, Math.round(8 * escalaPanelPreview))}px`, borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)",
+                background: "rgba(255,255,255,0.06)", color: "white", fontSize: Math.max(10, Math.round(13 * escalaPanelPreview)), fontWeight: 900, cursor: "pointer"
               }}>−</button>
               <button onClick={() => cambiarAnchoPreview(previewAncho + 40)} title="Agrandar vista previa" style={{
-                padding: "3px 8px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)",
-                background: "rgba(255,255,255,0.06)", color: "white", fontSize: 13, fontWeight: 900, cursor: "pointer"
+                padding: `${Math.max(2, Math.round(3 * escalaPanelPreview))}px ${Math.max(5, Math.round(8 * escalaPanelPreview))}px`, borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)",
+                background: "rgba(255,255,255,0.06)", color: "white", fontSize: Math.max(10, Math.round(13 * escalaPanelPreview)), fontWeight: 900, cursor: "pointer"
               }}>+</button>
               <button onClick={alternarAnclado} title={previewAnclado ? "Anclada (clic para soltar)" : "Anclar en su lugar"} style={{
-                padding: "3px 9px", borderRadius: 7,
+                padding: `${Math.max(2, Math.round(3 * escalaPanelPreview))}px ${Math.max(6, Math.round(9 * escalaPanelPreview))}px`, borderRadius: 7,
                 border: `1px solid ${previewAnclado ? "rgba(245,158,11,0.5)" : "rgba(255,255,255,0.1)"}`,
                 background: previewAnclado ? "rgba(245,158,11,0.16)" : "rgba(255,255,255,0.06)",
-                color: previewAnclado ? "#fbbf24" : "white", fontSize: 12, fontWeight: 800, cursor: "pointer"
+                color: previewAnclado ? "#fbbf24" : "white", fontSize: Math.max(9, Math.round(12 * escalaPanelPreview)), fontWeight: 800, cursor: "pointer"
               }}>📌</button>
               <button onClick={() => setPreviewMinimizado(m => !m)} title={previewMinimizado ? "Expandir" : "Minimizar"} style={{
-                padding: "3px 9px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)",
-                background: "rgba(255,255,255,0.06)", color: "white", fontSize: 12, fontWeight: 800, cursor: "pointer"
+                padding: `${Math.max(2, Math.round(3 * escalaPanelPreview))}px ${Math.max(6, Math.round(9 * escalaPanelPreview))}px`, borderRadius: 7, border: "1px solid rgba(255,255,255,0.1)",
+                background: "rgba(255,255,255,0.06)", color: "white", fontSize: Math.max(9, Math.round(12 * escalaPanelPreview)), fontWeight: 800, cursor: "pointer"
               }}>{previewMinimizado ? "▢" : "—"}</button>
               <button onClick={() => setPreviewHabilitado(false)} title="Cerrar (reabrir con 👁 Vista previa)" style={{
-                padding: "3px 9px", borderRadius: 7, border: "1px solid rgba(239,68,68,0.2)",
-                background: "rgba(239,68,68,0.1)", color: "#fca5a5", fontSize: 12, fontWeight: 800, cursor: "pointer"
+                padding: `${Math.max(2, Math.round(3 * escalaPanelPreview))}px ${Math.max(6, Math.round(9 * escalaPanelPreview))}px`, borderRadius: 7, border: "1px solid rgba(239,68,68,0.2)",
+                background: "rgba(239,68,68,0.1)", color: "#fca5a5", fontSize: Math.max(9, Math.round(12 * escalaPanelPreview)), fontWeight: 800, cursor: "pointer"
               }}>✕</button>
             </div>
           </div>
@@ -6188,12 +6197,29 @@ return (
               proyector. */}
           {!previewMinimizado && (
             <>
-            <div style={{ margin: "12px 14px 8px", aspectRatio: "16 / 9", overflow: "hidden", borderRadius: 10, background: "#02050a", border: "2px solid rgba(148,163,184,0.38)", boxShadow: "0 0 0 4px rgba(255,255,255,0.025), inset 0 0 45px rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ margin: `${Math.round(12 * escalaPanelPreview)}px ${Math.round(14 * escalaPanelPreview)}px ${Math.round(8 * escalaPanelPreview)}px`, aspectRatio: "16 / 9", overflow: "hidden", borderRadius: Math.max(7, Math.round(10 * escalaPanelPreview)), background: "#02050a", border: "2px solid rgba(148,163,184,0.38)", boxShadow: "0 0 0 4px rgba(255,255,255,0.025), inset 0 0 45px rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <div style={{ width: "100%", height: "100%", overflow: "hidden", padding: Math.max(8, Math.round(previewAncho / 28)), boxSizing: "border-box", display: "flex", flexDirection: "column", justifyContent: "center" }}>
               {(() => {
                 const it: any = (indiceActivoLista != null && lista[indiceActivoLista]) ? lista[indiceActivoLista] : null
                 const escalaPreview = previewAncho / 384
                 const estiloMedia: React.CSSProperties = { width: "100%", height: "100%", maxHeight: "100%", objectFit: "contain", display: "block", background: "#000" }
+
+                // Una canción azul es PREVIA: debe ganar sobre el contenido al
+                // aire, pero nunca emitir nada al proyector hasta pulsar ▶.
+                if (previewEsSeleccion) {
+                  if (previewPartes.length === 0) return <div style={{ opacity: 0.5, fontSize: Math.max(10, Math.round(12 * escalaPreview)) }}>Cargando canción…</div>
+                  const parte = previewPartes[Math.min(previewIndex, previewPartes.length - 1)]
+                  const limpio = String(parte?.texto || parte?.texto_acordes || "").split("\n")
+                    .map((l: string) => l.replace(/\[[^\]]+\]/g, "").trim()).filter(Boolean).join("\n")
+                  const lineas = limpio.split("\n").filter(Boolean)
+                  const mayor = Math.max(1, ...lineas.map((l: string) => l.length))
+                  const densidad = Math.max(1, lineas.length / 5, mayor / 36)
+                  const fuente = Math.max(9, Math.round((13 * escalaPreview) / densidad))
+                  return (<>
+                    <div style={{ fontSize: Math.max(8, Math.round(10 * escalaPreview)), fontWeight: 900, marginBottom: Math.max(3, Math.round(6 * escalaPreview)), color: "#60a5fa" }}>{parte?.tipo || `Parte ${previewIndex + 1}`} · {previewIndex + 1}/{previewPartes.length}</div>
+                    <pre style={{ fontFamily: "inherit", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: 0, fontSize: fuente, lineHeight: 1.35, fontWeight: 650, color: "white", textAlign: "center" }}>{limpio}</pre>
+                  </>)
+                }
 
                 // 1) Carrusel proyectándose → imagen/video actual
                 if (carruselActivo && carruselUrlActual) {
@@ -6274,8 +6300,13 @@ return (
               })()}
               </div>
             </div>
-            <div style={{ padding: "0 14px 11px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 10.5, color: "rgba(255,255,255,0.42)" }}>
-              <span>Salida del proyector · 16:9</span>
+            <div style={{ padding: `0 ${Math.round(14 * escalaPanelPreview)}px ${Math.round(11 * escalaPanelPreview)}px`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: Math.max(4, Math.round(8 * escalaPanelPreview)), fontSize: Math.max(8, 10.5 * escalaPanelPreview), color: "rgba(255,255,255,0.42)" }}>
+              {previewEsSeleccion && previewPartes.length > 1 ? (
+                <div style={{ display: "flex", gap: Math.max(3, Math.round(5 * escalaPanelPreview)) }}>
+                  <button disabled={previewIndex <= 0} onClick={() => setPreviewIndex(i => Math.max(0, i - 1))} title="Parte anterior de la vista previa" style={{ padding: `${Math.max(2, Math.round(3 * escalaPanelPreview))}px ${Math.max(6, Math.round(9 * escalaPanelPreview))}px`, borderRadius: 6, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.06)", color: "white", opacity: previewIndex <= 0 ? .35 : 1, fontSize: Math.max(9, Math.round(11 * escalaPanelPreview)), cursor: previewIndex <= 0 ? "default" : "pointer" }}>←</button>
+                  <button disabled={previewIndex >= previewPartes.length - 1} onClick={() => setPreviewIndex(i => Math.min(previewPartes.length - 1, i + 1))} title="Parte siguiente de la vista previa" style={{ padding: `${Math.max(2, Math.round(3 * escalaPanelPreview))}px ${Math.max(6, Math.round(9 * escalaPanelPreview))}px`, borderRadius: 6, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.06)", color: "white", opacity: previewIndex >= previewPartes.length - 1 ? .35 : 1, fontSize: Math.max(9, Math.round(11 * escalaPanelPreview)), cursor: previewIndex >= previewPartes.length - 1 ? "default" : "pointer" }}>→</button>
+                </div>
+              ) : <span>{previewEsSeleccion ? "Revisión · no está al aire" : "Salida del proyector · 16:9"}</span>}
               <span>{previewAnclado ? "📌 Fija" : "Arrastrable"}</span>
             </div>
             <div onMouseDown={iniciarRedimensionPreview} title="Arrastra para cambiar el tamaño" style={{
