@@ -438,6 +438,21 @@ const previewAnchoRef = useRef(previewAncho)
 const previewEsSeleccion = !!previewCancion && previewCancion.id !== activaId
 const escalaPanelPreview = Math.min(1.35, Math.max(0.72, previewAncho / 384))
 
+const leerPartePreview = (cancionId: string, total?: number) => {
+  let guardado = 0
+  try { guardado = Number(localStorage.getItem(`selah-preview-parte-${cancionId}`)) || 0 } catch {}
+  return Math.max(0, total === undefined ? guardado : Math.min(guardado, Math.max(0, total - 1)))
+}
+
+// Recordar la parte revisada por canción. No comparte este estado con el
+// proyector: navegar por PREVIA nunca adelanta lo que está al aire.
+useEffect(() => {
+  if (!previewCancion?.id || previewPartes.length === 0) return
+  const seguro = Math.min(previewIndex, previewPartes.length - 1)
+  if (seguro !== previewIndex) { setPreviewIndex(seguro); return }
+  try { localStorage.setItem(`selah-preview-parte-${previewCancion.id}`, String(seguro)) } catch {}
+}, [previewCancion?.id, previewIndex, previewPartes.length])
+
 // Posición inicial (esquina inferior derecha) y recuperar la guardada.
 useEffect(() => {
   if (typeof window === "undefined") return
@@ -1506,19 +1521,24 @@ const transponerTexto = (texto: string, semitonos: number, americano: boolean): 
 const cargarPreview = async (c: any) => {
   previewSolicitudRef.current = c.id
   setPreviewCancion(c)
-  setPreviewIndex(0)
+  setPreviewIndex(leerPartePreview(c.id))
   if (!isMobile) setPreviewHabilitado(true)
   if (isMobile && previewHabilitado) setBottomSheetAbierto(true) // ✅ Abrir bottom sheet en mobile
   // Si ya está en caché → mostrar instantáneamente
   if (partesCacheRef.current.has(c.id)) {
-    setPreviewPartes(partesCacheRef.current.get(c.id)!)
+    const partesGuardadas = partesCacheRef.current.get(c.id)!
+    setPreviewIndex(leerPartePreview(c.id, partesGuardadas.length))
+    setPreviewPartes(partesGuardadas)
     return
   }
   setPreviewPartes([]) // Mostrar "Cargando..." mientras llega
   const data = await getPartesCancion(c.id)
   // Si el usuario eligió otra canción mientras cargaba, no dejar que una
   // respuesta antigua reemplace la vista previa más reciente.
-  if (previewSolicitudRef.current === c.id) setPreviewPartes(data || [])
+  if (previewSolicitudRef.current === c.id) {
+    setPreviewIndex(leerPartePreview(c.id, data?.length || 0))
+    setPreviewPartes(data || [])
+  }
 }
 
 const abrirVisor = async (c: any) => {
