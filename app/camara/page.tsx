@@ -9,6 +9,8 @@ import { useEffect, useRef, useState } from "react"
 import { io, Socket } from "socket.io-client"
 import { getSocketUrl } from "@/lib/servidor"
 import { logError } from "@/lib/Errorlogger"
+import OnboardingTour from "@/components/OnboardingTour"
+import { TOUR_CAMARA_MOVIL } from "@/lib/tours"
 
 type Estado = "abriendo" | "listo" | "conectando" | "conectado" | "error"
 
@@ -302,7 +304,7 @@ export default function CamaraMovil() {
         style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", transform: facing === "user" ? "scaleX(-1)" : "none" }} />
 
       {/* Barra de estado arriba */}
-      <div style={{ position: "absolute", top: 0, left: 0, right: 0, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0))" }}>
+      <div data-tour="camara-estado" style={{ position: "absolute", top: 0, left: 0, right: 0, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0))" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 800 }}>
           <span style={{ width: 10, height: 10, borderRadius: 99, background: chip.c, boxShadow: conectado ? `0 0 8px ${chip.c}` : "none" }} />
           <span style={{ color: chip.c }}>{chip.t}</span>
@@ -311,20 +313,20 @@ export default function CamaraMovil() {
       </div>
 
       {/* Panel inferior */}
-      <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "18px 16px calc(20px + env(safe-area-inset-bottom))", display: "flex", flexDirection: "column", gap: 12, background: "linear-gradient(0deg, rgba(0,0,0,0.72), rgba(0,0,0,0))" }}>
+      <div data-tour="camara-controles" style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "18px 16px calc(20px + env(safe-area-inset-bottom))", display: "flex", flexDirection: "column", gap: 12, background: "linear-gradient(0deg, rgba(0,0,0,0.72), rgba(0,0,0,0))" }}>
         {error && <div style={{ background: "rgba(220,38,38,0.85)", borderRadius: 12, padding: "10px 14px", fontSize: 13.5, fontWeight: 600 }}>⚠️ {error}</div>}
         {diag && <div style={{ background: "rgba(0,0,0,0.55)", borderRadius: 10, padding: "8px 12px", fontSize: 11, fontFamily: "monospace", color: "#fca5a5", wordBreak: "break-word" }}>🔧 {diag}</div>}
 
         {!conectado && (
           <div style={{ display: "flex", gap: 8 }}>
-            <input value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} placeholder="CÓDIGO"
+            <input data-tour="camara-codigo" value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} placeholder="CÓDIGO"
               maxLength={8} autoCapitalize="characters"
               style={{ flex: 1, minWidth: 0, padding: "13px 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: 18, fontWeight: 800, letterSpacing: 3, textAlign: "center" }} />
           </div>
         )}
 
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={voltear}
+          <button data-tour="camara-voltear" onClick={voltear}
             style={{ flex: "0 0 auto", padding: "14px 16px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.12)", color: "#fff", fontSize: 15, fontWeight: 700 }}>🔄 Voltear</button>
           {conectado
             ? <button onClick={() => cerrar(true)} style={{ flex: 1, padding: "14px", borderRadius: 14, border: "none", background: "#dc2626", color: "#fff", fontSize: 16, fontWeight: 800 }}>■ Detener</button>
@@ -336,6 +338,7 @@ export default function CamaraMovil() {
           {conectado ? "Deja esta pantalla abierta. Apunta la cámara al frente." : "Escanea el QR del PC o escribe el código. Ambos en la misma red WiFi."}
         </div>
       </div>
+      <OnboardingTour id="tour-camara-movil-v1" pasos={TOUR_CAMARA_MOVIL} nombrePagina="Cámara del celular" />
     </div>
   )
 }

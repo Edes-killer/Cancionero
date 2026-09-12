@@ -92,6 +92,21 @@ test("Músicos explica su flujo sin activar audio durante el tour", () => {
   assert.doesNotMatch(tour, /getUserMedia|\.click\(\)/)
 })
 
+test("la Cámara móvil guía la vinculación sin ejecutar acciones", () => {
+  const tours = fs.readFileSync("lib/tours.ts", "utf8")
+  const camara = fs.readFileSync("app/camara/page.tsx", "utf8")
+  const ajustes = fs.readFileSync("app/configuracion/page.tsx", "utf8")
+  const inicio = tours.indexOf("export const TOUR_CAMARA_MOVIL")
+  assert.ok(inicio >= 0)
+  const tour = tours.slice(inicio)
+  assert.match(camara, /OnboardingTour id="tour-camara-movil-v1"/)
+  assert.match(camara, /data-tour="camara-codigo"/)
+  assert.match(camara, /data-tour="camara-voltear"/)
+  assert.match(camara, /data-tour="camara-estado"/)
+  assert.match(ajustes, /isCapacitor \? \[\{ id: "tour-camara-movil-v1"/)
+  assert.doesNotMatch(tour, /getUserMedia|\.click\(\)/)
+})
+
 test("la lista mantiene visibles los controles de orden y resalta el elemento movido", () => {
   const control = fs.readFileSync("app/control/page.tsx", "utf8")
   assert.match(control, /indiceItemReordenando/)

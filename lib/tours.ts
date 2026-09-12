@@ -387,3 +387,50 @@ export const TOUR_MUSICOS: PasoTour[] = [
     tip: "Puedes repetir este recorrido desde Configuración → Tutoriales."
   }
 ]
+
+export const TOUR_CAMARA_MOVIL: PasoTour[] = [
+  {
+    icono: "📱",
+    titulo: "Tu celular como cámara",
+    desc: "Selah envía la imagen y, si lo eliges en el computador, el audio del celular directamente a la consola de Transmisión.",
+    tip: "El celular y el computador deben estar en la misma red local."
+  },
+  {
+    icono: "●",
+    titulo: "Revisa el estado",
+    desc: "La franja superior indica si la cámara está lista, conectando o transmitiendo al computador.",
+    tip: "Si aparece Sin conexión, confirma que Selah esté abierto en el PC y que la dirección del servidor sea correcta.",
+    selector: "[data-tour='camara-estado']",
+    posicion: "bottom"
+  },
+  {
+    icono: "🔢",
+    titulo: "Escribe el código",
+    desc: "En el computador abre Transmisión → Fuentes → Conectar celular. Luego escribe aquí el código que aparece en pantalla.",
+    tip: "El código queda recordado para facilitar una reconexión posterior.",
+    selector: "[data-tour='camara-codigo']",
+    posicion: "top"
+  },
+  {
+    icono: "🔄",
+    titulo: "Elige la cámara",
+    desc: "Voltear cambia realmente entre la cámara trasera y la frontal del teléfono; no es solo un efecto espejo.",
+    tip: "Haz el cambio antes del culto para comprobar qué cámara ofrece mejor imagen.",
+    selector: "[data-tour='camara-voltear']",
+    posicion: "top"
+  },
+  {
+    icono: "▶️",
+    titulo: "Conecta y mantén abierta la cámara",
+    desc: "Presiona Conectar al PC y espera el estado Transmitiendo al PC. Selah intentará recuperar la conexión si cambias de app o la red se interrumpe brevemente.",
+    tip: "Mantén el teléfono conectado a corriente y desactiva el ahorro de batería para cultos largos.",
+    selector: "[data-tour='camara-controles']",
+    posicion: "top"
+  },
+  {
+    icono: "✅",
+    titulo: "Cámara preparada",
+    desc: "Cuando el estado esté en verde, vuelve al computador y elige Celular como Cámara 1, Cámara 2 o entrada de audio.",
+    tip: "Puedes repetir esta guía desde Configuración → Tutoriales."
+  }
+]
