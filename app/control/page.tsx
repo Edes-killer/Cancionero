@@ -119,6 +119,7 @@ export default function ControlPage() {
   const [modalServidor, setModalServidor] = useState(false)
   const [socketConectado, setSocketConectado] = useState<boolean | null>(null)
   const [proyectorConectado, setProyectorConectado] = useState(false)
+  const [controlEscritorioConectado, setControlEscritorioConectado] = useState(false)
   const [modoLimpio, setModoLimpio] = useState(() =>
     typeof window !== "undefined" && localStorage.getItem("proyector-modo-limpio") === "1"
   )
@@ -235,8 +236,6 @@ export default function ControlPage() {
   const [intercalarCoro, setIntercalarCoro] = useState(() => {
     try { return localStorage.getItem("selah-repetir-coro") === "1" } catch { return false }
   })
-  // ✅ Botón "Ir al Coro" — guarda la posición del verso para volver después
-  const [versoDespuesCoro, setVersoDespuesCoro] = useState<number | null>(null)
   // ✅ Posición dentro de la secuencia de reproducción del coro intercalado.
   // La secuencia (ej. V→C→V→C) se construye a demanda; este puntero marca en qué
   // paso vamos, para que "siguiente"/"anterior" avancen/retrocedan por la
@@ -670,7 +669,10 @@ useEffect(() => {
       const sala = (await getIglesiaIdCached()) || "global"
       const pin = await getPinSalaCached(sala)
       if (process.env.NODE_ENV === "development") console.log("🔥 CONTROL conectado a sala:", sala)
-      s.emit("unirse-sala", { sala, pantalla: "control", pin })
+      s.emit("unirse-sala", {
+        sala, pantalla: "control", pin,
+        puedeAbrirProyector: navigator.userAgent.includes("Electron"),
+      })
       setSocketConectado(true)
     } catch (err) {
       console.error("❌ Error en connect control:", err)
@@ -686,14 +688,19 @@ useEffect(() => {
   // ✅ Estado del proyector: saber si está abierto o cerrado
   s.on("proyector-conectado",    () => { console.log("✅ PROYECTOR CONECTADO"); setProyectorConectado(true) })
   s.on("proyector-desconectado", () => { console.log("❌ PROYECTOR DESCONECTADO"); setProyectorConectado(false) })
-  s.on("estado-presencia", (data: { proyectorConectado?: boolean }) => {
+  s.on("estado-presencia", (data: { proyectorConectado?: boolean; controlEscritorioConectado?: boolean }) => {
     setProyectorConectado(!!data?.proyectorConectado)
+    setControlEscritorioConectado(!!data?.controlEscritorioConectado)
   })
   s.on("solicitar-abrir-proyector", () => {
     // Solo Electron puede crear la ventana física. La APK también recibe el
     // evento, pero lo ignora para no abrir una pestaña inútil en el teléfono.
     if (!navigator.userAgent.includes("Electron")) return
     window.open(`${window.location.origin}/proyectar`, "_blank", "noopener,noreferrer")
+  })
+  s.on("abrir-proyector-no-disponible", () => {
+    flashCtrl("⚠️ Abre Control en Selah de escritorio para iniciar el proyector desde el móvil")
+    setControlEscritorioConectado(false)
   })
   s.on("lista-sincronizada", (data: { items?: ItemLista[]; listaId?: string|null; nombre?: string; indice?: number|null; revision?: number }) => {
     if (!Array.isArray(data?.items) || data.items.length > 300) return
@@ -859,6 +866,7 @@ useEffect(() => {
     s.off("cambiar-pagina-biblia", onCambiarPaginaRemoto)
     s.off("lista-sincronizada")
     s.off("solicitar-abrir-proyector")
+    s.off("abrir-proyector-no-disponible")
     s.disconnect()
     try { supabase.removeChannel(canalNube) } catch {}
   }
@@ -1494,12 +1502,21 @@ const activarMediaSession = (titulo: string, partesList: any[], idx: number) => 
 }
 
 const verificarServidor = (): boolean => {
-  if (socket) return true
+  if (socketConectado === true) return true
   setModalServidor(true)
   return false
 }
 
 const pedirDestinoSiFalta = (accion: () => void): boolean => {
+  // Sin servidor no existe ni salida remota ni estado compartido confiable.
+  // Mostrar el selector en este caso prometía dos opciones que no funcionarían.
+  if (socketConectado !== true) {
+    accionDestinoPendienteRef.current = null
+    setElegirDestinoAbierto(false)
+    setModalServidor(true)
+    flashCtrl("⚠️ Primero conecta este Control con Selah de escritorio")
+    return true
+  }
   if (proyectorConectado) return false
   accionDestinoPendienteRef.current = accion
   setElegirDestinoAbierto(true)
@@ -1511,7 +1528,13 @@ const confirmarDestino = (abrirProyector: boolean) => {
   accionDestinoPendienteRef.current = null
   setElegirDestinoAbierto(false)
   if (abrirProyector) {
-    if (isMobile) socketRef2.current?.emit("solicitar-abrir-proyector")
+    if (isMobile) {
+      if (!controlEscritorioConectado) {
+        flashCtrl("⚠️ Abre Control en Selah de escritorio para iniciar el proyector")
+        return
+      }
+      socketRef2.current?.emit("solicitar-abrir-proyector")
+    }
     else window.open(`${window.location.origin}/proyectar`, "_blank", "noopener,noreferrer")
   } else if (isMobile) {
     setTabDerechaMobile("preview")
@@ -1749,32 +1772,6 @@ const reposicionarAprendizaje = () => {
   // Retroceder es una corrección manual: no se guarda como duración ni se deja
   // corriendo el cronómetro de la parte anterior.
   if (aprendiendo) tiempoInicioParte.current = Date.now()
-}
-
-// ── Ir al Coro y volver al siguiente verso ───────────────────────────────
-const irAlCoro = () => {
-  if (!socket || !partes.length) return
-  const esCoro = (p: any) => /coro|estribillo|chorus/i.test(p?.tipo || "")
-
-  // Si ya estamos en el coro y hay un verso guardado → volver al siguiente verso
-  if (esCoro(partes[index]) && versoDespuesCoro !== null) {
-    const siguiente = versoDespuesCoro
-    setVersoDespuesCoro(null)
-    setIndex(siguiente)
-    socket.emit("cambiar-parte", siguiente)
-    return
-  }
-
-  // Buscar el siguiente coro hacia adelante, o el primero de la canción
-  const siguiente = partes.findIndex((p, i) => i > index && esCoro(p))
-  const primero   = partes.findIndex(p => esCoro(p))
-  const destino   = siguiente !== -1 ? siguiente : primero
-
-  if (destino === -1) return  // no hay coro
-  // Guardar el próximo verso (parte actual + 1 o la siguiente parte no-coro)
-  setVersoDespuesCoro(index + 1 < partes.length ? index + 1 : index)
-  setIndex(destino)
-  socket.emit("cambiar-parte", destino)
 }
 
 const iniciarAutoAvance = (tiempos: number[], desde: number) => {
@@ -2700,6 +2697,7 @@ const irAItemLista = async (i: number, alFinal = false) => {
 }
 
 const proyectarDesdeLista = async (i: number, destinoConfirmado = false) => {
+  if (!verificarServidor()) return
   if (!destinoConfirmado && pedirDestinoSiFalta(() => { void proyectarDesdeLista(i, true) })) return
   setMenuItemAbierto(null)
   await irAItemLista(i, false)
@@ -4498,9 +4496,9 @@ return (
         </div>
       </div>
       <div style={{ display:"grid", gap:9, marginTop:17 }}>
-        <button onClick={() => confirmarDestino(true)} style={{ padding:"13px 15px", borderRadius:11, border:"none", background:"#2563eb", color:"white", fontSize:14, fontWeight:800, cursor:"pointer", textAlign:"left" }}>
-          {isMobile ? "🖥️ Abrir proyector en el PC" : "🖥️ Abrir ventana de proyección"}
-          <span style={{ display:"block", marginTop:3, fontSize:11.5, fontWeight:500, opacity:.75 }}>{isMobile ? "Envía la orden al Selah de escritorio conectado." : "Abre la salida a pantalla completa."}</span>
+        <button disabled={isMobile && !controlEscritorioConectado} onClick={() => confirmarDestino(true)} style={{ padding:"13px 15px", borderRadius:11, border:"none", background:isMobile && !controlEscritorioConectado ? "rgba(255,255,255,.06)" : "#2563eb", color:"white", fontSize:14, fontWeight:800, cursor:isMobile && !controlEscritorioConectado ? "not-allowed" : "pointer", textAlign:"left", opacity:isMobile && !controlEscritorioConectado ? .55 : 1 }}>
+          {isMobile ? (controlEscritorioConectado ? "🖥️ Abrir proyector en el PC" : "🖥️ Control de escritorio no disponible") : "🖥️ Abrir ventana de proyección"}
+          <span style={{ display:"block", marginTop:3, fontSize:11.5, fontWeight:500, opacity:.75 }}>{isMobile ? (controlEscritorioConectado ? "Envía la orden al Selah de escritorio conectado." : "Abre la sección Control en el PC para habilitar esta opción.") : "Abre la salida a pantalla completa."}</span>
         </button>
         <button onClick={() => confirmarDestino(false)} style={{ padding:"13px 15px", borderRadius:11, border:"1px solid rgba(255,255,255,.12)", background:"rgba(255,255,255,.045)", color:"white", fontSize:14, fontWeight:800, cursor:"pointer", textAlign:"left" }}>
           👁️ Usar solo la vista previa
@@ -4891,15 +4889,6 @@ return (
     {isMobile && (mostrarControlesExtraMobile || autoAvanceActivo) && (
       <div style={{ display: "flex", gap: 6, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
         {partes.some(p => /coro|estribillo/i.test(p?.tipo || "")) && (
-          <button data-tour="btn-coro" onClick={irAlCoro} style={{
-            padding: "4px 9px", borderRadius: 8, flexShrink: 0,
-            border: `1px solid ${versoDespuesCoro !== null ? "rgba(251,191,36,0.4)" : "rgba(99,102,241,0.4)"}`,
-            background: versoDespuesCoro !== null ? "rgba(251,191,36,0.12)" : "rgba(99,102,241,0.12)",
-            color: versoDespuesCoro !== null ? "#fbbf24" : "#a5b4fc",
-            fontSize: 11, fontWeight: 700, cursor: "pointer"
-          }}>{versoDespuesCoro !== null ? "↩ Verso" : "🎵 Coro"}</button>
-        )}
-        {partes.some(p => /coro|estribillo/i.test(p?.tipo || "")) && (
           <button onClick={alternarCoro} title="Repetir el coro después de cada verso al avanzar. Se mantiene al cambiar de canción." style={{
             padding: "4px 9px", borderRadius: 8, flexShrink: 0,
             border: `1px solid ${intercalarCoro ? "rgba(34,197,94,0.5)" : "rgba(255,255,255,0.12)"}`,
@@ -4960,15 +4949,6 @@ return (
     {/* Desktop fila 2: botones secundarios */}
     {!isMobile && (
       <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
-        {partes.some(p => /coro|estribillo/i.test(p?.tipo || "")) && (
-          <button data-tour="btn-coro" onClick={irAlCoro} style={{
-            padding: "6px 12px", borderRadius: 8, flexShrink: 0,
-            border: `1px solid ${versoDespuesCoro !== null ? "rgba(251,191,36,0.4)" : "rgba(99,102,241,0.4)"}`,
-            background: versoDespuesCoro !== null ? "rgba(251,191,36,0.12)" : "rgba(99,102,241,0.12)",
-            color: versoDespuesCoro !== null ? "#fbbf24" : "#a5b4fc",
-            fontSize: 12, fontWeight: 700, cursor: "pointer"
-          }}>{versoDespuesCoro !== null ? "↩ Verso" : "🎵 Coro"}</button>
-        )}
         {partes.some(p => /coro|estribillo/i.test(p?.tipo || "")) && (
           <button onClick={alternarCoro} title="Repetir el coro después de cada verso al avanzar. Se mantiene al cambiar de canción." style={{
             padding: "6px 12px", borderRadius: 8, flexShrink: 0,

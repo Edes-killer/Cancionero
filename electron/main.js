@@ -663,7 +663,7 @@ function startSocketServer(port) {
         puerto: 4000,
         app: "selah-live",
         version: SELAH_VERSION,
-        qaProtocol: 3,
+        qaProtocol: 4,
       }))
       return
     }
@@ -673,7 +673,7 @@ function startSocketServer(port) {
         ok: true,
         app: "selah-live",
         version: SELAH_VERSION,
-        qaProtocol: 3,
+        qaProtocol: 4,
         puerto: 4000,
       }))
       return
@@ -900,6 +900,19 @@ try {
 
   const io = new Server(server, { cors: { origin: "*" } })
 
+  const presenciaSala = (sala) => {
+    const ids = io.sockets.adapter.rooms.get(sala) || new Set()
+    const clientes = Array.from(ids).map(id => io.sockets.sockets.get(id)).filter(Boolean)
+    return {
+      proyectorConectado: clientes.some(s => s.data?.pantalla === "proyectar"),
+      controlEscritorioConectado: clientes.some(s => s.data?.pantalla === "control" && s.data?.puedeAbrirProyector === true),
+    }
+  }
+
+  const emitirPresenciaSala = (sala) => {
+    if (sala) io.to(sala).emit("estado-presencia", presenciaSala(sala))
+  }
+
   io.on("connection", (socket) => {
     console.log("📱 Cliente conectado:", socket.id)
 
@@ -919,7 +932,7 @@ try {
       next(new Error("accion_no_autorizada"))
     })
 
-    socket.on("unirse-sala", ({ sala, pantalla, pin }, callback) => {
+    socket.on("unirse-sala", ({ sala, pantalla, pin, puedeAbrirProyector }, callback) => {
       const salaFinal = sala || "global"
 
       if (pantalla === "control" || pantalla === "canciones") {
@@ -934,6 +947,7 @@ try {
 
       socket.data.sala = salaFinal
       socket.data.pantalla = pantalla || "desconocida"
+      socket.data.puedeAbrirProyector = pantalla === "control" && puedeAbrirProyector === true
       socket.join(salaFinal)
       if (typeof callback === "function") callback({ ok: true, sala: salaFinal, pantalla: socket.data.pantalla })
       console.log(`🏠 ${socket.id} → sala: ${salaFinal} | pantalla: ${pantalla}`)
@@ -942,13 +956,10 @@ try {
       // Proyector si este se abría DESPUÉS; al abrirlos en el orden inverso la
       // APK quedaba mostrando un estado antiguo hasta otra reconexión.
       if (pantalla === "control" || pantalla === "canciones") {
-        const idsSala = io.sockets.adapter.rooms.get(salaFinal) || new Set()
-        const proyectorConectado = Array.from(idsSala).some(id =>
-          id !== socket.id && io.sockets.sockets.get(id)?.data?.pantalla === "proyectar"
-        )
-        socket.emit("estado-presencia", { proyectorConectado })
+        socket.emit("estado-presencia", presenciaSala(salaFinal))
         if (listasPorSala[salaFinal]) socket.emit("lista-sincronizada", listasPorSala[salaFinal])
       }
+      emitirPresenciaSala(salaFinal)
 
       if (pantalla === "control" && estadosPorSala[salaFinal]) {
         const estado = estadosPorSala[salaFinal]
@@ -1015,7 +1026,16 @@ try {
     // La APK no puede crear una ventana en Windows por sí sola. Envía esta
     // solicitud a los controles de la sala y el renderer Electron la atiende.
     socket.on("solicitar-abrir-proyector", () => {
-      io.to(salaDe(socket)).emit("solicitar-abrir-proyector")
+      const sala = salaDe(socket)
+      const ids = io.sockets.adapter.rooms.get(sala) || new Set()
+      const destino = Array.from(ids)
+        .map(id => io.sockets.sockets.get(id))
+        .find(s => s?.data?.pantalla === "control" && s.data?.puedeAbrirProyector === true)
+      if (!destino) {
+        socket.emit("abrir-proyector-no-disponible")
+        return
+      }
+      destino.emit("solicitar-abrir-proyector")
     })
 
     socket.on("cambiar-parte", (index) => {
@@ -1216,6 +1236,7 @@ try {
       if (pantalla === "proyectar" && sala) {
         socket.broadcast.to(sala).emit("proyector-desconectado")
       }
+      if (sala) setImmediate(() => emitirPresenciaSala(sala))
       // Avisar al otro peer de la cámara si uno se cae.
       if (socket.data?.camaraCodigo) {
         socket.broadcast.to(salaCam(socket.data.camaraCodigo)).emit("camara:par-fin", { de: socket.data.camaraRol })

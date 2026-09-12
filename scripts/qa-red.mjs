@@ -43,7 +43,7 @@ try {
   }
   const info = await ping.json()
   registrar("Servidor identificable", ping.ok && info.app === "selah-live", JSON.stringify(info))
-  if (!Number.isInteger(info.qaProtocol) || info.qaProtocol < 3) {
+  if (!Number.isInteger(info.qaProtocol) || info.qaProtocol < 4) {
     throw new Error(`El servidor abierto es Selah ${info.version || "antiguo"}, pero no incluye el protocolo QA actual. Cierra por completo la versión instalada y abre el código nuevo con "npm.cmd run electron:dev".`)
   }
 
@@ -67,8 +67,8 @@ try {
   sockets = [controlA, controlB, proyector, aislado, pinMalo, intruso]
 
   await unir(proyector, { sala, pantalla: "proyectar" })
-  await unir(controlA, { sala, pantalla: "control", pin })
-  await unir(controlB, { sala, pantalla: "control", pin })
+  await unir(controlA, { sala, pantalla: "control", pin, puedeAbrirProyector:false })
+  await unir(controlB, { sala, pantalla: "control", pin, puedeAbrirProyector:true })
   await unir(aislado, { sala: otraSala, pantalla: "proyectar" })
   await unir(intruso, { sala, pantalla: "musicos" })
 
@@ -129,6 +129,15 @@ try {
   const abrirProyector = await abrirProyectorP
   registrar("La APK puede solicitar abrir el proyector del PC", abrirProyector.recibido)
 
+  const salaSinPc = `${sala}-sin-pc`
+  const soloMovil = await conectar()
+  sockets.push(soloMovil)
+  await unir(soloMovil, { sala:salaSinPc, pantalla:"control", puedeAbrirProyector:false })
+  const sinPcP = eventoEn(soloMovil, "abrir-proyector-no-disponible")
+  soloMovil.emit("solicitar-abrir-proyector")
+  const sinPc = await sinPcP
+  registrar("No promete abrir proyector si Electron no está en Control", sinPc.recibido)
+
   // ── Modo caos: dos operadores escriben casi al mismo tiempo ─────────────
   const partesQa = Array.from({ length: 6 }, (_, i) => ({ tipo: `Parte ${i + 1}`, texto: `QA ${i + 1}` }))
   const cargaP = eventoEn(proyector, "cargar-cancion")
@@ -169,7 +178,7 @@ try {
   const restauradoP = eventoEn(reconectado, "restaurar-estado-control")
   const presenciaP = eventoEn(reconectado, "estado-presencia")
   const listaRestauradaP = eventoEn(reconectado, "lista-sincronizada")
-  const unionReconectada = await unir(reconectado, { sala, pantalla: "control", pin })
+  const unionReconectada = await unir(reconectado, { sala, pantalla: "control", pin, puedeAbrirProyector:false })
   const restaurado = await restauradoP
   const presencia = await presenciaP
   const listaRestaurada = await listaRestauradaP
