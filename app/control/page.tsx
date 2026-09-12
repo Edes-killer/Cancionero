@@ -2906,6 +2906,9 @@ const cargarGaleriaImagenes = async (): Promise<{url: string, nombre: string, lo
       if (error && error.code !== "42P01") void logError(`Migrar biblioteca: ${error.message}`, { tipo: "imagen", pagina: "/control" })
     })
   }
+  if (iglesiaId) {
+    try { localStorage.setItem(`selah-galeria-cache-${iglesiaId}`, JSON.stringify(resultado)) } catch {}
+  }
   return resultado
 }
 
@@ -3640,6 +3643,25 @@ const galeriaFiltrada = useMemo(() => {
     return !q || img.nombre.toLocaleLowerCase("es").includes(q)
   })
 }, [galeriaImagenes, busquedaGaleria, filtroGaleria, carpetaGaleria])
+
+const alternarGaleriaPrincipal = () => {
+  if (mostrarGaleriaPanel) { setMostrarGaleriaPanel(false); return }
+  if (isMobile) {
+    setMostrarCanciones(false); setMostrarAcciones(false); setMostrarPalabra(false); setMostrarCultos(false)
+  }
+  setMostrarGaleriaPanel(true)
+  if (iglesiaIdActual) {
+    try {
+      const cache = JSON.parse(localStorage.getItem(`selah-galeria-cache-${iglesiaIdActual}`) || "[]")
+      if (Array.isArray(cache) && cache.length) setGaleriaImagenes(cache)
+    } catch {}
+  }
+  setCargandoGaleria(true)
+  void cargarGaleriaImagenes()
+    .then(setGaleriaImagenes)
+    .catch((e: any) => logError(`Galería: actualización en segundo plano: ${e?.message || e}`, { tipo:"galeria", pagina:"/control" }))
+    .finally(() => setCargandoGaleria(false))
+}
 
 const abrirBibliotecaVisual = async () => {
   setCargandoGaleria(true)
@@ -5221,7 +5243,7 @@ return (
         background:"rgba(17,27,46,0.95)", border:"1px solid rgba(255,255,255,0.08)",
         borderRadius:16, overflow:"hidden"
       }}>
-        <div onClick={() => alternarPanel("galeria")} style={{
+        <div onClick={alternarGaleriaPrincipal} style={{
           padding:isMobile ? "12px 14px" : "14px 18px", display:"flex", alignItems:"center", justifyContent:"space-between",
           cursor:"pointer", borderBottom:mostrarGaleriaPanel ? "1px solid rgba(255,255,255,0.06)" : "none"
         }}>
@@ -5234,22 +5256,39 @@ return (
         {mostrarGaleriaPanel && (
           <div style={{ padding:isMobile ? "12px 14px" : "16px 18px" }}>
             <div style={{ fontSize:12, opacity:.52, lineHeight:1.5, marginBottom:10 }}>
-              Sube un recurso nuevo o abre tu biblioteca. Al subirlo se agrega también a la lista del culto.
+              Toca una imagen para agregarla inmediatamente a la lista del culto.
             </div>
             <input ref={inputGaleriaRef} type="file"
               accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,.avif,.mp4,.webm,.mov,.m4v,.ogg,image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
               style={{ display:"none" }} onChange={e => void procesarArchivoGaleria(e.currentTarget)} />
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:8 }}>
               <button type="button" disabled={subiendoGaleria} onClick={() => inputGaleriaRef.current?.click()} style={{
                 minHeight:44, padding:"10px", borderRadius:10, border:"1px dashed rgba(96,165,250,.45)",
                 background:"rgba(37,99,235,.12)", color:"#bfdbfe", fontSize:12.5, fontWeight:800,
                 cursor:subiendoGaleria ? "wait" : "pointer", opacity:subiendoGaleria ? .65 : 1
               }}>{subiendoGaleria ? "⏳ Cargando…" : "＋ Subir archivo"}</button>
-              <button type="button" disabled={cargandoGaleria} onClick={() => void abrirBibliotecaVisual()} style={{
-                minHeight:44, padding:"10px", borderRadius:10, border:"1px solid rgba(245,158,11,.35)",
-                background:"rgba(245,158,11,.1)", color:"#fcd34d", fontSize:12.5, fontWeight:800,
-                cursor:cargandoGaleria ? "wait" : "pointer"
-              }}>{cargandoGaleria ? "⏳ Abriendo…" : "🖼️ Ver biblioteca"}</button>
+              <button type="button" disabled={cargandoGaleria} aria-label="Actualizar galería" onClick={() => {
+                setCargandoGaleria(true)
+                void cargarGaleriaImagenes().then(setGaleriaImagenes).finally(() => setCargandoGaleria(false))
+              }} style={{ minWidth:44, minHeight:44, borderRadius:10, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"white", fontSize:17, cursor:cargandoGaleria ? "wait" : "pointer" }}>{cargandoGaleria ? "⏳" : "↻"}</button>
+            </div>
+            <div style={{ display:"flex", gap:5, marginTop:10, overflowX:"auto" }}>
+              {([['todo','Todo'],['imagen','Imágenes'],['video','Videos']] as const).map(([id,nombre]) => (
+                <button key={id} onClick={() => setFiltroGaleria(id)} style={{ flexShrink:0, padding:"6px 9px", borderRadius:8, border:`1px solid ${filtroGaleria===id ? "rgba(96,165,250,.55)" : "rgba(255,255,255,.09)"}`, background:filtroGaleria===id ? "rgba(37,99,235,.18)" : "rgba(255,255,255,.03)", color:filtroGaleria===id ? "#bfdbfe" : "rgba(255,255,255,.55)", fontSize:11, fontWeight:750 }}>{nombre}</button>
+              ))}
+            </div>
+            <div style={{ marginTop:10, maxHeight:isMobile ? 300 : 380, overflowY:"auto", display:"grid", gridTemplateColumns:isMobile ? "repeat(3,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap:7 }}>
+              {galeriaFiltrada.length === 0 ? (
+                <div style={{ gridColumn:"1/-1", padding:"20px 8px", textAlign:"center", opacity:.42, fontSize:12 }}>{cargandoGaleria ? "Actualizando biblioteca…" : "Aún no hay recursos guardados"}</div>
+              ) : galeriaFiltrada.map(img => {
+                const video = esUrlVideo(img.url)
+                return <button key={img.url} type="button" onClick={() => agregarMediaDesdeGaleria(img)} style={{ minWidth:0, padding:0, border:"1px solid rgba(255,255,255,.09)", borderRadius:9, overflow:"hidden", background:"rgba(255,255,255,.035)", color:"white", textAlign:"left", cursor:"pointer" }}>
+                  <div style={{ aspectRatio:"16/10", background:"#050a12", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden" }}>
+                    {video ? <video src={img.url} muted preload="metadata" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <img src={img.url} alt="" loading="lazy" style={{ width:"100%", height:"100%", objectFit:"cover" }} />}
+                  </div>
+                  <div style={{ padding:"5px 6px", fontSize:9.5, fontWeight:700, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{video ? "🎬 " : ""}{img.nombre}</div>
+                </button>
+              })}
             </div>
             <div style={{ fontSize:10.5, opacity:.38, marginTop:8 }}>JPG, PNG, WEBP, GIF y clips MP4/WEBM/MOV.</div>
           </div>
@@ -6596,12 +6635,15 @@ return (
                     style={{ width: 38, height: 38, borderRadius: 9, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     ▶
                   </button>
-                  <button data-ayuda="Sube este elemento una posición y lo mantiene seleccionado para seguir moviéndolo." aria-label={`Subir ${limpiarTituloLista(c?.titulo || "elemento")}`} className="ctrl-btn"
+                  {esReordenando ? <>
+                  <button data-ayuda="Sube este elemento una posición." aria-label={`Subir ${limpiarTituloLista(c?.titulo || "elemento")}`} className="ctrl-btn"
                     onClick={() => subirItemLista(i)} disabled={i === 0}
-                    style={{ width:34, height:38, borderRadius:9, border:`1px solid ${esReordenando ? "rgba(245,158,11,.5)" : "rgba(255,255,255,.08)"}`, background:esReordenando ? "rgba(245,158,11,.16)" : "rgba(255,255,255,.06)", color:esReordenando ? "#fbbf24" : "white", fontWeight:800, fontSize:15, cursor:i === 0 ? "not-allowed" : "pointer", opacity:i === 0 ? .3 : 1 }}>↑</button>
-                  <button data-ayuda="Baja este elemento una posición y lo mantiene seleccionado para seguir moviéndolo." aria-label={`Bajar ${limpiarTituloLista(c?.titulo || "elemento")}`} className="ctrl-btn"
+                    style={{ width:34, height:38, borderRadius:9, border:"1px solid rgba(245,158,11,.5)", background:"rgba(245,158,11,.16)", color:"#fbbf24", fontWeight:800, fontSize:15, cursor:i === 0 ? "not-allowed" : "pointer", opacity:i === 0 ? .3 : 1 }}>↑</button>
+                  <button data-ayuda="Baja este elemento una posición." aria-label={`Bajar ${limpiarTituloLista(c?.titulo || "elemento")}`} className="ctrl-btn"
                     onClick={() => bajarItemLista(i)} disabled={i === lista.length - 1}
-                    style={{ width:34, height:38, borderRadius:9, border:`1px solid ${esReordenando ? "rgba(245,158,11,.5)" : "rgba(255,255,255,.08)"}`, background:esReordenando ? "rgba(245,158,11,.16)" : "rgba(255,255,255,.06)", color:esReordenando ? "#fbbf24" : "white", fontWeight:800, fontSize:15, cursor:i === lista.length - 1 ? "not-allowed" : "pointer", opacity:i === lista.length - 1 ? .3 : 1 }}>↓</button>
+                    style={{ width:34, height:38, borderRadius:9, border:"1px solid rgba(245,158,11,.5)", background:"rgba(245,158,11,.16)", color:"#fbbf24", fontWeight:800, fontSize:15, cursor:i === lista.length - 1 ? "not-allowed" : "pointer", opacity:i === lista.length - 1 ? .3 : 1 }}>↓</button>
+                  <button aria-label="Terminar de reordenar" onClick={() => setIndiceItemReordenando(null)} className="ctrl-btn" style={{ width:34, height:38, borderRadius:9, border:"1px solid rgba(34,197,94,.4)", background:"rgba(34,197,94,.12)", color:"#86efac", fontWeight:900, fontSize:14 }}>✓</button>
+                  </> : <button data-ayuda="Activa los controles para mover únicamente este elemento." aria-label={`Reordenar ${limpiarTituloLista(c?.titulo || "elemento")}`} className="ctrl-btn" onClick={() => { setIndiceItemReordenando(i); setMenuItemAbierto(null) }} style={{ width:34, height:38, borderRadius:9, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.06)", color:"white", fontWeight:800, fontSize:15, cursor:"pointer" }}>↕</button>}
                   <button data-ayuda="Muestra la opción para eliminar este elemento de la lista." className="ctrl-btn"
                     onClick={() => setMenuItemAbierto(prev => prev === i ? null : i)}
                     style={{ width: 30, height: 38, borderRadius: 9, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
