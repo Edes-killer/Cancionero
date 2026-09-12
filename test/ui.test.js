@@ -77,6 +77,21 @@ test("Transmisión tiene un recorrido seguro y repetible", () => {
   assert.doesNotMatch(tours.slice(tours.indexOf("export const TOUR_TRANSMISION")), /\.click\(\)/)
 })
 
+test("Músicos explica su flujo sin activar audio durante el tour", () => {
+  const tours = fs.readFileSync("lib/tours.ts", "utf8")
+  const musicos = fs.readFileSync("app/musicos/page.tsx", "utf8")
+  const ajustes = fs.readFileSync("app/configuracion/page.tsx", "utf8")
+  const inicio = tours.indexOf("export const TOUR_MUSICOS")
+  assert.ok(inicio >= 0)
+  const tour = tours.slice(inicio)
+  assert.match(musicos, /OnboardingTour id="tour-musicos-v1"/)
+  assert.match(musicos, /data-tour="musicos-herramientas"/)
+  assert.match(musicos, /data-tour="musicos-repertorio"/)
+  assert.match(musicos, /data-tour="musicos-controles"/)
+  assert.match(ajustes, /Tour de Músicos/)
+  assert.doesNotMatch(tour, /getUserMedia|\.click\(\)/)
+})
+
 test("la lista mantiene visibles los controles de orden y resalta el elemento movido", () => {
   const control = fs.readFileSync("app/control/page.tsx", "utf8")
   assert.match(control, /indiceItemReordenando/)

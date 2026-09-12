@@ -11,6 +11,8 @@ import PitchDetector from "@/components/PitchDetector"
 import Improvisador from "@/components/Improvisador"
 import Ensayo from "@/components/Ensayo"
 import { useMetronomo } from "@/components/useMetronomo"
+import OnboardingTour from "@/components/OnboardingTour"
+import { TOUR_MUSICOS } from "@/lib/tours"
 
 export default function MusicosPage() {
   const [partes, setPartes] = useState<any[]>([])
@@ -724,7 +726,7 @@ export default function MusicosPage() {
           </div>
         </div>
 
-        <div className="musicos-tools" style={{ display:"flex", alignItems:"center", gap:7, flexShrink:0 }}>
+        <div className="musicos-tools" data-tour="musicos-herramientas" style={{ display:"flex", alignItems:"center", gap:7, flexShrink:0 }}>
         {/* Botón Repertorio */}
         <button
           className="ctrl-m"
@@ -1078,7 +1080,7 @@ export default function MusicosPage() {
 
           <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
             {/* ── Lista de canciones ── */}
-            <div style={{ width: cancionRepo && !esMovil ? 340 : "100%", display: cancionRepo && esMovil ? "none" : "flex", flexDirection: "column", borderRight: "1px solid rgba(255,255,255,0.06)", overflow: "hidden", background: "#060d1a" }}>
+            <div data-tour="musicos-repertorio" style={{ width: cancionRepo && !esMovil ? 340 : "100%", display: cancionRepo && esMovil ? "none" : "flex", flexDirection: "column", borderRight: "1px solid rgba(255,255,255,0.06)", overflow: "hidden", background: "#060d1a" }}>
               {/* Buscador */}
               <div style={{ padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0, background: "rgba(0,0,0,0.3)" }}>
                 <input
@@ -1389,7 +1391,7 @@ export default function MusicosPage() {
       </div>
 
       {/* ── BARRA INFERIOR FIJA ──────────────────────────────────────────────── */}
-      <div style={{
+      <div data-tour="musicos-controles" style={{
         position: "fixed",
         bottom: 0, left: 0, right: 0,
         padding: esMovil ? "10px 14px 14px" : "12px 24px 16px",
@@ -1483,6 +1485,8 @@ export default function MusicosPage() {
           )}
         </div>
       </div>
+
+      <OnboardingTour id="tour-musicos-v1" pasos={TOUR_MUSICOS} nombrePagina="Músicos" />
     </div>
   )
 }

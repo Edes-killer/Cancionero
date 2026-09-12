@@ -348,3 +348,42 @@ export const TOUR_TRANSMISION: PasoTour[] = [
     tip: "Puedes repetir esta guía desde el botón ❔ Guía o desde Configuración → Tutoriales."
   }
 ]
+
+export const TOUR_MUSICOS: PasoTour[] = [
+  {
+    icono: "🎸",
+    titulo: "Vista para músicos",
+    desc: "Aquí cada músico consulta el repertorio, ve acordes y prepara el tono sin intervenir en lo que aparece en el proyector.",
+    tip: "Durante el culto puedes volver a la canción que está al aire desde el botón En vivo."
+  },
+  {
+    icono: "📚",
+    titulo: "Repertorio con acordes",
+    desc: "Busca canciones por título o número. Las que tienen acordes aparecen marcadas y puedes activar el filtro para ver solamente esas.",
+    tip: "Toca una canción para abrir su letra, tono y acordes completos.",
+    selector: "[data-tour='musicos-repertorio']",
+    posicion: "right"
+  },
+  {
+    icono: "🧰",
+    titulo: "Herramientas musicales",
+    desc: "Afinar usa el micrófono para reconocer notas; Improvisar propone escalas; Ensayo reúne el metrónomo y la nota de partida.",
+    tip: "El tour no abre el micrófono ni reproduce sonidos. Tú decides cuándo activar cada herramienta.",
+    selector: "[data-tour='musicos-herramientas']",
+    posicion: "bottom"
+  },
+  {
+    icono: "🎵",
+    titulo: "Transposición y acordes",
+    desc: "Cuando sigues una canción en vivo, los controles inferiores suben o bajan el tono para tu instrumento y permiten mostrar u ocultar los acordes.",
+    tip: "La transposición es personal: no cambia el tono para los demás músicos ni la proyección.",
+    selector: "[data-tour='musicos-controles']",
+    posicion: "top"
+  },
+  {
+    icono: "✅",
+    titulo: "Listo para tocar",
+    desc: "Ya puedes consultar el repertorio, seguir el culto y usar las herramientas de práctica desde el mismo lugar.",
+    tip: "Puedes repetir este recorrido desde Configuración → Tutoriales."
+  }
+]

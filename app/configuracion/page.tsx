@@ -1698,6 +1698,7 @@ export default function ConfiguracionPage() {
               { id: "tour-control",   label: "🎛️ Tour del Control de Culto",  desc: "Proyectar, navegar partes, auto-avance, lista de culto",  ruta: "/control"   },
               { id: "tour-canciones", label: "🎵 Tour del Cancionero",        desc: "Buscar, filtrar, agregar canciones e importar PPT",       ruta: "/canciones" },
               { id: "tour-transmision-v1", label: "🎥 Tour de Transmisión", desc: "Cámaras, audio, escenas, apariencia y salida al aire", ruta: "/en-vivo" },
+              { id: "tour-musicos-v1", label: "🎸 Tour de Músicos", desc: "Repertorio, acordes, afinador, improvisación y ensayo", ruta: "/musicos" },
             ].map(({ id, label, desc, ruta }) => {
               // visto calculado en onClick
               return (
