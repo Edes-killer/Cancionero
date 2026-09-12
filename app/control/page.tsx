@@ -112,6 +112,10 @@ export default function ControlPage() {
   const zoomActualRef = useRef(typeof window !== "undefined" ? Number(localStorage.getItem("proyector-escala-fuente") || "100") : 100)
   const socketRef2    = useRef<any>(null)
   const revisionListaSalaRef = useRef(0)
+  const firmaListaRemotaRef = useRef("")
+  const ultimaFirmaListaEnviadaRef = useRef("")
+  const sincronizacionListaMontadaRef = useRef(false)
+  const timerSincronizacionListaRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [modalServidor, setModalServidor] = useState(false)
   const [socketConectado, setSocketConectado] = useState<boolean | null>(null)
   const [proyectorConectado, setProyectorConectado] = useState(false)
@@ -464,22 +468,23 @@ useEffect(() => {
   try { localStorage.setItem(`selah-preview-parte-${previewCancion.id}`, String(seguro)) } catch {}
 }, [previewCancion?.id, previewIndex, previewPartes.length])
 
-// Posición inicial (esquina inferior derecha) y recuperar la guardada.
+// Posición inicial en la zona superior derecha. La clave v2 migra la posición
+// antigua, que tenía un tope artificial de 210 px y desaprovechaba ese espacio.
 useEffect(() => {
   if (typeof window === "undefined") return
   let p: { x: number; y: number }
   try {
-    const g = localStorage.getItem("selah-preview-pos")
-    p = g ? JSON.parse(g) : { x: window.innerWidth - 372, y: window.innerHeight - 430 }
-  } catch { p = { x: window.innerWidth - 372, y: window.innerHeight - 430 } }
-  // Clamp: que no quede sobre la barra superior ni fuera de pantalla.
-  p = { x: Math.min(Math.max(4, p.x), Math.max(4, window.innerWidth - previewAnchoRef.current)), y: Math.min(Math.max(210, p.y), window.innerHeight - 120) }
+    const g = localStorage.getItem("selah-preview-pos-v2")
+    p = g ? JSON.parse(g) : { x: window.innerWidth - previewAnchoRef.current - 16, y: 68 }
+  } catch { p = { x: window.innerWidth - previewAnchoRef.current - 16, y: 68 } }
+  // Clamp: respeta la barra principal, pero permite aprovechar el área superior.
+  p = { x: Math.min(Math.max(4, p.x), Math.max(4, window.innerWidth - previewAnchoRef.current)), y: Math.min(Math.max(60, p.y), window.innerHeight - 120) }
   previewPosRef.current = p
   setPreviewPos(p)
 }, [])
 
-// ✅ Tope superior: que la vista previa no se suba sobre la barra/controles.
-const PREVIEW_TOPE_Y = 210
+// ✅ Tope superior: solo reserva la barra principal de la aplicación.
+const PREVIEW_TOPE_Y = 60
 const moverPreview = (e: MouseEvent) => {
   const a = arrastrePreviewRef.current
   if (!a) return
@@ -521,7 +526,7 @@ const soltarPreview = () => {
   arrastrePreviewRef.current = null
   document.removeEventListener("mousemove", moverPreview)
   document.removeEventListener("mouseup", soltarPreview)
-  try { if (previewPosRef.current) localStorage.setItem("selah-preview-pos", JSON.stringify(previewPosRef.current)) } catch {}
+  try { if (previewPosRef.current) localStorage.setItem("selah-preview-pos-v2", JSON.stringify(previewPosRef.current)) } catch {}
 }
 const iniciarArrastrePreview = (e: React.MouseEvent) => {
   if (previewAnclado) return // anclada: no se arrastra
@@ -685,11 +690,14 @@ useEffect(() => {
     const revision = Number(data.revision) || 0
     if (revision && revision <= revisionListaSalaRef.current) return
     revisionListaSalaRef.current = revision
+    const indice = Number.isInteger(data.indice) && Number(data.indice) >= 0 && Number(data.indice) < data.items.length ? Number(data.indice) : null
+    // Impide que la sincronización reactiva reenvíe al servidor exactamente el
+    // cambio remoto que acaba de aplicar (eco infinito).
+    firmaListaRemotaRef.current = JSON.stringify({ items:data.items, indice, listaId:data.listaId || null, nombre:data.nombre || "" })
     setLista(data.items)
     listaRef.current = data.items
     setListaIdActual(data.listaId || null)
     setNombreCulto(data.nombre || "")
-    const indice = Number.isInteger(data.indice) && Number(data.indice) >= 0 && Number(data.indice) < data.items.length ? Number(data.indice) : null
     setIndiceLista(indice)
     setIndiceActivoLista(indice)
   })
@@ -2407,8 +2415,38 @@ const nombreImagenAmigable = (url?: string, fallback = "Imagen") => {
 }
 
 const sincronizarListaSala = (items: ItemLista[], indice: number|null, listaId = listaIdActual, nombre = nombreCulto) => {
+  const firma = JSON.stringify({ items, indice, listaId:listaId || null, nombre:nombre || "" })
+  if (firma === ultimaFirmaListaEnviadaRef.current) return
+  ultimaFirmaListaEnviadaRef.current = firma
   socketRef2.current?.emit("sincronizar-lista", { items, indice, listaId, nombre })
 }
+
+// Cualquier edición del orden del culto se replica al resto de los controles.
+// El breve debounce agrupa cambios encadenados y la firma evita ecos remotos.
+useEffect(() => {
+  if (!sincronizacionListaMontadaRef.current) {
+    sincronizacionListaMontadaRef.current = true
+    return
+  }
+
+  const indiceSeguro = indiceLista !== null && indiceLista >= 0 && indiceLista < lista.length ? indiceLista : null
+  const firma = JSON.stringify({ items:lista, indice:indiceSeguro, listaId:listaIdActual || null, nombre:nombreCulto || "" })
+  if (firma === firmaListaRemotaRef.current) {
+    firmaListaRemotaRef.current = ""
+    ultimaFirmaListaEnviadaRef.current = firma
+    return
+  }
+  if (firma === ultimaFirmaListaEnviadaRef.current) return
+
+  if (timerSincronizacionListaRef.current) clearTimeout(timerSincronizacionListaRef.current)
+  timerSincronizacionListaRef.current = setTimeout(() => {
+    sincronizarListaSala(lista, indiceSeguro, listaIdActual, nombreCulto)
+  }, 140)
+
+  return () => {
+    if (timerSincronizacionListaRef.current) clearTimeout(timerSincronizacionListaRef.current)
+  }
+}, [lista, indiceLista, listaIdActual, nombreCulto])
 
 const cargarListaDesdeBD = async (id: string) => {
   setListaIdActual(id)

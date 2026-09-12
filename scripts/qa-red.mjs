@@ -111,6 +111,19 @@ try {
   registrar("Listas simultáneas convergen", !!listaA && !!listaB && listaA.revision === listaB.revision && listaA.listaId === listaB.listaId,
     `A=${listaA?.listaId}@${listaA?.revision} B=${listaB?.listaId}@${listaB?.revision}`)
 
+  // Después de cargarla, agregar/reordenar elementos debe llegar al otro Control.
+  const revisionAntesEdicion = listaB?.revision || 0
+  controlA.emit("sincronizar-lista", {
+    listaId:"lista-b", nombre:"Culto B", indice:1,
+    items:[
+      { tipo:"cancion", id:"b-2", titulo:"Segunda" },
+      { tipo:"cancion", id:"b", titulo:"B" },
+    ],
+  })
+  await esperar(180)
+  registrar("Las ediciones de lista se replican", !!listaB && listaB.revision > revisionAntesEdicion && listaB.items?.length === 2 && listaB.items[0]?.id === "b-2" && listaB.indice === 1,
+    `items=${listaB?.items?.map(item => item.id).join(",")} indice=${listaB?.indice} revision=${listaB?.revision}`)
+
   // ── Modo caos: dos operadores escriben casi al mismo tiempo ─────────────
   const partesQa = Array.from({ length: 6 }, (_, i) => ({ tipo: `Parte ${i + 1}`, texto: `QA ${i + 1}` }))
   const cargaP = eventoEn(proyector, "cargar-cancion")
