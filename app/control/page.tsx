@@ -526,8 +526,16 @@ useEffect(() => {
   }
   const id = requestAnimationFrame(corregir)
   window.addEventListener("resize", corregir)
-  return () => { cancelAnimationFrame(id); window.removeEventListener("resize", corregir) }
+  const observador = typeof ResizeObserver !== "undefined" ? new ResizeObserver(corregir) : null
+  if (previewPanelRef.current) observador?.observe(previewPanelRef.current)
+  return () => { cancelAnimationFrame(id); window.removeEventListener("resize", corregir); observador?.disconnect() }
 }, [previewHabilitado, previewAncho, previewMinimizado])
+const devolverPreviewArriba = () => {
+  const p = limitarPosPreview({ x: window.innerWidth - previewAnchoRef.current - 16, y: 68 })
+  previewPosRef.current = p
+  setPreviewPos(p)
+  try { localStorage.setItem("selah-preview-pos-v2", JSON.stringify(p)) } catch {}
+}
 const cambiarAnchoPreview = (ancho: number) => {
   const maximo = Math.max(280, Math.min(640, window.innerWidth - 8))
   const nuevo = Math.round(Math.min(maximo, Math.max(280, ancho)))
@@ -1071,12 +1079,21 @@ const [anchoBiblioteca, setAnchoBiblioteca] = useState(() => {
 })
 const gridControlRef = useRef<HTMLDivElement | null>(null)
 const divisorActivoRef = useRef(false)
+const ajustarAnchoBiblioteca = (porcentaje: number) => {
+  const grid = gridControlRef.current
+  if (!grid) return Math.min(70, Math.max(30, porcentaje))
+  // Descontar padding, separador y espacios antes de calcular anchos útiles.
+  const disponible = Math.max(0, grid.clientWidth - 40 - 12 - 8)
+  if (disponible < 560) return 50
+  const minimo = Math.max(30, (280 / disponible) * 100)
+  return Math.min(100 - minimo, Math.max(minimo, porcentaje))
+}
 useEffect(() => {
   const mover = (e: MouseEvent) => {
     if (!divisorActivoRef.current || !gridControlRef.current) return
     const r = gridControlRef.current.getBoundingClientRect()
     const porcentaje = ((e.clientX - r.left) / r.width) * 100
-    setAnchoBiblioteca(Math.min(70, Math.max(30, porcentaje)))
+    setAnchoBiblioteca(ajustarAnchoBiblioteca(porcentaje))
   }
   const soltar = () => {
     if (!divisorActivoRef.current) return
@@ -1087,6 +1104,12 @@ useEffect(() => {
   window.addEventListener("mousemove", mover)
   window.addEventListener("mouseup", soltar)
   return () => { soltar(); window.removeEventListener("mousemove", mover); window.removeEventListener("mouseup", soltar) }
+}, [])
+useEffect(() => {
+  const corregir = () => setAnchoBiblioteca(v => ajustarAnchoBiblioteca(v))
+  const observador = typeof ResizeObserver !== "undefined" ? new ResizeObserver(corregir) : null
+  if (gridControlRef.current) observador?.observe(gridControlRef.current)
+  return () => observador?.disconnect()
 }, [])
 useEffect(() => {
   try { localStorage.setItem("selah-control-ancho-biblioteca", String(anchoBiblioteca)) } catch {}
@@ -6533,12 +6556,13 @@ return (
 
     {isElectronCtx && !isMobile && (
       <div role="separator" aria-label="Ajustar ancho entre biblioteca y lista" aria-orientation="vertical" tabIndex={0}
-        title="Arrastra para dar más espacio a canciones o a la lista del culto"
+        title="Arrastra para ajustar las columnas. Doble clic para volver al tamaño inicial"
         onMouseDown={e => { e.preventDefault(); divisorActivoRef.current = true; document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none" }}
+        onDoubleClick={() => setAnchoBiblioteca(ajustarAnchoBiblioteca(56.5))}
         onKeyDown={e => {
           if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
           e.preventDefault()
-          setAnchoBiblioteca(v => Math.min(70, Math.max(30, v + (e.key === "ArrowRight" ? 2 : -2))))
+          setAnchoBiblioteca(v => ajustarAnchoBiblioteca(v + (e.key === "ArrowRight" ? 2 : -2)))
         }}
         style={{ alignSelf: "stretch", minHeight: "calc(100vh - 260px)", cursor: "col-resize", borderRadius: 8,
           background: "rgba(148,163,184,.1)", border: "1px solid rgba(148,163,184,.18)",
@@ -6750,7 +6774,7 @@ return (
                   <button disabled={previewIndex >= previewPartes.length - 1} onClick={() => setPreviewIndex(i => Math.min(previewPartes.length - 1, i + 1))} title="Parte siguiente de la vista previa" style={{ padding: `${Math.max(2, Math.round(3 * escalaPanelPreview))}px ${Math.max(6, Math.round(9 * escalaPanelPreview))}px`, borderRadius: 6, border: "1px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.06)", color: "white", opacity: previewIndex >= previewPartes.length - 1 ? .35 : 1, fontSize: Math.max(9, Math.round(11 * escalaPanelPreview)), cursor: previewIndex >= previewPartes.length - 1 ? "default" : "pointer" }}>→</button>
                 </div>
               ) : <span>{previewEsSeleccion ? "Revisión · no está al aire" : "Salida del proyector · 16:9"}</span>}
-              <span>{previewAnclado ? "📌 Fija" : "Arrastrable"}</span>
+              <button onClick={devolverPreviewArriba} title="Devolver el monitor arriba a la derecha" style={{ border: 0, background: "transparent", color: "#93c5fd", fontSize: "inherit", cursor: "pointer", fontWeight: 700, padding: "2px 10px" }}>↗ Arriba</button>
             </div>
             <div onMouseDown={iniciarRedimensionPreview} title="Arrastra para cambiar el tamaño" style={{
               position: "absolute", right: 2, bottom: 2, width: 18, height: 18, cursor: "nwse-resize",
