@@ -663,7 +663,7 @@ function startSocketServer(port) {
         puerto: 4000,
         app: "selah-live",
         version: SELAH_VERSION,
-        qaProtocol: 4,
+        qaProtocol: 5,
       }))
       return
     }
@@ -673,7 +673,7 @@ function startSocketServer(port) {
         ok: true,
         app: "selah-live",
         version: SELAH_VERSION,
-        qaProtocol: 4,
+        qaProtocol: 5,
         puerto: 4000,
       }))
       return
@@ -905,7 +905,9 @@ try {
     const clientes = Array.from(ids).map(id => io.sockets.sockets.get(id)).filter(Boolean)
     return {
       proyectorConectado: clientes.some(s => s.data?.pantalla === "proyectar"),
-      controlEscritorioConectado: clientes.some(s => s.data?.pantalla === "control" && s.data?.puedeAbrirProyector === true),
+      // El proceso principal puede abrir el proyector aunque la ventana esté
+      // actualmente en Inicio, Configuración u otro módulo.
+      controlEscritorioConectado: !!(mainWindow && !mainWindow.isDestroyed()),
     }
   }
 
@@ -1032,7 +1034,20 @@ try {
         .map(id => io.sockets.sockets.get(id))
         .find(s => s?.data?.pantalla === "control" && s.data?.puedeAbrirProyector === true)
       if (!destino) {
-        socket.emit("abrir-proyector-no-disponible")
+        // No hay un renderer de Control escuchando porque Electron puede estar
+        // en Inicio. El proceso principal ordena el window.open y reutiliza el
+        // mismo handler que configura pantalla completa y segundo monitor.
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.executeJavaScript(
+            `window.open(${JSON.stringify("http://localhost:3000/proyectar")}, "_blank", "noopener,noreferrer")`
+          ).then(() => socket.emit("proyector-apertura-solicitada"))
+            .catch(e => {
+              console.error("No se pudo abrir el proyector remoto:", e)
+              socket.emit("abrir-proyector-no-disponible")
+            })
+        } else {
+          socket.emit("abrir-proyector-no-disponible")
+        }
         return
       }
       destino.emit("solicitar-abrir-proyector")

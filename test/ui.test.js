@@ -99,6 +99,8 @@ test("Control conserva la lista por iglesia y recupera la presencia del proyecto
   assert.match(control, /s\.on\("estado-presencia"/)
   assert.match(main, /const presenciaSala = \(sala\)/)
   assert.match(main, /controlEscritorioConectado:/)
+  assert.match(main, /mainWindow\.webContents\.executeJavaScript/)
+  assert.match(main, /http:\/\/localhost:3000\/proyectar/)
   assert.match(main, /socket\.emit\("estado-presencia", presenciaSala\(salaFinal\)\)/)
   assert.match(main, /setImmediate\(\(\) => emitirPresenciaSala\(sala\)\)/)
   assert.match(control, /puedeAbrirProyector: navigator\.userAgent\.includes\("Electron"\)/)
