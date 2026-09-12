@@ -22,6 +22,7 @@ import { usePrompt } from "@/components/usePrompt"
 import { useApp, ocultarGlobalesConCopia } from "@/context/AppContext"
 import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk, getPartesCache, setPartesCache } from "@/lib/cache"
 import { limitarAnchoBiblioteca, limitarPosMonitor } from "@/lib/controlLayout"
+import { esParteCoro, construirSecuenciaCoro as crearSecuenciaCoro, resincronizarPosicion } from "@/lib/secuenciaCoro"
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 interface Cancion {
@@ -1868,29 +1869,18 @@ const detenerAutoAvance = () => {
 }
 
 // ── Repetir coro entre versos ────────────────────────────────────────────────
-const esParteCoro = (p: any) => /coro|estribillo|chorus/i.test(p?.tipo || "")
-
 // Construye la SECUENCIA de reproducción. Con intercalarCoro activo y con coro,
 // intercala el coro después de cada verso, sin importar dónde esté el coro en la
 // canción (al principio, medio o final): [V,C,V,V] → V→C→V→C→V→C. Sin coro o con
 // el modo apagado, es la secuencia lineal 0,1,2,...
 const construirSecuenciaCoro = (): number[] => {
-  const idxCoro = partes.findIndex(esParteCoro)
-  if (!intercalarCoro || idxCoro === -1) return partes.map((_, i) => i)
-  const versos = partes.map((_, i) => i).filter(i => !esParteCoro(partes[i]))
-  const seq: number[] = []
-  for (const v of versos) { seq.push(v); seq.push(idxCoro) }
-  return seq
+  return crearSecuenciaCoro(partes, intercalarCoro)
 }
 
 // Resincroniza el puntero con el índice actual (por clics directos o sync entre
 // controles): busca la ocurrencia del índice preferiblemente hacia adelante.
 const resyncPos = (seq: number[]): number => {
-  let pos = posSecuenciaRef.current
-  if (seq[pos] === index) return pos
-  for (let i = Math.max(0, pos); i < seq.length; i++) if (seq[i] === index) return i
-  for (let i = 0; i < seq.length; i++) if (seq[i] === index) return i
-  return 0
+  return resincronizarPosicion(seq, index, posSecuenciaRef.current)
 }
 
 // Devuelve el índice de la siguiente parte, o null si no hay más en la canción.
