@@ -960,7 +960,25 @@ const [mostrarCanciones, setMostrarCanciones] = useState(true)
 const [mostrarAcciones, setMostrarAcciones] = useState(false)
 const [mostrarPalabra, setMostrarPalabra] = useState(false)
 const [mostrarCultos, setMostrarCultos] = useState(false)
+const [mostrarFiltrosMobile, setMostrarFiltrosMobile] = useState(false)
 const [revisionCultoAbierta, setRevisionCultoAbierta] = useState(false)
+const alternarPanel = (panel: "canciones" | "acciones" | "palabra" | "cultos") => {
+  const estabaAbierto = panel === "canciones" ? mostrarCanciones
+    : panel === "acciones" ? mostrarAcciones
+    : panel === "palabra" ? mostrarPalabra
+    : mostrarCultos
+  if (isMobile) {
+    setMostrarCanciones(false)
+    setMostrarAcciones(false)
+    setMostrarPalabra(false)
+    setMostrarCultos(false)
+  }
+  const abrir = !estabaAbierto
+  if (panel === "canciones") setMostrarCanciones(abrir)
+  if (panel === "acciones") setMostrarAcciones(abrir)
+  if (panel === "palabra") setMostrarPalabra(abrir)
+  if (panel === "cultos") setMostrarCultos(abrir)
+}
 const [estadoEspecialActivo, setEstadoEspecialActivo] = useState("")
 // Datos de la pantalla especial en curso (para mostrar el detalle en la vista previa)
 const [estadoEspData, setEstadoEspData] = useState<any>(null)
@@ -4802,7 +4820,7 @@ return (
       }}>
         {/* Header canciones */}
         <div
-          onClick={() => setMostrarCanciones(v => !v)}
+          onClick={() => alternarPanel("canciones")}
           style={{
             padding: isMobile ? "10px 10px" : "14px 18px",
             display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -4827,7 +4845,12 @@ return (
           <div style={{ padding: isMobile ? "8px 10px" : "14px 18px" }}>
             {/* Toggle preview — solo mobile */}
             {isMobile && (
-              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap:6, marginBottom: 8 }}>
+                <button type="button" aria-expanded={mostrarFiltrosMobile} onClick={() => setMostrarFiltrosMobile(v => !v)} style={{
+                  padding:"4px 10px", borderRadius:8, border:`1px solid ${mostrarFiltrosMobile || filtroTono || filtroCategoria ? "rgba(99,102,241,.38)" : "rgba(255,255,255,.1)"}`,
+                  background:mostrarFiltrosMobile || filtroTono || filtroCategoria ? "rgba(99,102,241,.13)" : "rgba(255,255,255,.04)",
+                  color:mostrarFiltrosMobile || filtroTono || filtroCategoria ? "#c7d2fe" : "rgba(255,255,255,.5)", fontSize:11, fontWeight:700, cursor:"pointer",
+                }}>⚙ Filtros{[filtroTono, filtroCategoria].filter(Boolean).length ? ` · ${[filtroTono, filtroCategoria].filter(Boolean).length}` : ""}</button>
                 <button
                   onClick={() => setPreviewHabilitado(v => !v)}
                   style={{
@@ -4876,7 +4899,8 @@ return (
               )}
             </div>
 
-            {/* Filtros en fila */}
+            {/* Filtros avanzados: en móvil aparecen solo cuando se solicitan. */}
+            {(!isMobile || mostrarFiltrosMobile) && <>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
               <div style={{ position: "relative" }}>
                 <select
@@ -4961,13 +4985,14 @@ return (
                 ))}
               </div>
             )}
+            </>}
 
             {/* Leyenda: qué hace cada botón de la fila (claridad para nuevos) */}
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 10.5, color: "rgba(255,255,255,0.4)", padding: "0 2px 7px" }}>
+            {!isMobile && <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 10.5, color: "rgba(255,255,255,0.4)", padding: "0 2px 7px" }}>
               <span><b style={{ color: "#60a5fa" }}>▶</b> Proyectar ahora</span>
               <span><b>+</b> Agregar a la lista</span>
               <span>📱 Vista previa</span>
-            </div>
+            </div>}
 
             {/* Lista virtualizada — en mobile se apoya en visualViewport (alturaVP)
                 en vez de 100dvh porque varios WebView de Android no achican el
@@ -5123,7 +5148,7 @@ return (
       }}>
         <div
           data-tour="btn-herramientas"
-          onClick={() => setMostrarAcciones(v => !v)}
+          onClick={() => alternarPanel("acciones")}
           style={{
             padding: isMobile ? "12px 14px" : "14px 18px",
             display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -5919,7 +5944,7 @@ return (
         borderRadius: 16, overflow: "hidden"
       }}>
         <div
-          onClick={() => setMostrarPalabra(v => !v)}
+          onClick={() => alternarPanel("palabra")}
           style={{
             padding: isMobile ? "12px 14px" : "14px 18px",
             display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -5991,7 +6016,7 @@ return (
         borderRadius: 16, overflow: "hidden"
       }}>
         <div
-          onClick={() => setMostrarCultos(v => !v)}
+          onClick={() => alternarPanel("cultos")}
           style={{
             padding: isMobile ? "12px 14px" : "14px 18px",
             display: "flex", alignItems: "center", justifyContent: "space-between",

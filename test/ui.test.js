@@ -27,3 +27,12 @@ test("Control móvil agrupa acciones secundarias y muestra un solo estado priori
   assert.match(control, /isMobile && socketConectado === true && proyectorConectado/)
   assert.match(control, /etiqueta="LISTO"/)
 })
+
+test("Control móvil usa un panel a la vez y oculta filtros avanzados", () => {
+  const control = fs.readFileSync("app/control/page.tsx", "utf8")
+  assert.match(control, /const alternarPanel = \(panel:/)
+  assert.match(control, /if \(isMobile\) \{[\s\S]{0,220}setMostrarCultos\(false\)/)
+  assert.match(control, /!isMobile \|\| mostrarFiltrosMobile/)
+  assert.match(control, /⚙ Filtros/)
+  assert.match(control, /!isMobile && <div[^>]*>[\s\S]{0,260}Proyectar ahora/)
+})
