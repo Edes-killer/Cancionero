@@ -86,4 +86,7 @@ test("Dashboard y Control presentan un único flujo y una Galería principal", (
   assert.match(control, /selah-galeria-cache-/)
   assert.match(control, /galeriaFiltrada\.map/)
   assert.match(control, /alternarGaleriaPrincipal/)
+  assert.match(control, /eliminarMediaGaleria/)
+  assert.match(control, /aria-label="Eliminar carpeta"/)
+  assert.match(control, /Mover \$\{img\.nombre\} a una carpeta/)
 })

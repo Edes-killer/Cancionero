@@ -2906,6 +2906,10 @@ const cargarGaleriaImagenes = async (): Promise<{url: string, nombre: string, lo
       if (error && error.code !== "42P01") void logError(`Migrar biblioteca: ${error.message}`, { tipo: "imagen", pagina: "/control" })
     })
   }
+  const carpetasDescubiertas = Array.from(new Set(resultado.map(img => img.carpeta).filter(Boolean)))
+  if (carpetasDescubiertas.length) {
+    guardarCarpetasGaleria([...carpetasGaleria, ...carpetasDescubiertas])
+  }
   if (iglesiaId) {
     try { localStorage.setItem(`selah-galeria-cache-${iglesiaId}`, JSON.stringify(resultado)) } catch {}
   }
@@ -3613,6 +3617,30 @@ const moverMediaACarpeta = (url: string, carpeta: string) => {
     if (img) void sincronizarMetadataMedia(img)
     return actualizadas
   })
+}
+
+const eliminarMediaGaleria = async (img: { url:string; nombre:string; local:boolean; carpeta:string }) => {
+  if (!(await confirmar(`¿Eliminar “${img.nombre}” de la biblioteca?`, { textoOk:"Eliminar", peligro:true }))) return
+  try {
+    if (img.local) {
+      const nombre = img.url.split("/imagenes/").pop()
+      const res = await fetch("http://localhost:4000/api/imagenes/eliminar", { method:"DELETE", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ nombre }) })
+      if (!res.ok) throw new Error(`El servidor respondió ${res.status}`)
+    } else {
+      const path = img.url.split("/imagenes-culto/")[1]?.split("?")[0]
+      if (!path) throw new Error("No se pudo identificar el archivo")
+      const { error } = await supabase.storage.from("imagenes-culto").remove([decodeURIComponent(path)])
+      if (error) throw error
+      const igId = await getIglesiaIdCached()
+      if (igId) await supabase.from("media_biblioteca").delete().eq("iglesia_id", igId).eq("url", img.url)
+    }
+    try { localStorage.removeItem("img-nombre-" + img.url); localStorage.removeItem("img-carpeta-" + img.url) } catch {}
+    setGaleriaImagenes(await cargarGaleriaImagenes())
+    flashCtrl(`✅ Eliminado: ${img.nombre}`)
+  } catch (e: any) {
+    logError(`Galería: no se pudo eliminar ${img.nombre}: ${e?.message || e}`, { tipo:"galeria", pagina:"/control" })
+    flashCtrl("No se pudo eliminar: " + (e?.message || "error desconocido"))
+  }
 }
 
 const guardarEnCarpetaActual = (img: { url:string; nombre:string; local:boolean }) => {
@@ -5277,17 +5305,33 @@ return (
                 <button key={id} onClick={() => setFiltroGaleria(id)} style={{ flexShrink:0, padding:"6px 9px", borderRadius:8, border:`1px solid ${filtroGaleria===id ? "rgba(96,165,250,.55)" : "rgba(255,255,255,.09)"}`, background:filtroGaleria===id ? "rgba(37,99,235,.18)" : "rgba(255,255,255,.03)", color:filtroGaleria===id ? "#bfdbfe" : "rgba(255,255,255,.55)", fontSize:11, fontWeight:750 }}>{nombre}</button>
               ))}
             </div>
-            <div style={{ marginTop:10, maxHeight:isMobile ? 300 : 380, overflowY:"auto", display:"grid", gridTemplateColumns:isMobile ? "repeat(3,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap:7 }}>
+            <div style={{ display:"flex", gap:5, marginTop:7, overflowX:"auto", alignItems:"center" }}>
+              <button onClick={crearCarpetaGaleria} style={{ flexShrink:0, padding:"6px 9px", borderRadius:8, border:"1px dashed rgba(96,165,250,.45)", background:"rgba(37,99,235,.1)", color:"#bfdbfe", fontSize:10.5, fontWeight:800 }}>＋ Carpeta</button>
+              {([{ id:"__todas__", nombre:"Todas" }, { id:"__sin__", nombre:"Sin carpeta" }, ...carpetasGaleria.map(c => ({ id:c, nombre:c }))]).map(c => (
+                <button key={c.id} onClick={() => setCarpetaGaleria(c.id)} style={{ flexShrink:0, padding:"6px 9px", borderRadius:8, border:`1px solid ${carpetaGaleria===c.id ? "rgba(245,158,11,.55)" : "rgba(255,255,255,.09)"}`, background:carpetaGaleria===c.id ? "rgba(245,158,11,.14)" : "rgba(255,255,255,.03)", color:carpetaGaleria===c.id ? "#fcd34d" : "rgba(255,255,255,.55)", fontSize:10.5, fontWeight:750 }}>📁 {c.nombre}</button>
+              ))}
+              {carpetaGaleria !== "__todas__" && carpetaGaleria !== "__sin__" && <>
+                <button aria-label="Renombrar carpeta" onClick={renombrarCarpetaGaleria} style={{ flexShrink:0, padding:"6px 8px", borderRadius:8, border:"1px solid rgba(255,255,255,.12)", background:"rgba(255,255,255,.04)", color:"white" }}>✎</button>
+                <button aria-label="Eliminar carpeta" onClick={eliminarCarpetaGaleria} style={{ flexShrink:0, padding:"6px 8px", borderRadius:8, border:"1px solid rgba(239,68,68,.3)", background:"rgba(239,68,68,.08)", color:"#fca5a5" }}>✕</button>
+              </>}
+            </div>
+            <div style={{ marginTop:10, maxHeight:isMobile ? 340 : 420, overflowY:"auto", display:"grid", gridTemplateColumns:isMobile ? "repeat(2,minmax(0,1fr))" : "repeat(4,minmax(0,1fr))", gap:7 }}>
               {galeriaFiltrada.length === 0 ? (
                 <div style={{ gridColumn:"1/-1", padding:"20px 8px", textAlign:"center", opacity:.42, fontSize:12 }}>{cargandoGaleria ? "Actualizando biblioteca…" : "Aún no hay recursos guardados"}</div>
               ) : galeriaFiltrada.map(img => {
                 const video = esUrlVideo(img.url)
-                return <button key={img.url} type="button" onClick={() => agregarMediaDesdeGaleria(img)} style={{ minWidth:0, padding:0, border:"1px solid rgba(255,255,255,.09)", borderRadius:9, overflow:"hidden", background:"rgba(255,255,255,.035)", color:"white", textAlign:"left", cursor:"pointer" }}>
-                  <div style={{ aspectRatio:"16/10", background:"#050a12", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden" }}>
+                return <div key={img.url} style={{ minWidth:0, border:"1px solid rgba(255,255,255,.09)", borderRadius:9, overflow:"hidden", background:"rgba(255,255,255,.035)", color:"white" }}>
+                  <div role="button" tabIndex={0} onClick={() => agregarMediaDesdeGaleria(img)} style={{ aspectRatio:"16/10", background:"#050a12", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", cursor:"pointer" }}>
                     {video ? <video src={img.url} muted preload="metadata" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <img src={img.url} alt="" loading="lazy" style={{ width:"100%", height:"100%", objectFit:"cover" }} />}
                   </div>
                   <div style={{ padding:"5px 6px", fontSize:9.5, fontWeight:700, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{video ? "🎬 " : ""}{img.nombre}</div>
-                </button>
+                  <div style={{ display:"flex", gap:4, padding:"0 5px 5px" }}>
+                    <select aria-label={`Mover ${img.nombre} a una carpeta`} value={img.carpeta} onChange={e => moverMediaACarpeta(img.url, e.target.value)} style={{ minWidth:0, flex:1, height:27, borderRadius:6, border:"1px solid rgba(255,255,255,.12)", background:"#111827", color:"rgba(255,255,255,.75)", fontSize:9 }}>
+                      <option value="">Sin carpeta</option>{carpetasGaleria.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <button aria-label={`Eliminar ${img.nombre}`} onClick={() => void eliminarMediaGaleria(img)} style={{ width:28, height:27, borderRadius:6, border:"1px solid rgba(239,68,68,.3)", background:"rgba(239,68,68,.1)", color:"#fca5a5", cursor:"pointer" }}>✕</button>
+                  </div>
+                </div>
               })}
             </div>
             <div style={{ fontSize:10.5, opacity:.38, marginTop:8 }}>JPG, PNG, WEBP, GIF y clips MP4/WEBM/MOV.</div>
