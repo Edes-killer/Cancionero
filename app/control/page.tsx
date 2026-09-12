@@ -23,6 +23,7 @@ import { useApp, ocultarGlobalesConCopia } from "@/context/AppContext"
 import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk, getPartesCache, setPartesCache } from "@/lib/cache"
 import { limitarAnchoBiblioteca, limitarPosMonitor } from "@/lib/controlLayout"
 import { esParteCoro, construirSecuenciaCoro as crearSecuenciaCoro, resincronizarPosicion } from "@/lib/secuenciaCoro"
+import { normalizarTiempos, duracionParte } from "@/lib/tiemposAuto"
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 interface Cancion {
@@ -1802,7 +1803,7 @@ const claveTimingCancion = (id: string) => `selah-tiempos-${id}`
 const cargarTiempos = (cancionId: string): number[] => {
   try {
     const raw = localStorage.getItem(claveTimingCancion(cancionId))
-    return raw ? JSON.parse(raw) : []
+    return raw ? normalizarTiempos(JSON.parse(raw)) : []
   } catch (e) { return [] }
 }
 
@@ -1849,8 +1850,7 @@ const reposicionarAprendizaje = () => {
 
 const iniciarAutoAvance = (tiempos: number[], desde: number) => {
   if (intervaloAutoRef.current) clearInterval(intervaloAutoRef.current)
-  const msActual = tiempos[desde] || tiempos[tiempos.length - 1] || 15000
-  let restante = Math.round(msActual / 1000)
+  let restante = Math.ceil(duracionParte(tiempos, desde) / 1000)
   setContadorAuto(restante)
   intervaloAutoRef.current = setInterval(() => {
     restante -= 1
@@ -1986,6 +1986,7 @@ const anterior = async () => {
     if (nuevo !== null) {
       setIndex(nuevo)
       socket.emit("cambiar-parte", nuevo)
+      if (autoAvanceActivo) iniciarAutoAvance(tiemposAprendidos, nuevo)
     }
     return
   }
@@ -2008,6 +2009,7 @@ const anterior = async () => {
     if (nuevo !== null) {
       setIndex(nuevo)
       socket.emit("cambiar-parte", nuevo)
+      if (autoAvanceActivo) iniciarAutoAvance(tiemposAprendidos, nuevo)
     }
     return
   }
@@ -2639,6 +2641,10 @@ const irAItemLista = async (i: number, alFinal = false) => {
   const item = lista[i]
   if (!item) return
 
+  // Cada ítem empieza con su propio reloj. El intervalo de la canción anterior
+  // nunca debe adelantar una pantalla de espera, una imagen ni otro himno.
+  detenerAutoAvance()
+
   setIndiceLista(i)
   setIndiceActivoLista(i)
   sincronizarListaSala(lista, i)
@@ -2736,6 +2742,14 @@ const irAItemLista = async (i: number, alFinal = false) => {
   // ✅ Desde cache — sin esperar red
   const partesCancion = await getPartesCancion(item.id || "")
   const parteInicial = alFinal ? Math.max(0, partesCancion.length - 1) : 0
+
+  if (item.id) {
+    setTiemposAprendidos(cargarTiempos(item.id))
+    iniciarAprendizaje()
+  } else {
+    setTiemposAprendidos([])
+    setAprendiendo(false)
+  }
 
   setActivaId(item.id || null)
   limpiarModoBiblia()
