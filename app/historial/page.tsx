@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId } from "@/lib/getIglesia"
+import OnboardingTour from "@/components/OnboardingTour"
+import { TOUR_HISTORIAL } from "@/lib/tours"
 
 const f: React.CSSProperties = { fontFamily: "'Segoe UI', system-ui, sans-serif" }
 
@@ -154,7 +156,7 @@ export default function HistorialPage() {
         <div style={{ padding:"0 16px", display:"flex", flexDirection:"column", gap:14 }}>
 
           {/* Stats */}
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10 }}>
+          <div data-tour="historial-resumen" style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10 }}>
             {[
               { n: stats.totalCultos,       label:"cultos registrados", color:"#3b82f6", icon:"📋" },
               { n: stats.totalProyecciones,  label:"proyecciones",       color:"#a855f7", icon:"🎵" },
@@ -183,7 +185,7 @@ export default function HistorialPage() {
           )}
 
           {/* Filtro por mes */}
-          <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
+          <div data-tour="historial-filtros" style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
             <span style={{ fontSize:13, opacity:.5 }}>Filtrar:</span>
             <button onClick={() => { setMes(""); setPag(0) }} style={{ padding:"5px 12px", borderRadius:20, border:`1px solid ${!mes?"rgba(37,99,235,0.5)":"rgba(255,255,255,0.1)"}`, background:!mes?"rgba(37,99,235,0.15)":"transparent", color:!mes?"#93c5fd":"rgba(255,255,255,0.5)", fontSize:12, fontWeight:600, cursor:"pointer" }}>Todos</button>
             {mesesDisponibles.slice(0,6).map(m => (
@@ -194,7 +196,7 @@ export default function HistorialPage() {
           </div>
 
           {/* Lista de cultos */}
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:10 }}>
+          <div data-tour="historial-cultos" style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))", gap:10 }}>
             {pagActual.map(c => (
               <button key={c.id} onClick={() => abrirCulto(c)}
                 style={{ padding:"14px 16px", borderRadius:14, border:"1px solid rgba(255,255,255,0.06)", background:"rgba(255,255,255,0.02)", color:"white", cursor:"pointer", textAlign:"left", display:"flex", flexDirection:"column", gap:8 }}>
@@ -222,6 +224,7 @@ export default function HistorialPage() {
 
         </div>
       </div>
+      <OnboardingTour id="tour-historial-v1" pasos={TOUR_HISTORIAL} nombrePagina="Historial de cultos" />
     </div>
   )
 }

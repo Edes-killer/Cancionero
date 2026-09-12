@@ -1704,6 +1704,7 @@ export default function ConfiguracionPage() {
               ...(isCapacitor ? [{ id: "tour-camara-movil-v1", label: "📱 Tour de Cámara", desc: "Código, conexión y cambio de cámara del celular", ruta: "/camara" }] : []),
               { id: "tour-configuracion-v1", label: "⚙️ Tour de Configuración", desc: "Identidad, proyección, personas, ayuda y diagnósticos", ruta: "/configuracion" },
               { id: "tour-inicio-v1", label: "🏠 Tour de Inicio", desc: "Iglesia activa, Control, módulos y estado de conexión", ruta: "/" },
+              { id: "tour-historial-v1", label: "📅 Tour de Historial", desc: "Resumen, filtros y cultos anteriores", ruta: "/historial" },
             ].map(({ id, label, desc, ruta }) => {
               // visto calculado en onClick
               return (

@@ -560,3 +560,42 @@ export const TOUR_INICIO: PasoTour[] = [
     tip: "Puedes repetir este recorrido desde Configuración → Tutoriales."
   }
 ]
+
+export const TOUR_HISTORIAL: PasoTour[] = [
+  {
+    icono: "📅",
+    titulo: "Historial de cultos",
+    desc: "Consulta las listas guardadas y las canciones que realmente fueron proyectadas en cultos anteriores.",
+    tip: "El historial es informativo: abrir un registro no reemplaza automáticamente la lista activa del Control."
+  },
+  {
+    icono: "📊",
+    titulo: "Resumen de uso",
+    desc: "Estas cifras muestran la cantidad de cultos registrados, proyecciones realizadas y la canción más utilizada.",
+    tip: "Los datos se calculan solamente para la iglesia activa.",
+    selector: "[data-tour='historial-resumen']",
+    posicion: "bottom"
+  },
+  {
+    icono: "🗓️",
+    titulo: "Filtra por mes",
+    desc: "Reduce la lista a un mes específico para encontrar rápidamente un culto pasado.",
+    tip: "Selecciona Todos para volver a ver el historial completo.",
+    selector: "[data-tour='historial-filtros']",
+    posicion: "bottom"
+  },
+  {
+    icono: "📋",
+    titulo: "Abre un culto",
+    desc: "Cada tarjeta muestra el nombre, fecha y cantidad de canciones proyectadas. Tócala para revisar su detalle.",
+    tip: "Una lista guardada puede existir aunque todavía no tenga proyecciones registradas.",
+    selector: "[data-tour='historial-cultos']",
+    posicion: "top"
+  },
+  {
+    icono: "✅",
+    titulo: "Historial entendido",
+    desc: "Ya puedes revisar cultos anteriores y reconocer qué canciones usa más tu iglesia.",
+    tip: "Puedes repetir este recorrido desde Configuración → Tutoriales."
+  }
+]

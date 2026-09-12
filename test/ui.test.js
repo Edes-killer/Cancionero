@@ -134,6 +134,18 @@ test("Inicio orienta al usuario y Control incluye la Galería en sus tours", () 
   assert.match(ajustes, /Tour de Inicio/)
 })
 
+test("Historial explica estadísticas, filtros y registros", () => {
+  const tours = fs.readFileSync("lib/tours.ts", "utf8")
+  const historial = fs.readFileSync("app/historial/page.tsx", "utf8")
+  const ajustes = fs.readFileSync("app/configuracion/page.tsx", "utf8")
+  assert.match(tours, /export const TOUR_HISTORIAL/)
+  assert.match(historial, /OnboardingTour id="tour-historial-v1"/)
+  assert.match(historial, /data-tour="historial-resumen"/)
+  assert.match(historial, /data-tour="historial-filtros"/)
+  assert.match(historial, /data-tour="historial-cultos"/)
+  assert.match(ajustes, /Tour de Historial/)
+})
+
 test("la lista mantiene visibles los controles de orden y resalta el elemento movido", () => {
   const control = fs.readFileSync("app/control/page.tsx", "utf8")
   assert.match(control, /indiceItemReordenando/)
