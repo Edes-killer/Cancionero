@@ -1,6 +1,6 @@
 # Selah Live — Documento de Diseño (SDD) y Contexto de Desarrollo
 
-> Versión del documento: 2026-09-11 · App: **v0.5.30** · Mantener al día al cerrar cada release.
+> Versión del documento: 2026-09-12 · App: **v0.5.31** · Mantener al día al cerrar cada release.
 
 ---
 
@@ -348,6 +348,13 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - Pantallas especiales respetan el fondo configurado y los dos monitores previos ajustan contenido, tamaño y selección.
 - La vista previa flotante puede redimensionarse y recuerda la última parte revisada de cada canción.
 - Suite automatizada de seguridad y arquitectura ampliada para impedir regresiones de credenciales y permisos.
+
+### Entregado en v0.5.31
+
+- Recorridos guiados para Inicio, Control, Canciones, Galería, Músicos, Cámara móvil, Transmisión, Historial y Configuración.
+- Los tutoriales se pueden repetir sin recargar la APK y no ejecutan acciones delicadas durante la explicación.
+- Emisión directa en la red local protegida por código, con enlace y QR para espectadores.
+- Mejoras de accesibilidad en paneles guiados y comprobaciones automatizadas contra regresiones.
 
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).
