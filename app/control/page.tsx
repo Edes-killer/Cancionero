@@ -386,6 +386,7 @@ export default function ControlPage() {
   const [logoEsperaUrl, setLogoEsperaUrl] = useState("")
   const [logoEsperaNombre, setLogoEsperaNombre] = useState("")
   const [menuItemAbierto, setMenuItemAbierto] = useState<number | null>(null)
+  const [indiceItemReordenando, setIndiceItemReordenando] = useState<number | null>(null)
   const [menuCultoAbierto, setMenuCultoAbierto] = useState<string | null>(null)
   const [mensajeFlash, setMensajeFlash] = useState("")
   const [flashListaCulto, setFlashListaCulto] = useState(false)
@@ -1988,13 +1989,15 @@ const moverItemLista = (from: number, to: number) => {
 
 const subirItemLista = (i: number) => {
   if (i <= 0) return
-  setMenuItemAbierto(null)
+  setIndiceItemReordenando(i - 1)
+  setMenuItemAbierto(prev => prev === i ? i - 1 : null)
   moverItemLista(i, i - 1)
 }
 
 const bajarItemLista = (i: number) => {
   if (i >= lista.length - 1) return
-  setMenuItemAbierto(null)
+  setIndiceItemReordenando(i + 1)
+  setMenuItemAbierto(prev => prev === i ? i + 1 : null)
   moverItemLista(i, i + 1)
 }
 
@@ -2002,6 +2005,7 @@ const eliminarDeLista = async (index: number) => {
   const item = lista[index]
 
   setLista(prev => prev.filter((_, i) => i !== index))
+  setIndiceItemReordenando(prev => prev === index ? null : prev !== null && prev > index ? prev - 1 : prev)
 
   if (!listaIdActual) return
 
@@ -6440,6 +6444,7 @@ return (
           {lista.map((c, i) => {
             const esActivo = i === indiceActivoLista
             const esAgregado = i === indiceItemAgregado
+            const esReordenando = i === indiceItemReordenando
             return (
               <div
                 key={i}
@@ -6450,9 +6455,9 @@ return (
                 onDrop={() => { if (!isMobile && dragIndex !== null) moverItemLista(dragIndex, i); setDragIndex(null) }}
                 onDragEnd={() => setDragIndex(null)}
                 style={{
-                  background: esActivo ? "rgba(20,83,45,0.38)" : esAgregado ? "rgba(59,130,246,0.12)" : "rgba(255,255,255,0.04)",
-                  border: `1px solid ${esActivo ? "rgba(34,197,94,0.5)" : esAgregado ? "rgba(59,130,246,0.35)" : "rgba(255,255,255,0.07)"}`,
-                  borderLeft: esActivo ? "4px solid #22c55e" : undefined,
+                  background: esActivo ? "rgba(20,83,45,0.38)" : esReordenando ? "rgba(245,158,11,0.14)" : esAgregado ? "rgba(59,130,246,0.12)" : "rgba(255,255,255,0.04)",
+                  border: `1px solid ${esActivo ? "rgba(34,197,94,0.5)" : esReordenando ? "rgba(245,158,11,0.65)" : esAgregado ? "rgba(59,130,246,0.35)" : "rgba(255,255,255,0.07)"}`,
+                  borderLeft: esActivo ? "4px solid #22c55e" : esReordenando ? "4px solid #f59e0b" : undefined,
                   borderRadius: 11, padding: "10px 12px",
                   display: "flex", alignItems: "center", gap: 10,
                   flexWrap: "wrap",
@@ -6485,6 +6490,7 @@ return (
                       {limpiarTituloLista(c?.titulo || "Sin título")}
                     </div>
                     {esActivo && <div style={{ fontSize:9.5, color:"#86efac", fontWeight:900, letterSpacing:".08em", marginTop:2 }}>● AL AIRE</div>}
+                    {esReordenando && !esActivo && <div style={{ fontSize:9.5, color:"#fbbf24", fontWeight:900, letterSpacing:".08em", marginTop:2 }}>↕ REORDENANDO</div>}
                     <div style={{ fontSize: 11, opacity: 0.55, marginTop: 1 }}>
                       {subtituloItemLista(c)}
                     </div>
@@ -6497,23 +6503,25 @@ return (
                     style={{ width: 38, height: 38, borderRadius: 9, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     ▶
                   </button>
-                  <button data-ayuda="Muestra las acciones para reordenar o eliminar este elemento." className="ctrl-btn"
+                  <button data-ayuda="Sube este elemento una posición y lo mantiene seleccionado para seguir moviéndolo." aria-label={`Subir ${limpiarTituloLista(c?.titulo || "elemento")}`} className="ctrl-btn"
+                    onClick={() => subirItemLista(i)} disabled={i === 0}
+                    style={{ width:34, height:38, borderRadius:9, border:`1px solid ${esReordenando ? "rgba(245,158,11,.5)" : "rgba(255,255,255,.08)"}`, background:esReordenando ? "rgba(245,158,11,.16)" : "rgba(255,255,255,.06)", color:esReordenando ? "#fbbf24" : "white", fontWeight:800, fontSize:15, cursor:i === 0 ? "not-allowed" : "pointer", opacity:i === 0 ? .3 : 1 }}>↑</button>
+                  <button data-ayuda="Baja este elemento una posición y lo mantiene seleccionado para seguir moviéndolo." aria-label={`Bajar ${limpiarTituloLista(c?.titulo || "elemento")}`} className="ctrl-btn"
+                    onClick={() => bajarItemLista(i)} disabled={i === lista.length - 1}
+                    style={{ width:34, height:38, borderRadius:9, border:`1px solid ${esReordenando ? "rgba(245,158,11,.5)" : "rgba(255,255,255,.08)"}`, background:esReordenando ? "rgba(245,158,11,.16)" : "rgba(255,255,255,.06)", color:esReordenando ? "#fbbf24" : "white", fontWeight:800, fontSize:15, cursor:i === lista.length - 1 ? "not-allowed" : "pointer", opacity:i === lista.length - 1 ? .3 : 1 }}>↓</button>
+                  <button data-ayuda="Muestra la opción para eliminar este elemento de la lista." className="ctrl-btn"
                     onClick={() => setMenuItemAbierto(prev => prev === i ? null : i)}
-                    style={{ width: 38, height: 38, borderRadius: 9, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    style={{ width: 30, height: 38, borderRadius: 9, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     ⋮
                   </button>
                 </div>
 
                 {/* Menú expandido */}
                 {menuItemAbierto === i && (
-                  <div style={{ width: "100%", display: "flex", gap: 6 }}>
-                    <button className="ctrl-btn" onClick={() => subirItemLista(i)} disabled={i === 0}
-                      style={{ flex: 1, padding: "7px", borderRadius: 8, border: "none", background: "#334155", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: i === 0 ? 0.4 : 1 }}>⬆️</button>
-                    <button className="ctrl-btn" onClick={() => bajarItemLista(i)} disabled={i === lista.length - 1}
-                      style={{ flex: 1, padding: "7px", borderRadius: 8, border: "none", background: "#334155", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: i === lista.length - 1 ? 0.4 : 1 }}>⬇️</button>
+                  <div style={{ width: "100%", display: "flex", justifyContent:"flex-end" }}>
                     <button className="ctrl-btn"
                       onClick={async () => { if (await confirmar("¿Eliminar este elemento?", { textoOk: "Eliminar", peligro: true })) { eliminarDeLista(i); setMenuItemAbierto(null) } }}
-                      style={{ flex: 1, padding: "7px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.15)", color: "#fca5a5", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>🗑️</button>
+                      style={{ padding:"8px 14px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.15)", color: "#fca5a5", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>🗑️ Eliminar de la lista</button>
                   </div>
                 )}
               </div>

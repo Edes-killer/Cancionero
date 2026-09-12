@@ -62,3 +62,13 @@ test("el tour de Control móvil usa acciones reales de la APK", () => {
   assert.match(control, /data-tour="controles-extra-mobile"/)
   assert.match(tourUi, /calc\(100vw - 24px\)/)
 })
+
+test("la lista mantiene visibles los controles de orden y resalta el elemento movido", () => {
+  const control = fs.readFileSync("app/control/page.tsx", "utf8")
+  assert.match(control, /indiceItemReordenando/)
+  assert.match(control, /↕ REORDENANDO/)
+  assert.match(control, /aria-label=\{`Subir /)
+  assert.match(control, /aria-label=\{`Bajar /)
+  assert.match(control, /setIndiceItemReordenando\(i - 1\)/)
+  assert.match(control, /setIndiceItemReordenando\(i \+ 1\)/)
+})
