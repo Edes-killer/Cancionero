@@ -452,6 +452,7 @@ const alternarAnclado = () => setPreviewAnclado(a => { const n = !a; try { local
 const arrastrePreviewRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
 const redimensionPreviewRef = useRef<{ sx: number; ancho: number } | null>(null)
 const previewPosRef = useRef<{ x: number; y: number } | null>(null)
+const previewPanelRef = useRef<HTMLDivElement | null>(null)
 const previewAnchoRef = useRef(previewAncho)
 const previewEsSeleccion = !!previewCancion && previewCancion.id !== activaId
 const escalaPanelPreview = Math.min(1.35, Math.max(0.72, previewAncho / 384))
@@ -471,8 +472,25 @@ useEffect(() => {
   try { localStorage.setItem(`selah-preview-parte-${previewCancion.id}`, String(seguro)) } catch {}
 }, [previewCancion?.id, previewIndex, previewPartes.length])
 
-// Posición inicial en la zona superior derecha. La clave v2 migra la posición
-// antigua, que tenía un tope artificial de 210 px y desaprovechaba ese espacio.
+// La barra superior cambia de alto con el zoom de Windows, textos largos y la
+// segunda fila de controles. Medir su borde real evita que la vista previa
+// quede escondida detrás de ella (un tope fijo de 60 px no era suficiente).
+const limiteSuperiorPreview = () => {
+  if (typeof document === "undefined") return 60
+  const barra = document.querySelector("[data-preview-limite-superior]") as HTMLElement | null
+  return Math.max(60, Math.ceil(barra?.getBoundingClientRect().bottom || 60) + 8)
+}
+const limitarPosPreview = (p: { x: number; y: number }, ancho = previewAnchoRef.current) => {
+  const tope = limiteSuperiorPreview()
+  const alto = previewPanelRef.current?.offsetHeight || 120
+  return {
+    x: Math.min(Math.max(4, p.x), Math.max(4, window.innerWidth - ancho - 4)),
+    y: Math.min(Math.max(tope, p.y), Math.max(tope, window.innerHeight - alto - 4)),
+  }
+}
+
+// Posición inicial en la zona superior derecha; se conserva la preferencia del
+// usuario, pero siempre se corrige contra la barra y los bordes visibles.
 useEffect(() => {
   if (typeof window === "undefined") return
   let p: { x: number; y: number }
@@ -480,23 +498,37 @@ useEffect(() => {
     const g = localStorage.getItem("selah-preview-pos-v2")
     p = g ? JSON.parse(g) : { x: window.innerWidth - previewAnchoRef.current - 16, y: 68 }
   } catch { p = { x: window.innerWidth - previewAnchoRef.current - 16, y: 68 } }
-  // Clamp: respeta la barra principal, pero permite aprovechar el área superior.
-  p = { x: Math.min(Math.max(4, p.x), Math.max(4, window.innerWidth - previewAnchoRef.current)), y: Math.min(Math.max(60, p.y), window.innerHeight - 120) }
+  p = limitarPosPreview(p)
   previewPosRef.current = p
   setPreviewPos(p)
 }, [])
 
-// ✅ Tope superior: solo reserva la barra principal de la aplicación.
-const PREVIEW_TOPE_Y = 60
 const moverPreview = (e: MouseEvent) => {
   const a = arrastrePreviewRef.current
   if (!a) return
-  const ANCHO = previewAnchoRef.current, ALTO = 120
-  const x = Math.min(Math.max(4, a.ox + (e.clientX - a.sx)), window.innerWidth - ANCHO)
-  const y = Math.min(Math.max(PREVIEW_TOPE_Y, a.oy + (e.clientY - a.sy)), window.innerHeight - ALTO)
-  previewPosRef.current = { x, y }
-  setPreviewPos({ x, y })
+  const p = limitarPosPreview({ x: a.ox + (e.clientX - a.sx), y: a.oy + (e.clientY - a.sy) })
+  previewPosRef.current = p
+  setPreviewPos(p)
 }
+
+// Recalcular cuando cambia el tamaño del panel, la ventana o la barra superior.
+// También corrige posiciones antiguas ya guardadas que quedaron bajo el Control.
+useEffect(() => {
+  if (!previewHabilitado || !previewPosRef.current) return
+  const corregir = () => {
+    const actual = previewPosRef.current
+    if (!actual) return
+    const p = limitarPosPreview(actual)
+    if (p.x !== actual.x || p.y !== actual.y) {
+      previewPosRef.current = p
+      setPreviewPos(p)
+      try { localStorage.setItem("selah-preview-pos-v2", JSON.stringify(p)) } catch {}
+    }
+  }
+  const id = requestAnimationFrame(corregir)
+  window.addEventListener("resize", corregir)
+  return () => { cancelAnimationFrame(id); window.removeEventListener("resize", corregir) }
+}, [previewHabilitado, previewAncho, previewMinimizado])
 const cambiarAnchoPreview = (ancho: number) => {
   const maximo = Math.max(280, Math.min(640, window.innerWidth - 8))
   const nuevo = Math.round(Math.min(maximo, Math.max(280, ancho)))
@@ -4816,7 +4848,7 @@ return (
 }}>
 
   {/* ── BARRA DE NAVEGACIÓN SUPERIOR ─────────────────────────────────────── */}
-  <div style={{
+  <div data-preview-limite-superior style={{
     flexShrink: 0, zIndex: 80,
     background: "rgba(6,13,26,0.97)",
     borderBottom: "1px solid rgba(255,255,255,0.07)",
@@ -6515,7 +6547,7 @@ return (
 
       {/* ── PANEL VISTA PREVIA — FLOTANTE y arrastrable (siempre visible) ──── */}
       {(!isMobile && previewHabilitado && previewPos) && (
-        <div style={{
+        <div ref={previewPanelRef} style={{
           position: "fixed", left: previewPos.x, top: previewPos.y, width: previewAncho, zIndex: 400,
           background: "rgba(11,20,36,0.985)", border: "1px solid rgba(96,165,250,0.24)",
           borderRadius: 14, overflow: "hidden", boxShadow: "0 22px 55px rgba(0,0,0,0.55)",

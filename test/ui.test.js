@@ -134,6 +134,16 @@ test("Inicio orienta al usuario y Control incluye la Galería en sus tours", () 
   assert.match(ajustes, /Tour de Inicio/)
 })
 
+test("la vista previa flotante respeta el alto real del Control", () => {
+  const control = fs.readFileSync("app/control/page.tsx", "utf8")
+  assert.match(control, /data-preview-limite-superior/)
+  assert.match(control, /getBoundingClientRect\(\)\.bottom/)
+  assert.match(control, /previewPanelRef\.current\?\.offsetHeight/)
+  assert.match(control, /const p = limitarPosPreview\(actual\)/)
+  assert.match(control, /window\.addEventListener\("resize", corregir\)/)
+  assert.doesNotMatch(control, /PREVIEW_TOPE_Y/)
+})
+
 test("Historial explica estadísticas, filtros y registros", () => {
   const tours = fs.readFileSync("lib/tours.ts", "utf8")
   const historial = fs.readFileSync("app/historial/page.tsx", "utf8")
