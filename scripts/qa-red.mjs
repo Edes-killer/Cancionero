@@ -43,7 +43,7 @@ try {
   }
   const info = await ping.json()
   registrar("Servidor identificable", ping.ok && info.app === "selah-live", JSON.stringify(info))
-  if (!Number.isInteger(info.qaProtocol) || info.qaProtocol < 5) {
+  if (!Number.isInteger(info.qaProtocol) || info.qaProtocol < 6) {
     throw new Error(`El servidor abierto es Selah ${info.version || "antiguo"}, pero no incluye el protocolo QA actual. Cierra por completo la versión instalada y abre el código nuevo con "npm.cmd run electron:dev".`)
   }
 
@@ -128,6 +128,17 @@ try {
   controlA.emit("solicitar-abrir-proyector")
   const abrirProyector = await abrirProyectorP
   registrar("La APK puede solicitar abrir el proyector del PC", abrirProyector.recibido)
+
+  // La emisión directa usa una sala temporal: el código correcto entra y otro
+  // código no puede ver ni interferir con esa transmisión.
+  const hostEmision = await conectar(), viewerBueno = await conectar(), viewerAjeno = await conectar()
+  sockets.push(hostEmision, viewerBueno, viewerAjeno)
+  const hostOk = await new Promise(resolve => hostEmision.emit("emision:host", { codigo:"QA7LIVE" }, resolve))
+  const nuevoViewerP = eventoEn(hostEmision, "emision:nuevo-espectador")
+  const viewerOk = await new Promise(resolve => viewerBueno.emit("emision:ver", { codigo:"QA7LIVE" }, resolve))
+  const nuevoViewer = await nuevoViewerP
+  const viewerBloqueado = await new Promise(resolve => viewerAjeno.emit("emision:ver", { codigo:"OTRO99" }, resolve))
+  registrar("La emisión directa queda aislada por código", hostOk?.ok && viewerOk?.ok && nuevoViewer.recibido && viewerBloqueado?.ok === false)
 
   // ── Modo caos: dos operadores escriben casi al mismo tiempo ─────────────
   const partesQa = Array.from({ length: 6 }, (_, i) => ({ tipo: `Parte ${i + 1}`, texto: `QA ${i + 1}` }))

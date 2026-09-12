@@ -638,13 +638,15 @@ function startSocketServer(port) {
     res.setHeader("Access-Control-Allow-Headers", "Content-Type")
     if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return }
 
-    if (req.url === "/qr") {
+    if (req.url?.startsWith("/qr")) {
       const handler = async () => {
         try {
           const QRCode = require("qrcode")
           const ip = getLocalIP()
-          const url = `selah://${ip}:4000`
-          const qrDataUrl = await QRCode.toDataURL(url, { width: 300, margin: 2 })
+          const consulta = new URL(req.url, `http://${req.headers.host || "localhost"}`)
+          const data = consulta.searchParams.get("data")
+          const contenido = data && data.length <= 500 ? data : `selah://${ip}:4000`
+          const qrDataUrl = await QRCode.toDataURL(contenido, { width: 300, margin: 2 })
           const base64 = qrDataUrl.split(",")[1]
           const buf = Buffer.from(base64, "base64")
           res.writeHead(200, { "Content-Type": "image/png" })
@@ -663,7 +665,7 @@ function startSocketServer(port) {
         puerto: 4000,
         app: "selah-live",
         version: SELAH_VERSION,
-        qaProtocol: 5,
+        qaProtocol: 6,
       }))
       return
     }
@@ -673,7 +675,7 @@ function startSocketServer(port) {
         ok: true,
         app: "selah-live",
         version: SELAH_VERSION,
-        qaProtocol: 5,
+        qaProtocol: 6,
         puerto: 4000,
       }))
       return
@@ -1212,22 +1214,30 @@ try {
     // aquí la señalización es DIRIGIDA por socket.id (no broadcast como la cámara).
     // El video/audio va directo PC→espectador por la LAN; el servidor solo hace de
     // relay de la señalización (SDP/ICE) y avisa al emisor cuando llega un nuevo par.
-    const emisorDeEmision = () => {
-      const set = io.sockets.adapter.rooms.get("emision")
+    const codigoEmisionSeguro = (valor) => String(valor || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8)
+    const salaEmision = (codigo) => `emision-${codigo}`
+    const emisorDeEmision = (codigo) => {
+      const set = io.sockets.adapter.rooms.get(salaEmision(codigo))
       return set && [...set].find(id => io.sockets.sockets.get(id)?.data?.emisionRol === "emisor")
     }
 
-    socket.on("emision:host", () => {
+    socket.on("emision:host", ({ codigo } = {}, cb) => {
+      const codigoFinal = codigoEmisionSeguro(codigo)
+      if (codigoFinal.length < 5) { if (typeof cb === "function") cb({ ok:false, error:"codigo-invalido" }); return }
       socket.data.emisionRol = "emisor"
-      socket.join("emision")
-      console.log("📡 emisor de emisión directa listo")
+      socket.data.emisionCodigo = codigoFinal
+      socket.join(salaEmision(codigoFinal))
+      if (typeof cb === "function") cb({ ok:true })
+      console.log("📡 emisor de emisión directa listo:", codigoFinal)
     })
 
-    socket.on("emision:ver", (_ = {}, cb) => {
-      const emisorId = emisorDeEmision()
+    socket.on("emision:ver", ({ codigo } = {}, cb) => {
+      const codigoFinal = codigoEmisionSeguro(codigo)
+      const emisorId = emisorDeEmision(codigoFinal)
       if (!emisorId) { if (typeof cb === "function") cb({ ok: false, error: "sin-emision" }); return }
       socket.data.emisionRol = "espectador"
-      socket.join("emision")
+      socket.data.emisionCodigo = codigoFinal
+      socket.join(salaEmision(codigoFinal))
       io.to(emisorId).emit("emision:nuevo-espectador", { id: socket.id })
       if (typeof cb === "function") cb({ ok: true })
       console.log("📡 espectador unido:", socket.id)
@@ -1240,7 +1250,7 @@ try {
     })
 
     socket.on("emision:fin", () => {
-      if (socket.data?.emisionRol === "emisor") socket.broadcast.to("emision").emit("emision:fin")
+      if (socket.data?.emisionRol === "emisor") socket.broadcast.to(salaEmision(socket.data.emisionCodigo)).emit("emision:fin")
     })
 
     socket.on("disconnect", () => {
@@ -1259,10 +1269,10 @@ try {
       // Emisión directa: si cae un espectador, avisar al emisor para que cierre su
       // PC; si cae el emisor, avisar a todos los espectadores.
       if (socket.data?.emisionRol === "espectador") {
-        const emisorId = emisorDeEmision()
+        const emisorId = emisorDeEmision(socket.data.emisionCodigo)
         if (emisorId) io.to(emisorId).emit("emision:espectador-fin", { id: socket.id })
       } else if (socket.data?.emisionRol === "emisor") {
-        socket.broadcast.to("emision").emit("emision:fin")
+        socket.broadcast.to(salaEmision(socket.data.emisionCodigo)).emit("emision:fin")
       }
     })
   })

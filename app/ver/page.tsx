@@ -23,6 +23,8 @@ export default function Ver() {
   const [tocar, setTocar] = useState(false)
 
   useEffect(() => {
+    const codigo = new URLSearchParams(window.location.search).get("codigo")?.trim().toUpperCase() || ""
+    if (!/^[A-Z0-9]{5,8}$/.test(codigo)) { setEstado("sin-emision"); return }
     const socket = io(getSocketUrl(), { transports: ["websocket", "polling"], forceNew: true })
     socketRef.current = socket
 
@@ -30,7 +32,7 @@ export default function Ver() {
 
     const unirse = () => {
       setEstado("conectando")
-      socket.emit("emision:ver", {}, (res: { ok?: boolean } = {}) => {
+      socket.emit("emision:ver", { codigo }, (res: { ok?: boolean } = {}) => {
         setEstado(res?.ok ? "esperando" : "sin-emision")
       })
     }
@@ -83,7 +85,8 @@ export default function Ver() {
 
   const reintentar = () => {
     setEstado("conectando")
-    socketRef.current?.emit("emision:ver", {}, (res: { ok?: boolean } = {}) => {
+    const codigo = new URLSearchParams(window.location.search).get("codigo")?.trim().toUpperCase() || ""
+    socketRef.current?.emit("emision:ver", { codigo }, (res: { ok?: boolean } = {}) => {
       setEstado(res?.ok ? "esperando" : "sin-emision")
     })
   }

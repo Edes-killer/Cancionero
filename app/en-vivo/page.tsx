@@ -343,6 +343,7 @@ export default function EnVivoPage() {
   const [verUrl, setVerUrl] = useState("")          // link que abre la congregación
   const [numVer, setNumVer] = useState(0)           // espectadores conectados
   const [copiado, setCopiado] = useState(false)
+  const [codigoEmision, setCodigoEmision] = useState("")
   const emiSocketRef = useRef<Socket | null>(null)
   const emiStreamRef = useRef<MediaStream | null>(null)          // salida capturada 1 vez
   const emiPeersRef = useRef<Map<string, RTCPeerConnection>>(new Map())
@@ -1231,7 +1232,10 @@ export default function EnVivoPage() {
     setErrorTx(null)
     const info = await tx.infoRedCamara()
     if (!info?.ok) { setErrorTx("No se pudo obtener la IP de la red."); return }
-    setVerUrl(`http://${info.ip}:${info.web}/ver`)
+    const codigo = Array.from(crypto.getRandomValues(new Uint8Array(6)), n => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[n % 32]).join("")
+    const enlace = `http://${info.ip}:${info.web}/ver?codigo=${codigo}`
+    setCodigoEmision(codigo)
+    setVerUrl(enlace)
 
     // Una sola captura de salida; sus tracks se comparten entre todos los peers.
     emiStreamRef.current = streamSalida()
@@ -1239,7 +1243,9 @@ export default function EnVivoPage() {
 
     const socket = io(getSocketUrl(), { transports: ["websocket", "polling"], forceNew: true })
     emiSocketRef.current = socket
-    socket.on("connect", () => socket.emit("emision:host"))
+    socket.on("connect", () => socket.emit("emision:host", { codigo }, (res: { ok?:boolean } = {}) => {
+      if (!res.ok) setErrorTx("No se pudo crear la sala privada de emisión.")
+    }))
 
     // Un espectador nuevo → crear su PC, agregar la salida y mandarle la oferta.
     socket.on("emision:nuevo-espectador", async ({ id }: { id: string }) => {
@@ -1288,7 +1294,7 @@ export default function EnVivoPage() {
     emiPeersRef.current.clear()
     try { emiSocketRef.current?.close() } catch {}; emiSocketRef.current = null
     emiStreamRef.current = null
-    setEmisionOn(false); setNumVer(0); setVerUrl("")
+    setEmisionOn(false); setNumVer(0); setVerUrl(""); setCodigoEmision("")
   }
 
   const copiarLink = async () => {
@@ -2056,6 +2062,14 @@ export default function EnVivoPage() {
                   <span style={{ fontSize: 12, color: C.tenue }}>· {numVer} {numVer === 1 ? "persona viendo" : "personas viendo"}</span>
                 </div>
                 <div style={{ fontSize: 11.5, color: C.tenue, marginBottom: 6 }}>Comparte este link (o dícelo en voz alta):</div>
+                <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:10, padding:10, borderRadius:10, background:"rgba(255,255,255,.04)", border:`1px solid ${C.borde}` }}>
+                  <img src={`http://localhost:4000/qr?data=${encodeURIComponent(verUrl)}`} alt="QR de la emisión directa" style={{ width:92, height:92, borderRadius:8, background:"white" }} />
+                  <div>
+                    <div style={{ fontSize:11, color:C.tenue, marginBottom:4 }}>Código de acceso</div>
+                    <div style={{ fontSize:22, fontWeight:900, letterSpacing:3, color:C.texto }}>{codigoEmision}</div>
+                    <div style={{ fontSize:11, color:C.tenue, marginTop:5, lineHeight:1.4 }}>Escanea el QR desde otro equipo conectado al mismo WiFi.</div>
+                  </div>
+                </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "stretch", flexWrap: "wrap" }}>
                   <input readOnly value={verUrl} onFocus={e => e.currentTarget.select()}
                     style={{ flex: 1, minWidth: 160, padding: "9px 11px", borderRadius: 8, border: `1px solid ${C.borde}`, background: "rgba(255,255,255,0.05)", color: C.texto, fontSize: 13, fontFamily: "monospace" }} />
