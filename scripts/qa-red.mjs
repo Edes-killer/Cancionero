@@ -43,7 +43,7 @@ try {
   }
   const info = await ping.json()
   registrar("Servidor identificable", ping.ok && info.app === "selah-live", JSON.stringify(info))
-  if (!Number.isInteger(info.qaProtocol) || info.qaProtocol < 2) {
+  if (!Number.isInteger(info.qaProtocol) || info.qaProtocol < 3) {
     throw new Error(`El servidor abierto es Selah ${info.version || "antiguo"}, pero no incluye el protocolo QA actual. Cierra por completo la versión instalada y abre el código nuevo con "npm.cmd run electron:dev".`)
   }
 
@@ -100,6 +100,17 @@ try {
   const bridge = await bridgeP
   registrar("Un rol músico no puede usar el puente nube", !bridge.recibido)
 
+  // Dos operadores pueden elegir listas distintas casi simultáneamente, pero
+  // ambos deben converger en la última revisión aceptada por el servidor.
+  let listaA = null, listaB = null
+  controlA.on("lista-sincronizada", data => { listaA = data })
+  controlB.on("lista-sincronizada", data => { listaB = data })
+  controlA.emit("sincronizar-lista", { listaId:"lista-a", nombre:"Culto A", indice:0, items:[{ tipo:"cancion", id:"a", titulo:"A" }] })
+  controlB.emit("sincronizar-lista", { listaId:"lista-b", nombre:"Culto B", indice:0, items:[{ tipo:"cancion", id:"b", titulo:"B" }] })
+  await esperar(250)
+  registrar("Listas simultáneas convergen", !!listaA && !!listaB && listaA.revision === listaB.revision && listaA.listaId === listaB.listaId,
+    `A=${listaA?.listaId}@${listaA?.revision} B=${listaB?.listaId}@${listaB?.revision}`)
+
   // ── Modo caos: dos operadores escriben casi al mismo tiempo ─────────────
   const partesQa = Array.from({ length: 6 }, (_, i) => ({ tipo: `Parte ${i + 1}`, texto: `QA ${i + 1}` }))
   const cargaP = eventoEn(proyector, "cargar-cancion")
@@ -138,9 +149,15 @@ try {
   const reconectado = await conectar()
   sockets.push(reconectado)
   const restauradoP = eventoEn(reconectado, "restaurar-estado-control")
+  const presenciaP = eventoEn(reconectado, "estado-presencia")
+  const listaRestauradaP = eventoEn(reconectado, "lista-sincronizada")
   const unionReconectada = await unir(reconectado, { sala, pantalla: "control", pin })
   const restaurado = await restauradoP
+  const presencia = await presenciaP
+  const listaRestaurada = await listaRestauradaP
   registrar("Un control reconectado recupera el estado", unionReconectada?.ok && restaurado.recibido && restaurado.data?.index === 2)
+  registrar("Un control nuevo conoce la presencia del proyector", presencia.recibido && presencia.data?.proyectorConectado === true)
+  registrar("Un control nuevo recupera la lista activa", listaRestaurada.recibido && listaRestaurada.data?.listaId === listaA?.listaId)
 
   const bannerLargoP = eventoEn(proyector, "mostrar-banner-urgente")
   controlA.emit("mostrar-banner-urgente", "X".repeat(1000))

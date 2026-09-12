@@ -8,7 +8,7 @@ import { TOUR_CONTROL, TOUR_CONTROL_MOBILE } from "@/lib/tours"
 
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { logCatch } from "@/lib/Errorlogger"
-import { getSocketUrl } from "@/lib/servidor"
+import { buscarServidorEnRed, getSocketUrl } from "@/lib/servidor"
 import { logError } from "@/lib/Errorlogger"
 import { limitesDe } from "@/lib/planes"
 import { supabase } from "@/lib/supabase"
@@ -111,6 +111,7 @@ export default function ControlPage() {
   )
   const zoomActualRef = useRef(typeof window !== "undefined" ? Number(localStorage.getItem("proyector-escala-fuente") || "100") : 100)
   const socketRef2    = useRef<any>(null)
+  const revisionListaSalaRef = useRef(0)
   const [modalServidor, setModalServidor] = useState(false)
   const [socketConectado, setSocketConectado] = useState<boolean | null>(null)
   const [proyectorConectado, setProyectorConectado] = useState(false)
@@ -615,10 +616,9 @@ useEffect(() => {
   const ip = localStorage.getItem("servidor_ip")
   const esCapacitor = (window as any).Capacitor
 
-  if (esCapacitor && !ip) {
-    // No hay servidor configurado — carga sin socket, modo local
-    return
-  }
+  // Aunque todavía no exista una IP guardada, crear el socket contra el host
+  // local provisional permite que el sondeo inferior active el descubrimiento
+  // automático cuando aparezca el PC.
 
   const s = io(getSocketUrl(), { reconnection: true, reconnectionAttempts: Infinity, reconnectionDelay: 1000, reconnectionDelayMax: 5000 })
 
@@ -679,6 +679,19 @@ useEffect(() => {
   s.on("proyector-desconectado", () => { console.log("❌ PROYECTOR DESCONECTADO"); setProyectorConectado(false) })
   s.on("estado-presencia", (data: { proyectorConectado?: boolean }) => {
     setProyectorConectado(!!data?.proyectorConectado)
+  })
+  s.on("lista-sincronizada", (data: { items?: ItemLista[]; listaId?: string|null; nombre?: string; indice?: number|null; revision?: number }) => {
+    if (!Array.isArray(data?.items) || data.items.length > 300) return
+    const revision = Number(data.revision) || 0
+    if (revision && revision <= revisionListaSalaRef.current) return
+    revisionListaSalaRef.current = revision
+    setLista(data.items)
+    listaRef.current = data.items
+    setListaIdActual(data.listaId || null)
+    setNombreCulto(data.nombre || "")
+    const indice = Number.isInteger(data.indice) && Number(data.indice) >= 0 && Number(data.indice) < data.items.length ? Number(data.indice) : null
+    setIndiceLista(indice)
+    setIndiceActivoLista(indice)
   })
 
   // ✅ Sincronizar zoom cuando el proyector cambia con teclado
@@ -767,6 +780,37 @@ useEffect(() => {
     }
   }
 
+  // Socket.IO reintenta por sí solo, pero algunos WebView Android quedan en un
+  // estado inerte si el servidor no existía al abrir la APK. Un sondeo liviano
+  // despierta la conexión; tras varios fallos busca además una IP nueva.
+  let sondeoEnCurso = false
+  let fallosSondeo = 0
+  let descubrimientoIntentado = false
+  const sondearServidor = async () => {
+    if (s.connected || sondeoEnCurso || document.visibilityState === "hidden") return
+    sondeoEnCurso = true
+    try {
+      const r = await fetch(`${getSocketUrl()}/info`, { signal:AbortSignal.timeout(1200), cache:"no-store" })
+      const info = await r.json()
+      if (info?.app === "selah-live") {
+        fallosSondeo = 0
+        s.disconnect(); s.connect()
+      }
+    } catch {
+      fallosSondeo++
+      if (fallosSondeo >= 3 && !descubrimientoIntentado && (window as any).Capacitor) {
+        descubrimientoIntentado = true
+        const encontrada = await buscarServidorEnRed().catch(() => null)
+        const actual = localStorage.getItem("servidor_ip") || ""
+        if (encontrada && encontrada !== actual) {
+          localStorage.setItem("servidor_ip", encontrada)
+          window.location.reload()
+        }
+      }
+    } finally { sondeoEnCurso = false }
+  }
+  const intervaloSondeo = window.setInterval(() => void sondearServidor(), 5000)
+
   // Web / Electron: detecta cuando el tab vuelve a ser visible
   document.addEventListener("visibilitychange", reconectar)
 
@@ -790,10 +834,12 @@ useEffect(() => {
     desmontado = true
     capacitorListener?.remove()
     document.removeEventListener("visibilitychange", reconectar)
+    window.clearInterval(intervaloSondeo)
     s.off("control-siguiente", onSiguiente)
     s.off("control-anterior", onAnterior)
     s.off("cambiar-parte", onCambiarParteRemoto)
     s.off("cambiar-pagina-biblia", onCambiarPaginaRemoto)
+    s.off("lista-sincronizada")
     s.disconnect()
     try { supabase.removeChannel(canalNube) } catch {}
   }
@@ -2360,6 +2406,10 @@ const nombreImagenAmigable = (url?: string, fallback = "Imagen") => {
   return limpio || fallback
 }
 
+const sincronizarListaSala = (items: ItemLista[], indice: number|null, listaId = listaIdActual, nombre = nombreCulto) => {
+  socketRef2.current?.emit("sincronizar-lista", { items, indice, listaId, nombre })
+}
+
 const cargarListaDesdeBD = async (id: string) => {
   setListaIdActual(id)
 
@@ -2451,6 +2501,7 @@ const cargarListaDesdeBD = async (id: string) => {
   setPartes([])
   setIndex(0)
   limpiarModoBiblia()
+  sincronizarListaSala(listaOrdenada, null, id, culto?.nombre || "")
   if (typeof window !== "undefined") localStorage.removeItem(STORAGE_KEY)
 }
 
@@ -2463,6 +2514,7 @@ const irAItemLista = async (i: number, alFinal = false) => {
 
   setIndiceLista(i)
   setIndiceActivoLista(i)
+  sincronizarListaSala(lista, i)
 
   // Al cambiar de item se corta cualquier carrusel que estuviera corriendo.
   detenerCarruselTimer()

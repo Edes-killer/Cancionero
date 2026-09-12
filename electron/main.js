@@ -583,6 +583,8 @@ const pinesPorSala = {}
 // a disco -es intencionalmente efímero.
 let bannerPorSala = {}
 let modoLimpioPorSala = {}
+let listasPorSala = {}
+let revisionListaSala = 0
 const EVENTOS_PUENTE_NUBE = new Set([
   "cargar-cancion", "cambiar-parte", "cancion-activa", "mostrar-imagen",
   "mostrar-biblia", "cambiar-pagina-biblia", "mostrar-estado",
@@ -595,7 +597,7 @@ const EVENTOS_OPERADOR = new Set([
   "mostrar-biblia", "cambiar-pagina-biblia", "mostrar-estado",
   "mostrar-banner-urgente", "ocultar-banner-urgente", "modo-limpio",
   "cambiar-fondo", "precargar-imagenes", "ajustar-zoom", "zoom-info",
-  "reenviar-estado-a-proyectar",
+  "reenviar-estado-a-proyectar", "sincronizar-lista",
 ])
 const EVENTOS_NAVEGACION_PROYECTOR = new Set(["control-siguiente", "control-anterior"])
 
@@ -661,7 +663,7 @@ function startSocketServer(port) {
         puerto: 4000,
         app: "selah-live",
         version: SELAH_VERSION,
-        qaProtocol: 2,
+        qaProtocol: 3,
       }))
       return
     }
@@ -671,7 +673,7 @@ function startSocketServer(port) {
         ok: true,
         app: "selah-live",
         version: SELAH_VERSION,
-        qaProtocol: 2,
+        qaProtocol: 3,
         puerto: 4000,
       }))
       return
@@ -945,6 +947,7 @@ try {
           id !== socket.id && io.sockets.sockets.get(id)?.data?.pantalla === "proyectar"
         )
         socket.emit("estado-presencia", { proyectorConectado })
+        if (listasPorSala[salaFinal]) socket.emit("lista-sincronizada", listasPorSala[salaFinal])
       }
 
       if (pantalla === "control" && estadosPorSala[salaFinal]) {
@@ -981,6 +984,32 @@ try {
       if (socket.data.pantalla === "proyectar" && EVENTOS_PUENTE_NUBE.has(evento)) {
         io.to(salaDe(socket)).emit(evento, data)
       }
+    })
+
+    // Una sola lista autoritativa por sala. La última selección procesada por
+    // el servidor gana y recibe una revisión creciente, evitando mezclar el
+    // siguiente elemento de dos listas distintas en controles simultáneos.
+    socket.on("sincronizar-lista", (data = {}) => {
+      const sala = salaDe(socket)
+      if (!Array.isArray(data.items) || data.items.length > 300) {
+        socket.emit("entrada-invalida", { evento:"sincronizar-lista" })
+        return
+      }
+      const bytes = Buffer.byteLength(JSON.stringify(data.items), "utf8")
+      if (bytes > 1024 * 1024) {
+        socket.emit("entrada-invalida", { evento:"sincronizar-lista", motivo:"demasiado_grande" })
+        return
+      }
+      const indice = Number.isInteger(data.indice) && data.indice >= 0 && data.indice < data.items.length ? data.indice : null
+      const estadoLista = {
+        items:data.items,
+        indice,
+        listaId:typeof data.listaId === "string" ? data.listaId : null,
+        nombre:typeof data.nombre === "string" ? data.nombre.slice(0, 160) : "",
+        revision:++revisionListaSala,
+      }
+      listasPorSala[sala] = estadoLista
+      io.to(sala).emit("lista-sincronizada", estadoLista)
     })
 
     socket.on("cambiar-parte", (index) => {
