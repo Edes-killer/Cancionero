@@ -7,6 +7,7 @@ import EstadoOperativo from "@/components/ui/EstadoOperativo"
 import { TOUR_CONTROL, TOUR_CONTROL_MOBILE } from "@/lib/tours"
 
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { logCatch } from "@/lib/Errorlogger"
 import { buscarServidorEnRed, getSocketUrl } from "@/lib/servidor"
 import { logError } from "@/lib/Errorlogger"
@@ -475,11 +476,9 @@ useEffect(() => {
 // La barra superior cambia de alto con el zoom de Windows, textos largos y la
 // segunda fila de controles. Medir su borde real evita que la vista previa
 // quede escondida detrás de ella (un tope fijo de 60 px no era suficiente).
-const limiteSuperiorPreview = () => {
-  if (typeof document === "undefined") return 60
-  const barra = document.querySelector("[data-preview-limite-superior]") as HTMLElement | null
-  return Math.max(60, Math.ceil(barra?.getBoundingClientRect().bottom || 60) + 8)
-}
+// El monitor se monta en document.body: así no lo recorta el contenedor
+// desplazable del Control y puede subir hasta debajo de la navegación global.
+const limiteSuperiorPreview = () => 56
 const limitarPosPreview = (p: { x: number; y: number }, ancho = previewAnchoRef.current) => {
   const tope = limiteSuperiorPreview()
   const alto = previewPanelRef.current?.offsetHeight || 120
@@ -1066,6 +1065,32 @@ useEffect(() => {
 }, [socket, fondoCancionUrl])
 
 const [isMobile, setIsMobile] = useState(false)
+const [anchoBiblioteca, setAnchoBiblioteca] = useState(() => {
+  try { return Math.min(70, Math.max(30, Number(localStorage.getItem("selah-control-ancho-biblioteca")) || 56.5)) }
+  catch { return 56.5 }
+})
+const gridControlRef = useRef<HTMLDivElement | null>(null)
+const divisorActivoRef = useRef(false)
+useEffect(() => {
+  const mover = (e: MouseEvent) => {
+    if (!divisorActivoRef.current || !gridControlRef.current) return
+    const r = gridControlRef.current.getBoundingClientRect()
+    const porcentaje = ((e.clientX - r.left) / r.width) * 100
+    setAnchoBiblioteca(Math.min(70, Math.max(30, porcentaje)))
+  }
+  const soltar = () => {
+    if (!divisorActivoRef.current) return
+    divisorActivoRef.current = false
+    document.body.style.cursor = ""
+    document.body.style.userSelect = ""
+  }
+  window.addEventListener("mousemove", mover)
+  window.addEventListener("mouseup", soltar)
+  return () => { soltar(); window.removeEventListener("mousemove", mover); window.removeEventListener("mouseup", soltar) }
+}, [])
+useEffect(() => {
+  try { localStorage.setItem("selah-control-ancho-biblioteca", String(anchoBiblioteca)) } catch {}
+}, [anchoBiblioteca])
 const [mostrarControlesExtraMobile, setMostrarControlesExtraMobile] = useState(false)
 const [busquedaEnfocada, setBusquedaEnfocada] = useState(false)
 const [pantallaDetectada, setPantallaDetectada] = useState(false)
@@ -5101,12 +5126,12 @@ return (
 
   {/* ── CONTENIDO PRINCIPAL ────────────────────────────────────────────── */}
 <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
-<div style={{
+<div ref={gridControlRef} style={{
   display: "grid",
-  gridTemplateColumns: isMobile ? "1fr" : "1.3fr 1fr",
+  gridTemplateColumns: isMobile ? "1fr" : isElectronCtx ? `minmax(0, ${anchoBiblioteca}fr) 12px minmax(0, ${100 - anchoBiblioteca}fr)` : "1.3fr 1fr",
   alignItems: "start",
   padding: isMobile ? "4px 0px" : "20px",
-  gap: isMobile ? 10 : 20,
+  gap: isMobile ? 10 : isElectronCtx ? 4 : 20,
   boxSizing: "border-box",
   width: "100%"
 }}>
@@ -6506,6 +6531,21 @@ return (
       </div>
     </div>
 
+    {isElectronCtx && !isMobile && (
+      <div role="separator" aria-label="Ajustar ancho entre biblioteca y lista" aria-orientation="vertical" tabIndex={0}
+        title="Arrastra para dar más espacio a canciones o a la lista del culto"
+        onMouseDown={e => { e.preventDefault(); divisorActivoRef.current = true; document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none" }}
+        onKeyDown={e => {
+          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return
+          e.preventDefault()
+          setAnchoBiblioteca(v => Math.min(70, Math.max(30, v + (e.key === "ArrowRight" ? 2 : -2))))
+        }}
+        style={{ alignSelf: "stretch", minHeight: "calc(100vh - 260px)", cursor: "col-resize", borderRadius: 8,
+          background: "rgba(148,163,184,.1)", border: "1px solid rgba(148,163,184,.18)",
+          display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(191,219,254,.75)",
+          fontSize: 14, userSelect: "none" }}>⋮</div>
+    )}
+
     {/* ══ COLUMNA DERECHA ════════════════════════════════════════════════ */}
     {/* ✅ En escritorio queda PEGADA (sticky) al hacer scroll: la lista de culto
         se mantiene visible aunque la lista de canciones de la izquierda sea larga. */}
@@ -6546,7 +6586,7 @@ return (
       )}
 
       {/* ── PANEL VISTA PREVIA — FLOTANTE y arrastrable (siempre visible) ──── */}
-      {(!isMobile && previewHabilitado && previewPos) && (
+      {(!isMobile && previewHabilitado && previewPos) && createPortal(
         <div ref={previewPanelRef} style={{
           position: "fixed", left: previewPos.x, top: previewPos.y, width: previewAncho, zIndex: 400,
           background: "rgba(11,20,36,0.985)", border: "1px solid rgba(96,165,250,0.24)",
@@ -6718,7 +6758,7 @@ return (
             }}>◢</div>
             </>
           )}
-        </div>
+        </div>, document.body
       )}
 
       {/* ── LISTA DE CULTO ─────────────────────────────────────────────── */}

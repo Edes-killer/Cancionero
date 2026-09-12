@@ -134,14 +134,24 @@ test("Inicio orienta al usuario y Control incluye la Galería en sus tours", () 
   assert.match(ajustes, /Tour de Inicio/)
 })
 
-test("la vista previa flotante respeta el alto real del Control", () => {
+test("la vista previa flotante puede subir sin recortarse y respeta la ventana", () => {
   const control = fs.readFileSync("app/control/page.tsx", "utf8")
-  assert.match(control, /data-preview-limite-superior/)
-  assert.match(control, /getBoundingClientRect\(\)\.bottom/)
+  assert.match(control, /createPortal\(/)
+  assert.match(control, /document\.body/)
+  assert.match(control, /limiteSuperiorPreview = \(\) => 56/)
   assert.match(control, /previewPanelRef\.current\?\.offsetHeight/)
   assert.match(control, /const p = limitarPosPreview\(actual\)/)
   assert.match(control, /window\.addEventListener\("resize", corregir\)/)
   assert.doesNotMatch(control, /PREVIEW_TOPE_Y/)
+})
+
+test("el divisor de Electron ajusta y recuerda el espacio entre biblioteca y lista", () => {
+  const control = fs.readFileSync("app/control/page.tsx", "utf8")
+  assert.match(control, /isElectronCtx \? `minmax\(0, \$\{anchoBiblioteca\}fr\) 12px/)
+  assert.match(control, /role="separator"/)
+  assert.match(control, /selah-control-ancho-biblioteca/)
+  assert.match(control, /ArrowLeft/)
+  assert.match(control, /ArrowRight/)
 })
 
 test("Historial explica estadísticas, filtros y registros", () => {
