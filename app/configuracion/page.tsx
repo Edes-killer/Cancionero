@@ -13,6 +13,8 @@ import { logError } from "@/lib/Errorlogger"
 import { useConfirm } from "@/components/useConfirm"
 import { useApp } from "@/context/AppContext"
 import { limitesDe, nombrePlan, esIlimitado } from "@/lib/planes"
+import OnboardingTour from "@/components/OnboardingTour"
+import { TOUR_CONFIGURACION } from "@/lib/tours"
 
 // ── Estilos compartidos ──────────────────────────────────────────────────────
 const cardStyle: CSSProperties = {
@@ -939,7 +941,7 @@ export default function ConfiguracionPage() {
         </div>
 
         {/* Índice de ajustes: permanece disponible mientras se recorre la página. */}
-        <div style={{ position:"sticky", top:58, zIndex:40, display:"flex", gap:7, padding:"9px", overflowX:"auto", borderRadius:14, background:"rgba(6,13,26,.94)", border:"1px solid rgba(255,255,255,.09)", boxShadow:"0 10px 28px rgba(0,0,0,.28)", backdropFilter:"blur(12px)" }}>
+        <div data-tour="config-indice" style={{ position:"sticky", top:58, zIndex:40, display:"flex", gap:7, padding:"9px", overflowX:"auto", borderRadius:14, background:"rgba(6,13,26,.94)", border:"1px solid rgba(255,255,255,.09)", boxShadow:"0 10px 28px rgba(0,0,0,.28)", backdropFilter:"blur(12px)" }}>
           {SECCIONES_AJUSTES.map(s => <button key={s.id} data-ayuda={`Ir a ${s.nombre}. Estos ajustes afectan ${s.alcance === "iglesia" ? "a toda la iglesia" : "sólo a este dispositivo"}.`} onClick={() => document.getElementById(`ajuste-${s.id}`)?.scrollIntoView({ behavior:"smooth", block:"start" })} style={{ padding:"8px 11px", borderRadius:9, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.04)", color:"rgba(255,255,255,.72)", fontSize:11.5, fontWeight:750, cursor:"pointer", whiteSpace:"nowrap" }}>{s.icono} {s.nombre}</button>)}
         </div>
 
@@ -1700,6 +1702,7 @@ export default function ConfiguracionPage() {
               { id: "tour-transmision-v1", label: "🎥 Tour de Transmisión", desc: "Cámaras, audio, escenas, apariencia y salida al aire", ruta: "/en-vivo" },
               { id: "tour-musicos-v1", label: "🎸 Tour de Músicos", desc: "Repertorio, acordes, afinador, improvisación y ensayo", ruta: "/musicos" },
               ...(isCapacitor ? [{ id: "tour-camara-movil-v1", label: "📱 Tour de Cámara", desc: "Código, conexión y cambio de cámara del celular", ruta: "/camara" }] : []),
+              { id: "tour-configuracion-v1", label: "⚙️ Tour de Configuración", desc: "Identidad, proyección, personas, ayuda y diagnósticos", ruta: "/configuracion" },
             ].map(({ id, label, desc, ruta }) => {
               // visto calculado en onClick
               return (
@@ -1715,7 +1718,10 @@ export default function ConfiguracionPage() {
                       const tourId = id === "tour-control" && isCapacitor ? "tour-control-mobile-v2" : id
                       localStorage.removeItem(tourId)
                       sessionStorage.setItem(`${tourId}-forzar`, "1")
-                      navegarSPA(router, ruta)
+                      if (ruta === "/configuracion") {
+                        sessionStorage.removeItem(`${tourId}-forzar`)
+                        window.dispatchEvent(new CustomEvent("selah-iniciar-tour", { detail: { id: tourId } }))
+                      } else navegarSPA(router, ruta)
                     }}
                     style={{ padding: "8px 14px", borderRadius: 10, border: "1px solid rgba(59,130,246,0.3)",
                       background: "rgba(59,130,246,0.1)", color: "#93c5fd",
@@ -1766,6 +1772,8 @@ export default function ConfiguracionPage() {
         <div style={{ textAlign: "center", fontSize: 12, opacity: 0.35, marginTop: 8 }}>
           Selah Live · versión {process.env.NEXT_PUBLIC_APP_VERSION || "—"}
         </div>
+
+        <OnboardingTour id="tour-configuracion-v1" pasos={TOUR_CONFIGURACION} nombrePagina="Configuración" />
 
       </div>
     </div>

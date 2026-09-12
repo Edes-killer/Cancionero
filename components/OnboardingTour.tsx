@@ -28,12 +28,26 @@ export default function OnboardingTour({ id, pasos, nombrePagina, onFin }: Props
   const [inicio,     setInicio]     = useState(true) // pantalla de bienvenida
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const abrir = () => {
+      setPaso(0)
+      setInicio(true)
+      setRect(null)
+      setActivo(true)
+      setEntrando(true)
+      setTimeout(() => setEntrando(false), 400)
+    }
     const visto   = localStorage.getItem(id)
     const forzar  = sessionStorage.getItem(`${id}-forzar`)
     if (!visto || forzar) {
       sessionStorage.removeItem(`${id}-forzar`)
-      setTimeout(() => { setActivo(true); setEntrando(true); setTimeout(() => setEntrando(false), 400) }, 900)
+      timer = setTimeout(abrir, 900)
     }
+    const repetir = (e: Event) => {
+      if ((e as CustomEvent<{ id?: string }>).detail?.id === id) abrir()
+    }
+    window.addEventListener("selah-iniciar-tour", repetir)
+    return () => { if (timer) clearTimeout(timer); window.removeEventListener("selah-iniciar-tour", repetir) }
   }, [id])
 
   useEffect(() => {

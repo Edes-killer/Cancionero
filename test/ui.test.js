@@ -107,6 +107,18 @@ test("la Cámara móvil guía la vinculación sin ejecutar acciones", () => {
   assert.doesNotMatch(tour, /getUserMedia|\.click\(\)/)
 })
 
+test("Configuración tiene tour repetible sin recargar la APK", () => {
+  const tours = fs.readFileSync("lib/tours.ts", "utf8")
+  const ajustes = fs.readFileSync("app/configuracion/page.tsx", "utf8")
+  const tourUi = fs.readFileSync("components/OnboardingTour.tsx", "utf8")
+  assert.match(tours, /export const TOUR_CONFIGURACION/)
+  assert.match(ajustes, /OnboardingTour id="tour-configuracion-v1"/)
+  assert.match(ajustes, /data-tour="config-indice"/)
+  assert.match(ajustes, /detail: \{ id: tourId \}/)
+  assert.match(tourUi, /selah-iniciar-tour/)
+  assert.match(tourUi, /setPaso\(0\)/)
+})
+
 test("la lista mantiene visibles los controles de orden y resalta el elemento movido", () => {
   const control = fs.readFileSync("app/control/page.tsx", "utf8")
   assert.match(control, /indiceItemReordenando/)

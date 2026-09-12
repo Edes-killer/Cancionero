@@ -434,3 +434,58 @@ export const TOUR_CAMARA_MOVIL: PasoTour[] = [
     tip: "Puedes repetir esta guía desde Configuración → Tutoriales."
   }
 ]
+
+export const TOUR_CONFIGURACION: PasoTour[] = [
+  {
+    icono: "⚙️",
+    titulo: "Configuración de Selah",
+    desc: "Aquí administras la identidad de tu iglesia y las preferencias de este equipo. Selah distingue claramente qué cambios se comparten y cuáles quedan guardados localmente.",
+    tip: "La guía solo explica las secciones; no modificará ni guardará ajustes."
+  },
+  {
+    icono: "🧭",
+    titulo: "Índice rápido",
+    desc: "Usa esta barra para saltar directamente a Identidad, Proyección, Celulares, Personas, Apariencia o Ayuda sin recorrer toda la página.",
+    tip: "Cada botón indica si sus ajustes afectan a toda la iglesia o solo a este dispositivo.",
+    selector: "[data-tour='config-indice']",
+    posicion: "bottom"
+  },
+  {
+    icono: "🏛️",
+    titulo: "Identidad de la iglesia",
+    desc: "Configura el nombre, localidad y logo que se utilizarán en el inicio, la proyección y las pantallas de transmisión.",
+    tip: "Estos datos se sincronizan para los usuarios de la misma iglesia.",
+    selector: "#ajuste-identidad",
+    posicion: "bottom"
+  },
+  {
+    icono: "🖥️",
+    titulo: "Proyección y conexión",
+    desc: "Indica dónde funciona el computador del proyector, verifica la conexión y ejecuta un diagnóstico completo si el celular no logra comunicarse.",
+    tip: "En redes con repetidores puede haber varias IP; el diagnóstico ayuda a identificar la correcta.",
+    selector: "#ajuste-proyeccion",
+    posicion: "top"
+  },
+  {
+    icono: "👥",
+    titulo: "Personas y permisos",
+    desc: "Genera invitaciones por rol y administra quién pertenece a la iglesia. Músico, líder y administrador tienen permisos diferentes.",
+    tip: "Entrega permisos de administrador solamente a personas de confianza.",
+    selector: "#ajuste-personas",
+    posicion: "top"
+  },
+  {
+    icono: "🎓",
+    titulo: "Ayuda y registros",
+    desc: "Desde Tutoriales puedes repetir cualquier recorrido y decidir si mostrar explicaciones sobre los botones. Más abajo encontrarás los registros para diagnóstico y soporte.",
+    tip: "Cuando algo falle, copia o descarga el registro antes de reiniciar la aplicación.",
+    selector: "#ajuste-ayuda",
+    posicion: "top"
+  },
+  {
+    icono: "✅",
+    titulo: "Configuración entendida",
+    desc: "Ya sabes dónde preparar la iglesia, conectar equipos, gestionar personas y encontrar ayuda cuando ocurra un problema.",
+    tip: "Puedes iniciar nuevamente este mismo tour desde Tutoriales sin recargar la APK."
+  }
+]
