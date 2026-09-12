@@ -138,6 +138,78 @@ export const TOUR_CONTROL: PasoTour[] = [
   },
 ]
 
+// La APK no abre una ventana de proyeccion: actua como control remoto del PC.
+// Mantener un recorrido separado evita mostrar acciones y vocabulario propios
+// de escritorio que no existen en el celular.
+export const TOUR_CONTROL_MOBILE: PasoTour[] = [
+  {
+    icono: "📱",
+    titulo: "Control desde tu celular",
+    desc: "Desde aquí manejas lo que verá la congregación en la pantalla conectada al computador de la iglesia.",
+    tip: "Antes del culto comprueba que el indicador superior diga LISTO."
+  },
+  {
+    icono: "🔍",
+    titulo: "Buscar una canción",
+    desc: "Escribe el número, el título o una frase. Toca ▶ en el resultado para enviarla a la pantalla.",
+    tip: "Las canciones del himnario y las de tu iglesia aparecen en el mismo buscador.",
+    selector: "[data-tour='lista-canciones']",
+    posicion: "bottom",
+    antes: () => {
+      document.getElementById("panel-canciones")?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  },
+  {
+    icono: "⬅️",
+    titulo: "Cambiar de parte",
+    desc: "Usa las flechas grandes para ir al verso, coro o parte anterior y siguiente de lo que está al aire.",
+    tip: "La barra superior recuerda siempre la canción y la parte que estás proyectando.",
+    selector: "[data-tour='controles-nav']",
+    posicion: "bottom"
+  },
+  {
+    icono: "•••",
+    titulo: "Más controles",
+    desc: "Toca este botón para mostrar Coro, Auto, Apagar y los controles secundarios solo cuando los necesites.",
+    tip: "Puedes cerrarlos nuevamente para mantener despejada la pantalla.",
+    selector: "[data-tour='controles-extra-mobile']",
+    posicion: "bottom"
+  },
+  {
+    icono: "📋",
+    titulo: "Lista del Culto",
+    desc: "Aquí ordenas canciones, versículos, imágenes y otros elementos tal como se usarán durante el culto.",
+    tip: "Toca Buscar para volver rápidamente al repertorio y seguir agregando contenido.",
+    selector: "[data-tour='lista-culto']",
+    posicion: "top",
+    antes: () => {
+      const irALista = document.querySelector("[aria-label='Ir a la lista del culto']") as HTMLElement | null
+      irALista?.click()
+      setTimeout(() => document.getElementById("scroll-lista")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80)
+    }
+  },
+  {
+    icono: "📖",
+    titulo: "Proyectar la Biblia",
+    desc: "Abre Biblia, escribe una cita como Juan 3:16 y envíala a la pantalla. Los textos largos se dividen en páginas.",
+    tip: "También acepta rangos como Romanos 8:28-30.",
+    selector: "[data-tour='input-biblia']",
+    posicion: "top",
+    antes: () => {
+      const panel = document.querySelector("[data-tour='input-biblia']") as HTMLElement | null
+      if (!panel) return
+      if (panel.getBoundingClientRect().height < 80) (panel.firstElementChild as HTMLElement | null)?.click()
+      panel.scrollIntoView({ behavior: "smooth", block: "center" })
+    }
+  },
+  {
+    icono: "✅",
+    titulo: "¡Tu control está listo!",
+    desc: "Ya puedes buscar contenido, organizar la lista y controlar la proyección desde el celular.",
+    tip: "Puedes repetir este recorrido desde Configuración → Tutoriales."
+  }
+]
+
 // Genera los pasos según plataforma
 export const getTourCanciones = (isMobile = false): PasoTour[] => [
   {

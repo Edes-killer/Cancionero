@@ -1709,8 +1709,9 @@ export default function ConfiguracionPage() {
                   </div>
                   <button
                     onClick={() => {
-                      localStorage.removeItem(id)
-                      sessionStorage.setItem(`${id}-forzar`, "1")
+                      const tourId = id === "tour-control" && isCapacitor ? "tour-control-mobile-v2" : id
+                      localStorage.removeItem(tourId)
+                      sessionStorage.setItem(`${tourId}-forzar`, "1")
                       navegarSPA(router, ruta)
                     }}
                     style={{ padding: "8px 14px", borderRadius: 10, border: "1px solid rgba(59,130,246,0.3)",

@@ -4,7 +4,7 @@
 import BibleAutocomplete from "@/components/BibleAutocomplete"
 import OnboardingTour from "@/components/OnboardingTour"
 import EstadoOperativo from "@/components/ui/EstadoOperativo"
-import { TOUR_CONTROL } from "@/lib/tours"
+import { TOUR_CONTROL, TOUR_CONTROL_MOBILE } from "@/lib/tours"
 
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { logCatch } from "@/lib/Errorlogger"
@@ -4574,7 +4574,7 @@ return (
         }}>✓ Revisar culto</button>
       )}
       {isMobile && (
-        <button type="button" aria-label={mostrarControlesExtraMobile ? "Ocultar controles adicionales" : "Mostrar controles adicionales"}
+        <button type="button" data-tour="controles-extra-mobile" aria-label={mostrarControlesExtraMobile ? "Ocultar controles adicionales" : "Mostrar controles adicionales"}
           aria-expanded={mostrarControlesExtraMobile} onClick={() => setMostrarControlesExtraMobile(v => !v)} style={{
             width:36, height:40, borderRadius:10, border:"1px solid rgba(255,255,255,.1)", flexShrink:0,
             background:mostrarControlesExtraMobile ? "rgba(59,130,246,.2)" : "rgba(255,255,255,.06)",
@@ -6538,7 +6538,11 @@ return (
     </div>
   </div>
 </div></div>
-<OnboardingTour id="tour-control" pasos={TOUR_CONTROL} nombrePagina="Control de Culto" />
+<OnboardingTour
+  id={isMobile ? "tour-control-mobile-v2" : "tour-control"}
+  pasos={isMobile ? TOUR_CONTROL_MOBILE : TOUR_CONTROL}
+  nombrePagina={isMobile ? "Control móvil" : "Control de Culto"}
+/>
 </>
 )
 }

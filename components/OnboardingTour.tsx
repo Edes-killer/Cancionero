@@ -79,14 +79,15 @@ export default function OnboardingTour({ id, pasos, nombrePagina, onFin }: Props
       }
     }
     setRect(null)
-    setTooltipPos({ top: window.innerHeight / 2 - 120, left: window.innerWidth / 2 - 190 })
+    const anchoTooltip = Math.min(380, window.innerWidth - 24)
+    setTooltipPos({ top: Math.max(12, window.innerHeight / 2 - 120), left: Math.max(12, window.innerWidth / 2 - anchoTooltip / 2) })
     }
     run()
   }, [paso, activo, inicio, pasos])
 
   const calcularPos = (r: DOMRect, pos: string) => {
-    const W = 380, H = 270, pad = 16
     const vh = window.innerHeight, vw = window.innerWidth
+    const W = Math.min(380, vw - 24), H = Math.min(270, vh - 24), pad = 16
     let top = 0, left = 0
 
     if (pos === "bottom")     { top = r.bottom + pad; left = r.left + r.width / 2 - W / 2 }
@@ -133,7 +134,7 @@ export default function OnboardingTour({ id, pasos, nombrePagina, onFin }: Props
         @keyframes float { 0%,100% { transform:translateY(0) } 50% { transform:translateY(-6px) } }
         @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.6 } }
       `}</style>
-      <div style={{ maxWidth:460, width:"90%", textAlign:"center" }}>
+      <div style={{ maxWidth:460, width:"calc(100% - 24px)", textAlign:"center" }}>
         <div style={{ fontSize:72, marginBottom:12, animation:"float 2.5s ease-in-out infinite" }}>
           {pasos[0]?.icono || "🎛️"}
         </div>
@@ -200,10 +201,10 @@ export default function OnboardingTour({ id, pasos, nombrePagina, onFin }: Props
 
       {/* Tooltip */}
       <div style={{
-        position:"fixed", zIndex:10000, width:380,
+        position:"fixed", zIndex:10000, width:"min(380px, calc(100vw - 24px))", boxSizing:"border-box",
         top:tooltipPos.top, left:tooltipPos.left,
         background:"rgba(10,18,38,0.98)", border:"1px solid rgba(59,130,246,0.3)",
-        borderRadius:18, padding:"22px 24px",
+        borderRadius:18, padding:"clamp(16px, 5vw, 22px) clamp(16px, 5vw, 24px)",
         boxShadow:"0 24px 70px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)",
         fontFamily:"'Segoe UI',system-ui,sans-serif", color:"white",
         animation: entrando ? "fadeIn .3s ease" : "none",
