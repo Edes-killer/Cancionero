@@ -2,6 +2,10 @@
 
 Este protocolo valida Selah Live en condiciones reales sin poner en riesgo una transmisión pública. Realizarlo idealmente 45–60 minutos antes del culto.
 
+Antes de empaquetar una versión candidata, ejecutar `npm.cmd run qa:release`. Debe terminar con todas las
+comprobaciones aprobadas; este comando valida pruebas, build/TypeScript, dependencias de producción y los
+procesos Electron. No reemplaza las pruebas físicas de este documento.
+
 ## Datos de la prueba
 
 - Fecha:

@@ -11,6 +11,7 @@
     "build": "next build",
     "test": "node --test test/*.test.js",
     "qa:red": "node scripts/qa-red.mjs",
+    "qa:release": "node scripts/qa-release.mjs",
     "lint": "eslint app components context lib --max-warnings=0",
     "start": "next start -H 0.0.0.0 -p 3000",
     "electron:dev": "npm run build && electron electron/main.js",

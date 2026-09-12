@@ -62,11 +62,9 @@ La compilación web/Electron está operativa y las rutas principales cargan con 
 ## Flujo recomendado antes de publicar
 
 ```powershell
-npm.cmd test
-npm.cmd run build
-npm.cmd audit --omit=dev
+npm.cmd run qa:release
 npm.cmd run electron:build:win
 npm.cmd run apk
 ```
 
-No publicar si falla una de las tres primeras órdenes. Para Electron/APK, completar además las pruebas físicas anteriores.
+No publicar si falla `qa:release`. Para Electron/APK, completar además las pruebas físicas anteriores.
