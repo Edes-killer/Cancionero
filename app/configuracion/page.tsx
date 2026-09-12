@@ -563,6 +563,7 @@ export default function ConfiguracionPage() {
   const [escalaFuente, setEscalaFuente] = useState(100)
   const [familiaFuente, setFamiliaFuente] = useState("system")
   const [recordarUltima, setRecordarUltima] = useState(true)
+  const [ayudasContextuales, setAyudasContextuales] = useState(true)
   // Firewall (solo en la app de escritorio / Electron): estado de la regla que deja
   // que el celular llegue a este PC por la red.
   const [fw, setFw] = useState<"desconocido" | "ok" | "falta" | "reparando">("desconocido")
@@ -574,6 +575,8 @@ export default function ConfiguracionPage() {
     const familiaGuardada = localStorage.getItem("proyector-font-family")
     if (familiaGuardada) setFamiliaFuente(familiaGuardada)
     setRecordarUltima(localStorage.getItem("selah-recordar-ultima") !== "0")
+    const ayudasGuardadas = localStorage.getItem("selah-ayudas-contextuales")
+    setAyudasContextuales(ayudasGuardadas === null ? !(window as any).Capacitor : ayudasGuardadas === "1")
     const f = (window as any).firewall
     if (f) f.estado().then((r: any) => setFw(r?.existe ? "ok" : "falta")).catch(() => {})
     const tx = (window as any).transmision
@@ -1670,6 +1673,25 @@ export default function ConfiguracionPage() {
           </h2>
           <div style={{ fontSize: 13, opacity: 0.5, marginBottom: 16, lineHeight: 1.6 }}>
             ¿Necesitas repasar cómo funciona alguna pantalla? Reinicia el tour guiado de cualquier sección.
+          </div>
+          <div style={{ display:"flex", alignItems:"flex-start", gap:14, padding:"14px 16px", marginBottom:14, borderRadius:12, background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)" }}>
+            <div style={{ flex:1 }}>
+              <div style={{ fontWeight:750, fontSize:14 }}>Ayudas sobre los botones</div>
+              <div style={{ fontSize:12.5, opacity:.5, marginTop:3, lineHeight:1.5 }}>
+                Muestra una explicación al dejar el mouse sobre un botón. En celulares viene apagada para mantener el Control despejado.
+              </div>
+            </div>
+            <button type="button" role="switch" aria-checked={ayudasContextuales} aria-label="Mostrar ayudas sobre los botones"
+              onClick={() => {
+                const valor = !ayudasContextuales
+                setAyudasContextuales(valor)
+                localStorage.setItem("selah-ayudas-contextuales", valor ? "1" : "0")
+                window.dispatchEvent(new Event("selah-preferencias"))
+                mostrarFlash(valor ? "✅ Ayudas contextuales activadas" : "✅ Ayudas contextuales ocultas", "ok")
+              }}
+              style={{ position:"relative", width:46, height:26, borderRadius:99, border:"none", cursor:"pointer", flexShrink:0, marginTop:2, background:ayudasContextuales ? "#22c55e" : "rgba(255,255,255,.16)", transition:"background .15s" }}>
+              <span style={{ position:"absolute", top:3, left:ayudasContextuales ? 23 : 3, width:20, height:20, borderRadius:99, background:"#fff", transition:"left .15s" }} />
+            </button>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[

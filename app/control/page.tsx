@@ -959,24 +959,7 @@ const [mostrarCanciones, setMostrarCanciones] = useState(true)
 const [mostrarAcciones, setMostrarAcciones] = useState(false)
 const [mostrarPalabra, setMostrarPalabra] = useState(false)
 const [mostrarCultos, setMostrarCultos] = useState(false)
-const [modoOperacion, setModoOperacion] = useState<"preparar" | "culto">("preparar")
 const [revisionCultoAbierta, setRevisionCultoAbierta] = useState(false)
-useEffect(() => {
-  const guardado = localStorage.getItem("selah-modo-control")
-  if (guardado === "culto") {
-    setModoOperacion("culto"); setMostrarCanciones(false); setMostrarAcciones(false); setMostrarPalabra(false); setMostrarCultos(false)
-  }
-}, [])
-const cambiarModoOperacion = (modo: "preparar" | "culto") => {
-  setModoOperacion(modo)
-  try { localStorage.setItem("selah-modo-control", modo) } catch {}
-  if (modo === "culto") {
-    setMostrarCanciones(false); setMostrarAcciones(false); setMostrarPalabra(false); setMostrarCultos(false)
-    setPreviewHabilitado(true)
-  } else {
-    setMostrarCanciones(true)
-  }
-}
 const [estadoEspecialActivo, setEstadoEspecialActivo] = useState("")
 // Datos de la pantalla especial en curso (para mostrar el detalle en la vista previa)
 const [estadoEspData, setEstadoEspData] = useState<any>(null)
@@ -4234,7 +4217,7 @@ return (
       </div>
       <div style={{ padding:"4px 16px 16px", display:"flex", gap:8 }}>
         <button onClick={() => setRevisionCultoAbierta(false)} style={{ flex:1, padding:11, borderRadius:11, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"white", fontWeight:750, cursor:"pointer" }}>Seguir preparando</button>
-        <button onClick={() => { setRevisionCultoAbierta(false); cambiarModoOperacion("culto") }} style={{ flex:1.35, padding:11, borderRadius:11, border:"none", background:"#dc2626", color:"white", fontWeight:850, cursor:"pointer" }}>● Entrar en modo Culto</button>
+        <button onClick={() => setRevisionCultoAbierta(false)} style={{ flex:1.35, padding:11, borderRadius:11, border:"none", background:"#2563eb", color:"white", fontWeight:850, cursor:"pointer" }}>✓ Todo listo</button>
       </div>
     </div>
   </div>
@@ -4554,17 +4537,6 @@ return (
         )}
       </div>
       {!isMobile && (
-        <div role="group" aria-label="Modo del Control" style={{ display:"flex", padding:3, borderRadius:11, background:"rgba(255,255,255,.055)", border:"1px solid rgba(255,255,255,.08)", flexShrink:0 }}>
-          {(["preparar", "culto"] as const).map(modo => (
-            <button key={modo} type="button" onClick={() => cambiarModoOperacion(modo)} style={{
-              padding:"7px 11px", borderRadius:8, border:"none", cursor:"pointer", fontSize:11.5, fontWeight:800,
-              background:modoOperacion === modo ? (modo === "culto" ? "rgba(220,38,38,.75)" : "rgba(37,99,235,.8)") : "transparent",
-              color:modoOperacion === modo ? "#fff" : "rgba(255,255,255,.5)",
-            }}>{modo === "preparar" ? "🛠 Preparar" : "● Culto"}</button>
-          ))}
-        </div>
-      )}
-      {!isMobile && modoOperacion === "preparar" && (
         <button type="button" onClick={() => setRevisionCultoAbierta(true)} title="Revisar que todo esté listo antes del culto" style={{
           height:38, padding:"0 12px", borderRadius:10, border:"1px solid rgba(96,165,250,.3)",
           background:"rgba(37,99,235,.12)", color:"#bfdbfe", fontSize:11.5, fontWeight:800, cursor:"pointer", flexShrink:0,
@@ -4592,13 +4564,6 @@ return (
     {/* Fila 2 — solo mobile: botones secundarios compactos */}
     {isMobile && (
       <div style={{ display: "flex", gap: 6, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
-        <div role="group" aria-label="Modo del Control" style={{ display:"flex", padding:2, borderRadius:8, background:"rgba(255,255,255,.055)", border:"1px solid rgba(255,255,255,.08)" }}>
-          {(["preparar", "culto"] as const).map(modo => <button key={modo} type="button" onClick={() => cambiarModoOperacion(modo)} style={{
-            padding:"4px 7px", borderRadius:6, border:"none", cursor:"pointer", fontSize:10, fontWeight:800,
-            background:modoOperacion === modo ? (modo === "culto" ? "rgba(220,38,38,.78)" : "rgba(37,99,235,.82)") : "transparent",
-            color:modoOperacion === modo ? "#fff" : "rgba(255,255,255,.48)",
-          }}>{modo === "preparar" ? "Preparar" : "● Culto"}</button>)}
-        </div>
         {partes.some(p => /coro|estribillo/i.test(p?.tipo || "")) && (
           <button data-tour="btn-coro" onClick={irAlCoro} style={{
             padding: "4px 9px", borderRadius: 8, flexShrink: 0,
@@ -4800,7 +4765,7 @@ return (
 <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
 <div style={{
   display: "grid",
-  gridTemplateColumns: isMobile ? "1fr" : modoOperacion === "culto" ? ".82fr 1.38fr" : "1.3fr 1fr",
+  gridTemplateColumns: isMobile ? "1fr" : "1.3fr 1fr",
   alignItems: "start",
   padding: isMobile ? "4px 0px" : "20px",
   gap: isMobile ? 10 : 20,
@@ -4816,7 +4781,7 @@ return (
         regresiva) empujaba el ancho de toda la columna en mobile. */}
     <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 6 : 16, minWidth: 0 }}>
       {!isMobile && <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"0 3px", color:"rgba(255,255,255,.38)", fontSize:10.5, fontWeight:850, letterSpacing:".12em" }}>
-        <span>BIBLIOTECA Y RECURSOS</span><span style={{ letterSpacing:0, fontWeight:650 }}>{modoOperacion === "culto" ? "Compacta" : "Preparación"}</span>
+        <span>BIBLIOTECA Y RECURSOS</span><span style={{ letterSpacing:0, fontWeight:650 }}>Contenido</span>
       </div>}
 
       {/* ── Canciones ─────────────────────────────────────────────────── */}

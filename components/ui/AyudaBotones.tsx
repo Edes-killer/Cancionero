@@ -107,10 +107,34 @@ function descripcion(el: HTMLElement) {
 
 export default function AyudaBotones() {
   const [ayuda, setAyuda] = useState<Ayuda | null>(null)
+  const [habilitada, setHabilitada] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const activo = useRef<{ el: HTMLElement; title: string | null } | null>(null)
 
   useEffect(() => {
+    const leerPreferencia = () => {
+      const guardada = localStorage.getItem("selah-ayudas-contextuales")
+      // En pantallas táctiles se prioriza una interfaz limpia. En escritorio,
+      // la ayuda queda disponible hasta que el usuario decida ocultarla.
+      const tactil = !!(window as any).Capacitor || window.matchMedia("(pointer: coarse)").matches
+      setHabilitada(guardada === null ? !tactil : guardada === "1")
+    }
+    leerPreferencia()
+    window.addEventListener("storage", leerPreferencia)
+    window.addEventListener("selah-preferencias", leerPreferencia)
+    return () => {
+      window.removeEventListener("storage", leerPreferencia)
+      window.removeEventListener("selah-preferencias", leerPreferencia)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!habilitada) {
+      if (timer.current) clearTimeout(timer.current)
+      timer.current = null
+      setAyuda(null)
+      return
+    }
     const ocultar = () => {
       if (timer.current) clearTimeout(timer.current)
       timer.current = null
@@ -155,9 +179,9 @@ export default function AyudaBotones() {
       document.removeEventListener("focusout", ocultar)
       document.removeEventListener("pointerdown", ocultar)
     }
-  }, [])
+  }, [habilitada])
 
-  if (!ayuda) return null
+  if (!habilitada || !ayuda) return null
   return <div role="tooltip" style={{
     position:"fixed", left:ayuda.x, top:ayuda.y, zIndex:100000, transform:ayuda.arriba ? "translate(-50%,-100%)" : "translateX(-50%)",
     maxWidth:290, padding:"8px 11px", borderRadius:9, pointerEvents:"none",
