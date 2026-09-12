@@ -597,7 +597,7 @@ const EVENTOS_OPERADOR = new Set([
   "mostrar-biblia", "cambiar-pagina-biblia", "mostrar-estado",
   "mostrar-banner-urgente", "ocultar-banner-urgente", "modo-limpio",
   "cambiar-fondo", "precargar-imagenes", "ajustar-zoom", "zoom-info",
-  "reenviar-estado-a-proyectar", "sincronizar-lista",
+  "reenviar-estado-a-proyectar", "sincronizar-lista", "solicitar-abrir-proyector",
 ])
 const EVENTOS_NAVEGACION_PROYECTOR = new Set(["control-siguiente", "control-anterior"])
 
@@ -1010,6 +1010,12 @@ try {
       }
       listasPorSala[sala] = estadoLista
       io.to(sala).emit("lista-sincronizada", estadoLista)
+    })
+
+    // La APK no puede crear una ventana en Windows por sí sola. Envía esta
+    // solicitud a los controles de la sala y el renderer Electron la atiende.
+    socket.on("solicitar-abrir-proyector", () => {
+      io.to(salaDe(socket)).emit("solicitar-abrir-proyector")
     })
 
     socket.on("cambiar-parte", (index) => {

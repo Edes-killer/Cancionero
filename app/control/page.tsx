@@ -232,7 +232,9 @@ export default function ControlPage() {
   // verso automáticamente (V1 → Coro → V2 → Coro...), así el operador solo aprieta
   // "siguiente" en vez de ir saltando coro/verso a mano. Solo afecta canciones
   // que tienen coro; en las demás el avance es lineal normal.
-  const [intercalarCoro, setIntercalarCoro] = useState(false)
+  const [intercalarCoro, setIntercalarCoro] = useState(() => {
+    try { return localStorage.getItem("selah-repetir-coro") === "1" } catch { return false }
+  })
   // ✅ Botón "Ir al Coro" — guarda la posición del verso para volver después
   const [versoDespuesCoro, setVersoDespuesCoro] = useState<number | null>(null)
   // ✅ Posición dentro de la secuencia de reproducción del coro intercalado.
@@ -435,6 +437,8 @@ const [previewModoMusico, setPreviewModoMusico] = useState(false)
 const [tabDerechaMobile, setTabDerechaMobile] = useState<"lista"|"preview">("lista")
 const [bottomSheetAbierto, setBottomSheetAbierto] = useState(false)
 const [previewHabilitado, setPreviewHabilitado] = useState(true)
+const accionDestinoPendienteRef = useRef<(() => void) | null>(null)
+const [elegirDestinoAbierto, setElegirDestinoAbierto] = useState(false)
 // ── Vista previa FLOTANTE (arrastrable, siempre visible en escritorio) ────────
 const [previewPos, setPreviewPos] = useState<{ x: number; y: number } | null>(null)
 const [previewAncho, setPreviewAncho] = useState(() => {
@@ -685,6 +689,12 @@ useEffect(() => {
   s.on("estado-presencia", (data: { proyectorConectado?: boolean }) => {
     setProyectorConectado(!!data?.proyectorConectado)
   })
+  s.on("solicitar-abrir-proyector", () => {
+    // Solo Electron puede crear la ventana física. La APK también recibe el
+    // evento, pero lo ignora para no abrir una pestaña inútil en el teléfono.
+    if (!navigator.userAgent.includes("Electron")) return
+    window.open(`${window.location.origin}/proyectar`, "_blank", "noopener,noreferrer")
+  })
   s.on("lista-sincronizada", (data: { items?: ItemLista[]; listaId?: string|null; nombre?: string; indice?: number|null; revision?: number }) => {
     if (!Array.isArray(data?.items) || data.items.length > 300) return
     const revision = Number(data.revision) || 0
@@ -848,6 +858,7 @@ useEffect(() => {
     s.off("cambiar-parte", onCambiarParteRemoto)
     s.off("cambiar-pagina-biblia", onCambiarPaginaRemoto)
     s.off("lista-sincronizada")
+    s.off("solicitar-abrir-proyector")
     s.disconnect()
     try { supabase.removeChannel(canalNube) } catch {}
   }
@@ -872,24 +883,19 @@ useEffect(() => {
   logoEsperaUrlRef.current = logoEsperaUrl
 }, [lista, indiceLista, index, partes, paginasBiblia, paginaBibliaActual, loopCoro, nombreIglesia, logoEsperaUrl])
 
-// ✅ Al cambiar de canción, reiniciar el puntero de la secuencia del coro
-// intercalado (si no, arrastraría la posición de la canción anterior) y cargar
-// la "tanda" guardada de ESA canción (si repite coro o no, recordado por canción).
+// Al cambiar de canción solo reiniciamos el recorrido. "Repetir coro" es una
+// preferencia del operador y se mantiene al pasar de una alabanza a otra.
 useEffect(() => {
   posSecuenciaRef.current = 0
-  try {
-    const guardado = activaId ? localStorage.getItem("coro-cancion-" + activaId) : null
-    setIntercalarCoro(guardado === "1")
-  } catch { setIntercalarCoro(false) }
   // Si se proyectó una canción, cortar cualquier carrusel en curso.
   if (activaId) detenerCarruselTimer()
 }, [activaId])
 
-// Alterna "repetir coro" y lo GUARDA para esta canción (su tanda queda recordada).
+// Alterna "repetir coro" y lo conserva entre canciones y reinicios.
 const alternarCoro = () => {
   setIntercalarCoro(prev => {
     const nuevo = !prev
-    try { if (activaId) localStorage.setItem("coro-cancion-" + activaId, nuevo ? "1" : "0") } catch {}
+    try { localStorage.setItem("selah-repetir-coro", nuevo ? "1" : "0") } catch {}
     return nuevo
   })
 }
@@ -1493,8 +1499,32 @@ const verificarServidor = (): boolean => {
   return false
 }
 
-const proyectar = async (id: string) => {
+const pedirDestinoSiFalta = (accion: () => void): boolean => {
+  if (proyectorConectado) return false
+  accionDestinoPendienteRef.current = accion
+  setElegirDestinoAbierto(true)
+  return true
+}
+
+const confirmarDestino = (abrirProyector: boolean) => {
+  const accion = accionDestinoPendienteRef.current
+  accionDestinoPendienteRef.current = null
+  setElegirDestinoAbierto(false)
+  if (abrirProyector) {
+    if (isMobile) socketRef2.current?.emit("solicitar-abrir-proyector")
+    else window.open(`${window.location.origin}/proyectar`, "_blank", "noopener,noreferrer")
+  } else if (isMobile) {
+    setTabDerechaMobile("preview")
+    setBottomSheetAbierto(true)
+  }
+  // El estado queda preparado aunque la ventana tarde un instante en abrir;
+  // el proyector recupera automáticamente la salida más reciente al conectarse.
+  accion?.()
+}
+
+const proyectar = async (id: string, destinoConfirmado = false) => {
   if (!verificarServidor()) return
+  if (!destinoConfirmado && pedirDestinoSiFalta(() => { void proyectar(id, true) })) return
 
   const idxEnLista = lista.findIndex(
     item => item.tipo === "cancion" && item.id === id
@@ -2669,7 +2699,8 @@ const irAItemLista = async (i: number, alFinal = false) => {
   socket.emit("cancion-activa", { id: item.id })
 }
 
-const proyectarDesdeLista = async (i: number) => {
+const proyectarDesdeLista = async (i: number, destinoConfirmado = false) => {
+  if (!destinoConfirmado && pedirDestinoSiFalta(() => { void proyectarDesdeLista(i, true) })) return
   setMenuItemAbierto(null)
   await irAItemLista(i, false)
 }
@@ -3083,8 +3114,9 @@ const buscarVersiculo = (ref: string): Promise<any> => {
   })
 }
 
-const proyectarBiblia = async (ref: string) => {
+const proyectarBiblia = async (ref: string, destinoConfirmado = false) => {
   if (!socket) return
+  if (!destinoConfirmado && pedirDestinoSiFalta(() => { void proyectarBiblia(ref, true) })) return
 
   try {
     const data = await buscarVersiculo(ref)
@@ -3153,8 +3185,9 @@ const ocultarBannerUrgente = () => {
   socket.emit("ocultar-banner-urgente")
 }
 
-const proyectarMensajeRapido = () => {
+const proyectarMensajeRapido = (destinoConfirmado = false) => {
   if (!socket) return
+  if (!destinoConfirmado && pedirDestinoSiFalta(() => proyectarMensajeRapido(true))) return
   setActivaId(null); setIndiceLista(null); setIndiceActivoLista(null)
   setPartes([]); setIndex(0); limpiarModoBiblia()
   setAprendiendo(false); detenerAutoAvance()
@@ -3172,8 +3205,9 @@ const proyectarMensajeRapido = () => {
 // tiempo restante solo (segundo a segundo) a partir de "hasta" (un
 // timestamp absoluto), no hace falta reenviar nada por socket cada
 // segundo. Si la hora ya pasó hoy, se asume que es para mañana.
-const proyectarCuentaRegresiva = () => {
+const proyectarCuentaRegresiva = (destinoConfirmado = false) => {
   if (!socket || !cuentaRegresivaHora) return
+  if (!destinoConfirmado && pedirDestinoSiFalta(() => proyectarCuentaRegresiva(true))) return
   const [hh, mm] = cuentaRegresivaHora.split(":").map(Number)
   const objetivo = new Date()
   objetivo.setHours(hh, mm, 0, 0)
@@ -3192,12 +3226,13 @@ const proyectarCuentaRegresiva = () => {
   })
 }
 
-const proyectarPantallaLogo = () => {
+const proyectarPantallaLogo = (destinoConfirmado = false) => {
   if (!socket) return
   if (!logoEsperaUrl.trim()) {
     flashCtrl("Primero ingresa la URL del logo o imagen")
     return
   }
+  if (!destinoConfirmado && pedirDestinoSiFalta(() => proyectarPantallaLogo(true))) return
 
   setActivaId(null); setIndiceLista(null); setIndiceActivoLista(null)
   setPartes([]); setIndex(0); limpiarModoBiblia()
@@ -3213,8 +3248,9 @@ const proyectarPantallaLogo = () => {
   })
 }
 
-const proyectarPantallaNegra = () => {
+const proyectarPantallaNegra = (destinoConfirmado = false) => {
   if (!socket) return
+  if (!destinoConfirmado && pedirDestinoSiFalta(() => proyectarPantallaNegra(true))) return
 
   setActivaId(null); setIndiceLista(null); setIndiceActivoLista(null)
   setPartes([]); setIndex(0); limpiarModoBiblia()
@@ -3229,8 +3265,9 @@ const proyectarPantallaNegra = () => {
   })
 }
 
-const proyectarPantallaEspera = () => {
+const proyectarPantallaEspera = (destinoConfirmado = false) => {
   if (!socket) return
+  if (!destinoConfirmado && pedirDestinoSiFalta(() => proyectarPantallaEspera(true))) return
 
   setActivaId(null); setIndiceLista(null); setIndiceActivoLista(null)
   setPartes([]); setIndex(0); limpiarModoBiblia()
@@ -4449,6 +4486,32 @@ return (
   </>
 )}
 
+{/* ── ELEGIR DESTINO CUANDO NO HAY PROYECTOR ───────────────────── */}
+{elegirDestinoAbierto && (
+  <div style={{ position:"fixed", inset:0, zIndex:10020, background:"rgba(2,6,23,.78)", backdropFilter:"blur(8px)", display:"flex", alignItems:"center", justifyContent:"center", padding:18 }}>
+    <div style={{ width:"min(430px,100%)", borderRadius:18, border:"1px solid rgba(148,163,184,.2)", background:"#101a2d", boxShadow:"0 28px 80px rgba(0,0,0,.6)", padding:20 }}>
+      <div style={{ display:"flex", alignItems:"center", gap:11, marginBottom:8 }}>
+        <span style={{ width:38, height:38, borderRadius:11, display:"grid", placeItems:"center", background:"rgba(245,158,11,.12)", fontSize:20 }}>🖥️</span>
+        <div>
+          <div style={{ fontSize:17, fontWeight:850 }}>No hay un proyector abierto</div>
+          <div style={{ marginTop:2, fontSize:12.5, color:"rgba(255,255,255,.55)" }}>Elige dónde quieres continuar.</div>
+        </div>
+      </div>
+      <div style={{ display:"grid", gap:9, marginTop:17 }}>
+        <button onClick={() => confirmarDestino(true)} style={{ padding:"13px 15px", borderRadius:11, border:"none", background:"#2563eb", color:"white", fontSize:14, fontWeight:800, cursor:"pointer", textAlign:"left" }}>
+          {isMobile ? "🖥️ Abrir proyector en el PC" : "🖥️ Abrir ventana de proyección"}
+          <span style={{ display:"block", marginTop:3, fontSize:11.5, fontWeight:500, opacity:.75 }}>{isMobile ? "Envía la orden al Selah de escritorio conectado." : "Abre la salida a pantalla completa."}</span>
+        </button>
+        <button onClick={() => confirmarDestino(false)} style={{ padding:"13px 15px", borderRadius:11, border:"1px solid rgba(255,255,255,.12)", background:"rgba(255,255,255,.045)", color:"white", fontSize:14, fontWeight:800, cursor:"pointer", textAlign:"left" }}>
+          👁️ Usar solo la vista previa
+          <span style={{ display:"block", marginTop:3, fontSize:11.5, fontWeight:500, opacity:.58 }}>Prepara el contenido sin abrir una salida pública.</span>
+        </button>
+      </div>
+      <button onClick={() => { accionDestinoPendienteRef.current = null; setElegirDestinoAbierto(false) }} style={{ width:"100%", marginTop:10, padding:9, border:"none", background:"transparent", color:"rgba(255,255,255,.5)", cursor:"pointer", fontWeight:700 }}>Cancelar</button>
+    </div>
+  </div>
+)}
+
 {/* ── MODAL CONECTAR SERVIDOR ───────────────────────────────────── */}
 {revisionCultoAbierta && (() => {
   const revisiones = [
@@ -4816,7 +4879,7 @@ return (
         cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
       }}>➡️</button>
       {!isMobile && (
-        <button className="ctrl-btn" onClick={proyectarPantallaNegra} title="Pantalla negra" style={{
+        <button className="ctrl-btn" onClick={() => proyectarPantallaNegra()} title="Pantalla negra" style={{
           width: 52, height: 52, borderRadius: 14, border: "1px solid rgba(255,255,255,0.1)",
           background: "#111", color: "white", fontSize: 16, cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "center"
@@ -4837,7 +4900,7 @@ return (
           }}>{versoDespuesCoro !== null ? "↩ Verso" : "🎵 Coro"}</button>
         )}
         {partes.some(p => /coro|estribillo/i.test(p?.tipo || "")) && (
-          <button onClick={alternarCoro} title="Repetir el coro después de cada verso al avanzar. Se recuerda para esta canción." style={{
+          <button onClick={alternarCoro} title="Repetir el coro después de cada verso al avanzar. Se mantiene al cambiar de canción." style={{
             padding: "4px 9px", borderRadius: 8, flexShrink: 0,
             border: `1px solid ${intercalarCoro ? "rgba(34,197,94,0.5)" : "rgba(255,255,255,0.12)"}`,
             background: intercalarCoro ? "rgba(34,197,94,0.14)" : "rgba(255,255,255,0.03)",
@@ -4869,7 +4932,7 @@ return (
             fontSize: 11, fontWeight: 700, cursor: "pointer", flexShrink: 0
           }}>⏹ {contadorAuto}s</button>
         )}
-        <button onClick={proyectarPantallaNegra} style={{
+        <button onClick={() => proyectarPantallaNegra()} style={{
           marginLeft: "auto", padding: "4px 9px", borderRadius: 8,
           border: "1px solid rgba(255,255,255,0.1)", background: "#111",
           color: "white", fontSize: 12, cursor: "pointer", flexShrink: 0
@@ -4907,7 +4970,7 @@ return (
           }}>{versoDespuesCoro !== null ? "↩ Verso" : "🎵 Coro"}</button>
         )}
         {partes.some(p => /coro|estribillo/i.test(p?.tipo || "")) && (
-          <button onClick={alternarCoro} title="Repetir el coro después de cada verso al avanzar. Se recuerda para esta canción." style={{
+          <button onClick={alternarCoro} title="Repetir el coro después de cada verso al avanzar. Se mantiene al cambiar de canción." style={{
             padding: "6px 12px", borderRadius: 8, flexShrink: 0,
             border: `1px solid ${intercalarCoro ? "rgba(34,197,94,0.5)" : "rgba(255,255,255,0.12)"}`,
             background: intercalarCoro ? "rgba(34,197,94,0.14)" : "rgba(255,255,255,0.03)",
@@ -5502,7 +5565,7 @@ return (
                 ].map((item, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "9px 12px" }}>
                     <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{item.titulo}</span>
-                    <button className="ctrl-btn" disabled={!socket || item.disabled} onClick={item.onPlay}
+                    <button className="ctrl-btn" disabled={!socket || item.disabled} onClick={() => item.onPlay()}
                       style={{ padding: "5px 10px", borderRadius: 7, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>▶</button>
                     <button className="ctrl-btn" disabled={item.disabled} onClick={item.onAdd}
                       style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>+</button>
@@ -5530,8 +5593,8 @@ return (
             </div>
 
             {/* 🚨 Banner de urgencia — se superpone sin interrumpir lo que se está proyectando */}
-            <div style={{ border: "1px solid rgba(239,68,68,0.35)", borderRadius: 12, padding: 12, background: "rgba(239,68,68,0.06)" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#fca5a5", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
+            <div style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 12, background: "rgba(255,255,255,0.025)" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.68)", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
                 🚨 Banner de urgencia
               </div>
               <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 8 }}>
@@ -5543,7 +5606,7 @@ return (
                 placeholder="Ej: Favor mover auto patente AB-1234"
                 style={{
                   width: "100%", padding: "10px 12px", borderRadius: 10,
-                  border: "1px solid rgba(239,68,68,0.25)",
+                  border: "1px solid rgba(255,255,255,0.1)",
                   background: "#0a1525", color: "white",
                   fontSize: 14, outline: "none", boxSizing: "border-box",
                   marginBottom: 8
@@ -5551,7 +5614,7 @@ return (
               />
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="ctrl-btn" disabled={!socket || !bannerUrgente.trim()} onClick={mostrarBannerUrgente}
-                  style={{ flex: 1, padding: "9px 12px", borderRadius: 9, border: "none", background: "#dc2626", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                  style={{ flex: 1, padding: "9px 12px", borderRadius: 9, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                   🚨 Mostrar banner
                 </button>
                 {bannerUrgenteActivo && (
@@ -5564,8 +5627,8 @@ return (
             </div>
 
             {/* ⏳ Cuenta regresiva para el inicio del culto */}
-            <div style={{ border: "1px solid rgba(99,102,241,0.35)", borderRadius: 12, padding: 12, background: "rgba(99,102,241,0.06)" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#a5b4fc", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
+            <div style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 12, background: "rgba(255,255,255,0.025)" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.68)", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
                 ⏳ Cuenta regresiva
               </div>
               <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 8 }}>
@@ -5578,7 +5641,7 @@ return (
                   onChange={e => setCuentaRegresivaHora(e.target.value)}
                   style={{
                     padding: "10px 12px", borderRadius: 10,
-                    border: "1px solid rgba(99,102,241,0.25)",
+                    border: "1px solid rgba(255,255,255,0.1)",
                     background: "#0a1525", color: "white",
                     fontSize: 14, outline: "none", flexShrink: 0
                   }}
@@ -5589,19 +5652,19 @@ return (
                   placeholder="Ej: Empezamos a las 6:30"
                   style={{
                     flex: 1, minWidth: 120, padding: "10px 12px", borderRadius: 10,
-                    border: "1px solid rgba(99,102,241,0.25)",
+                    border: "1px solid rgba(255,255,255,0.1)",
                     background: "#0a1525", color: "white",
                     fontSize: 14, outline: "none", boxSizing: "border-box"
                   }}
                 />
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button className="ctrl-btn" disabled={!socket || !cuentaRegresivaHora} onClick={proyectarCuentaRegresiva}
-                  style={{ flex: 1, padding: "9px 12px", borderRadius: 9, border: "none", background: "#4f46e5", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                <button className="ctrl-btn" disabled={!socket || !cuentaRegresivaHora} onClick={() => proyectarCuentaRegresiva()}
+                  style={{ flex: 1, padding: "9px 12px", borderRadius: 9, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                   ⏳ Mostrar cuenta regresiva
                 </button>
                 <button className="ctrl-btn" disabled={!cuentaRegresivaHora} onClick={agregarCuentaRegresivaALista} title="Agregar a la lista del culto"
-                  style={{ padding: "9px 14px", borderRadius: 9, border: "1px solid rgba(99,102,241,0.3)", background: "rgba(99,102,241,0.12)", color: "#a5b4fc", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
+                  style={{ padding: "9px 14px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "white", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
                   +
                 </button>
               </div>
@@ -6145,8 +6208,8 @@ return (
               )}
             </div>
             {/* Links abrir proyector / músicos */}
-            <div style={{ display: "flex", gap: 8 }}>
-              <button className="ctrl-btn"
+            {!isMobile && <div style={{ display: "flex", gap: 8 }}>
+              {!isMobile && <button className="ctrl-btn"
                 data-tour="btn-proyectar"
                 onClick={() => { window.open(`${window.location.origin}/proyectar`, "_blank", "noopener,noreferrer"); setProyectorConectado(false) }}
                 style={{ flex: 1, padding: "10px", borderRadius: 10,
@@ -6154,13 +6217,13 @@ return (
                   background: proyectorConectado ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.04)",
                   color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 {proyectorConectado ? "🟢 Proyector activo" : "🖥️ Abrir Proyector"}
-              </button>
+              </button>}
               <button className="ctrl-btn"
-                onClick={() => window.open(`${window.location.origin}/musicos`, "_blank", "noopener,noreferrer")}
+                onClick={() => isMobile ? navegarSPA(router, "/musicos") : window.open(`${window.location.origin}/musicos`, "_blank", "noopener,noreferrer")}
                 style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                 🎹 Abrir Músicos
               </button>
-            </div>
+            </div>}
 
             {/* Gestión culto */}
             <div>

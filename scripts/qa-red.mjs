@@ -124,6 +124,11 @@ try {
   registrar("Las ediciones de lista se replican", !!listaB && listaB.revision > revisionAntesEdicion && listaB.items?.length === 2 && listaB.items[0]?.id === "b-2" && listaB.indice === 1,
     `items=${listaB?.items?.map(item => item.id).join(",")} indice=${listaB?.indice} revision=${listaB?.revision}`)
 
+  const abrirProyectorP = eventoEn(controlB, "solicitar-abrir-proyector")
+  controlA.emit("solicitar-abrir-proyector")
+  const abrirProyector = await abrirProyectorP
+  registrar("La APK puede solicitar abrir el proyector del PC", abrirProyector.recibido)
+
   // ── Modo caos: dos operadores escriben casi al mismo tiempo ─────────────
   const partesQa = Array.from({ length: 6 }, (_, i) => ({ tipo: `Parte ${i + 1}`, texto: `QA ${i + 1}` }))
   const cargaP = eventoEn(proyector, "cargar-cancion")
