@@ -3,12 +3,18 @@ import { createClient } from "@supabase/supabase-js"
 // ✅ Variables de entorno — nunca hardcodear credenciales
 // En .env.local (desarrollo):
 //   NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
-//   NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+//   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+// ANON_KEY queda como respaldo temporal para instalaciones ya configuradas.
+// Ambas variables deben contener una clave PUBLICABLE; nunca service_role/secret.
+const supabaseKey =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseKey) {
-  throw new Error("Faltan variables de entorno NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY")
+  throw new Error(
+    "Faltan NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (o NEXT_PUBLIC_SUPABASE_ANON_KEY heredada)",
+  )
 }
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {

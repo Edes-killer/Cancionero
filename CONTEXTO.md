@@ -1,6 +1,6 @@
 # Selah Live — Documento de Diseño (SDD) y Contexto de Desarrollo
 
-> Versión del documento: 2026-09-07 · App: **v0.5.29** · Mantener al día al cerrar cada release.
+> Versión del documento: 2026-09-11 · App: **v0.5.30** · Mantener al día al cerrar cada release.
 
 ---
 
@@ -338,6 +338,17 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - Visor individual de canciones ordenado por título, tono, modo, partes y escenario de lectura.
 - Vista previa móvil más legible, con contenido y acciones visualmente separados.
 
+### Entregado en v0.5.30
+
+- Seguridad multiiglesia reforzada en membresías, roles, invitaciones, multimedia y escritura del estado del culto.
+- Credenciales elevadas retiradas de Electron y del historial Git; el cliente distribuido usa únicamente la clave publicable.
+- Diagnósticos, limpieza y restricciones de integridad para canciones, listas, miembros, planes y roles.
+- Galería organizada por carpetas con metadatos sincronizados entre dispositivos y migración de datos locales.
+- Músicos permite identificar y filtrar canciones con acordes; afinador más estable y comprensible.
+- Pantallas especiales respetan el fondo configurado y los dos monitores previos ajustan contenido, tamaño y selección.
+- La vista previa flotante puede redimensionarse y recuerda la última parte revisada de cada canción.
+- Suite automatizada de seguridad y arquitectura ampliada para impedir regresiones de credenciales y permisos.
+
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).
 - [x] Galería con carpetas y metadatos sincronizados por iglesia.
@@ -352,10 +363,13 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://dkufqtrfvduonsubmwka.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 NEXT_PUBLIC_SITE_URL=https://selah-live.vercel.app
 # GH_TOKEN NO va aquí para el build; se setea en el entorno al publicar (ver §9.3).
 ```
+
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` se mantiene como alias heredado para equipos ya configurados, pero su
+valor también debe ser una clave `sb_publishable_...`; nunca una clave secreta o `service_role`.
 
 ---
 
