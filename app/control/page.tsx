@@ -21,6 +21,7 @@ import { useConfirm } from "@/components/useConfirm"
 import { usePrompt } from "@/components/usePrompt"
 import { useApp, ocultarGlobalesConCopia } from "@/context/AppContext"
 import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk, getPartesCache, setPartesCache } from "@/lib/cache"
+import { limitarAnchoBiblioteca, limitarPosMonitor } from "@/lib/controlLayout"
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 interface Cancion {
@@ -482,10 +483,7 @@ const limiteSuperiorPreview = () => 56
 const limitarPosPreview = (p: { x: number; y: number }, ancho = previewAnchoRef.current) => {
   const tope = limiteSuperiorPreview()
   const alto = previewPanelRef.current?.offsetHeight || 120
-  return {
-    x: Math.min(Math.max(4, p.x), Math.max(4, window.innerWidth - ancho - 4)),
-    y: Math.min(Math.max(tope, p.y), Math.max(tope, window.innerHeight - alto - 4)),
-  }
+  return limitarPosMonitor(p, { ancho: window.innerWidth, alto: window.innerHeight }, { ancho, alto }, tope)
 }
 
 // Posición inicial en la zona superior derecha; se conserva la preferencia del
@@ -1080,13 +1078,7 @@ const [anchoBiblioteca, setAnchoBiblioteca] = useState(() => {
 const gridControlRef = useRef<HTMLDivElement | null>(null)
 const divisorActivoRef = useRef(false)
 const ajustarAnchoBiblioteca = (porcentaje: number) => {
-  const grid = gridControlRef.current
-  if (!grid) return Math.min(70, Math.max(30, porcentaje))
-  // Descontar padding, separador y espacios antes de calcular anchos útiles.
-  const disponible = Math.max(0, grid.clientWidth - 40 - 12 - 8)
-  if (disponible < 560) return 50
-  const minimo = Math.max(30, (280 / disponible) * 100)
-  return Math.min(100 - minimo, Math.max(minimo, porcentaje))
+  return limitarAnchoBiblioteca(porcentaje, gridControlRef.current?.clientWidth ?? 1200)
 }
 useEffect(() => {
   const mover = (e: MouseEvent) => {
