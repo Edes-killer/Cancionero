@@ -125,6 +125,9 @@ export default function ControlPage() {
   )
   const [galeriaImagenes, setGaleriaImagenes] = useState<{url:string,nombre:string,local:boolean,carpeta:string}[]>([])
   const [galeriaAbierta, setGaleriaAbierta] = useState(false)
+  const [mostrarGaleriaPanel, setMostrarGaleriaPanel] = useState(false)
+  const [subiendoGaleria, setSubiendoGaleria] = useState(false)
+  const inputGaleriaRef = useRef<HTMLInputElement | null>(null)
   const [busquedaGaleria, setBusquedaGaleria] = useState("")
   const [filtroGaleria, setFiltroGaleria] = useState<"todo" | "imagen" | "video">("todo")
   const [carpetaGaleria, setCarpetaGaleria] = useState("__todas__")
@@ -963,19 +966,22 @@ const [mostrarPalabra, setMostrarPalabra] = useState(false)
 const [mostrarCultos, setMostrarCultos] = useState(false)
 const [mostrarFiltrosMobile, setMostrarFiltrosMobile] = useState(false)
 const [revisionCultoAbierta, setRevisionCultoAbierta] = useState(false)
-const alternarPanel = (panel: "canciones" | "acciones" | "palabra" | "cultos") => {
+const alternarPanel = (panel: "canciones" | "galeria" | "acciones" | "palabra" | "cultos") => {
   const estabaAbierto = panel === "canciones" ? mostrarCanciones
+    : panel === "galeria" ? mostrarGaleriaPanel
     : panel === "acciones" ? mostrarAcciones
     : panel === "palabra" ? mostrarPalabra
     : mostrarCultos
   if (isMobile) {
     setMostrarCanciones(false)
+    setMostrarGaleriaPanel(false)
     setMostrarAcciones(false)
     setMostrarPalabra(false)
     setMostrarCultos(false)
   }
   const abrir = !estabaAbierto
   if (panel === "canciones") setMostrarCanciones(abrir)
+  if (panel === "galeria") setMostrarGaleriaPanel(abrir)
   if (panel === "acciones") setMostrarAcciones(abrir)
   if (panel === "palabra") setMostrarPalabra(abrir)
   if (panel === "cultos") setMostrarCultos(abrir)
@@ -986,6 +992,7 @@ const irAListaMobile = () => {
 }
 const irACancionesMobile = () => {
   setMostrarCanciones(true)
+  setMostrarGaleriaPanel(false)
   setMostrarAcciones(false)
   setMostrarPalabra(false)
   setMostrarCultos(false)
@@ -2675,6 +2682,11 @@ const subirImagen = async (file: File) => {
       return null
     }
     const iglesiaId = await getIglesiaIdCached()
+    if (!iglesiaId) {
+      flashCtrl("No se pudo identificar tu iglesia. Vuelve a iniciar sesión antes de subir archivos.")
+      logError("Galería: intento de subida sin iglesia activa", { tipo: "galeria", pagina: "/control" })
+      return null
+    }
     const archivoOptimizado = await optimizarImagen(file)
     const baseName = file.name.replace(/\.[^/.]+$/, "").replace(/\s+/g, "_").trim()
     const nombreArchivo = `${Date.now()}-${Math.random().toString(36).slice(2)}.webp`
@@ -2717,8 +2729,11 @@ const subirImagen = async (file: File) => {
     const { data } = supabase.storage.from("imagenes-culto").getPublicUrl(ruta)
     return { url: data.publicUrl, nombre: baseName || "Imagen", local: false }
 
-  } catch (e) {
-    console.error(e); flashCtrl("Falló la subida de imagen"); return null
+  } catch (e: any) {
+    console.error(e)
+    logError(`Galería: falló la imagen ${file.name}: ${e?.message || e}`, { tipo: "galeria", pagina: "/control" })
+    flashCtrl(`No se pudo procesar “${file.name}”. Prueba con JPG, PNG o WEBP.`)
+    return null
   }
 }
 
@@ -3625,6 +3640,44 @@ const galeriaFiltrada = useMemo(() => {
     return !q || img.nombre.toLocaleLowerCase("es").includes(q)
   })
 }, [galeriaImagenes, busquedaGaleria, filtroGaleria, carpetaGaleria])
+
+const abrirBibliotecaVisual = async () => {
+  setCargandoGaleria(true)
+  try {
+    setGaleriaImagenes(await cargarGaleriaImagenes())
+    setGaleriaAbierta(true)
+  } catch (e: any) {
+    logError(`Galería: no se pudo cargar: ${e?.message || e}`, { tipo: "galeria", pagina: "/control" })
+    flashCtrl("No se pudo abrir la galería. Revisa tu conexión y vuelve a intentar.")
+  } finally {
+    setCargandoGaleria(false)
+  }
+}
+
+const procesarArchivoGaleria = async (input: HTMLInputElement) => {
+  const file = input.files?.[0]
+  if (!file) return
+  setSubiendoGaleria(true)
+  try {
+    const val = validarMedia(file)
+    if (!val.ok) { flashCtrl(val.error || "Formato no compatible"); return }
+    const esVideo = val.tipo === "video"
+    const resultado = esVideo ? await subirVideo(file) : await subirImagen(file)
+    if (!resultado?.url) return
+    guardarEnCarpetaActual(resultado)
+    agregarItemAListaConFeedback(
+      { tipo: esVideo ? "video" : "imagen", url: resultado.url, titulo: resultado.nombre },
+      `✅ ${esVideo ? "Video agregado" : "Imagen agregada"} a la lista: ${resultado.nombre}`
+    )
+    setGaleriaImagenes(await cargarGaleriaImagenes())
+  } catch (e: any) {
+    logError(`Galería móvil: ${file.name}: ${e?.message || e}`, { tipo: "galeria", pagina: "/control" })
+    flashCtrl("No se pudo cargar el archivo. El detalle quedó guardado en Configuración → Registro de errores.")
+  } finally {
+    input.value = ""
+    setSubiendoGaleria(false)
+  }
+}
 
 useEffect(() => {
   const indice = indicePendienteScrollRef.current
@@ -5163,6 +5216,46 @@ return (
           )}
       </div>
       
+      {/* ── Galería — recurso principal, al mismo nivel que Palabra ───── */}
+      <div id="panel-galeria" style={{
+        background:"rgba(17,27,46,0.95)", border:"1px solid rgba(255,255,255,0.08)",
+        borderRadius:16, overflow:"hidden"
+      }}>
+        <div onClick={() => alternarPanel("galeria")} style={{
+          padding:isMobile ? "12px 14px" : "14px 18px", display:"flex", alignItems:"center", justifyContent:"space-between",
+          cursor:"pointer", borderBottom:mostrarGaleriaPanel ? "1px solid rgba(255,255,255,0.06)" : "none"
+        }}>
+          <div>
+            <div style={{ fontWeight:800, fontSize:isMobile ? 14 : 15 }}>🗂️ Galería</div>
+            {!isMobile && <div style={{ fontSize:11, opacity:.42, marginTop:2 }}>Imágenes, videos y carruseles para el culto</div>}
+          </div>
+          <span style={{ opacity:.5, fontSize:18 }}>{mostrarGaleriaPanel ? "▾" : "▸"}</span>
+        </div>
+        {mostrarGaleriaPanel && (
+          <div style={{ padding:isMobile ? "12px 14px" : "16px 18px" }}>
+            <div style={{ fontSize:12, opacity:.52, lineHeight:1.5, marginBottom:10 }}>
+              Sube un recurso nuevo o abre tu biblioteca. Al subirlo se agrega también a la lista del culto.
+            </div>
+            <input ref={inputGaleriaRef} type="file"
+              accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,.avif,.mp4,.webm,.mov,.m4v,.ogg,image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
+              style={{ display:"none" }} onChange={e => void procesarArchivoGaleria(e.currentTarget)} />
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+              <button type="button" disabled={subiendoGaleria} onClick={() => inputGaleriaRef.current?.click()} style={{
+                minHeight:44, padding:"10px", borderRadius:10, border:"1px dashed rgba(96,165,250,.45)",
+                background:"rgba(37,99,235,.12)", color:"#bfdbfe", fontSize:12.5, fontWeight:800,
+                cursor:subiendoGaleria ? "wait" : "pointer", opacity:subiendoGaleria ? .65 : 1
+              }}>{subiendoGaleria ? "⏳ Cargando…" : "＋ Subir archivo"}</button>
+              <button type="button" disabled={cargandoGaleria} onClick={() => void abrirBibliotecaVisual()} style={{
+                minHeight:44, padding:"10px", borderRadius:10, border:"1px solid rgba(245,158,11,.35)",
+                background:"rgba(245,158,11,.1)", color:"#fcd34d", fontSize:12.5, fontWeight:800,
+                cursor:cargandoGaleria ? "wait" : "pointer"
+              }}>{cargandoGaleria ? "⏳ Abriendo…" : "🖼️ Ver biblioteca"}</button>
+            </div>
+            <div style={{ fontSize:10.5, opacity:.38, marginTop:8 }}>JPG, PNG, WEBP, GIF y clips MP4/WEBM/MOV.</div>
+          </div>
+        )}
+      </div>
+
       {/* ── Acciones rápidas ──────────────────────────────────────────── */}
       <div style={{
         background: "rgba(17,27,46,0.95)",

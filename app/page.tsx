@@ -244,10 +244,7 @@ export default function InicioPage() {
 
   const pct = (v:number) => totalCanciones > 0 ? Math.round((v/totalCanciones)*100) : 0
 
-  const abrirControl = (modo: "preparar" | "culto") => {
-    try { localStorage.setItem("selah-modo-control", modo) } catch {}
-    navegarSPA(router, "/control")
-  }
+  const abrirControl = () => navegarSPA(router, "/control")
 
   if (cargando) return (
     <div style={{ ...f, minHeight:"100dvh", background:"#060d1a", display:"flex", alignItems:"center", justifyContent:"center", color:"white" }}>
@@ -316,15 +313,10 @@ export default function InicioPage() {
           {/* ══ FLUJO PRINCIPAL ═════════════════════════════════════════════ */}
           <div>
             <div style={{ fontSize:11, fontWeight:850, letterSpacing:".09em", color:"rgba(255,255,255,.38)", margin:"2px 2px 9px" }}>¿QUÉ QUIERES HACER?</div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(230px,1fr))", gap:10 }}>
-              <button data-ayuda="Abre Control con todas las herramientas para preparar y guardar el orden del próximo culto." onClick={() => abrirControl("preparar")} style={{ padding:"17px", borderRadius:15, border:"1px solid rgba(59,130,246,.34)", background:"linear-gradient(135deg,rgba(37,99,235,.2),rgba(30,64,175,.08))", color:"white", cursor:"pointer", display:"flex", alignItems:"center", gap:13, textAlign:"left" }}>
-                <span style={{ width:44, height:44, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(37,99,235,.24)", fontSize:21, flexShrink:0 }}>🛠️</span>
-                <span style={{ flex:1 }}><span style={{ display:"block", fontWeight:850, fontSize:15.5 }}>Preparar próximo culto</span><span style={{ display:"block", marginTop:3, color:"rgba(255,255,255,.48)", fontSize:11.5, lineHeight:1.35 }}>Armar, ordenar y guardar contenido</span></span>
-                <span style={{ opacity:.35, fontSize:19 }}>→</span>
-              </button>
-              <button data-ayuda="Abre la consola simplificada para dirigir un culto que ya está preparado." onClick={() => abrirControl("culto")} style={{ padding:"17px", borderRadius:15, border:"1px solid rgba(239,68,68,.32)", background:"linear-gradient(135deg,rgba(185,28,28,.18),rgba(127,29,29,.07))", color:"white", cursor:"pointer", display:"flex", alignItems:"center", gap:13, textAlign:"left" }}>
-                <span style={{ width:44, height:44, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(220,38,38,.2)", fontSize:21, flexShrink:0 }}>●</span>
-                <span style={{ flex:1 }}><span style={{ display:"block", fontWeight:850, fontSize:15.5 }}>Operar el culto</span><span style={{ display:"block", marginTop:3, color:"rgba(255,255,255,.48)", fontSize:11.5, lineHeight:1.35 }}>Controles esenciales y vista en vivo</span></span>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:10 }}>
+              <button data-ayuda="Abre el Control de Culto para buscar contenido, organizar la lista y manejar la proyección." onClick={abrirControl} style={{ padding:"17px", borderRadius:15, border:"1px solid rgba(59,130,246,.34)", background:"linear-gradient(135deg,rgba(37,99,235,.2),rgba(30,64,175,.08))", color:"white", cursor:"pointer", display:"flex", alignItems:"center", gap:13, textAlign:"left" }}>
+                <span style={{ width:44, height:44, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(37,99,235,.24)", fontSize:21, flexShrink:0 }}>🎛️</span>
+                <span style={{ flex:1 }}><span style={{ display:"block", fontWeight:850, fontSize:15.5 }}>Control de Culto</span><span style={{ display:"block", marginTop:3, color:"rgba(255,255,255,.48)", fontSize:11.5, lineHeight:1.35 }}>Buscar, ordenar y proyectar contenido</span></span>
                 <span style={{ opacity:.35, fontSize:19 }}>→</span>
               </button>
             </div>

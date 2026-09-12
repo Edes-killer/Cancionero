@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabase"
 import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "@/lib/cache"
 
-export type TipoError = "socket"|"supabase"|"proyeccion"|"biblia"|"imagen"|"ppt"|"audio"|"autenticacion"|"general"
+export type TipoError = "socket"|"supabase"|"proyeccion"|"biblia"|"imagen"|"galeria"|"ppt"|"audio"|"autenticacion"|"general"
 
 interface OpcionesLog { pagina?: string; tipo?: TipoError; detalle?: Record<string, any> }
 

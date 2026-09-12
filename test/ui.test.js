@@ -72,3 +72,14 @@ test("la lista mantiene visibles los controles de orden y resalta el elemento mo
   assert.match(control, /setIndiceItemReordenando\(i - 1\)/)
   assert.match(control, /setIndiceItemReordenando\(i \+ 1\)/)
 })
+
+test("Dashboard y Control presentan un único flujo y una Galería principal", () => {
+  const dashboard = fs.readFileSync("app/page.tsx", "utf8")
+  const control = fs.readFileSync("app/control/page.tsx", "utf8")
+  assert.doesNotMatch(dashboard, /selah-modo-control|Preparar próximo culto|Operar el culto/)
+  assert.match(dashboard, /Control de Culto/)
+  assert.match(control, /id="panel-galeria"/)
+  assert.match(control, /mostrarGaleriaPanel/)
+  assert.match(control, /procesarArchivoGaleria/)
+  assert.match(control, /Galería móvil:[\s\S]{0,180}Registro de errores/)
+})
