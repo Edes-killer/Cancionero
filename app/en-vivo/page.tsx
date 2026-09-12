@@ -18,6 +18,8 @@ import { useApp } from "@/context/AppContext"
 import ObjetoEditable from "@/components/ObjetoEditable"
 import EstadoOperativo from "@/components/ui/EstadoOperativo"
 import { copiarTexto } from "@/lib/copiar"
+import OnboardingTour from "@/components/OnboardingTour"
+import { TOUR_TRANSMISION } from "@/lib/tours"
 
 type Escena = "camara" | "camara-letra" | "letra" | "espera"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
@@ -49,10 +51,10 @@ const CELULAR = "__celular__" // "deviceId" especial: la cámara es el celular (
 
 // Sección colapsable de los controles (a nivel módulo para no perder su estado
 // al re-renderizar). Encabezado que abre/cierra; la más usada arranca abierta.
-function Seccion({ titulo, sub, defaultOpen = false, children }: { titulo: string; sub?: string; defaultOpen?: boolean; children: ReactNode }) {
+function Seccion({ titulo, sub, defaultOpen = false, dataTour, children }: { titulo: string; sub?: string; defaultOpen?: boolean; dataTour?: string; children: ReactNode }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, overflow: "hidden", flexShrink: 0 }}>
+    <div data-tour={dataTour} style={{ background: C.panel, border: `1px solid ${C.borde}`, borderRadius: 16, overflow: "hidden", flexShrink: 0 }}>
       <button onClick={() => setOpen(o => !o)} aria-expanded={open}
         style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "15px 20px", background: "transparent", border: "none", cursor: "pointer", color: C.texto, textAlign: "left", fontFamily: "inherit" }}>
         <span style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
@@ -1404,6 +1406,13 @@ export default function EnVivoPage() {
           </div>
         </div>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"flex-end", gap:7, flexWrap:"wrap" }}>
+          <button data-ayuda="Abre una guía paso a paso de la pantalla de Transmisión." onClick={() => {
+            localStorage.removeItem("tour-transmision-v1")
+            sessionStorage.setItem("tour-transmision-v1-forzar", "1")
+            window.location.reload()
+          }} style={botonBase({ background: "rgba(37,99,235,.12)", color: "#93c5fd", border: "1px solid rgba(37,99,235,.35)", padding: "8px 12px", fontSize: 13 })}>
+            ❔ Guía
+          </button>
           <EstadoOperativo nivel={permiso === "ok" ? "ok" : permiso === "pidiendo" ? "warning" : "error"} etiqueta="Cámara/audio" detalle={permiso === "ok" ? "Listos" : permiso === "pidiendo" ? "Abriendo" : "Revisar"} />
           <EstadoOperativo nivel={conectadoSala ? "ok" : "warning"} etiqueta="Proyección" detalle={conectadoSala ? "Sincronizada" : "Conectando"} />
           <EstadoOperativo nivel={txEstado === "vivo" ? "live" : txEstado === "reconectando" ? "warning" : txEstado === "error" ? "error" : "idle"} etiqueta={txEstado === "vivo" ? "AL AIRE" : txEstado === "reconectando" ? "RECONECTANDO" : txEstado === "error" ? "ERROR" : "FUERA DEL AIRE"} />
@@ -1418,7 +1427,7 @@ export default function EnVivoPage() {
         <div style={esAncho ? { position: "sticky", top: 12 } : {}}>
         {/* Marco (passe-partout): un margen claro alrededor del cuadro para que
             se note dónde termina exactamente lo que sale al aire. */}
-        <div style={{ padding: 10, borderRadius: 20, background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))", border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 14px 40px rgba(0,0,0,0.45)" }}>
+        <div data-tour="tx-salida" style={{ padding: 10, borderRadius: 20, background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))", border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 14px 40px rgba(0,0,0,0.45)" }}>
         {/* Vista previa (lo que saldría al aire) */}
         <div style={{ position: "relative", zIndex: 5, borderRadius: 12, overflow: "hidden", border: "2px solid rgba(255,255,255,0.3)", background: "#000", aspectRatio: "16 / 9", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.6)" }}>
           <canvas ref={canvasRef} width={ANCHO} height={ALTO}
@@ -1559,7 +1568,7 @@ export default function EnVivoPage() {
           )}
         </div>
         {/* Cámaras y micrófono */}
-        <Seccion titulo="Cámaras y micrófono" defaultOpen>
+        <Seccion titulo="Cámaras y micrófono" defaultOpen dataTour="tx-camaras">
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <label style={{ fontSize: 12.5, color: C.tenue }}>
               🎥 Cámara 1
@@ -1610,7 +1619,7 @@ export default function EnVivoPage() {
         </Seccion>
 
         {/* Escena al aire */}
-        <Seccion titulo="Escena al aire" defaultOpen>
+        <Seccion titulo="Escena al aire" defaultOpen dataTour="tx-escenas">
             <div style={{ fontSize: 12, color: C.tenue, marginBottom: 12 }}>
                 {conectadoSala
                   ? (estadoEsp ? `Proyectando: ${nombreEstado(estadoEsp.tipo)}`
@@ -1680,7 +1689,7 @@ export default function EnVivoPage() {
         </Seccion>
 
         {/* Fuentes: pantalla y celular */}
-        <Seccion titulo="Fuentes" sub="Pantalla · Celular">
+        <Seccion titulo="Fuentes" sub="Pantalla · Celular" dataTour="tx-fuentes">
             <div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                 <div style={{ flex: 1, minWidth: 180 }}>
@@ -1720,7 +1729,7 @@ export default function EnVivoPage() {
         </Seccion>
 
         {/* Mensaje en vivo */}
-        <Seccion titulo="Mensaje en vivo">
+        <Seccion titulo="Mensaje en vivo" dataTour="tx-mensaje">
             <div style={{ fontSize: 12, color: C.tenue, marginBottom: 12 }}>Un texto que aparece abajo, sobre cualquier escena (ej. “Bienvenidos”, “Ofrenda por transferencia…”).</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <input value={mensajeVivo} onChange={e => setMensajeVivo(e.target.value)}
@@ -1748,7 +1757,7 @@ export default function EnVivoPage() {
         </Seccion>
 
         {/* Apariencia (personalización) */}
-        <Seccion titulo="Apariencia" sub="Diseño · color · logo">
+        <Seccion titulo="Apariencia" sub="Diseño · color · logo" dataTour="tx-apariencia">
 
             {/* Color de la letra */}
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
@@ -1864,7 +1873,7 @@ export default function EnVivoPage() {
         </Seccion>
 
         {/* Salir en vivo */}
-        <div id="panel-salida"><Seccion titulo="Salir en vivo" sub="Transmite a tu plataforma" defaultOpen>
+        <div id="panel-salida"><Seccion titulo="Salir en vivo" sub="Transmite a tu plataforma" defaultOpen dataTour="tx-salir-vivo">
           <div style={{ fontSize: 12.5, color: C.tenue, marginBottom: 16 }}>Transmite esta vista directo a tu plataforma.</div>
 
           {!esEscritorio ? (
@@ -2047,7 +2056,7 @@ export default function EnVivoPage() {
         </Seccion></div>
 
         {/* Emisión directa: link propio en la red, sin plataformas */}
-        <Seccion titulo="Emisión directa" sub="Link propio en la red">
+        <Seccion titulo="Emisión directa" sub="Link propio en la red" dataTour="tx-emision-directa">
           <div style={{ fontSize: 11.5, color: C.tenue, marginBottom: 12, lineHeight: 1.55 }}>
             Reparte un link y quien esté en la misma red WiFi ve el culto en vivo, <strong style={{ color: C.suave }}>sin pasar por Facebook ni YouTube</strong>. Ideal para la congregación o una sala. Para mucha gente por internet, usa las plataformas de arriba.
           </div>
@@ -2097,6 +2106,8 @@ export default function EnVivoPage() {
           {aviso}
         </div>
       )}
+
+      <OnboardingTour id="tour-transmision-v1" pasos={TOUR_TRANSMISION} nombrePagina="Transmisión en vivo" />
 
       {/* Emparejar el celular como cámara (QR + código) */}
       {camModal && (

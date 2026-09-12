@@ -269,3 +269,82 @@ export const getTourCanciones = (isMobile = false): PasoTour[] => [
 ]
 
 export const TOUR_CANCIONES: PasoTour[] = getTourCanciones(false)
+
+export const TOUR_TRANSMISION: PasoTour[] = [
+  {
+    icono: "🎥",
+    titulo: "Tu estudio de transmisión",
+    desc: "Aquí preparas cámaras, audio, escenas y gráficos antes de salir al aire. El recorrido solo te muestra las herramientas: no encenderá una transmisión ni cambiará tus ajustes.",
+    tip: "Haz una grabación corta de prueba antes de cada culto para comprobar imagen y sonido."
+  },
+  {
+    icono: "📺",
+    titulo: "Salida final",
+    desc: "Este cuadro es exactamente lo que verá el público. Todo lo que quede fuera del borde no aparece en la transmisión.",
+    tip: "Puedes arrastrar y redimensionar el logo, la letra y otros objetos directamente aquí.",
+    selector: "[data-tour='tx-salida']",
+    posicion: "right"
+  },
+  {
+    icono: "🎙️",
+    titulo: "Cámaras y audio",
+    desc: "Elige la cámara principal, una segunda cámara opcional y la entrada de audio. Si conectas un celular, también aparecerá como cámara y micrófono seleccionable.",
+    tip: "Mira el medidor de audio: debe moverse con claridad sin llegar constantemente a rojo.",
+    selector: "[data-tour='tx-camaras']",
+    posicion: "left"
+  },
+  {
+    icono: "🎬",
+    titulo: "Escenas",
+    desc: "Cambia entre Cámara, Cámara + letra, Proyección y Espera. La escena marcada como EN PREVIA será la que saldrá al iniciar la emisión.",
+    tip: "La pantalla de Espera mantiene el micrófono silenciado y puede pasar automáticamente a Cámara al terminar el contador.",
+    selector: "[data-tour='tx-escenas']",
+    posicion: "left"
+  },
+  {
+    icono: "🖥️",
+    titulo: "Fuentes adicionales",
+    desc: "Comparte una pantalla o conecta el celular como cámara. Puedes combinar una fuente principal con una cámara en recuadro.",
+    tip: "Para la cámara del celular, ambos equipos deben estar conectados a la misma red.",
+    selector: "[data-tour='tx-fuentes']",
+    posicion: "left"
+  },
+  {
+    icono: "💬",
+    titulo: "Mensaje en vivo",
+    desc: "Escribe un aviso breve y muéstralo arriba o abajo sobre cualquier escena, sin modificar la letra proyectada.",
+    tip: "Úsalo para bienvenida, datos de contacto u otros avisos puntuales.",
+    selector: "[data-tour='tx-mensaje']",
+    posicion: "left"
+  },
+  {
+    icono: "🎨",
+    titulo: "Apariencia",
+    desc: "Personaliza diseño, colores, logo, posiciones y gráficos para que la transmisión tenga la identidad de tu iglesia. Los cambios se guardan automáticamente.",
+    tip: "Guarda un armado cuando tengas una distribución que quieras recuperar después.",
+    selector: "[data-tour='tx-apariencia']",
+    posicion: "left"
+  },
+  {
+    icono: "🔴",
+    titulo: "Transmitir o grabar",
+    desc: "Configura tus destinos y usa Revisar salida antes de emitir. También puedes grabar el programa final en el computador sin transmitirlo.",
+    tip: "La revisión previa detecta problemas de cámara, audio, escena y destinos antes de salir al aire.",
+    selector: "[data-tour='tx-salir-vivo']",
+    posicion: "left"
+  },
+  {
+    icono: "📡",
+    titulo: "Emisión directa",
+    desc: "Comparte el culto dentro de la red local mediante un enlace, QR y código, sin pasar por Facebook, YouTube ni TikTok.",
+    tip: "Es ideal para otra sala o equipos conectados al mismo WiFi; para público por internet usa una plataforma de transmisión.",
+    selector: "[data-tour='tx-emision-directa']",
+    posicion: "left"
+  },
+  {
+    icono: "✅",
+    titulo: "Transmisión preparada",
+    desc: "Ya conoces el flujo completo: configura, revisa la salida, haz una prueba y recién entonces comienza la transmisión.",
+    tip: "Puedes repetir esta guía desde el botón ❔ Guía o desde Configuración → Tutoriales."
+  }
+]

@@ -63,6 +63,20 @@ test("el tour de Control móvil usa acciones reales de la APK", () => {
   assert.match(tourUi, /calc\(100vw - 24px\)/)
 })
 
+test("Transmisión tiene un recorrido seguro y repetible", () => {
+  const tours = fs.readFileSync("lib/tours.ts", "utf8")
+  const enVivo = fs.readFileSync("app/en-vivo/page.tsx", "utf8")
+  const ajustes = fs.readFileSync("app/configuracion/page.tsx", "utf8")
+  assert.match(tours, /export const TOUR_TRANSMISION/)
+  assert.match(enVivo, /OnboardingTour id="tour-transmision-v1"/)
+  assert.match(enVivo, /data-tour="tx-salida"/)
+  assert.match(enVivo, /dataTour="tx-camaras"/)
+  assert.match(enVivo, /dataTour="tx-salir-vivo"/)
+  assert.match(enVivo, /dataTour="tx-emision-directa"/)
+  assert.match(ajustes, /Tour de Transmisión/)
+  assert.doesNotMatch(tours.slice(tours.indexOf("export const TOUR_TRANSMISION")), /\.click\(\)/)
+})
+
 test("la lista mantiene visibles los controles de orden y resalta el elemento movido", () => {
   const control = fs.readFileSync("app/control/page.tsx", "utf8")
   assert.match(control, /indiceItemReordenando/)
