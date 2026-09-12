@@ -953,6 +953,7 @@ useEffect(() => {
 }, [socket, fondoCancionUrl])
 
 const [isMobile, setIsMobile] = useState(false)
+const [mostrarControlesExtraMobile, setMostrarControlesExtraMobile] = useState(false)
 const [busquedaEnfocada, setBusquedaEnfocada] = useState(false)
 const [pantallaDetectada, setPantallaDetectada] = useState(false)
 const [mostrarCanciones, setMostrarCanciones] = useState(true)
@@ -4514,21 +4515,22 @@ return (
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: isMobile ? 13 : 18, fontWeight: 800, lineHeight: 1.2, display: "flex", alignItems: "center", gap: 5 }}>
           🎛️ Control
-          {(socketConectado === false || (socketConectado === null && !!(window as any).Capacitor)) && (
+          {isMobile && (socketConectado === false || (socketConectado === null && !!(window as any).Capacitor)) && (
             <EstadoOperativo compacto nivel="error" etiqueta="SIN CONEXIÓN" detalle="Toca para buscar el servidor" onClick={() => setModalServidor(true)} />
           )}
-          {socketConectado === true && (
-            <EstadoOperativo compacto nivel="ok" etiqueta="EN LÍNEA" detalle="Servidor local conectado" />
+          {isMobile && socketConectado === true && !proyectorConectado && (
+            <EstadoOperativo compacto nivel="warning" icono="🖥️" etiqueta="SIN PROYECTOR" detalle="El PC está conectado, pero la salida de proyección aún no está abierta" />
           )}
-          {proyectorConectado && (
-            <EstadoOperativo compacto nivel="ok" icono="🖥️" etiqueta="PROYECTOR" detalle="Pantalla de proyección activa" />
+          {isMobile && socketConectado === true && proyectorConectado && (
+            <EstadoOperativo compacto nivel="ok" etiqueta="LISTO" detalle={sinConexion ? "Proyección local activa; la nube no está disponible" : "PC y proyector conectados"} />
           )}
-          {socketConectado === true && !proyectorConectado && (
-            <EstadoOperativo compacto nivel="warning" icono="🖥️" etiqueta="SIN PROYECTOR" detalle="Abre Proyectar para mostrar contenido" />
-          )}
-          {sinConexion && (
-            <EstadoOperativo compacto nivel="warning" icono="☁️" etiqueta="SIN NUBE" detalle="Los controles locales pueden seguir funcionando" />
-          )}
+          {!isMobile && <>
+            {(socketConectado === false || (socketConectado === null && !!(window as any).Capacitor)) && <EstadoOperativo compacto nivel="error" etiqueta="SIN CONEXIÓN" detalle="Toca para buscar el servidor" onClick={() => setModalServidor(true)} />}
+            {socketConectado === true && <EstadoOperativo compacto nivel="ok" etiqueta="EN LÍNEA" detalle="Servidor local conectado" />}
+            {proyectorConectado && <EstadoOperativo compacto nivel="ok" icono="🖥️" etiqueta="PROYECTOR" detalle="Pantalla de proyección activa" />}
+            {socketConectado === true && !proyectorConectado && <EstadoOperativo compacto nivel="warning" icono="🖥️" etiqueta="SIN PROYECTOR" detalle="Abre Proyectar para mostrar contenido" />}
+            {sinConexion && <EstadoOperativo compacto nivel="warning" icono="☁️" etiqueta="SIN NUBE" detalle="Los controles locales pueden seguir funcionando" />}
+          </>}
         </div>
         {nombreCulto && (
           <div style={{ fontSize: 10, opacity: 0.4, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -4541,6 +4543,14 @@ return (
           height:38, padding:"0 12px", borderRadius:10, border:"1px solid rgba(96,165,250,.3)",
           background:"rgba(37,99,235,.12)", color:"#bfdbfe", fontSize:11.5, fontWeight:800, cursor:"pointer", flexShrink:0,
         }}>✓ Revisar culto</button>
+      )}
+      {isMobile && (
+        <button type="button" aria-label={mostrarControlesExtraMobile ? "Ocultar controles adicionales" : "Mostrar controles adicionales"}
+          aria-expanded={mostrarControlesExtraMobile} onClick={() => setMostrarControlesExtraMobile(v => !v)} style={{
+            width:36, height:40, borderRadius:10, border:"1px solid rgba(255,255,255,.1)", flexShrink:0,
+            background:mostrarControlesExtraMobile ? "rgba(59,130,246,.2)" : "rgba(255,255,255,.06)",
+            color:"white", fontSize:20, lineHeight:1, cursor:"pointer",
+          }}>⋯</button>
       )}
       <button data-tour="controles-nav" className="ctrl-btn" onClick={anterior} style={{
         width: isMobile ? 40 : 56, height: isMobile ? 40 : 56, borderRadius: 10, border: "none",
@@ -4562,7 +4572,7 @@ return (
     </div>
 
     {/* Fila 2 — solo mobile: botones secundarios compactos */}
-    {isMobile && (
+    {isMobile && (mostrarControlesExtraMobile || autoAvanceActivo) && (
       <div style={{ display: "flex", gap: 6, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
         {partes.some(p => /coro|estribillo/i.test(p?.tipo || "")) && (
           <button data-tour="btn-coro" onClick={irAlCoro} style={{

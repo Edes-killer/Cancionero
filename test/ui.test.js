@@ -18,3 +18,12 @@ test("las ayudas contextuales son opcionales y se apagan por defecto en APK", ()
   assert.match(ajustes, /Ayudas sobre los botones/)
   assert.match(ajustes, /role="switch" aria-checked=\{ayudasContextuales\}/)
 })
+
+test("Control móvil agrupa acciones secundarias y muestra un solo estado prioritario", () => {
+  const control = fs.readFileSync("app/control/page.tsx", "utf8")
+  assert.match(control, /mostrarControlesExtraMobile/)
+  assert.match(control, /Mostrar controles adicionales/)
+  assert.match(control, /mostrarControlesExtraMobile \|\| autoAvanceActivo/)
+  assert.match(control, /isMobile && socketConectado === true && proyectorConectado/)
+  assert.match(control, /etiqueta="LISTO"/)
+})
