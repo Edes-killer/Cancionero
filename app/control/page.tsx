@@ -163,12 +163,18 @@ export default function ControlPage() {
   const estadoGuardado = (typeof window !== "undefined" && recordarUltima) ? (() => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") } catch (e) { return null }
   })() : null
+  const listaGuardada = typeof window !== "undefined" ? (() => {
+    try {
+      const igId = localStorage.getItem("cancionero_iglesia_activa_id") || "global"
+      return JSON.parse(localStorage.getItem(`selah-lista-culto-${igId}`) || "null")
+    } catch { return null }
+  })() : null
 
   const [index, setIndex] = useState(estadoGuardado?.index || 0)
-  const [lista, setLista] = useState<ItemLista[]>([])
+  const [lista, setLista] = useState<ItemLista[]>(Array.isArray(listaGuardada?.items) ? listaGuardada.items : [])
   const [activaId, setActivaId] = useState<string | null>(estadoGuardado?.activaId || null)
   const [cultos, setCultos] = useState<CultoData[]>([])
-  const [listaIdActual, setListaIdActual] = useState<string | null>(null)
+  const [listaIdActual, setListaIdActual] = useState<string | null>(listaGuardada?.listaId || null)
   const [filtroTono, setFiltroTono] = useState("")
   const [filtroCategoria, setFiltroCategoria] = useState("")
   const [busqueda, setBusqueda] = useState("")
@@ -201,7 +207,7 @@ export default function ControlPage() {
   const cambiarOrden = (v: "numero" | "az" | "za" | "reciente" | "antigua") => {
     setOrdenar(v); localStorage.setItem("canciones-orden", v)
   }
-  const [nombreCulto, setNombreCulto] = useState("")
+  const [nombreCulto, setNombreCulto] = useState(listaGuardada?.nombre || "")
   const [partes, setPartes] = useState<Parte[]>(estadoGuardado?.partes || [])
   const [tituloActual, setTituloActual] = useState(estadoGuardado?.titulo || "")
 
@@ -671,6 +677,9 @@ useEffect(() => {
   // ✅ Estado del proyector: saber si está abierto o cerrado
   s.on("proyector-conectado",    () => { console.log("✅ PROYECTOR CONECTADO"); setProyectorConectado(true) })
   s.on("proyector-desconectado", () => { console.log("❌ PROYECTOR DESCONECTADO"); setProyectorConectado(false) })
+  s.on("estado-presencia", (data: { proyectorConectado?: boolean }) => {
+    setProyectorConectado(!!data?.proyectorConectado)
+  })
 
   // ✅ Sincronizar zoom cuando el proyector cambia con teclado
   s.on("zoom-info", ({ actual }: { actual: number }) => {
@@ -1885,6 +1894,24 @@ useEffect(() => {
 
   // Media Session se actualiza desde activarMediaSession() llamado en cada acción
 }, [siguiente, anterior])
+
+// La lista del culto es trabajo preparado y se conserva aunque el usuario
+// navegue a Canciones, Configuración u otro módulo. Es independiente de la
+// preferencia "Recordar última alabanza", que solo controla lo proyectado.
+useEffect(() => {
+  if (typeof window === "undefined") return
+  const igId = localStorage.getItem("cancionero_iglesia_activa_id") || "global"
+  const key = `selah-lista-culto-${igId}`
+  try {
+    if (lista.length || listaIdActual || nombreCulto) {
+      localStorage.setItem(key, JSON.stringify({ items:lista, listaId:listaIdActual, nombre:nombreCulto, actualizado:Date.now() }))
+    } else {
+      localStorage.removeItem(key)
+    }
+  } catch (e: any) {
+    logError(`No se pudo guardar la lista del culto: ${e?.message || e}`, { tipo:"general", pagina:"/control" })
+  }
+}, [lista, listaIdActual, nombreCulto])
 
 // ── Zoom (tamaño de letra del proyector) por delta ────────────────────────
 const cambiarZoom = useCallback((delta: number) => {

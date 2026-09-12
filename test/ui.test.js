@@ -90,3 +90,13 @@ test("Dashboard y Control presentan un único flujo y una Galería principal", (
   assert.match(control, /aria-label="Eliminar carpeta"/)
   assert.match(control, /Mover \$\{img\.nombre\} a una carpeta/)
 })
+
+test("Control conserva la lista por iglesia y recupera la presencia del proyector", () => {
+  const control = fs.readFileSync("app/control/page.tsx", "utf8")
+  const main = fs.readFileSync("electron/main.js", "utf8")
+  assert.match(control, /selah-lista-culto-\$\{igId\}/)
+  assert.match(control, /items:lista, listaId:listaIdActual, nombre:nombreCulto/)
+  assert.match(control, /s\.on\("estado-presencia"/)
+  assert.match(main, /io\.sockets\.adapter\.rooms\.get\(salaFinal\)/)
+  assert.match(main, /socket\.emit\("estado-presencia", \{ proyectorConectado \}\)/)
+})

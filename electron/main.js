@@ -936,6 +936,17 @@ try {
       if (typeof callback === "function") callback({ ok: true, sala: salaFinal, pantalla: socket.data.pantalla })
       console.log(`🏠 ${socket.id} → sala: ${salaFinal} | pantalla: ${pantalla}`)
 
+      // Presencia autoritativa al entrar. Antes el Control solo sabía del
+      // Proyector si este se abría DESPUÉS; al abrirlos en el orden inverso la
+      // APK quedaba mostrando un estado antiguo hasta otra reconexión.
+      if (pantalla === "control" || pantalla === "canciones") {
+        const idsSala = io.sockets.adapter.rooms.get(salaFinal) || new Set()
+        const proyectorConectado = Array.from(idsSala).some(id =>
+          id !== socket.id && io.sockets.sockets.get(id)?.data?.pantalla === "proyectar"
+        )
+        socket.emit("estado-presencia", { proyectorConectado })
+      }
+
       if (pantalla === "control" && estadosPorSala[salaFinal]) {
         const estado = estadosPorSala[salaFinal]
         if (estado.tipo === "cancion") socket.emit("restaurar-estado-control", estado.data)
