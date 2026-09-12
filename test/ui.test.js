@@ -36,3 +36,13 @@ test("Control móvil usa un panel a la vez y oculta filtros avanzados", () => {
   assert.match(control, /⚙ Filtros/)
   assert.match(control, /!isMobile && <div[^>]*>[\s\S]{0,260}Proyectar ahora/)
 })
+
+test("Control móvil permite alternar rápidamente entre repertorio y lista", () => {
+  const control = fs.readFileSync("app/control/page.tsx", "utf8")
+  assert.equal((control.match(/id="panel-canciones"/g) || []).length, 1)
+  assert.equal((control.match(/id="scroll-lista"/g) || []).length, 1)
+  assert.match(control, /aria-label="Ir a la lista del culto"/)
+  assert.match(control, /aria-label="Volver a buscar canciones"/)
+  assert.match(control, /getElementById\("panel-canciones"\).*scrollIntoView/)
+  assert.match(control, /getElementById\("scroll-lista"\).*scrollIntoView/)
+})

@@ -979,6 +979,17 @@ const alternarPanel = (panel: "canciones" | "acciones" | "palabra" | "cultos") =
   if (panel === "palabra") setMostrarPalabra(abrir)
   if (panel === "cultos") setMostrarCultos(abrir)
 }
+const irAListaMobile = () => {
+  setTabDerechaMobile("lista")
+  requestAnimationFrame(() => document.getElementById("scroll-lista")?.scrollIntoView({ behavior:"smooth", block:"start" }))
+}
+const irACancionesMobile = () => {
+  setMostrarCanciones(true)
+  setMostrarAcciones(false)
+  setMostrarPalabra(false)
+  setMostrarCultos(false)
+  requestAnimationFrame(() => document.getElementById("panel-canciones")?.scrollIntoView({ behavior:"smooth", block:"start" }))
+}
 const [estadoEspecialActivo, setEstadoEspecialActivo] = useState("")
 // Datos de la pantalla especial en curso (para mostrar el detalle en la vista previa)
 const [estadoEspData, setEstadoEspData] = useState<any>(null)
@@ -4813,7 +4824,7 @@ return (
       </div>}
 
       {/* ── Canciones ─────────────────────────────────────────────────── */}
-      <div style={{
+      <div id="panel-canciones" style={{
         background: "rgba(17,27,46,0.95)",
         border: "1px solid rgba(255,255,255,0.08)",
         borderRadius: 16, overflow: "hidden"
@@ -4838,7 +4849,15 @@ return (
               {cancionesFiltradas.length}
             </span>
           </div>
-          <span style={{ opacity: 0.5, fontSize: 18 }}>{mostrarCanciones ? "▾" : "▸"}</span>
+          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+            {isMobile && (
+              <button type="button" onClick={e => { e.stopPropagation(); irAListaMobile() }} aria-label="Ir a la lista del culto" style={{
+                padding:"5px 9px", borderRadius:8, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)",
+                color:"rgba(255,255,255,.72)", fontSize:11, fontWeight:750, cursor:"pointer", whiteSpace:"nowrap",
+              }}>📋 Lista{lista.length ? ` · ${lista.length}` : ""}</button>
+            )}
+            <span style={{ opacity: 0.5, fontSize: 18 }}>{mostrarCanciones ? "▾" : "▸"}</span>
+          </div>
         </div>
 
         {mostrarCanciones && (
@@ -6361,13 +6380,21 @@ return (
               </div>
             )}
           </div>
-          {lista.length > 0 && (
-            <span style={{
-              fontSize: 11, fontWeight: 600,
-              background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)",
-              borderRadius: 6, padding: "3px 9px"
-            }}>{lista.length} items</span>
-          )}
+          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+            {isMobile && (
+              <button type="button" onClick={irACancionesMobile} aria-label="Volver a buscar canciones" style={{
+                padding:"5px 9px", borderRadius:8, border:"1px solid rgba(59,130,246,.25)", background:"rgba(37,99,235,.1)",
+                color:"#bfdbfe", fontSize:11, fontWeight:750, cursor:"pointer", whiteSpace:"nowrap",
+              }}>🔎 Buscar</button>
+            )}
+            {lista.length > 0 && (
+              <span style={{
+                fontSize: 11, fontWeight: 600,
+                background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.6)",
+                borderRadius: 6, padding: "3px 9px"
+              }}>{lista.length} items</span>
+            )}
+          </div>
         </div>
 
         {/* Banner culto guardado activo */}
