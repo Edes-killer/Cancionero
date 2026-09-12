@@ -5431,7 +5431,7 @@ return (
         background:"rgba(17,27,46,0.95)", border:"1px solid rgba(255,255,255,0.08)",
         borderRadius:16, overflow:"hidden"
       }}>
-        <div onClick={alternarGaleriaPrincipal} style={{
+        <div data-tour="galeria-toggle" role="button" tabIndex={0} aria-expanded={mostrarGaleriaPanel} onClick={alternarGaleriaPrincipal} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); alternarGaleriaPrincipal() } }} style={{
           padding:isMobile ? "12px 14px" : "14px 18px", display:"flex", alignItems:"center", justifyContent:"space-between",
           cursor:"pointer", borderBottom:mostrarGaleriaPanel ? "1px solid rgba(255,255,255,0.06)" : "none"
         }}>

@@ -131,6 +131,18 @@ export const TOUR_CONTROL: PasoTour[] = [
     }
   },
   {
+    icono: "🗂️",
+    titulo: "Galería visual",
+    desc: "Abre la biblioteca de imágenes, animaciones y carpetas para agregarlas a la lista del culto o proyectarlas cuando las necesites.",
+    tip: "La biblioteca queda en caché y luego se actualiza en segundo plano para abrir más rápido.",
+    selector: "#panel-galeria",
+    posicion: "left",
+    antes: () => {
+      const btn = document.querySelector("[data-tour='galeria-toggle'][aria-expanded='false']") as HTMLElement | null
+      btn?.click()
+    }
+  },
+  {
     icono: "✅",
     titulo: "¡Ya sabes lo esencial!",
     desc: "Con esto puedes dirigir un culto completo. Explora a tu ritmo — cada sección tiene más opciones.",
@@ -200,6 +212,18 @@ export const TOUR_CONTROL_MOBILE: PasoTour[] = [
       if (!panel) return
       if (panel.getBoundingClientRect().height < 80) (panel.firstElementChild as HTMLElement | null)?.click()
       panel.scrollIntoView({ behavior: "smooth", block: "center" })
+    }
+  },
+  {
+    icono: "🗂️",
+    titulo: "Galería rápida",
+    desc: "Desde Galería puedes buscar imágenes y animaciones, abrir carpetas y agregarlas directamente a la lista del culto.",
+    tip: "Es útil para mostrar una imagen de emergencia sin salir del Control.",
+    selector: "#panel-galeria",
+    posicion: "top",
+    antes: () => {
+      const btn = document.querySelector("[data-tour='galeria-toggle'][aria-expanded='false']") as HTMLElement | null
+      btn?.click()
     }
   },
   {
@@ -487,5 +511,52 @@ export const TOUR_CONFIGURACION: PasoTour[] = [
     titulo: "Configuración entendida",
     desc: "Ya sabes dónde preparar la iglesia, conectar equipos, gestionar personas y encontrar ayuda cuando ocurra un problema.",
     tip: "Puedes iniciar nuevamente este mismo tour desde Tutoriales sin recargar la APK."
+  }
+]
+
+export const TOUR_INICIO: PasoTour[] = [
+  {
+    icono: "🏠",
+    titulo: "Inicio de Selah",
+    desc: "Esta pantalla reúne las acciones principales y muestra el estado actual de tu iglesia. Desde aquí puedes entrar rápidamente al trabajo que necesitas realizar.",
+    tip: "Las opciones cambian según tu rol y según estés usando el computador o el celular."
+  },
+  {
+    icono: "⛪",
+    titulo: "Iglesia activa",
+    desc: "Aquí ves el nombre y logo de la iglesia con la que estás trabajando. Si perteneces a más de una, puedes cambiar la iglesia activa.",
+    tip: "Canciones, listas, galería y permisos siempre pertenecen a la iglesia seleccionada.",
+    selector: "[data-tour='inicio-iglesia']",
+    posicion: "bottom"
+  },
+  {
+    icono: "🎛️",
+    titulo: "Control de Culto",
+    desc: "Es la entrada principal para buscar canciones, preparar la lista y manejar en vivo todo lo que aparece en el proyector.",
+    tip: "Antes del culto entra aquí y comprueba que el estado de conexión esté listo.",
+    selector: "[data-tour='inicio-control']",
+    posicion: "bottom"
+  },
+  {
+    icono: "🧰",
+    titulo: "Módulos de trabajo",
+    desc: "Accede al cancionero, proyector, vista de músicos, historial, transmisión, cámara móvil y configuración. Solo verás las opciones permitidas para tu equipo y rol.",
+    tip: "Cada módulo importante tiene su propio recorrido guiado.",
+    selector: "[data-tour='inicio-modulos']",
+    posicion: "top"
+  },
+  {
+    icono: "🔗",
+    titulo: "Estado de conexión",
+    desc: "Este indicador confirma si el celular puede comunicarse con el computador que controla el proyector.",
+    tip: "Si aparece Sin conexión, abre Selah en el PC y usa Configuración → Proyección para diagnosticar la red.",
+    selector: "[data-tour='inicio-conexion']",
+    posicion: "top"
+  },
+  {
+    icono: "✅",
+    titulo: "Todo a mano",
+    desc: "Ya conoces el punto de partida de Selah. Entra al Control para preparar o dirigir el próximo culto.",
+    tip: "Puedes repetir este recorrido desde Configuración → Tutoriales."
   }
 ]

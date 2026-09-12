@@ -6,6 +6,8 @@ import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId, setIglesiaActivaId, getRolEnIglesia } from "@/lib/getIglesia"
 import { conTimeout } from "@/lib/timeout"
+import OnboardingTour from "@/components/OnboardingTour"
+import { TOUR_INICIO } from "@/lib/tours"
 
 const VERSICULOS = [
   { texto: "Cantad alegres a Dios, habitantes de toda la tierra.", cita: "Salmos 100:1" },
@@ -277,7 +279,7 @@ export default function InicioPage() {
       <div style={{ maxWidth:900, margin:"0 auto", padding:"0 0 60px" }}>
 
         {/* ══ HERO ══════════════════════════════════════════════════════════ */}
-        <div style={{ background:"linear-gradient(160deg,#0f1f3d 0%,#111827 60%,#060d1a 100%)", borderBottom:"1px solid rgba(255,255,255,0.05)", padding:"32px 20px 28px", position:"relative", overflow:"hidden" }}>
+        <div data-tour="inicio-iglesia" style={{ background:"linear-gradient(160deg,#0f1f3d 0%,#111827 60%,#060d1a 100%)", borderBottom:"1px solid rgba(255,255,255,0.05)", padding:"32px 20px 28px", position:"relative", overflow:"hidden" }}>
           <div style={{ position:"absolute", top:-60, right:-40, width:280, height:280, borderRadius:"50%", background:"radial-gradient(circle,rgba(37,99,235,0.12) 0%,transparent 70%)", pointerEvents:"none" }} />
           <div style={{ position:"absolute", bottom:-40, left:-20, width:200, height:200, borderRadius:"50%", background:"radial-gradient(circle,rgba(99,102,241,0.08) 0%,transparent 70%)", pointerEvents:"none" }} />
 
@@ -311,7 +313,7 @@ export default function InicioPage() {
         <div style={{ padding:"20px 16px", display:"flex", flexDirection:"column", gap:14 }}>
 
           {/* ══ FLUJO PRINCIPAL ═════════════════════════════════════════════ */}
-          <div>
+          <div data-tour="inicio-control">
             <div style={{ fontSize:11, fontWeight:850, letterSpacing:".09em", color:"rgba(255,255,255,.38)", margin:"2px 2px 9px" }}>¿QUÉ QUIERES HACER?</div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:10 }}>
               <button data-ayuda="Abre el Control de Culto para buscar contenido, organizar la lista y manejar la proyección." onClick={abrirControl} style={{ padding:"17px", borderRadius:15, border:"1px solid rgba(59,130,246,.34)", background:"linear-gradient(135deg,rgba(37,99,235,.2),rgba(30,64,175,.08))", color:"white", cursor:"pointer", display:"flex", alignItems:"center", gap:13, textAlign:"left" }}>
@@ -323,7 +325,7 @@ export default function InicioPage() {
           </div>
 
           {/* ══ ACCESOS RÁPIDOS ════════════════════════════════════════════ */}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+          <div data-tour="inicio-modulos" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
             {[
               { icon:"🎵", label:"Canciones",       sub:"Gestionar repertorio",           border:"rgba(124,58,237,0.3)",  bg:"rgba(124,58,237,0.1)",  ibg:"rgba(124,58,237,0.25)",  action:() => navegarSPA(router, "/canciones") },
               { icon:"🖥️", label:"Proyector",       sub:"Abrir pantalla de proyección",   border:"rgba(14,116,144,0.3)", bg:"rgba(14,116,144,0.1)",  ibg:"rgba(14,116,144,0.25)",  action:() => window.open(`${window.location.origin}/proyectar`, "_blank") },
@@ -349,7 +351,7 @@ export default function InicioPage() {
 
           {/* ══ ESTADO DEL SERVIDOR ════════════════════════════════════════ */}
           {servidorActivo !== null && (
-            <div style={{ padding:"12px 16px", borderRadius:12, display:"flex", alignItems:"center", gap:10, background: servidorActivo?"rgba(34,197,94,0.06)":"rgba(239,68,68,0.06)", border:`1px solid ${servidorActivo?"rgba(34,197,94,0.15)":"rgba(239,68,68,0.15)"}` }}>
+            <div data-tour="inicio-conexion" style={{ padding:"12px 16px", borderRadius:12, display:"flex", alignItems:"center", gap:10, background: servidorActivo?"rgba(34,197,94,0.06)":"rgba(239,68,68,0.06)", border:`1px solid ${servidorActivo?"rgba(34,197,94,0.15)":"rgba(239,68,68,0.15)"}` }}>
               <div style={{ width:8, height:8, borderRadius:"50%", background: servidorActivo?"#22c55e":"#ef4444", flexShrink:0, boxShadow: servidorActivo?"0 0 6px rgba(34,197,94,0.6)":"0 0 6px rgba(239,68,68,0.4)" }} />
               <div style={{ flex:1 }}>
                 <div style={{ fontSize:13, fontWeight:700, color: servidorActivo?"#4ade80":"#fca5a5" }}>
@@ -519,6 +521,7 @@ export default function InicioPage() {
           </div>
         </div>
       </div>
+      <OnboardingTour id="tour-inicio-v1" pasos={TOUR_INICIO} nombrePagina="Inicio" />
     </div>
   )
 }

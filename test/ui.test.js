@@ -119,6 +119,21 @@ test("Configuración tiene tour repetible sin recargar la APK", () => {
   assert.match(tourUi, /setPaso\(0\)/)
 })
 
+test("Inicio orienta al usuario y Control incluye la Galería en sus tours", () => {
+  const tours = fs.readFileSync("lib/tours.ts", "utf8")
+  const inicio = fs.readFileSync("app/page.tsx", "utf8")
+  const control = fs.readFileSync("app/control/page.tsx", "utf8")
+  const ajustes = fs.readFileSync("app/configuracion/page.tsx", "utf8")
+  assert.match(tours, /export const TOUR_INICIO/)
+  assert.match(inicio, /OnboardingTour id="tour-inicio-v1"/)
+  assert.match(inicio, /data-tour="inicio-control"/)
+  assert.match(inicio, /data-tour="inicio-modulos"/)
+  assert.match(control, /data-tour="galeria-toggle"/)
+  assert.match(control, /aria-expanded=\{mostrarGaleriaPanel\}/)
+  assert.ok((tours.match(/selector: "#panel-galeria"/g) || []).length >= 2)
+  assert.match(ajustes, /Tour de Inicio/)
+})
+
 test("la lista mantiene visibles los controles de orden y resalta el elemento movido", () => {
   const control = fs.readFileSync("app/control/page.tsx", "utf8")
   assert.match(control, /indiceItemReordenando/)
