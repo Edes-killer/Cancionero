@@ -973,7 +973,7 @@ try {
     socket.on("unirse-sala", ({ sala, pantalla, pin, puedeAbrirProyector }, callback) => {
       const salaFinal = sala || "global"
 
-      if (pantalla === "control" || pantalla === "canciones") {
+      if (pantalla === "control" || pantalla === "canciones" || pantalla === "inicio") {
         const pinG = pinesPorSala[salaFinal]
         if (pinG && String(pin || "") !== String(pinG)) {
           socket.emit("pin-invalido", { mensaje: "PIN incorrecto. Verifica en configuración." })
@@ -993,9 +993,9 @@ try {
       // Presencia autoritativa al entrar. Antes el Control solo sabía del
       // Proyector si este se abría DESPUÉS; al abrirlos en el orden inverso la
       // APK quedaba mostrando un estado antiguo hasta otra reconexión.
-      if (pantalla === "control" || pantalla === "canciones") {
+      if (pantalla === "control" || pantalla === "canciones" || pantalla === "inicio") {
         socket.emit("estado-presencia", presenciaSala(salaFinal))
-        if (listasPorSala[salaFinal]) socket.emit("lista-sincronizada", listasPorSala[salaFinal])
+        if (pantalla !== "inicio" && listasPorSala[salaFinal]) socket.emit("lista-sincronizada", listasPorSala[salaFinal])
       }
       emitirPresenciaSala(salaFinal)
 

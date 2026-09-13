@@ -8,6 +8,9 @@ import { getIglesiaId, setIglesiaActivaId, getRolEnIglesia } from "@/lib/getIgle
 import { conTimeout } from "@/lib/timeout"
 import OnboardingTour from "@/components/OnboardingTour"
 import { TOUR_INICIO } from "@/lib/tours"
+import { buscarServidorEnRed } from "@/lib/servidor"
+import { useApp } from "@/context/AppContext"
+import { io } from "socket.io-client"
 
 const VERSICULOS = [
   { texto: "Cantad alegres a Dios, habitantes de toda la tierra.", cita: "Salmos 100:1" },
@@ -25,6 +28,7 @@ const Divider = () => <div style={{ height:1, background:"rgba(255,255,255,0.04)
 
 export default function InicioPage() {
   const router = useRouter()
+  const { pinSala } = useApp()
 
   const [cargando,        setCargando]        = useState(true)
   const [sinIglesia,      setSinIglesia]      = useState(false)
@@ -48,6 +52,10 @@ export default function InicioPage() {
 
   const [servidorActivo, setServidorActivo] = useState<boolean | null>(null)
   const [servidorIp,     setServidorIp]     = useState("")
+  const [canalConectado, setCanalConectado] = useState<boolean | null>(null)
+  const [canalIp, setCanalIp] = useState("")
+  const [proyectorConectado, setProyectorConectado] = useState(false)
+  const [pcConectado, setPcConectado] = useState(false)
   // ✅ Rol propio: para ocultar la tarjeta de Configuración a quien no es admin.
   // null = todavía no se sabe → no ocultar (el AuthProvider igual bloquea).
   const [rol, setRol] = useState<string | null>(null)
@@ -81,36 +89,107 @@ export default function InicioPage() {
     setServidorIp(ip)
   }, [])
 
-  // Ping al servidor — y si falla en el APK, intentar encontrarlo solo
+  // En APK, Inicio se actualiza aunque el PC se abra después. HTTP confirma
+  // que el servidor responde; el socket de abajo valida la sala y presencia.
   useEffect(() => {
-    const ping = async () => {
+    let cancelado = false
+    let enCurso = false
+    let fallos = 0
+    let descubriendo = false
+    let ultimoDescubrimiento = 0
+    const esApk = !!(window as any).Capacitor
+    const ping = async (forzar = false) => {
+      if (cancelado || enCurso || (!forzar && esApk && document.visibilityState === "hidden")) return
+      enCurso = true
       const ip = localStorage.getItem("servidor_ip") || window.location.hostname
       try {
-        const r = await fetch(`http://${ip}:4000/ping`, { signal: AbortSignal.timeout(2500) })
+        const r = await fetch(`http://${ip}:4000/ping`, { signal: AbortSignal.timeout(2500), cache: "no-store" })
         const d = await r.json()
-        if (d?.ok === true) { setServidorActivo(true); return }
+        if (r.ok && d?.ok === true && d?.app === "selah-live") {
+          fallos = 0
+          if (!cancelado) { setServidorIp(ip); setServidorActivo(true) }
+          return
+        }
         throw new Error("ping sin ok")
       } catch {
-        setServidorActivo(false)
-        // ✅ En el APK, si el ping al servidor guardado (o a localhost) falla,
-        // intentar encontrarlo solo en la red antes de obligar al usuario a
-        // ir a Configuración y tocar "Buscar automáticamente" a mano —
-        // pensado para el primer uso o cuando el PC cambió de IP.
-        const esCapacitor = typeof window !== "undefined" && !!(window as any).Capacitor
-        if (!esCapacitor) return
+        if (!cancelado) setServidorActivo(false)
+        fallos++
+        if (!esApk || fallos < 3 || descubriendo || Date.now() - ultimoDescubrimiento < 60000) return
+        descubriendo = true
+        ultimoDescubrimiento = Date.now()
         try {
-          const { buscarServidorEnRed } = await import("@/lib/servidor")
           const encontrada = await buscarServidorEnRed()
-          if (encontrada) {
+          if (encontrada && !cancelado) {
             localStorage.setItem("servidor_ip", encontrada)
             setServidorIp(encontrada)
             setServidorActivo(true)
+            fallos = 0
           }
         } catch { /* ignorar — se queda el banner de "servidor no detectado" */ }
+        finally { descubriendo = false }
+      } finally {
+        enCurso = false
       }
     }
-    ping()
+    void ping()
+    if (!esApk) return () => { cancelado = true }
+    const intervalo = window.setInterval(() => void ping(), 5000)
+    const alVolver = () => { if (document.visibilityState === "visible") void ping() }
+    document.addEventListener("visibilitychange", alVolver)
+    let quitarAppListener: (() => void) | undefined
+    import("@capacitor/app").then(({ App }) => App.addListener("appStateChange", ({ isActive }) => {
+      if (isActive) void ping(true)
+    })).then(handle => {
+      if (cancelado) handle.remove()
+      else quitarAppListener = () => { void handle.remove() }
+    }).catch(() => {})
+    return () => { cancelado = true; window.clearInterval(intervalo); document.removeEventListener("visibilitychange", alVolver); quitarAppListener?.() }
   }, [])
+
+  useEffect(() => {
+    if (!esApp || !servidorActivo || !servidorIp || !iglesiaActivaId) return
+    const socket = io(`http://${servidorIp}:4000`, {
+      reconnection: true, reconnectionDelay: 1000, reconnectionDelayMax: 5000,
+    })
+    const sinCanal = () => {
+      setCanalConectado(false)
+      setCanalIp("")
+      setProyectorConectado(false)
+      setPcConectado(false)
+    }
+    socket.on("connect", () => {
+      const pin = pinSala || localStorage.getItem("selah-sala-pin") || undefined
+      socket.emit("unirse-sala", { sala: iglesiaActivaId, pantalla: "inicio", pin },
+        (respuesta: { ok?: boolean }) => {
+          if (!socket.connected) return
+          setCanalConectado(!!respuesta?.ok)
+          setCanalIp(respuesta?.ok ? servidorIp : "")
+        })
+    })
+    socket.on("disconnect", sinCanal)
+    socket.on("connect_error", sinCanal)
+    socket.on("pin-invalido", sinCanal)
+    socket.on("estado-presencia", (estado: { proyectorConectado?: boolean; controlEscritorioConectado?: boolean }) => {
+      setCanalConectado(true)
+      setCanalIp(servidorIp)
+      setProyectorConectado(!!estado.proyectorConectado)
+      setPcConectado(!!estado.controlEscritorioConectado)
+    })
+    return () => { socket.disconnect() }
+  }, [esApp, servidorActivo, servidorIp, iglesiaActivaId, pinSala])
+
+  const canalActual = canalConectado === true && canalIp === servidorIp
+  const conexionLista = servidorActivo === true && (!esApp || (canalActual && pcConectado))
+  const tituloConexion = !servidorActivo ? "Sin conexión con el computador"
+    : esApp && !canalActual ? "Computador detectado · sincronizando"
+    : esApp && !pcConectado ? "Servidor conectado · escritorio no disponible"
+    : esApp && proyectorConectado ? "Proyector conectado"
+    : esApp ? "Computador listo · sin proyector" : "Conectado con el computador"
+  const detalleConexion = !servidorActivo ? "Revisa la IP o abre Selah Live en el computador"
+    : esApp && !canalActual ? "El servidor responde, pero falta confirmar la sala y el PIN"
+    : esApp && !pcConectado ? "El servidor responde, pero no hay ventana de escritorio disponible"
+    : esApp && proyectorConectado ? "La pantalla de proyección está abierta"
+    : esApp ? "Puedes abrir el proyector desde Control" : "Ya puedes proyectar"
 
   // Carga principal
   useEffect(() => {
@@ -351,14 +430,14 @@ export default function InicioPage() {
 
           {/* ══ ESTADO DEL SERVIDOR ════════════════════════════════════════ */}
           {servidorActivo !== null && (
-            <div data-tour="inicio-conexion" style={{ padding:"12px 16px", borderRadius:12, display:"flex", alignItems:"center", gap:10, background: servidorActivo?"rgba(34,197,94,0.06)":"rgba(239,68,68,0.06)", border:`1px solid ${servidorActivo?"rgba(34,197,94,0.15)":"rgba(239,68,68,0.15)"}` }}>
-              <div style={{ width:8, height:8, borderRadius:"50%", background: servidorActivo?"#22c55e":"#ef4444", flexShrink:0, boxShadow: servidorActivo?"0 0 6px rgba(34,197,94,0.6)":"0 0 6px rgba(239,68,68,0.4)" }} />
+            <div data-tour="inicio-conexion" style={{ padding:"12px 16px", borderRadius:12, display:"flex", alignItems:"center", gap:10, background: conexionLista?"rgba(34,197,94,0.06)":servidorActivo?"rgba(245,158,11,0.06)":"rgba(239,68,68,0.06)", border:`1px solid ${conexionLista?"rgba(34,197,94,0.15)":servidorActivo?"rgba(245,158,11,0.2)":"rgba(239,68,68,0.15)"}` }}>
+              <div style={{ width:8, height:8, borderRadius:"50%", background: conexionLista?"#22c55e":servidorActivo?"#f59e0b":"#ef4444", flexShrink:0 }} />
               <div style={{ flex:1 }}>
-                <div style={{ fontSize:13, fontWeight:700, color: servidorActivo?"#4ade80":"#fca5a5" }}>
-                  {servidorActivo ? "Conectado con el computador" : "Sin conexión con el computador"}
+                <div style={{ fontSize:13, fontWeight:700, color: conexionLista?"#4ade80":servidorActivo?"#fbbf24":"#fca5a5" }}>
+                  {tituloConexion}
                 </div>
                 <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:1 }}>
-                  {servidorActivo ? "Ya puedes proyectar" : "Abre Selah Live en el computador para poder proyectar"}
+                  {detalleConexion}{esApp && servidorIp ? ` · ${servidorIp}` : ""}
                 </div>
               </div>
               {/* ✅ Solo admin: el botón lleva a Configuración, a la que líder y

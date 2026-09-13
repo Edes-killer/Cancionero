@@ -215,3 +215,16 @@ test("Control conserva la lista por iglesia y recupera la presencia del proyecto
   assert.match(main, /io\.to\(sala\)\.emit\("lista-sincronizada"/)
   assert.doesNotMatch(control, /esCapacitor && !ip\)[\s\S]{0,100}return/)
 })
+
+test("Inicio de la APK actualiza presencia sin conceder permisos de Control", () => {
+  const inicio = fs.readFileSync("app/page.tsx", "utf8")
+  const main = fs.readFileSync("electron/main.js", "utf8")
+  assert.match(inicio, /setInterval\(\(\) => void ping\(\), 5000\)/)
+  assert.match(inicio, /App\.addListener\("appStateChange"/)
+  assert.match(inicio, /pantalla: "inicio", pin/)
+  assert.match(inicio, /socket\.on\("estado-presencia"/)
+  assert.match(inicio, /proyectorConectado \? "Proyector conectado"/)
+  assert.match(main, /pantalla === "control" \|\| pantalla === "canciones" \|\| pantalla === "inicio"/)
+  assert.match(main, /pantalla !== "inicio" && listasPorSala/)
+  assert.match(main, /const operador = pantalla === "control" \|\| pantalla === "canciones"/)
+})
