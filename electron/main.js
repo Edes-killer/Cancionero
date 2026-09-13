@@ -10,7 +10,7 @@ const { app, BrowserWindow, shell, Menu, ipcMain, dialog, session, desktopCaptur
 const path = require("path")
 const http = require("http")
 const { Server } = require("socket.io")
-const { rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb } = require("./security")
+const { rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb, esAutorizacionSupabase, destinoCallbackOAuth } = require("./security")
 const fs = require("fs")
 const net = require("net")
 const os = require("os")
@@ -469,6 +469,40 @@ if (!gotTheLock) {
   app.quit()
   process.exit(0)
 }
+
+// Google OAuth corre en el navegador del sistema. La ventana principal nunca
+// navega a Google y solo acepta el enlace de regreso mientras espera un login.
+let oauthPendienteHasta = 0
+function recibirCallbackOAuth(valor) {
+  if (Date.now() > oauthPendienteHasta) return false
+  const destino = destinoCallbackOAuth(valor)
+  if (!destino || !mainWindow || mainWindow.isDestroyed()) return false
+  oauthPendienteHasta = 0
+  mainWindow.loadURL(destino)
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.focus()
+  return true
+}
+app.on("second-instance", (_evento, argumentos) => {
+  const enlace = argumentos.find(a => typeof a === "string" && a.startsWith("selahlive://"))
+  if (enlace) recibirCallbackOAuth(enlace)
+  else if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus()
+})
+app.on("open-url", (evento, enlace) => { evento.preventDefault(); recibirCallbackOAuth(enlace) })
+
+ipcMain.handle("oauth:abrir-google", async (evento, url) => {
+  if (!mainWindow || evento.sender !== mainWindow.webContents || !esAutorizacionSupabase(url)) {
+    return { ok: false, error: "No se pudo validar el enlace de Google." }
+  }
+  try {
+    oauthPendienteHasta = Date.now() + 10 * 60 * 1000
+    await shell.openExternal(url)
+    return { ok: true }
+  } catch {
+    oauthPendienteHasta = 0
+    return { ok: false, error: "No se pudo abrir el navegador para iniciar sesión." }
+  }
+})
 
 // ── Obtener IP local ─────────────────────────────────────────────────────────
 // ✅ Filtra adaptadores virtuales (VPN, VirtualBox, Hyper-V, etc.) que en
@@ -1479,6 +1513,11 @@ function createWindow() {
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
+  if (process.defaultApp && process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient("selahlive", process.execPath, [path.resolve(process.argv[1])])
+  } else {
+    app.setAsDefaultProtocolClient("selahlive")
+  }
   const outDir = path.join(__dirname, "../out")
 
   console.log("🚀 Iniciando Selah Live...")

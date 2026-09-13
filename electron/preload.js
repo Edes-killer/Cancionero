@@ -9,6 +9,10 @@ contextBridge.exposeInMainWorld("electron", {
   }
 })
 
+contextBridge.exposeInMainWorld("oauthElectron", {
+  abrirGoogle: (url) => ipcRenderer.invoke("oauth:abrir-google", url),
+})
+
 // ── Transmisión en vivo (nativa) ─────────────────────────────────────────────
 // Puente para que la pantalla /en-vivo empuje el video a ffmpeg → RTMP.
 contextBridge.exposeInMainWorld("transmision", {

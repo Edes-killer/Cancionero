@@ -1,7 +1,7 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
 const path = require("node:path")
-const { rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb } = require("../electron/security")
+const { rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb, esAutorizacionSupabase, destinoCallbackOAuth } = require("../electron/security")
 const { EventEmitter } = require("node:events")
 const { protegerSalida } = require("../electron/safe-output")
 const fs = require("node:fs")
@@ -27,6 +27,22 @@ test("Electron solo confía en su origen interno y abre enlaces web", () => {
   assert.equal(esEnlaceWeb("https://selah-live.vercel.app/"), true)
   assert.equal(esEnlaceWeb("javascript:alert(1)"), false)
   assert.equal(esEnlaceWeb("file:///C:/secreto.txt"), false)
+})
+
+test("Google se abre fuera de Electron y el callback solo vuelve a una ruta interna", () => {
+  assert.equal(esAutorizacionSupabase("https://ejemplo.supabase.co/auth/v1/authorize?provider=google"), true)
+  assert.equal(esAutorizacionSupabase("https://ejemplo.cl/auth/v1/authorize?provider=google"), false)
+  assert.equal(esAutorizacionSupabase("https://ejemplo.supabase.co/otro?provider=google"), false)
+  assert.equal(destinoCallbackOAuth("selahlive://auth/callback#access_token=abc&refresh_token=def"), "http://localhost:3000/auth/callback/#access_token=abc&refresh_token=def")
+  assert.equal(destinoCallbackOAuth("selahlive://evil/callback#access_token=abc&refresh_token=def"), null)
+  assert.equal(destinoCallbackOAuth("https://evil.cl/#access_token=abc&refresh_token=def"), null)
+  assert.equal(destinoCallbackOAuth("selahlive://auth/callback#error=access_denied"), "http://localhost:3000/login/?error=oauth")
+  const login = fs.readFileSync("app/login/page.tsx", "utf8")
+  const main = fs.readFileSync("electron/main.js", "utf8")
+  assert.match(login, /skipBrowserRedirect: isCapacitor \|\| isElectron/)
+  assert.match(login, /puente\.abrirGoogle\(data\.url\)/)
+  assert.match(main, /setAsDefaultProtocolClient\("selahlive"/)
+  assert.match(main, /evento\.sender !== mainWindow\.webContents/)
 })
 
 test("cerrar la consola no derriba el proceso principal", () => {

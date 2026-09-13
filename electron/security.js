@@ -27,4 +27,24 @@ function esEnlaceWeb(valor) {
   } catch { return false }
 }
 
-module.exports = { rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb }
+function esAutorizacionSupabase(valor) {
+  try {
+    const u = new URL(valor)
+    return u.protocol === "https:" && u.hostname.endsWith(".supabase.co") &&
+      u.pathname === "/auth/v1/authorize" && u.searchParams.get("provider") === "google"
+  } catch { return false }
+}
+
+function destinoCallbackOAuth(valor) {
+  try {
+    const u = new URL(valor)
+    if (u.protocol !== "selahlive:" || u.hostname !== "auth" || u.pathname !== "/callback") return null
+    const parametros = new URLSearchParams(u.hash.slice(1))
+    if (parametros.get("access_token") && parametros.get("refresh_token")) {
+      return `http://localhost:3000/auth/callback/${u.hash}`
+    }
+    return "http://localhost:3000/login/?error=oauth"
+  } catch { return null }
+}
+
+module.exports = { rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb, esAutorizacionSupabase, destinoCallbackOAuth }

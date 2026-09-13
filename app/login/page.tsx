@@ -25,6 +25,7 @@ function LoginContent() {
     if (err === "no_token")   setError("El link de acceso no es válido.")
     if (err === "no_session") setError("No se pudo leer la sesión del link.")
     if (err === "session")    setError("El link expiró o ya fue usado. Solicita uno nuevo.")
+    if (err === "oauth")      setError("No se completó el acceso con Google. Intenta nuevamente.")
   }, [])
 
   // ── Diagnóstico + manejo de callback en Capacitor ─────────────────────────
@@ -73,9 +74,10 @@ function LoginContent() {
     }).catch(e => console.error('[Login] error importando App:', e))
   }, [])
 
-  const getRedirectUrl = () => {
+  const getRedirectUrl = (modo?: "google") => {
     if (typeof window === "undefined") return "/auth/callback"
     if (!!(window as any).Capacitor) return "com.tuiglesia.cancionero://auth/callback"
+    if (modo === "google" && navigator.userAgent.includes("Electron")) return "selahlive://auth/callback"
     return `${window.location.origin}/auth/callback`
   }
 
@@ -87,9 +89,9 @@ function LoginContent() {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: getRedirectUrl(),
+          redirectTo: getRedirectUrl("google"),
           // ✅ skipBrowserRedirect solo en APK — en Electron y web manejamos la redirección nosotros
-          skipBrowserRedirect: isCapacitor,
+          skipBrowserRedirect: isCapacitor || isElectron,
           // ✅ Sin esto, Google reutiliza en silencio la última cuenta con
           // sesión activa en el navegador/WebView -- aunque ya hayas cerrado
           // sesión en la app, "Iniciar sesión con Google" te metía derecho
@@ -112,9 +114,11 @@ function LoginContent() {
         await Browser.open({ url: data.url })
         setCargando(false)
       } else if (isElectron) {
-        // Electron: navegar la misma ventana → Supabase redirige a localhost:3000/auth/callback
-        console.log('[Login] Electron → window.location.href')
-        window.location.href = data.url
+        const puente = (window as any).oauthElectron
+        if (!puente?.abrirGoogle) throw new Error("Este instalador no admite el acceso con Google. Actualiza Selah Live.")
+        const resultado = await puente.abrirGoogle(data.url)
+        if (!resultado?.ok) throw new Error(resultado?.error || "No se pudo abrir Google.")
+        setCargando(false)
       } else {
         // Web: ídem
         window.location.href = data.url
