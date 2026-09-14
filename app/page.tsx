@@ -148,6 +148,8 @@ export default function InicioPage() {
 
   useEffect(() => {
     if (!esApp || !servidorActivo || !servidorIp || !iglesiaActivaId) return
+    let desmontado = false
+    let reintentoSala: ReturnType<typeof setTimeout> | undefined
     const socket = io(`http://${servidorIp}:4000`, {
       reconnection: true, reconnectionDelay: 1000, reconnectionDelayMax: 5000,
     })
@@ -157,15 +159,31 @@ export default function InicioPage() {
       setProyectorConectado(false)
       setPcConectado(false)
     }
-    socket.on("connect", () => {
-      const pin = pinSala || localStorage.getItem("selah-sala-pin") || undefined
-      socket.emit("unirse-sala", { sala: iglesiaActivaId, pantalla: "inicio", pin },
-        (respuesta: { ok?: boolean }) => {
-          if (!socket.connected) return
-          setCanalConectado(!!respuesta?.ok)
-          setCanalIp(respuesta?.ok ? servidorIp : "")
+    const ingresarSala = async () => {
+      if (desmontado || !socket.connected) return
+      clearTimeout(reintentoSala)
+      // Igual que Control: el PIN del contexto puede llegar después del socket.
+      // Consultarlo aquí evita quedar conectado al puerto, pero fuera de la sala.
+      let pin = pinSala || localStorage.getItem("selah-sala-pin") || undefined
+      try {
+        const resultado = await conTimeout(Promise.resolve(supabase.from("iglesias").select("pin_sala").eq("id", iglesiaActivaId).single()), 2500)
+        if (resultado !== "timeout" && !resultado.error) {
+          pin = resultado.data?.pin_sala || undefined
+          if (pin) localStorage.setItem("selah-sala-pin", pin)
+          else localStorage.removeItem("selah-sala-pin")
+        }
+      } catch { /* sin nube: usar el PIN guardado */ }
+      if (desmontado || !socket.connected) return
+      socket.timeout(3000).emit("unirse-sala", { sala: iglesiaActivaId, pantalla: "inicio", pin },
+        (error: Error | null, respuesta: { ok?: boolean }) => {
+          if (desmontado || !socket.connected) return
+          const unido = !error && !!respuesta?.ok
+          setCanalConectado(unido)
+          setCanalIp(unido ? servidorIp : "")
+          if (!unido) reintentoSala = setTimeout(() => void ingresarSala(), 5000)
         })
-    })
+    }
+    socket.on("connect", () => void ingresarSala())
     socket.on("disconnect", sinCanal)
     socket.on("connect_error", sinCanal)
     socket.on("pin-invalido", sinCanal)
@@ -175,7 +193,7 @@ export default function InicioPage() {
       setProyectorConectado(!!estado.proyectorConectado)
       setPcConectado(!!estado.controlEscritorioConectado)
     })
-    return () => { socket.disconnect() }
+    return () => { desmontado = true; clearTimeout(reintentoSala); socket.disconnect() }
   }, [esApp, servidorActivo, servidorIp, iglesiaActivaId, pinSala])
 
   const canalActual = canalConectado === true && canalIp === servidorIp

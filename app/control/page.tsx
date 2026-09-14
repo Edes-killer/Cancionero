@@ -10,6 +10,7 @@ import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from
 import { createPortal } from "react-dom"
 import { logCatch } from "@/lib/Errorlogger"
 import { buscarServidorEnRed, getSocketUrl } from "@/lib/servidor"
+import { conTimeout } from "@/lib/timeout"
 import { logError } from "@/lib/Errorlogger"
 import { limitesDe } from "@/lib/planes"
 import { supabase } from "@/lib/supabase"
@@ -280,10 +281,12 @@ export default function ControlPage() {
     if (pinSalaRef.current !== undefined) return pinSalaRef.current || undefined
     if (!igId || igId === "global") return undefined
     try {
-      const { data } = await supabase.from("iglesias").select("pin_sala").eq("id", igId).single()
-      const pin = data?.pin_sala || null
+      const resultado = await conTimeout(Promise.resolve(supabase.from("iglesias").select("pin_sala").eq("id", igId).single()), 2500)
+      if (resultado === "timeout" || resultado.error) return localStorage.getItem("selah-sala-pin") || undefined
+      const pin = resultado.data?.pin_sala || null
       pinSalaRef.current = pin
       if (pin) localStorage.setItem("selah-sala-pin", pin)
+      else localStorage.removeItem("selah-sala-pin")
       return pin || undefined
     } catch {
       // Sin conexión — usar lo que haya en caché como último recurso
@@ -692,6 +695,7 @@ useEffect(() => {
     }
   })
   const _emitLocal = s.emit.bind(s)
+  let unidoASala = false
   ;(s as any).emit = (evento: string, ...args: any[]) => {
     if (s.connected) return _emitLocal(evento, ...args)
     if (!nubeLista) {
@@ -705,22 +709,30 @@ useEffect(() => {
   }
   s.on("connect", async () => {
     try {
+      unidoASala = false
+      setSocketConectado(false)
       const sala = (await getIglesiaIdCached()) || "global"
       const pin = await getPinSalaCached(sala)
+      if (!s.connected) return
       if (process.env.NODE_ENV === "development") console.log("🔥 CONTROL conectado a sala:", sala)
-      s.emit("unirse-sala", {
+      s.timeout(3000).emit("unirse-sala", {
         sala, pantalla: "control", pin,
         puedeAbrirProyector: navigator.userAgent.includes("Electron"),
+      }, (error: Error | null, respuesta: { ok?: boolean; error?: string }) => {
+        if (!s.connected) return
+        unidoASala = !error && !!respuesta?.ok
+        setSocketConectado(unidoASala)
+        if (!unidoASala) logConex(`Servidor rechazó ingreso a la sala: ${respuesta?.error || error?.message || "sin motivo"}`)
       })
-      setSocketConectado(true)
     } catch (err) {
       console.error("❌ Error en connect control:", err)
+      setSocketConectado(false)
     }
   })
 
-  s.on("disconnect", () => setSocketConectado(false))
-  s.on("connect_error", () => setSocketConectado(false))
-  s.on("reconnect", () => setSocketConectado(true))
+  s.on("disconnect", () => { unidoASala = false; setSocketConectado(false) })
+  s.on("connect_error", () => { unidoASala = false; setSocketConectado(false) })
+  // El transporte reconectado no implica que la sala haya aceptado el PIN.
 
   socketRef2.current = s
 
@@ -851,7 +863,7 @@ useEffect(() => {
   let fallosSondeo = 0
   let descubrimientoIntentado = false
   const sondearServidor = async () => {
-    if (s.connected || sondeoEnCurso || document.visibilityState === "hidden") return
+    if ((s.connected && unidoASala) || sondeoEnCurso || document.visibilityState === "hidden") return
     sondeoEnCurso = true
     try {
       const r = await fetch(`${getSocketUrl()}/info`, { signal:AbortSignal.timeout(1200), cache:"no-store" })
