@@ -3009,7 +3009,7 @@ const importarPPT = async (modo: "imagenes" | "diapositivas") => {
       } catch (e: any) { logError(`Importar imagen ${i + 1}/${r.imagenes.length} (${modo}): ${e?.message || e}`, { tipo: "ppt", pagina: "/control" }) }
     }
     setPptProg("")
-    const imgs = await cargarGaleriaImagenes(); setGaleriaImagenes(imgs); setGaleriaAbierta(true)
+    const imgs = await cargarGaleriaImagenes(); setGaleriaImagenes(imgs); setMostrarGaleriaPanel(true)
     flashCtrl(subidas > 0
       ? `✅ ${subidas} ${modo === "diapositivas" ? "diapositiva(s)" : "imagen(es)"} importada(s) a la galería`
       : "No se pudo importar ninguna imagen.")
@@ -5548,6 +5548,34 @@ return (
                 void cargarGaleriaImagenes().then(setGaleriaImagenes).finally(() => setCargandoGaleria(false))
               }} style={{ minWidth:44, minHeight:44, borderRadius:10, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"white", fontSize:17, cursor:cargandoGaleria ? "wait" : "pointer" }}>{cargandoGaleria ? "⏳" : "↻"}</button>
             </div>
+            {isElectronCtx && (
+              <div style={{ position:"relative", marginTop:8 }}>
+                <button type="button" disabled={!!pptProg} onClick={() => setPptMenu(v => !v)} data-ayuda="Importa una presentación como diapositivas completas o extrae las imágenes de un archivo PPTX." style={{
+                  width:"100%", minHeight:40, padding:"8px 11px", borderRadius:9,
+                  border:`1px solid ${pptMenu ? "rgba(234,88,12,.5)" : "rgba(255,255,255,.1)"}`,
+                  background:pptMenu ? "rgba(234,88,12,.12)" : "rgba(255,255,255,.04)", color:"white",
+                  fontSize:12, fontWeight:800, cursor:pptProg ? "wait" : "pointer", opacity:pptProg ? .65 : 1
+                }}>{pptProg ? `⏳ ${pptProg}` : "📊 Importar PowerPoint"}</button>
+                {pptMenu && !pptProg && <div style={{ marginTop:6, padding:7, borderRadius:9, border:"1px solid rgba(255,255,255,.1)", background:"#111827", display:"grid", gap:6 }}>
+                  <button type="button" onClick={() => void importarPPT("diapositivas")} style={{ textAlign:"left", padding:"8px 10px", borderRadius:7, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.035)", color:"white", cursor:"pointer" }}>
+                    <strong>🖼️ Diapositivas completas</strong><span style={{ display:"block", marginTop:2, fontSize:10.5, opacity:.55 }}>Convierte cada diapositiva de PPT o PPTX en una imagen.</span>
+                  </button>
+                  <button type="button" onClick={() => void importarPPT("imagenes")} style={{ textAlign:"left", padding:"8px 10px", borderRadius:7, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.035)", color:"white", cursor:"pointer" }}>
+                    <strong>📎 Imágenes incrustadas</strong><span style={{ display:"block", marginTop:2, fontSize:10.5, opacity:.55 }}>Extrae fotos y logos; esta opción requiere un archivo PPTX.</span>
+                  </button>
+                </div>}
+              </div>
+            )}
+            <div style={{ marginTop:8, padding:8, borderRadius:9, border:`1px solid ${modoCarrusel ? "rgba(34,197,94,.4)" : "rgba(255,255,255,.08)"}`, background:modoCarrusel ? "rgba(22,163,74,.08)" : "rgba(255,255,255,.025)", display:"flex", alignItems:"center", gap:7, flexWrap:"wrap" }}>
+              <button type="button" onClick={() => { setModoCarrusel(v => !v); setSelCarrusel([]) }} data-ayuda="Activa la selección múltiple para crear un solo ítem que reproduce imágenes y videos en secuencia." style={{ padding:"6px 10px", borderRadius:7, border:`1px solid ${modoCarrusel ? "rgba(34,197,94,.55)" : "rgba(255,255,255,.13)"}`, background:modoCarrusel ? "rgba(22,163,74,.18)" : "rgba(255,255,255,.04)", color:modoCarrusel ? "#86efac" : "rgba(255,255,255,.75)", fontSize:11, fontWeight:800, cursor:"pointer" }}>🎠 {modoCarrusel ? "Cancelar selección" : "Crear carrusel"}</button>
+              {modoCarrusel && <>
+                <span style={{ fontSize:10.5, opacity:.65 }}>{selCarrusel.length} seleccionados</span>
+                <label style={{ display:"flex", alignItems:"center", gap:4, fontSize:10.5, opacity:.7 }}>
+                  <input aria-label="Segundos por recurso" type="number" min={2} max={60} value={carruselSeg} onChange={e => setCarruselSeg(Math.min(60, Math.max(2, Number(e.target.value) || 6)))} style={{ width:45, padding:"4px", borderRadius:6, border:"1px solid rgba(255,255,255,.15)", background:"#0a1525", color:"white" }} /> seg
+                </label>
+                <button type="button" disabled={!selCarrusel.length} onClick={agregarCarruselALista} style={{ marginLeft:"auto", padding:"6px 10px", borderRadius:7, border:"none", background:selCarrusel.length ? "#16a34a" : "rgba(255,255,255,.08)", color:"white", fontSize:11, fontWeight:850, cursor:selCarrusel.length ? "pointer" : "not-allowed", opacity:selCarrusel.length ? 1 : .5 }}>＋ Agregar al culto</button>
+              </>}
+            </div>
             <div style={{ display:"flex", gap:5, marginTop:10, overflowX:"auto" }}>
               {([['todo','Todo'],['imagen','Imágenes'],['video','Videos']] as const).map(([id,nombre]) => (
                 <button key={id} onClick={() => setFiltroGaleria(id)} style={{ flexShrink:0, padding:"6px 9px", borderRadius:8, border:`1px solid ${filtroGaleria===id ? "rgba(96,165,250,.55)" : "rgba(255,255,255,.09)"}`, background:filtroGaleria===id ? "rgba(37,99,235,.18)" : "rgba(255,255,255,.03)", color:filtroGaleria===id ? "#bfdbfe" : "rgba(255,255,255,.55)", fontSize:11, fontWeight:750 }}>{nombre}</button>
@@ -5559,6 +5587,7 @@ return (
                 <button key={c.id} onClick={() => setCarpetaGaleria(c.id)} style={{ flexShrink:0, padding:"6px 9px", borderRadius:8, border:`1px solid ${carpetaGaleria===c.id ? "rgba(245,158,11,.55)" : "rgba(255,255,255,.09)"}`, background:carpetaGaleria===c.id ? "rgba(245,158,11,.14)" : "rgba(255,255,255,.03)", color:carpetaGaleria===c.id ? "#fcd34d" : "rgba(255,255,255,.55)", fontSize:10.5, fontWeight:750 }}>📁 {c.nombre}</button>
               ))}
               {carpetaGaleria !== "__todas__" && carpetaGaleria !== "__sin__" && <>
+                <button data-ayuda="Agrega todos los recursos de esta carpeta como un carrusel en la lista del culto." onClick={agregarCarpetaComoCarrusel} style={{ flexShrink:0, padding:"6px 9px", borderRadius:8, border:"1px solid rgba(34,197,94,.4)", background:"rgba(22,163,74,.12)", color:"#86efac", fontSize:10.5, fontWeight:800 }}>🎠 Al culto</button>
                 <button aria-label="Renombrar carpeta" onClick={renombrarCarpetaGaleria} style={{ flexShrink:0, padding:"6px 8px", borderRadius:8, border:"1px solid rgba(255,255,255,.12)", background:"rgba(255,255,255,.04)", color:"white" }}>✎</button>
                 <button aria-label="Eliminar carpeta" onClick={eliminarCarpetaGaleria} style={{ flexShrink:0, padding:"6px 8px", borderRadius:8, border:"1px solid rgba(239,68,68,.3)", background:"rgba(239,68,68,.08)", color:"#fca5a5" }}>✕</button>
               </>}
@@ -5568,9 +5597,11 @@ return (
                 <div style={{ gridColumn:"1/-1", padding:"20px 8px", textAlign:"center", opacity:.42, fontSize:12 }}>{cargandoGaleria ? "Actualizando biblioteca…" : "Aún no hay recursos guardados"}</div>
               ) : galeriaFiltrada.map(img => {
                 const video = esUrlVideo(img.url)
-                return <div key={img.url} style={{ minWidth:0, border:"1px solid rgba(255,255,255,.09)", borderRadius:9, overflow:"hidden", background:"rgba(255,255,255,.035)", color:"white" }}>
-                  <div role="button" tabIndex={0} onClick={() => agregarMediaDesdeGaleria(img)} style={{ aspectRatio:"16/10", background:"#050a12", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", cursor:"pointer" }}>
+                const numeroCarrusel = selCarrusel.indexOf(img.url)
+                return <div key={img.url} style={{ minWidth:0, position:"relative", border:`${numeroCarrusel >= 0 ? 3 : 1}px solid ${numeroCarrusel >= 0 ? "#22c55e" : "rgba(255,255,255,.09)"}`, borderRadius:9, overflow:"hidden", background:numeroCarrusel >= 0 ? "rgba(22,163,74,.12)" : "rgba(255,255,255,.035)", color:"white" }}>
+                  <div role="button" tabIndex={0} aria-label={modoCarrusel ? `Seleccionar ${img.nombre} para el carrusel` : `Agregar ${img.nombre} al culto`} onClick={() => modoCarrusel ? toggleSelCarrusel(img.url) : agregarMediaDesdeGaleria(img)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); modoCarrusel ? toggleSelCarrusel(img.url) : agregarMediaDesdeGaleria(img) } }} style={{ aspectRatio:"16/10", background:"#050a12", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", cursor:"pointer" }}>
                     {video ? <video src={img.url} muted preload="metadata" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <img src={img.url} alt="" loading="lazy" style={{ width:"100%", height:"100%", objectFit:"cover" }} />}
+                    {numeroCarrusel >= 0 && <span style={{ position:"absolute", top:6, left:6, width:25, height:25, borderRadius:"50%", background:"#16a34a", color:"white", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:900, boxShadow:"0 2px 8px rgba(0,0,0,.45)" }}>{numeroCarrusel + 1}</span>}
                   </div>
                   <div style={{ padding:"5px 6px", fontSize:9.5, fontWeight:700, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{video ? "🎬 " : ""}{img.nombre}</div>
                   <div style={{ display:"flex", gap:4, padding:"0 5px 5px" }}>

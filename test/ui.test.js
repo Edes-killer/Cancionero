@@ -192,6 +192,12 @@ test("Dashboard y Control presentan un único flujo y una Galería principal", (
   assert.match(control, /eliminarMediaGaleria/)
   assert.match(control, /aria-label="Eliminar carpeta"/)
   assert.match(control, /Mover \$\{img\.nombre\} a una carpeta/)
+  assert.match(control, /Crear carrusel/)
+  assert.match(control, /modoCarrusel \? toggleSelCarrusel\(img\.url\) : agregarMediaDesdeGaleria\(img\)/)
+  assert.match(control, /Importar PowerPoint/)
+  assert.match(control, /importarPPT\("diapositivas"\)/)
+  assert.match(control, /importarPPT\("imagenes"\)/)
+  assert.match(control, /agregarCarpetaComoCarrusel/)
 })
 
 test("Control conserva la lista por iglesia y recupera la presencia del proyector", () => {
