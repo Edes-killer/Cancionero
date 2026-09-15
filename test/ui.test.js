@@ -198,6 +198,11 @@ test("Dashboard y Control presentan un único flujo y una Galería principal", (
   assert.match(control, /importarPPT\("diapositivas"\)/)
   assert.match(control, /importarPPT\("imagenes"\)/)
   assert.match(control, /agregarCarpetaComoCarrusel/)
+  assert.match(control, /data-testid="galeria-acciones"/)
+  assert.match(control, /gridTemplateColumns: isMobile \? "1fr" : "repeat\(2,minmax\(0,1fr\)\)"/)
+  assert.match(control, /<summary[^>]*>🎨 Apariencia del proyector<\/summary>/)
+  assert.match(control, /<summary[^>]*>🌄 Fondo para canciones<\/summary>/)
+  assert.match(control, /La carga, PowerPoint, carpetas y carruseles viven ahora en la/)
 })
 
 test("Control conserva la lista por iglesia y recupera la presencia del proyector", () => {

@@ -5531,32 +5531,33 @@ return (
         </div>
         {mostrarGaleriaPanel && (
           <div style={{ padding:isMobile ? "12px 14px" : "16px 18px" }}>
-            <div style={{ fontSize:12, opacity:.52, lineHeight:1.5, marginBottom:10 }}>
+            <div style={{ fontSize:11, opacity:.48, lineHeight:1.4, marginBottom:7 }}>
               Toca una imagen para agregarla inmediatamente a la lista del culto.
             </div>
             <input ref={inputGaleriaRef} type="file"
               accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,.avif,.mp4,.webm,.mov,.m4v,.ogg,image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
               style={{ display:"none" }} onChange={e => void procesarArchivoGaleria(e.currentTarget)} />
-            <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:8 }}>
+            <div data-testid="galeria-acciones" style={{ display:"flex", alignItems:"flex-start", gap:6, flexWrap:"wrap" }}>
+            <div style={{ flex:"2 1 230px", display:"grid", gridTemplateColumns:"1fr auto", gap:6 }}>
               <button type="button" disabled={subiendoGaleria} onClick={() => inputGaleriaRef.current?.click()} style={{
-                minHeight:44, padding:"10px", borderRadius:10, border:"1px dashed rgba(96,165,250,.45)",
+                minHeight:38, padding:"7px 10px", borderRadius:9, border:"1px dashed rgba(96,165,250,.45)",
                 background:"rgba(37,99,235,.12)", color:"#bfdbfe", fontSize:12.5, fontWeight:800,
                 cursor:subiendoGaleria ? "wait" : "pointer", opacity:subiendoGaleria ? .65 : 1
               }}>{subiendoGaleria ? "⏳ Cargando…" : "＋ Subir archivo"}</button>
               <button type="button" disabled={cargandoGaleria} aria-label="Actualizar galería" onClick={() => {
                 setCargandoGaleria(true)
                 void cargarGaleriaImagenes().then(setGaleriaImagenes).finally(() => setCargandoGaleria(false))
-              }} style={{ minWidth:44, minHeight:44, borderRadius:10, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"white", fontSize:17, cursor:cargandoGaleria ? "wait" : "pointer" }}>{cargandoGaleria ? "⏳" : "↻"}</button>
+              }} style={{ minWidth:38, minHeight:38, borderRadius:9, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"white", fontSize:15, cursor:cargandoGaleria ? "wait" : "pointer" }}>{cargandoGaleria ? "⏳" : "↻"}</button>
             </div>
             {isElectronCtx && (
-              <div style={{ position:"relative", marginTop:8 }}>
+              <div style={{ position:"relative", flex:"1 1 175px" }}>
                 <button type="button" disabled={!!pptProg} onClick={() => setPptMenu(v => !v)} data-ayuda="Importa una presentación como diapositivas completas o extrae las imágenes de un archivo PPTX." style={{
-                  width:"100%", minHeight:40, padding:"8px 11px", borderRadius:9,
+                  width:"100%", minHeight:38, padding:"7px 10px", borderRadius:9,
                   border:`1px solid ${pptMenu ? "rgba(234,88,12,.5)" : "rgba(255,255,255,.1)"}`,
                   background:pptMenu ? "rgba(234,88,12,.12)" : "rgba(255,255,255,.04)", color:"white",
                   fontSize:12, fontWeight:800, cursor:pptProg ? "wait" : "pointer", opacity:pptProg ? .65 : 1
                 }}>{pptProg ? `⏳ ${pptProg}` : "📊 Importar PowerPoint"}</button>
-                {pptMenu && !pptProg && <div style={{ marginTop:6, padding:7, borderRadius:9, border:"1px solid rgba(255,255,255,.1)", background:"#111827", display:"grid", gap:6 }}>
+                {pptMenu && !pptProg && <div style={{ position:"absolute", zIndex:20, top:"calc(100% + 5px)", left:0, right:0, padding:7, borderRadius:9, border:"1px solid rgba(255,255,255,.1)", background:"#111827", boxShadow:"0 12px 30px rgba(0,0,0,.45)", display:"grid", gap:6 }}>
                   <button type="button" onClick={() => void importarPPT("diapositivas")} style={{ textAlign:"left", padding:"8px 10px", borderRadius:7, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.035)", color:"white", cursor:"pointer" }}>
                     <strong>🖼️ Diapositivas completas</strong><span style={{ display:"block", marginTop:2, fontSize:10.5, opacity:.55 }}>Convierte cada diapositiva de PPT o PPTX en una imagen.</span>
                   </button>
@@ -5566,7 +5567,7 @@ return (
                 </div>}
               </div>
             )}
-            <div style={{ marginTop:8, padding:8, borderRadius:9, border:`1px solid ${modoCarrusel ? "rgba(34,197,94,.4)" : "rgba(255,255,255,.08)"}`, background:modoCarrusel ? "rgba(22,163,74,.08)" : "rgba(255,255,255,.025)", display:"flex", alignItems:"center", gap:7, flexWrap:"wrap" }}>
+            <div style={{ flex:modoCarrusel ? "1 1 100%" : "0 1 auto", minHeight:38, padding:"4px 6px", boxSizing:"border-box", borderRadius:9, border:`1px solid ${modoCarrusel ? "rgba(34,197,94,.4)" : "rgba(255,255,255,.08)"}`, background:modoCarrusel ? "rgba(22,163,74,.08)" : "rgba(255,255,255,.025)", display:"flex", alignItems:"center", gap:7, flexWrap:"wrap" }}>
               <button type="button" onClick={() => { setModoCarrusel(v => !v); setSelCarrusel([]) }} data-ayuda="Activa la selección múltiple para crear un solo ítem que reproduce imágenes y videos en secuencia." style={{ padding:"6px 10px", borderRadius:7, border:`1px solid ${modoCarrusel ? "rgba(34,197,94,.55)" : "rgba(255,255,255,.13)"}`, background:modoCarrusel ? "rgba(22,163,74,.18)" : "rgba(255,255,255,.04)", color:modoCarrusel ? "#86efac" : "rgba(255,255,255,.75)", fontSize:11, fontWeight:800, cursor:"pointer" }}>🎠 {modoCarrusel ? "Cancelar selección" : "Crear carrusel"}</button>
               {modoCarrusel && <>
                 <span style={{ fontSize:10.5, opacity:.65 }}>{selCarrusel.length} seleccionados</span>
@@ -5576,12 +5577,12 @@ return (
                 <button type="button" disabled={!selCarrusel.length} onClick={agregarCarruselALista} style={{ marginLeft:"auto", padding:"6px 10px", borderRadius:7, border:"none", background:selCarrusel.length ? "#16a34a" : "rgba(255,255,255,.08)", color:"white", fontSize:11, fontWeight:850, cursor:selCarrusel.length ? "pointer" : "not-allowed", opacity:selCarrusel.length ? 1 : .5 }}>＋ Agregar al culto</button>
               </>}
             </div>
-            <div style={{ display:"flex", gap:5, marginTop:10, overflowX:"auto" }}>
+            </div>
+            <div style={{ display:"flex", gap:5, marginTop:7, overflowX:"auto", alignItems:"center" }}>
               {([['todo','Todo'],['imagen','Imágenes'],['video','Videos']] as const).map(([id,nombre]) => (
                 <button key={id} onClick={() => setFiltroGaleria(id)} style={{ flexShrink:0, padding:"6px 9px", borderRadius:8, border:`1px solid ${filtroGaleria===id ? "rgba(96,165,250,.55)" : "rgba(255,255,255,.09)"}`, background:filtroGaleria===id ? "rgba(37,99,235,.18)" : "rgba(255,255,255,.03)", color:filtroGaleria===id ? "#bfdbfe" : "rgba(255,255,255,.55)", fontSize:11, fontWeight:750 }}>{nombre}</button>
               ))}
-            </div>
-            <div style={{ display:"flex", gap:5, marginTop:7, overflowX:"auto", alignItems:"center" }}>
+              <span aria-hidden="true" style={{ width:1, height:22, background:"rgba(255,255,255,.09)", flexShrink:0 }} />
               <button onClick={crearCarpetaGaleria} style={{ flexShrink:0, padding:"6px 9px", borderRadius:8, border:"1px dashed rgba(96,165,250,.45)", background:"rgba(37,99,235,.1)", color:"#bfdbfe", fontSize:10.5, fontWeight:800 }}>＋ Carpeta</button>
               {([{ id:"__todas__", nombre:"Todas" }, { id:"__sin__", nombre:"Sin carpeta" }, ...carpetasGaleria.map(c => ({ id:c, nombre:c }))]).map(c => (
                 <button key={c.id} onClick={() => setCarpetaGaleria(c.id)} style={{ flexShrink:0, padding:"6px 9px", borderRadius:8, border:`1px solid ${carpetaGaleria===c.id ? "rgba(245,158,11,.55)" : "rgba(255,255,255,.09)"}`, background:carpetaGaleria===c.id ? "rgba(245,158,11,.14)" : "rgba(255,255,255,.03)", color:carpetaGaleria===c.id ? "#fcd34d" : "rgba(255,255,255,.55)", fontSize:10.5, fontWeight:750 }}>📁 {c.nombre}</button>
@@ -5648,22 +5649,22 @@ return (
           overflow: "hidden",
           transition: "max-height 0.25s ease"
         }}>
-          <div style={{ padding: isMobile ? "12px 14px" : "16px 18px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ padding: isMobile ? "10px 12px" : "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
 
             {/* Pantallas rápidas — ▶ proyecta directo, + agrega a lista */}
-            <div>
+            <div style={{ order:1 }}>
               <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
                 Pantallas rápidas
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 6 }}>
                 {[
                   { titulo: "⚫ Pantalla negra",   onPlay: proyectarPantallaNegra,  onAdd: agregarNegroALista },
                   { titulo: "⏳ Pantalla espera",  onPlay: proyectarPantallaEspera, onAdd: agregarEsperaALista },
                   { titulo: `✍️ ${mensajeRapido || "Mensaje rápido"}`, onPlay: proyectarMensajeRapido, onAdd: agregarMensajeALista },
                   { titulo: logoEsperaNombre ? `🖼️ ${logoEsperaNombre}` : "🖼️ Logo de espera", onPlay: proyectarPantallaLogo, onAdd: agregarLogoALista, disabled: !logoEsperaUrl },
                 ].map((item, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "9px 12px" }}>
-                    <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{item.titulo}</span>
+                  <div key={i} style={{ minWidth:0, display: "flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 9, padding: "7px 8px" }}>
+                    <span title={item.titulo} style={{ minWidth:0, flex: 1, fontSize: 11.5, fontWeight: 650, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.titulo}</span>
                     <button className="ctrl-btn" disabled={!socket || item.disabled} onClick={() => item.onPlay()}
                       style={{ padding: "5px 10px", borderRadius: 7, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>▶</button>
                     <button className="ctrl-btn" disabled={item.disabled} onClick={item.onAdd}
@@ -5674,7 +5675,7 @@ return (
             </div>
 
             {/* Mensaje rápido */}
-            <div>
+            <div style={{ order:2 }}>
               <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
                 Texto del mensaje
               </div>
@@ -5692,7 +5693,7 @@ return (
             </div>
 
             {/* 🚨 Banner de urgencia — se superpone sin interrumpir lo que se está proyectando */}
-            <div style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 12, background: "rgba(255,255,255,0.025)" }}>
+            <div style={{ order:4, border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: 10, background: "rgba(255,255,255,0.025)" }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.68)", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
                 🚨 Banner de urgencia
               </div>
@@ -5726,7 +5727,7 @@ return (
             </div>
 
             {/* ⏳ Cuenta regresiva para el inicio del culto */}
-            <div style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 12, background: "rgba(255,255,255,0.025)" }}>
+            <div style={{ order:3, border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: 10, background: "rgba(255,255,255,0.025)" }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,.68)", letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 8 }}>
                 ⏳ Cuenta regresiva
               </div>
@@ -5769,8 +5770,10 @@ return (
               </div>
             </div>
 
-            {/* Subir imagen para lista */}
-            <div>
+            {/* La carga, PowerPoint, carpetas y carruseles viven ahora en la
+                Galería principal. Conservamos el código histórico por una
+                versión para facilitar rollback, pero no duplicamos la UI. */}
+            {false && <div style={{ order:99 }}>
               <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
                 Imagen para el culto
               </div>
@@ -6042,13 +6045,12 @@ return (
                   </div>
                 )}
               </div>
-            </div>
+            </div>}
 
             {/* ── MODO LIMPIO + FUENTES ─────────────────────────────── */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
-                Apariencia del proyector
-              </div>
+            <details style={{ order:20, padding:"9px 10px", borderRadius:10, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.025)" }}>
+              <summary style={{ cursor:"pointer", fontSize:11, fontWeight:800, opacity:.68, letterSpacing:".06em", textTransform:"uppercase" }}>🎨 Apariencia del proyector</summary>
+              <div style={{ marginTop:10 }}>
 
               {/* Modo limpio toggle */}
               <div
@@ -6160,13 +6162,13 @@ return (
                   })}
                 </div>
               </div>
-            </div>
+              </div>
+            </details>
 
             {/* Fondo para canciones */}
-            <div data-tour="panel-fondo">
-              <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
-                Fondo para canciones
-              </div>
+            <details data-tour="panel-fondo" style={{ order:21, padding:"9px 10px", borderRadius:10, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.025)" }}>
+              <summary style={{ cursor:"pointer", fontSize:11, fontWeight:800, opacity:.68, letterSpacing:".06em", textTransform:"uppercase" }}>🌄 Fondo para canciones</summary>
+              <div style={{ marginTop:10 }}>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
                 <select
@@ -6305,9 +6307,10 @@ return (
                   </button>
                 </div>
               )}
-            </div>
+              </div>
+            </details>
             {/* Links abrir proyector / músicos */}
-            {!isMobile && <div style={{ display: "flex", gap: 8 }}>
+            {!isMobile && <div style={{ order:5, display: "flex", gap: 8 }}>
               {!isMobile && <button className="ctrl-btn"
                 data-tour="btn-proyectar"
                 onClick={() => { window.open(`${window.location.origin}/proyectar`, "_blank", "noopener,noreferrer"); setProyectorConectado(false) }}
@@ -6325,7 +6328,7 @@ return (
             </div>}
 
             {/* Gestión culto */}
-            <div>
+            <div style={{ order:6 }}>
               <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
                 Lista de culto
               </div>
@@ -6360,7 +6363,7 @@ return (
             </div>
 
             {/* Logo */}
-            <div>
+            <div style={{ order:22 }}>
               <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.45, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 10 }}>
                 Logo de iglesia
               </div>
