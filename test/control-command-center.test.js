@@ -64,3 +64,11 @@ test("el buscador abre cultos sin perder cambios silenciosamente", () => {
   assert.match(control, /Hay cambios sin guardar en el culto actual/)
   assert.match(control, /if \(!ok\) return false/)
 })
+
+test("las acciones rápidas incluyen Palabra y guardado del culto", () => {
+  assert.match(centro, /Ejemplo: Juan 3:16 o Salmos 23/)
+  assert.match(centro, /onBiblia\(referenciaBiblia\.trim\(\), true\)/)
+  assert.match(centro, /onBiblia\(referenciaBiblia\.trim\(\), false\)/)
+  assert.match(centro, /onAccion\("guardar"\)/)
+  assert.match(control, /accion === "guardar"\) guardarCultoRef\.current\(\)/)
+})

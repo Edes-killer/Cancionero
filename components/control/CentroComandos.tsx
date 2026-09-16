@@ -25,16 +25,19 @@ interface Props {
   onAbrirCulto: (id: string) => Promise<boolean>
   tieneLogo: boolean
   onMensaje: (texto: string, agregar: boolean) => void
-  onAccion: (accion: "espera" | "negro" | "revision") => void
+  onBiblia: (referencia: string, agregar: boolean) => void
+  onAccion: (accion: "espera" | "negro" | "revision" | "guardar") => void
 }
 
 const normalizar = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
 
-export default function CentroComandos({ abierto, canciones, lista, favoritos, recientes, recursos, cultos, cultoActivoId, tieneLogo, onCerrar, onProyectar, onAgregar, onProyectarLista, onFavorito, onRecurso, onAbrirCulto, onMensaje, onAccion }: Props) {
+export default function CentroComandos({ abierto, canciones, lista, favoritos, recientes, recursos, cultos, cultoActivoId, tieneLogo, onCerrar, onProyectar, onAgregar, onProyectarLista, onFavorito, onRecurso, onAbrirCulto, onMensaje, onBiblia, onAccion }: Props) {
   const [q, setQ] = useState("")
   const [vista, setVista] = useState<"sugeridas" | "favoritas" | "recientes">("sugeridas")
   const [mensajeAbierto, setMensajeAbierto] = useState(false)
   const [textoMensaje, setTextoMensaje] = useState("")
+  const [bibliaAbierta, setBibliaAbierta] = useState(false)
+  const [referenciaBiblia, setReferenciaBiblia] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -42,6 +45,7 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
     setQ("")
     setVista("sugeridas")
     setMensajeAbierto(false)
+    setBibliaAbierta(false)
     requestAnimationFrame(() => inputRef.current?.focus())
   }, [abierto])
 
@@ -75,7 +79,7 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
       display:"flex", justifyContent:"center", alignItems:"flex-start", padding:"min(11vh,90px) 12px 24px"
     }}>
       <style>{`
-        .selah-centro-acciones{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+        .selah-centro-acciones{display:grid;grid-template-columns:repeat(6,minmax(0,1fr))}
         .selah-centro-fila{display:flex}
         .selah-centro-pie{display:flex}
         @media(max-width:600px){
@@ -97,8 +101,10 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
         {!q && <div className="selah-centro-acciones" style={{ gap:7, padding:"12px 14px", borderBottom:"1px solid rgba(255,255,255,.07)" }}>
           <button onClick={() => { onAccion("espera"); onCerrar() }} style={{ padding:"10px 6px", borderRadius:10, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.045)", color:"white", cursor:"pointer", fontWeight:750 }}><span style={{ display:"block", fontSize:17 }}>⏳</span><span style={{ fontSize:11 }}>{tieneLogo ? "Espera con logo" : "Espera"}</span></button>
           <button onClick={() => { onAccion("negro"); onCerrar() }} style={{ padding:"10px 6px", borderRadius:10, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.045)", color:"white", cursor:"pointer", fontWeight:750 }}><span style={{ display:"block", fontSize:17 }}>⚫</span><span style={{ fontSize:11 }}>Apagar</span></button>
-          <button onClick={() => setMensajeAbierto(v => !v)} style={{ padding:"10px 6px", borderRadius:10, border:`1px solid ${mensajeAbierto ? "rgba(96,165,250,.45)" : "rgba(255,255,255,.08)"}`, background:mensajeAbierto ? "rgba(37,99,235,.15)" : "rgba(255,255,255,.045)", color:"white", cursor:"pointer", fontWeight:750 }}><span style={{ display:"block", fontSize:17 }}>💬</span><span style={{ fontSize:11 }}>Escribir mensaje</span></button>
+          <button onClick={() => { setMensajeAbierto(v => !v); setBibliaAbierta(false) }} style={{ padding:"10px 6px", borderRadius:10, border:`1px solid ${mensajeAbierto ? "rgba(96,165,250,.45)" : "rgba(255,255,255,.08)"}`, background:mensajeAbierto ? "rgba(37,99,235,.15)" : "rgba(255,255,255,.045)", color:"white", cursor:"pointer", fontWeight:750 }}><span style={{ display:"block", fontSize:17 }}>💬</span><span style={{ fontSize:11 }}>Mensaje</span></button>
+          <button onClick={() => { setBibliaAbierta(v => !v); setMensajeAbierto(false) }} style={{ padding:"10px 6px", borderRadius:10, border:`1px solid ${bibliaAbierta ? "rgba(96,165,250,.45)" : "rgba(255,255,255,.08)"}`, background:bibliaAbierta ? "rgba(37,99,235,.15)" : "rgba(255,255,255,.045)", color:"white", cursor:"pointer", fontWeight:750 }}><span style={{ display:"block", fontSize:17 }}>📖</span><span style={{ fontSize:11 }}>Palabra</span></button>
           <button onClick={() => { onAccion("revision"); onCerrar() }} style={{ padding:"10px 6px", borderRadius:10, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.045)", color:"white", cursor:"pointer", fontWeight:750 }}><span style={{ display:"block", fontSize:17 }}>✓</span><span style={{ fontSize:11 }}>Revisar</span></button>
+          <button onClick={() => { onAccion("guardar"); onCerrar() }} style={{ padding:"10px 6px", borderRadius:10, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.045)", color:"white", cursor:"pointer", fontWeight:750 }}><span style={{ display:"block", fontSize:17 }}>💾</span><span style={{ fontSize:11 }}>Guardar</span></button>
         </div>}
 
         {!q && mensajeAbierto && <div style={{ padding:"11px 14px", borderBottom:"1px solid rgba(255,255,255,.07)", background:"rgba(37,99,235,.06)" }}>
@@ -106,6 +112,14 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
           <div style={{ display:"flex", justifyContent:"flex-end", gap:7, marginTop:8 }}>
             <button disabled={!textoMensaje.trim()} onClick={() => { onMensaje(textoMensaje.trim(), true); onCerrar() }} style={{ padding:"8px 11px", borderRadius:8, border:"1px solid rgba(96,165,250,.3)", background:"rgba(37,99,235,.1)", color:"#bfdbfe", fontWeight:800, cursor:textoMensaje.trim() ? "pointer" : "not-allowed", opacity:textoMensaje.trim() ? 1 : .4 }}>+ Lista</button>
             <button disabled={!textoMensaje.trim()} onClick={() => { onMensaje(textoMensaje.trim(), false); onCerrar() }} style={{ padding:"8px 13px", borderRadius:8, border:0, background:"#2563eb", color:"white", fontWeight:850, cursor:textoMensaje.trim() ? "pointer" : "not-allowed", opacity:textoMensaje.trim() ? 1 : .4 }}>▶ Mostrar ahora</button>
+          </div>
+        </div>}
+
+        {!q && bibliaAbierta && <div style={{ padding:"11px 14px", borderBottom:"1px solid rgba(255,255,255,.07)", background:"rgba(37,99,235,.06)" }}>
+          <input autoFocus value={referenciaBiblia} onChange={e => setReferenciaBiblia(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && referenciaBiblia.trim()) { onBiblia(referenciaBiblia.trim(), false); onCerrar() } }} placeholder="Ejemplo: Juan 3:16 o Salmos 23" style={{ width:"100%", boxSizing:"border-box", borderRadius:10, border:"1px solid rgba(148,163,184,.25)", background:"#091426", color:"white", padding:"11px", outline:"none", fontFamily:"inherit", fontSize:14 }} />
+          <div style={{ display:"flex", justifyContent:"flex-end", gap:7, marginTop:8 }}>
+            <button disabled={!referenciaBiblia.trim()} onClick={() => { onBiblia(referenciaBiblia.trim(), true); onCerrar() }} style={{ padding:"8px 11px", borderRadius:8, border:"1px solid rgba(96,165,250,.3)", background:"rgba(37,99,235,.1)", color:"#bfdbfe", fontWeight:800, cursor:referenciaBiblia.trim() ? "pointer" : "not-allowed", opacity:referenciaBiblia.trim() ? 1 : .4 }}>+ Lista</button>
+            <button disabled={!referenciaBiblia.trim()} onClick={() => { onBiblia(referenciaBiblia.trim(), false); onCerrar() }} style={{ padding:"8px 13px", borderRadius:8, border:0, background:"#2563eb", color:"white", fontWeight:850, cursor:referenciaBiblia.trim() ? "pointer" : "not-allowed", opacity:referenciaBiblia.trim() ? 1 : .4 }}>📖 Proyectar</button>
           </div>
         </div>}
 

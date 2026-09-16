@@ -7184,9 +7184,15 @@ return (
     if (agregar) agregarMensajeALista(texto)
     else proyectarMensajeRapido(false, texto)
   }}
+  onBiblia={(referencia, agregar) => {
+    setInputBiblia(referencia)
+    if (agregar) void agregarBibliaALista(referencia)
+    else void proyectarBiblia(referencia)
+  }}
   onAccion={accion => {
     if (accion === "espera") logoEsperaUrl.trim() ? proyectarPantallaLogo() : proyectarPantallaEspera()
     else if (accion === "negro") proyectarPantallaNegra()
+    else if (accion === "guardar") guardarCultoRef.current()
     else { setVolverCentroTrasRevision(true); setRevisionCultoAbierta(true) }
   }}
 />
