@@ -420,6 +420,11 @@ export default function ControlPage() {
   const [recientesControl, setRecientesControl] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem("selah-control-recientes") || "[]") } catch { return [] }
   })
+  const alternarFavoritoControl = (id: string) => setFavoritosControl(prev => {
+    const nueva = prev.includes(id) ? prev.filter(x => x !== id) : [id, ...prev]
+    try { localStorage.setItem("selah-control-favoritos", JSON.stringify(nueva)) } catch {}
+    return nueva
+  })
   const [deshacerLista, setDeshacerLista] = useState<{ items: ItemLista[]; activo: number | null; mensaje: string } | null>(null)
   const deshacerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [flashListaCulto, setFlashListaCulto] = useState(false)
@@ -5210,6 +5215,16 @@ return (
         color: "#fca5a5", fontWeight: 700
       }}>⏹ {contadorAuto}s</span>
     )}
+    {indiceActivoLista !== null && lista[indiceActivoLista + 1] && (
+      <span title={`Siguiente elemento: ${limpiarTituloLista(lista[indiceActivoLista + 1]?.titulo || "Sin título")}`} style={{
+        marginLeft:isMobile ? 2 : 10, paddingLeft:isMobile ? 7 : 12,
+        borderLeft:"1px solid rgba(255,255,255,.14)", color:"rgba(255,255,255,.52)",
+        fontSize:isMobile ? 9.5 : 11, fontWeight:700, maxWidth:isMobile ? 145 : 320,
+        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"
+      }}>
+        SIGUE · {limpiarTituloLista(lista[indiceActivoLista + 1]?.titulo || "Sin título")}
+      </span>
+    )}
   </div>
 
   {/* ── CONTENIDO PRINCIPAL ────────────────────────────────────────────── */}
@@ -5523,6 +5538,13 @@ return (
                             )}
                           </div>
                           <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+                            {!isMobile && <button
+                              className="ctrl-btn"
+                              onClick={e => { e.stopPropagation(); alternarFavoritoControl(c.id) }}
+                              title={favoritosControl.includes(c.id) ? "Quitar de favoritas" : "Guardar como favorita"}
+                              aria-label={favoritosControl.includes(c.id) ? "Quitar de favoritas" : "Guardar como favorita"}
+                              style={{ width:29, padding:0, borderRadius:7, border:"none", background:"transparent", color:favoritosControl.includes(c.id) ? "#fbbf24" : "rgba(255,255,255,.28)", fontSize:17, cursor:"pointer" }}
+                            >{favoritosControl.includes(c.id) ? "★" : "☆"}</button>}
                             <button
                               className="ctrl-btn"
                               onClick={e => { e.stopPropagation(); abrirVisor(c) }}
@@ -7097,11 +7119,7 @@ return (
   onProyectar={id => { void proyectar(id) }}
   onAgregar={c => { void agregarALista(c) }}
   onProyectarLista={i => { void proyectarDesdeLista(i) }}
-  onFavorito={id => setFavoritosControl(prev => {
-    const nueva = prev.includes(id) ? prev.filter(x => x !== id) : [id, ...prev]
-    try { localStorage.setItem("selah-control-favoritos", JSON.stringify(nueva)) } catch {}
-    return nueva
-  })}
+  onFavorito={alternarFavoritoControl}
   onAccion={accion => {
     if (accion === "espera") proyectarPantallaEspera()
     else if (accion === "negro") proyectarPantallaNegra()
