@@ -99,13 +99,13 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
     if (!nq) return []
     return lista.map((item, indice) => ({ item, indice })).filter(x => normalizar(x.item.titulo || "").includes(nq)).slice(0, 4)
   }, [q, lista])
-  const opcionesTeclado = useMemo<Array<{ clave:string; ejecutar:() => void | boolean | Promise<void | boolean> }>>(() => [
+  const opcionesTeclado = useMemo<Array<{ clave:string; ejecutar:() => void | boolean | Promise<void | boolean>; agregar?:() => void }>>(() => [
     ...comandosEncontrados.map(c => ({ clave:`comando-${c.id}`, ejecutar:c.ejecutar })),
     ...itemsEncontrados.map(x => ({ clave:`lista-${x.indice}`, ejecutar:() => onProyectarLista(x.indice) })),
     ...cultosEncontrados.map(c => ({ clave:`culto-${c.id}`, ejecutar:() => onAbrirCulto(c.id) })),
-    ...recursosEncontrados.map(r => ({ clave:`recurso-${r.url}`, ejecutar:() => onRecurso(r, false) })),
-    ...resultados.map(c => ({ clave:`cancion-${c.id}`, ejecutar:() => onProyectar(c.id) })),
-  ], [comandosEncontrados, itemsEncontrados, cultosEncontrados, recursosEncontrados, resultados, onProyectarLista, onAbrirCulto, onRecurso, onProyectar])
+    ...recursosEncontrados.map(r => ({ clave:`recurso-${r.url}`, ejecutar:() => onRecurso(r, false), agregar:() => onRecurso(r, true) })),
+    ...resultados.map(c => ({ clave:`cancion-${c.id}`, ejecutar:() => onProyectar(c.id), agregar:() => onAgregar(c) })),
+  ], [comandosEncontrados, itemsEncontrados, cultosEncontrados, recursosEncontrados, resultados, onProyectarLista, onAbrirCulto, onRecurso, onProyectar, onAgregar])
   const claveSeleccionada = opcionesTeclado[Math.min(seleccion, Math.max(0, opcionesTeclado.length - 1))]?.clave
 
   useEffect(() => { setSeleccion(0) }, [q, vista])
@@ -135,6 +135,12 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
     const resultado = await opcion.ejecutar()
     if (resultado !== false) onCerrar()
   }
+  const agregarSeleccion = () => {
+    const opcion = opcionesTeclado[Math.min(seleccion, opcionesTeclado.length - 1)]
+    if (!opcion?.agregar) { void ejecutarSeleccion(); return }
+    opcion.agregar()
+    onCerrar()
+  }
 
   if (!abierto) return null
   return (
@@ -162,7 +168,7 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
             if (e.key === "Escape") onCerrar()
             else if (e.key === "ArrowDown") { e.preventDefault(); setSeleccion(i => Math.min(Math.max(0, opcionesTeclado.length - 1), i + 1)) }
             else if (e.key === "ArrowUp") { e.preventDefault(); setSeleccion(i => Math.max(0, i - 1)) }
-            else if (e.key === "Enter") { e.preventDefault(); void ejecutarSeleccion() }
+            else if (e.key === "Enter") { e.preventDefault(); e.shiftKey ? agregarSeleccion() : void ejecutarSeleccion() }
           }} placeholder="Busca contenido o escribe una acción…" style={{ flex:1, minWidth:0, border:0, outline:0, background:"transparent", color:"white", fontSize:17, fontWeight:650 }} />
           <kbd style={{ padding:"4px 7px", borderRadius:6, background:"rgba(255,255,255,.07)", color:"#94a3b8", fontSize:11 }}>ESC</kbd>
         </div>
@@ -235,7 +241,7 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
           })}
           {!resultados.length && !recursosEncontrados.length && !cultosEncontrados.length && !comandosEncontrados.length && <div style={{ padding:28, textAlign:"center", color:"#94a3b8" }}>{q ? `No encontré contenido ni acciones con “${q}”.` : vista === "favoritas" ? "Todavía no has marcado canciones favoritas." : "Todavía no hay canciones recientes."}</div>}
         </div>
-        <div className="selah-centro-pie" style={{ gap:12, padding:"9px 14px", borderTop:"1px solid rgba(255,255,255,.07)", color:"#64748b", fontSize:10 }}><span>↑↓ seleccionar</span><span>↵ ejecutar</span><span>★ favorita</span><span>+ Lista prepara sin proyectar</span></div>
+        <div className="selah-centro-pie" style={{ gap:12, padding:"9px 14px", borderTop:"1px solid rgba(255,255,255,.07)", color:"#64748b", fontSize:10 }}><span>↑↓ seleccionar</span><span>↵ proyectar/abrir</span><span>Shift+↵ agregar a lista</span><span>★ favorita</span></div>
       </div>
     </div>
   )

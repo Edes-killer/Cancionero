@@ -106,3 +106,11 @@ test("el buscador reconoce comandos operativos escritos", () => {
   assert.match(centro, />ACCIONES</)
   assert.match(centro, /comando-\$\{c\.id\}/)
 })
+
+test("Enter proyecta y Shift Enter agrega contenido a la lista", () => {
+  assert.match(centro, /const agregarSeleccion/)
+  assert.match(centro, /e\.shiftKey \? agregarSeleccion\(\)/)
+  assert.match(centro, /agregar:\(\) => onRecurso\(r, true\)/)
+  assert.match(centro, /agregar:\(\) => onAgregar\(c\)/)
+  assert.match(centro, /Shift\+↵ agregar a lista/)
+})
