@@ -1634,6 +1634,9 @@ const confirmarDestino = (abrirProyector: boolean) => {
 const proyectar = async (id: string, destinoConfirmado = false) => {
   if (!verificarServidor()) return
   if (!destinoConfirmado && pedirDestinoSiFalta(() => { void proyectar(id, true) })) return
+  // Un carrusel es un productor continuo: si no se corta ANTES de cargar el
+  // contenido nuevo, su siguiente tick vuelve a tapar la canción.
+  detenerCarruselTimer()
 
   const idxEnLista = lista.findIndex(
     item => item.tipo === "cancion" && item.id === id
@@ -3203,6 +3206,7 @@ const buscarVersiculo = (ref: string): Promise<any> => {
 const proyectarBiblia = async (ref: string, destinoConfirmado = false) => {
   if (!socket) return
   if (!destinoConfirmado && pedirDestinoSiFalta(() => { void proyectarBiblia(ref, true) })) return
+  detenerCarruselTimer()
 
   try {
     const data = await buscarVersiculo(ref)
@@ -3274,6 +3278,7 @@ const ocultarBannerUrgente = () => {
 const proyectarMensajeRapido = (destinoConfirmado = false) => {
   if (!socket) return
   if (!destinoConfirmado && pedirDestinoSiFalta(() => proyectarMensajeRapido(true))) return
+  detenerCarruselTimer()
   setActivaId(null); setIndiceLista(null); setIndiceActivoLista(null)
   setPartes([]); setIndex(0); limpiarModoBiblia()
   setAprendiendo(false); detenerAutoAvance()
@@ -3294,6 +3299,7 @@ const proyectarMensajeRapido = (destinoConfirmado = false) => {
 const proyectarCuentaRegresiva = (destinoConfirmado = false) => {
   if (!socket || !cuentaRegresivaHora) return
   if (!destinoConfirmado && pedirDestinoSiFalta(() => proyectarCuentaRegresiva(true))) return
+  detenerCarruselTimer()
   const [hh, mm] = cuentaRegresivaHora.split(":").map(Number)
   const objetivo = new Date()
   objetivo.setHours(hh, mm, 0, 0)
@@ -3319,6 +3325,7 @@ const proyectarPantallaLogo = (destinoConfirmado = false) => {
     return
   }
   if (!destinoConfirmado && pedirDestinoSiFalta(() => proyectarPantallaLogo(true))) return
+  detenerCarruselTimer()
 
   setActivaId(null); setIndiceLista(null); setIndiceActivoLista(null)
   setPartes([]); setIndex(0); limpiarModoBiblia()
@@ -3337,6 +3344,7 @@ const proyectarPantallaLogo = (destinoConfirmado = false) => {
 const proyectarPantallaNegra = (destinoConfirmado = false) => {
   if (!socket) return
   if (!destinoConfirmado && pedirDestinoSiFalta(() => proyectarPantallaNegra(true))) return
+  detenerCarruselTimer()
 
   setActivaId(null); setIndiceLista(null); setIndiceActivoLista(null)
   setPartes([]); setIndex(0); limpiarModoBiblia()
@@ -3354,6 +3362,7 @@ const proyectarPantallaNegra = (destinoConfirmado = false) => {
 const proyectarPantallaEspera = (destinoConfirmado = false) => {
   if (!socket) return
   if (!destinoConfirmado && pedirDestinoSiFalta(() => proyectarPantallaEspera(true))) return
+  detenerCarruselTimer()
 
   setActivaId(null); setIndiceLista(null); setIndiceActivoLista(null)
   setPartes([]); setIndex(0); limpiarModoBiblia()

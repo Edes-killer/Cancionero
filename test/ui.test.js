@@ -256,3 +256,18 @@ test("Inicio y Control esperan confirmación de sala y se recuperan sin IP manua
   assert.doesNotMatch(control, /s\.on\("reconnect", \(\) => setSocketConectado\(true\)\)/)
   assert.match(control, /s\.connected && unidoASala/)
 })
+
+test("cualquier contenido nuevo detiene el carrusel antes de proyectarse", () => {
+  const control = fs.readFileSync("app/control/page.tsx", "utf8")
+  for (const nombre of [
+    "proyectar", "proyectarBiblia", "proyectarMensajeRapido",
+    "proyectarCuentaRegresiva", "proyectarPantallaLogo",
+    "proyectarPantallaNegra", "proyectarPantallaEspera",
+  ]) {
+    const inicio = control.indexOf(`const ${nombre} =`)
+    assert.ok(inicio >= 0, `falta ${nombre}`)
+    const bloqueInicial = control.slice(inicio, inicio + 850)
+    assert.match(bloqueInicial, /detenerCarruselTimer\(\)/, `${nombre} debe detener el carrusel`)
+  }
+  assert.match(control, /Al cambiar de item se corta cualquier carrusel[\s\S]{0,120}detenerCarruselTimer\(\)/)
+})
