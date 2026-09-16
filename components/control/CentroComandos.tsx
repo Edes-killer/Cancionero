@@ -38,6 +38,7 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
   const [textoMensaje, setTextoMensaje] = useState("")
   const [bibliaAbierta, setBibliaAbierta] = useState(false)
   const [referenciaBiblia, setReferenciaBiblia] = useState("")
+  const [seleccion, setSeleccion] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -79,6 +80,32 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
     if (!nq) return []
     return cultos.filter(c => normalizar(c.nombre || "Sin nombre").includes(nq)).slice(0, 5)
   }, [q, cultos])
+  const itemsEncontrados = useMemo(() => {
+    const nq = normalizar(q.trim())
+    if (!nq) return []
+    return lista.map((item, indice) => ({ item, indice })).filter(x => normalizar(x.item.titulo || "").includes(nq)).slice(0, 4)
+  }, [q, lista])
+  const opcionesTeclado = useMemo<Array<{ clave:string; ejecutar:() => void | boolean | Promise<void | boolean> }>>(() => [
+    ...itemsEncontrados.map(x => ({ clave:`lista-${x.indice}`, ejecutar:() => onProyectarLista(x.indice) })),
+    ...cultosEncontrados.map(c => ({ clave:`culto-${c.id}`, ejecutar:() => onAbrirCulto(c.id) })),
+    ...recursosEncontrados.map(r => ({ clave:`recurso-${r.url}`, ejecutar:() => onRecurso(r, false) })),
+    ...resultados.map(c => ({ clave:`cancion-${c.id}`, ejecutar:() => onProyectar(c.id) })),
+  ], [itemsEncontrados, cultosEncontrados, recursosEncontrados, resultados, onProyectarLista, onAbrirCulto, onRecurso, onProyectar])
+  const claveSeleccionada = opcionesTeclado[Math.min(seleccion, Math.max(0, opcionesTeclado.length - 1))]?.clave
+
+  useEffect(() => { setSeleccion(0) }, [q, vista])
+
+  const seleccionarClave = (clave: string) => {
+    const i = opcionesTeclado.findIndex(o => o.clave === clave)
+    if (i >= 0) setSeleccion(i)
+  }
+
+  const ejecutarSeleccion = async () => {
+    const opcion = opcionesTeclado[Math.min(seleccion, opcionesTeclado.length - 1)]
+    if (!opcion) return
+    const resultado = await opcion.ejecutar()
+    if (resultado !== false) onCerrar()
+  }
 
   if (!abierto) return null
   return (
@@ -102,7 +129,12 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
       <div className="selah-centro-panel" style={{ width:"min(720px,100%)", maxHeight:"78vh", overflow:"hidden", borderRadius:18, background:"#0f1a2d", border:"1px solid rgba(148,163,184,.24)", boxShadow:"0 30px 90px rgba(0,0,0,.65)" }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, padding:14, borderBottom:"1px solid rgba(255,255,255,.08)" }}>
           <span style={{ fontSize:20 }}>⌕</span>
-          <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === "Escape") onCerrar(); if (e.key === "Enter" && resultados[0]) { onProyectar(resultados[0].id); onCerrar() } }} placeholder="Busca una canción, número o tono…" style={{ flex:1, minWidth:0, border:0, outline:0, background:"transparent", color:"white", fontSize:17, fontWeight:650 }} />
+          <input ref={inputRef} value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => {
+            if (e.key === "Escape") onCerrar()
+            else if (e.key === "ArrowDown") { e.preventDefault(); setSeleccion(i => Math.min(Math.max(0, opcionesTeclado.length - 1), i + 1)) }
+            else if (e.key === "ArrowUp") { e.preventDefault(); setSeleccion(i => Math.max(0, i - 1)) }
+            else if (e.key === "Enter") { e.preventDefault(); void ejecutarSeleccion() }
+          }} placeholder="Busca canciones, cultos o recursos…" style={{ flex:1, minWidth:0, border:0, outline:0, background:"transparent", color:"white", fontSize:17, fontWeight:650 }} />
           <kbd style={{ padding:"4px 7px", borderRadius:6, background:"rgba(255,255,255,.07)", color:"#94a3b8", fontSize:11 }}>ESC</kbd>
         </div>
 
@@ -132,18 +164,18 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
         </div>}
 
         <div style={{ overflowY:"auto", maxHeight:"55vh", padding:10 }}>
-          {q && lista.map((it, i) => ({...it, i})).filter(it => normalizar(it.titulo || "").includes(normalizar(q))).slice(0,4).map(it => (
-            <button key={`lista-${it.i}`} onClick={() => { onProyectarLista(it.i); onCerrar() }} style={{ width:"100%", display:"flex", gap:10, alignItems:"center", textAlign:"left", padding:"10px 12px", marginBottom:5, borderRadius:10, border:"1px solid rgba(34,197,94,.2)", background:"rgba(34,197,94,.07)", color:"white", cursor:"pointer" }}><span>📋</span><span style={{ flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{it.titulo || "Elemento del culto"}</span><small style={{ color:"#86efac" }}>En la lista · Proyectar</small></button>
+          {q && itemsEncontrados.map(({item:it, indice:i}) => (
+            <button key={`lista-${i}`} onMouseEnter={() => seleccionarClave(`lista-${i}`)} onClick={() => { onProyectarLista(i); onCerrar() }} style={{ width:"100%", display:"flex", gap:10, alignItems:"center", textAlign:"left", padding:"10px 12px", marginBottom:5, borderRadius:10, border:`1px solid ${claveSeleccionada === `lista-${i}` ? "#60a5fa" : "rgba(34,197,94,.2)"}`, background:claveSeleccionada === `lista-${i}` ? "rgba(37,99,235,.16)" : "rgba(34,197,94,.07)", color:"white", cursor:"pointer" }}><span>📋</span><span style={{ flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{it.titulo || "Elemento del culto"}</span><small style={{ color:"#86efac" }}>En la lista · Proyectar</small></button>
           ))}
           {q && cultosEncontrados.length > 0 && <>
             <div style={{ padding:"7px 8px 5px", color:"#64748b", fontSize:10, fontWeight:900, letterSpacing:1 }}>CULTOS GUARDADOS</div>
-            {cultosEncontrados.map(c => <button key={c.id} onClick={async () => { if (await onAbrirCulto(c.id)) onCerrar() }} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, textAlign:"left", padding:"10px 12px", marginBottom:4, borderRadius:10, border:`1px solid ${c.id === cultoActivoId ? "rgba(96,165,250,.38)" : "rgba(255,255,255,.08)"}`, background:c.id === cultoActivoId ? "rgba(37,99,235,.13)" : "rgba(255,255,255,.035)", color:"white", cursor:"pointer" }}>
+            {cultosEncontrados.map(c => <button key={c.id} onMouseEnter={() => seleccionarClave(`culto-${c.id}`)} onClick={async () => { if (await onAbrirCulto(c.id)) onCerrar() }} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, textAlign:"left", padding:"10px 12px", marginBottom:4, borderRadius:10, border:`1px solid ${claveSeleccionada === `culto-${c.id}` ? "#60a5fa" : c.id === cultoActivoId ? "rgba(96,165,250,.38)" : "rgba(255,255,255,.08)"}`, background:claveSeleccionada === `culto-${c.id}` ? "rgba(37,99,235,.16)" : c.id === cultoActivoId ? "rgba(37,99,235,.13)" : "rgba(255,255,255,.035)", color:"white", cursor:"pointer" }}>
               <span>📂</span><span style={{ flex:1, minWidth:0 }}><b style={{ display:"block", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c.nombre || "Sin nombre"}</b>{c.fecha && <small style={{ color:"#94a3b8" }}>{new Date(c.fecha).toLocaleDateString("es-CL")}</small>}</span><small style={{ color:c.id === cultoActivoId ? "#93c5fd" : "#94a3b8" }}>{c.id === cultoActivoId ? "ABIERTO" : "Abrir"}</small>
             </button>)}
           </>}
           {q && recursosEncontrados.length > 0 && <>
             <div style={{ padding:"7px 8px 5px", color:"#64748b", fontSize:10, fontWeight:900, letterSpacing:1 }}>GALERÍA</div>
-            {recursosEncontrados.map(r => <div className="selah-centro-fila" key={r.url} style={{ alignItems:"center", gap:8, padding:"7px 8px", borderRadius:11, background:"rgba(168,85,247,.055)", marginBottom:4 }}>
+            {recursosEncontrados.map(r => <div className="selah-centro-fila" key={r.url} onMouseEnter={() => seleccionarClave(`recurso-${r.url}`)} style={{ alignItems:"center", gap:8, padding:"7px 8px", borderRadius:11, background:claveSeleccionada === `recurso-${r.url}` ? "rgba(37,99,235,.16)" : "rgba(168,85,247,.055)", outline:claveSeleccionada === `recurso-${r.url}` ? "1px solid #60a5fa" : "none", marginBottom:4 }}>
               <div style={{ width:42, height:32, borderRadius:7, overflow:"hidden", background:"#020617", flexShrink:0, display:"grid", placeItems:"center" }}>{r.video ? <span>🎬</span> : <img src={r.url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />}</div>
               <div className="selah-comando-titulo" style={{ flex:1, minWidth:0 }}><b style={{ display:"block", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontSize:12.5 }}>{r.nombre}</b><small style={{ color:"#94a3b8" }}>{r.video ? "Video" : "Imagen"}{r.carpeta ? ` · ${r.carpeta}` : ""}</small></div>
               <button onClick={() => { onRecurso(r, true); onCerrar() }} style={{ padding:"7px 9px", borderRadius:8, border:"1px solid rgba(196,181,253,.25)", background:"rgba(124,58,237,.11)", color:"#ddd6fe", fontWeight:800, cursor:"pointer" }}>+ Lista</button>
@@ -156,7 +188,7 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
           <div style={{ padding:"5px 8px", color:"#64748b", fontSize:10, fontWeight:900, letterSpacing:1 }}>{q ? "CANCIONES" : vista === "favoritas" ? "TUS FAVORITAS" : vista === "recientes" ? "USADAS RECIENTEMENTE" : "FAVORITAS Y RECIENTES"}</div>
           {resultados.map(c => {
             const fav = favoritos.includes(c.id), reciente = recientes.includes(c.id)
-            return <div className="selah-centro-fila" key={c.id} style={{ alignItems:"center", gap:7, padding:"7px 8px", borderRadius:11, background:"rgba(255,255,255,.025)", marginBottom:4 }}>
+            return <div className="selah-centro-fila" key={c.id} onMouseEnter={() => seleccionarClave(`cancion-${c.id}`)} style={{ alignItems:"center", gap:7, padding:"7px 8px", borderRadius:11, background:claveSeleccionada === `cancion-${c.id}` ? "rgba(37,99,235,.16)" : "rgba(255,255,255,.025)", outline:claveSeleccionada === `cancion-${c.id}` ? "1px solid #60a5fa" : "none", marginBottom:4 }}>
               <button onClick={() => onFavorito(c.id)} aria-label={fav ? "Quitar de favoritos" : "Agregar a favoritos"} title={fav ? "Quitar de favoritos" : "Guardar como favorita"} style={{ width:32, height:32, border:0, background:"transparent", color:fav ? "#fbbf24" : "#64748b", fontSize:18, cursor:"pointer" }}>{fav ? "★" : "☆"}</button>
               <button className="selah-comando-titulo" onClick={() => { onProyectar(c.id); onCerrar() }} style={{ flex:1, minWidth:0, border:0, background:"transparent", color:"white", textAlign:"left", cursor:"pointer" }}>
                 <span style={{ fontWeight:800, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", display:"block" }}>{c.numero ? `${c.numero}. ` : ""}{c.titulo}</span>
@@ -168,7 +200,7 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
           })}
           {!resultados.length && !recursosEncontrados.length && !cultosEncontrados.length && <div style={{ padding:28, textAlign:"center", color:"#94a3b8" }}>{q ? `No encontré canciones, recursos ni cultos con “${q}”.` : vista === "favoritas" ? "Todavía no has marcado canciones favoritas." : "Todavía no hay canciones recientes."}</div>}
         </div>
-        <div className="selah-centro-pie" style={{ gap:12, padding:"9px 14px", borderTop:"1px solid rgba(255,255,255,.07)", color:"#64748b", fontSize:10 }}><span>↵ proyectar primera</span><span>★ favorita</span><span>+ Lista prepara sin proyectar</span></div>
+        <div className="selah-centro-pie" style={{ gap:12, padding:"9px 14px", borderTop:"1px solid rgba(255,255,255,.07)", color:"#64748b", fontSize:10 }}><span>↑↓ seleccionar</span><span>↵ ejecutar</span><span>★ favorita</span><span>+ Lista prepara sin proyectar</span></div>
       </div>
     </div>
   )

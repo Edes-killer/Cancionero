@@ -10,7 +10,7 @@ const centro = fs.readFileSync(path.join(raiz, "components/control/CentroComando
 test("Control ofrece búsqueda universal por teclado y botón", () => {
   assert.match(control, /e\.key\.toLowerCase\(\) === "k"/)
   assert.match(control, /Buscar  Ctrl\+K/)
-  assert.match(centro, /Busca una canción, número o tono/)
+  assert.match(centro, /Busca canciones, cultos o recursos/)
 })
 
 test("favoritas y recientes quedan disponibles sin saturar Control móvil", () => {
@@ -79,4 +79,13 @@ test("deshacer funciona por botón y Ctrl Z; Escape cierra el buscador", () => {
   assert.match(control, /onClick=\{ejecutarDeshacerLista\}/)
   assert.match(centro, /document\.addEventListener\("keydown", cerrarConEscape\)/)
   assert.match(centro, /document\.body\.style\.overflow = "hidden"/)
+})
+
+test("el centro de comandos navega resultados heterogéneos con teclado", () => {
+  assert.match(centro, /opcionesTeclado/)
+  assert.match(centro, /e\.key === "ArrowDown"/)
+  assert.match(centro, /e\.key === "ArrowUp"/)
+  assert.match(centro, /void ejecutarSeleccion\(\)/)
+  assert.match(centro, /claveSeleccionada/)
+  assert.match(centro, /↑↓ seleccionar/)
 })
