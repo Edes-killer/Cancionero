@@ -1145,6 +1145,7 @@ const [mostrarPalabra, setMostrarPalabra] = useState(false)
 const [mostrarCultos, setMostrarCultos] = useState(false)
 const [mostrarFiltrosMobile, setMostrarFiltrosMobile] = useState(false)
 const [revisionCultoAbierta, setRevisionCultoAbierta] = useState(false)
+const [volverCentroTrasRevision, setVolverCentroTrasRevision] = useState(false)
 const alternarPanel = (panel: "canciones" | "galeria" | "acciones" | "palabra" | "cultos") => {
   const estabaAbierto = panel === "canciones" ? mostrarCanciones
     : panel === "galeria" ? mostrarGaleriaPanel
@@ -3299,18 +3300,19 @@ const ocultarBannerUrgente = () => {
   socket.emit("ocultar-banner-urgente")
 }
 
-const proyectarMensajeRapido = (destinoConfirmado = false) => {
+const proyectarMensajeRapido = (destinoConfirmado = false, textoOverride?: string) => {
   if (!socket) return
-  if (!destinoConfirmado && pedirDestinoSiFalta(() => proyectarMensajeRapido(true))) return
+  if (!destinoConfirmado && pedirDestinoSiFalta(() => proyectarMensajeRapido(true, textoOverride))) return
+  const texto = textoOverride?.trim() || mensajeRapido || "Espere un momento"
   detenerCarruselTimer()
   setActivaId(null); setIndiceLista(null); setIndiceActivoLista(null)
   setPartes([]); setIndex(0); limpiarModoBiblia()
   setAprendiendo(false); detenerAutoAvance()
   setEstadoEspecialActivo("✍️ Mensaje")
-  setEstadoEspData({ tipo: "mensaje", titulo: mensajeRapido || "Espere un momento", subtitulo: nombreIglesia || "" })
+  setEstadoEspData({ tipo: "mensaje", titulo: texto, subtitulo: nombreIglesia || "" })
   socket.emit("mostrar-estado", {
     tipo: "mensaje",
-    titulo: mensajeRapido || "Espere un momento",
+    titulo: texto,
     subtitulo: nombreIglesia || "",
     fondo: fondoCancionActual()
   })
@@ -3424,12 +3426,13 @@ const agregarEsperaALista = () => {
   )
 }
 
-const agregarMensajeALista = () => {
+const agregarMensajeALista = (textoOverride?: string) => {
+  const texto = textoOverride?.trim() || mensajeRapido || "Mensaje rápido"
   agregarItemAListaConFeedback(
     {
       tipo: "estado",
       modo: "mensaje",
-      titulo: mensajeRapido || "Mensaje rápido",
+      titulo: texto,
       subtitulo: nombreIglesia || ""
     },
     "✅ Mensaje agregado"
@@ -4651,11 +4654,11 @@ return (
     { nombre:"Lista guardada", ok:!!listaIdActual, detalle:listaIdActual ? "Los cambios se pueden recuperar" : "Guárdala para evitar perder el orden", accion:() => { setRevisionCultoAbierta(false); void guardarCulto() } },
     { nombre:"Nube", ok:!sinConexion, detalle:sinConexion ? "Sin nube; la operación local puede continuar" : "Datos en línea", accion:() => navegarSPA(router, "/configuracion") },
   ]
-  return <div role="dialog" aria-modal="true" aria-label="Revisión antes del culto" onMouseDown={e => { if (e.target === e.currentTarget) setRevisionCultoAbierta(false) }} style={{ position:"fixed", inset:0, zIndex:9994, background:"rgba(2,6,23,.78)", color:"white", fontFamily:"'Segoe UI', system-ui, sans-serif", backdropFilter:"blur(7px)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+  return <div role="dialog" aria-modal="true" aria-label="Revisión antes del culto" onMouseDown={e => { if (e.target === e.currentTarget) { setRevisionCultoAbierta(false); setVolverCentroTrasRevision(false) } }} style={{ position:"fixed", inset:0, zIndex:9994, background:"rgba(2,6,23,.78)", color:"white", fontFamily:"'Segoe UI', system-ui, sans-serif", backdropFilter:"blur(7px)", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
     <div style={{ width:"min(480px,100%)", borderRadius:20, border:"1px solid rgba(255,255,255,.12)", background:"#101b2e", boxShadow:"0 28px 80px rgba(0,0,0,.55)", overflow:"hidden" }}>
       <div style={{ padding:"18px 20px", borderBottom:"1px solid rgba(255,255,255,.07)", display:"flex", justifyContent:"space-between", gap:12 }}>
         <div><div style={{ fontSize:17, fontWeight:900 }}>¿Todo listo para el culto?</div><div style={{ fontSize:12, opacity:.5, marginTop:3 }}>Revisión rápida del puesto de operación</div></div>
-        <button onClick={() => setRevisionCultoAbierta(false)} aria-label="Cerrar" style={{ width:32, height:32, borderRadius:9, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"white", cursor:"pointer" }}>✕</button>
+        <button onClick={() => { setRevisionCultoAbierta(false); setVolverCentroTrasRevision(false) }} aria-label="Cerrar" style={{ width:32, height:32, borderRadius:9, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"white", cursor:"pointer" }}>✕</button>
       </div>
       <div style={{ padding:16, display:"flex", flexDirection:"column", gap:8 }}>
         {revisiones.map(r => <button key={r.nombre} onClick={r.ok ? undefined : r.accion} style={{ width:"100%", display:"flex", alignItems:"center", gap:11, textAlign:"left", padding:"11px 12px", borderRadius:12, border:`1px solid ${r.ok ? "rgba(34,197,94,.2)" : "rgba(245,158,11,.2)"}`, background:r.ok ? "rgba(34,197,94,.07)" : "rgba(245,158,11,.065)", color:"white", cursor:r.ok ? "default" : "pointer" }}>
@@ -4663,8 +4666,8 @@ return (
         </button>)}
       </div>
       <div style={{ padding:"4px 16px 16px", display:"flex", gap:8 }}>
-        <button onClick={() => setRevisionCultoAbierta(false)} style={{ flex:1, padding:11, borderRadius:11, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"white", fontWeight:750, cursor:"pointer" }}>Seguir preparando</button>
-        <button onClick={() => setRevisionCultoAbierta(false)} style={{ flex:1.35, padding:11, borderRadius:11, border:"none", background:"#2563eb", color:"white", fontWeight:850, cursor:"pointer" }}>✓ Todo listo</button>
+        <button onClick={() => { setRevisionCultoAbierta(false); if (volverCentroTrasRevision) setCentroComandosAbierto(true); setVolverCentroTrasRevision(false) }} style={{ flex:1, padding:11, borderRadius:11, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"white", fontWeight:750, cursor:"pointer" }}>Seguir editando</button>
+        <button onClick={() => { setRevisionCultoAbierta(false); setVolverCentroTrasRevision(false) }} style={{ flex:1.35, padding:11, borderRadius:11, border:"none", background:"#2563eb", color:"white", fontWeight:850, cursor:"pointer" }}>✓ Todo listo</button>
       </div>
     </div>
   </div>
@@ -5003,7 +5006,7 @@ return (
         fontSize:isMobile ? 17 : 12, fontWeight:800, cursor:"pointer", flexShrink:0,
       }}>{isMobile ? "⌕" : "⌕ Buscar  Ctrl+K"}</button>
       {!isMobile && (
-        <button type="button" onClick={() => setRevisionCultoAbierta(true)} title="Revisar que todo esté listo antes del culto" style={{
+        <button type="button" onClick={() => { setVolverCentroTrasRevision(false); setRevisionCultoAbierta(true) }} title="Revisar que todo esté listo antes del culto" style={{
           height:38, padding:"0 12px", borderRadius:10, border:"1px solid rgba(96,165,250,.3)",
           background:"rgba(37,99,235,.12)", color:"#bfdbfe", fontSize:11.5, fontWeight:800, cursor:"pointer", flexShrink:0,
         }}>✓ Revisar culto</button>
@@ -5753,7 +5756,7 @@ return (
                     <span title={item.titulo} style={{ minWidth:0, flex: 1, fontSize: 11.5, fontWeight: 650, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{item.titulo}</span>
                     <button className="ctrl-btn" disabled={!socket || item.disabled} onClick={() => item.onPlay()}
                       style={{ padding: "5px 10px", borderRadius: 7, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>▶</button>
-                    <button className="ctrl-btn" disabled={item.disabled} onClick={item.onAdd}
+                    <button className="ctrl-btn" disabled={item.disabled} onClick={() => item.onAdd()}
                       style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>+</button>
                   </div>
                 ))}
@@ -7120,11 +7123,16 @@ return (
   onAgregar={c => { void agregarALista(c) }}
   onProyectarLista={i => { void proyectarDesdeLista(i) }}
   onFavorito={alternarFavoritoControl}
+  tieneLogo={!!logoEsperaUrl.trim()}
+  onMensaje={(texto, agregar) => {
+    setMensajeRapido(texto)
+    if (agregar) agregarMensajeALista(texto)
+    else proyectarMensajeRapido(false, texto)
+  }}
   onAccion={accion => {
-    if (accion === "espera") proyectarPantallaEspera()
+    if (accion === "espera") logoEsperaUrl.trim() ? proyectarPantallaLogo() : proyectarPantallaEspera()
     else if (accion === "negro") proyectarPantallaNegra()
-    else if (accion === "mensaje") proyectarMensajeRapido()
-    else setRevisionCultoAbierta(true)
+    else { setVolverCentroTrasRevision(true); setRevisionCultoAbierta(true) }
   }}
 />
 {ayudaAtajosAbierta && <div onClick={() => setAyudaAtajosAbierta(false)} style={{ position:"fixed", inset:0, zIndex:3100, background:"rgba(2,6,23,.78)", display:"grid", placeItems:"center", padding:16 }}>

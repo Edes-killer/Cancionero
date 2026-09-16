@@ -32,3 +32,10 @@ test("el operador puede anticipar el siguiente elemento del culto", () => {
   assert.match(control, /lista\[indiceActivoLista \+ 1\]/)
 })
 
+test("las acciones rápidas conservan el contexto operativo", () => {
+  assert.match(centro, /Escribe el mensaje que verá la iglesia/)
+  assert.match(centro, /Espera con logo/)
+  assert.match(control, /volverCentroTrasRevision/)
+  assert.match(control, /Seguir editando/)
+  assert.match(control, /logoEsperaUrl\.trim\(\) \? proyectarPantallaLogo\(\) : proyectarPantallaEspera\(\)/)
+})
