@@ -419,6 +419,7 @@ export default function ControlPage() {
   const [indiceItemReordenando, setIndiceItemReordenando] = useState<number | null>(null)
   const [menuCultoAbierto, setMenuCultoAbierto] = useState<string | null>(null)
   const [mensajeFlash, setMensajeFlash] = useState("")
+  const [guardandoCulto, setGuardandoCulto] = useState(false)
   const [centroComandosAbierto, setCentroComandosAbierto] = useState(false)
   const [ayudaAtajosAbierta, setAyudaAtajosAbierta] = useState(false)
   const [favoritosControl, setFavoritosControl] = useState<string[]>(() => {
@@ -2290,8 +2291,9 @@ const itemAFila = (item: any, i: number, listaId: string) => ({
 
 
 const guardarCulto = async () => {
+  if (guardandoCulto) return
   if (sinConexion) {
-    flashCtrl("⚠️ Sin conexión con el servidor — no se puede guardar el culto en este momento. Podés seguir usando las canciones y listas ya guardadas.")
+    flashCtrl("⚠️ Sin conexión con el servidor — no se puede guardar el culto en este momento. Puedes seguir usando las canciones y listas ya guardadas.")
     return
   }
   if (lista.length === 0) {
@@ -2299,21 +2301,40 @@ const guardarCulto = async () => {
     return
   }
 
-  const mensajePrompt = listaIdActual
-    ? "Actualizar nombre del culto"
-    : "Nombre para la nueva lista de culto"
+  let nombre = nombreCulto.trim()
+  // Una lista ya guardada conserva su nombre. Renombrarla es una acción
+  // separada; guardar cambios no debe interrumpir al operador con otro modal.
+  if (!listaIdActual || !nombre) {
+    const solicitado = await pedirTexto("Nombre para la nueva lista de culto", {
+      valorInicial: nombreCulto || "",
+      placeholder: "Nombre del culto...",
+      textoOk: "Guardar"
+    })
+    if (!solicitado?.trim()) return
+    nombre = solicitado.trim()
+  }
 
-  const nombre = await pedirTexto(mensajePrompt, {
-    valorInicial: nombreCulto || "",
-    placeholder: "Nombre del culto...",
-    textoOk: "Guardar"
-  })
-  if (!nombre || !nombre.trim()) return
-
+  setGuardandoCulto(true)
+  try {
   let listaIdFinal = listaIdActual
 
   if (listaIdActual) {
     // ACTUALIZAR CULTO EXISTENTE
+    // Respaldo transitorio: Supabase REST no agrupa delete+insert en una sola
+    // transacción. Si falla la inserción, restauramos exactamente las filas
+    // anteriores para que un corte de red no deje el culto vacío.
+    const { data: respaldoItems, error: respaldoError } = await supabase
+      .from("items_lista")
+      .select("lista_id,orden,cancion_id,tipo,imagen_url,referencia_biblica,texto_biblico,estado_modo,estado_titulo,estado_subtitulo,estado_url")
+      .eq("lista_id", listaIdActual)
+      .order("orden")
+
+    if (respaldoError) {
+      logError(`No se pudo respaldar el culto antes de guardar: ${respaldoError.message}`, { tipo:"supabase", pagina:"/control" })
+      flashCtrl("No se pudo preparar el guardado. La lista anterior sigue intacta.")
+      return
+    }
+
     const { error: deleteError } = await supabase
       .from("items_lista")
       .delete()
@@ -2332,11 +2353,19 @@ const guardarCulto = async () => {
 
     if (errorInsert) {
       console.error("Error insertando items:", errorInsert)
-      flashCtrl("No se pudieron guardar todos los elementos del culto")
+      const { error: restaurarError } = respaldoItems?.length
+        ? await supabase.from("items_lista").insert(respaldoItems)
+        : { error:null }
+      if (restaurarError) {
+        logError(`Fallo crítico restaurando culto ${listaIdActual}: ${restaurarError.message}`, { tipo:"supabase", pagina:"/control" })
+        flashCtrl("❌ Falló el guardado y no se pudo restaurar la lista. Revisa el registro de errores.")
+      } else {
+        flashCtrl("⚠️ No se guardaron los cambios; la lista anterior fue restaurada.")
+      }
       return
     }
 
-    setNombreCulto(nombre.trim())
+    setNombreCulto(nombre)
     flashCtrl("✅ Lista de culto actualizada correctamente")
   } else {
     // CREAR CULTO NUEVO
@@ -2345,7 +2374,7 @@ const guardarCulto = async () => {
     const { data, error } = await supabase
       .from("listas_culto")
       .insert({
-        nombre: nombre.trim(),
+        nombre,
         iglesia_id: iglesiaId,
         fecha: new Date().toISOString().split("T")[0]  // ✅ fecha del culto (YYYY-MM-DD)
       })
@@ -2373,14 +2402,17 @@ const guardarCulto = async () => {
     }
 
     setListaIdActual(nuevaId)
-    setNombreCulto(nombre.trim())
+    setNombreCulto(nombre)
     flashCtrl("✅ Nueva lista de culto guardada correctamente")
   }
-  setNombreCulto(nombre.trim())
+  setNombreCulto(nombre)
   await cargarCultos()
 
   if (listaIdFinal) {
     await cargarListaDesdeBD(listaIdFinal)
+  }
+  } finally {
+    setGuardandoCulto(false)
   }
 }
 
@@ -6485,12 +6517,13 @@ return (
                 <button
                   className="ctrl-btn"
                   onClick={() => guardarCulto()}
+                  disabled={guardandoCulto}
                   style={{
                     flex: 1, padding: "10px 12px", borderRadius: 10, border: "none",
                     background: "#2563eb", color: "white", fontWeight: 700,
-                    fontSize: 13, cursor: "pointer"
+                    fontSize: 13, cursor: guardandoCulto ? "wait" : "pointer", opacity:guardandoCulto ? .65 : 1
                   }}
-                >💾 Guardar lista</button>
+                >{guardandoCulto ? "⏳ Guardando…" : "💾 Guardar lista"}</button>
 
                 <button
                   className="ctrl-btn"
@@ -7037,9 +7070,10 @@ return (
               {hayCambiosCulto ? "● Cambios sin guardar" : "✓ Culto guardado al día"}
             </div>
             <div style={{ display: "flex", gap: 6 }}>
-              <button className="ctrl-btn" onClick={guardarCulto}
-                style={{ padding: "5px 10px", borderRadius: 8, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
-                💾
+              <button className="ctrl-btn" onClick={guardarCulto} disabled={guardandoCulto}
+                title={guardandoCulto ? "Guardando cambios…" : "Guardar cambios del culto"}
+                style={{ padding: "5px 10px", borderRadius: 8, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 12, cursor: guardandoCulto ? "wait" : "pointer", opacity:guardandoCulto ? .6 : 1 }}>
+                {guardandoCulto ? "…" : "💾"}
               </button>
               <button className="ctrl-btn" onClick={guardarCultoComoCopia}
                 style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
@@ -7157,13 +7191,13 @@ return (
 
         {lista.length > 0 && (
           <div style={{ padding: isMobile ? "10px 12px 14px" : "10px 14px 16px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-            <button className="ctrl-btn" onClick={guardarCulto} style={{
+            <button className="ctrl-btn" onClick={guardarCulto} disabled={guardandoCulto} style={{
               width: "100%", padding: "12px", borderRadius: 12, border: "none",
               background: listaIdActual ? "#2563eb" : "rgba(37,99,235,0.85)",
-              color: "white", fontWeight: 800, fontSize: 14, cursor: "pointer",
+              color: "white", fontWeight: 800, fontSize: 14, cursor: guardandoCulto ? "wait" : "pointer", opacity:guardandoCulto ? .65 : 1,
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8
             }}>
-              💾 {listaIdActual ? (hayCambiosCulto ? "Guardar cambios" : "Culto guardado") : "Guardar lista de culto"}
+              {guardandoCulto ? "⏳ Guardando…" : `💾 ${listaIdActual ? (hayCambiosCulto ? "Guardar cambios" : "Culto guardado") : "Guardar lista de culto"}`}
             </button>
           </div>
         )}

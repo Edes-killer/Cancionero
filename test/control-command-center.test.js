@@ -114,3 +114,15 @@ test("Enter proyecta y Shift Enter agrega contenido a la lista", () => {
   assert.match(centro, /agregar:\(\) => onAgregar\(c\)/)
   assert.match(centro, /Shift\+↵ agregar a lista/)
 })
+
+test("guardar un culto existente es directo y recuperable ante fallos", () => {
+  const inicio = control.indexOf("const guardarCulto = async")
+  const fin = control.indexOf("const guardarCultoComoCopia", inicio)
+  const guardar = control.slice(inicio, fin)
+  assert.match(guardar, /if \(!listaIdActual \|\| !nombre\)/)
+  assert.doesNotMatch(guardar, /Actualizar nombre del culto/)
+  assert.match(guardar, /respaldoItems/)
+  assert.match(guardar, /lista anterior fue restaurada/)
+  assert.match(guardar, /setGuardandoCulto\(true\)/)
+  assert.match(guardar, /finally[\s\S]*setGuardandoCulto\(false\)/)
+})
