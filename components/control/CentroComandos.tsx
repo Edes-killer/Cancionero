@@ -47,6 +47,14 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
     setMensajeAbierto(false)
     setBibliaAbierta(false)
     requestAnimationFrame(() => inputRef.current?.focus())
+    const cerrarConEscape = (e: KeyboardEvent) => { if (e.key === "Escape") onCerrar() }
+    document.addEventListener("keydown", cerrarConEscape)
+    const overflowAnterior = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.removeEventListener("keydown", cerrarConEscape)
+      document.body.style.overflow = overflowAnterior
+    }
   }, [abierto])
 
   const resultados = useMemo(() => {

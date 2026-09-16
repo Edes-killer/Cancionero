@@ -22,7 +22,7 @@ test("favoritas y recientes quedan disponibles sin saturar Control móvil", () =
 
 test("las ediciones de la lista se pueden deshacer antes de guardar", () => {
   assert.match(control, /DESHACER/)
-  assert.match(control, /setLista\(deshacerLista\.items\)/)
+  assert.match(control, /setLista\(anterior\.items\)/)
   const bloqueEliminar = control.slice(control.indexOf("const eliminarDeLista"), control.indexOf("const itemAFila"))
   assert.doesNotMatch(bloqueEliminar, /from\("items_lista"\)/)
 })
@@ -71,4 +71,12 @@ test("las acciones rápidas incluyen Palabra y guardado del culto", () => {
   assert.match(centro, /onBiblia\(referenciaBiblia\.trim\(\), false\)/)
   assert.match(centro, /onAccion\("guardar"\)/)
   assert.match(control, /accion === "guardar"\) guardarCultoRef\.current\(\)/)
+})
+
+test("deshacer funciona por botón y Ctrl Z; Escape cierra el buscador", () => {
+  assert.match(control, /e\.key\.toLowerCase\(\) === "z"/)
+  assert.match(control, /const ejecutarDeshacerLista/)
+  assert.match(control, /onClick=\{ejecutarDeshacerLista\}/)
+  assert.match(centro, /document\.addEventListener\("keydown", cerrarConEscape\)/)
+  assert.match(centro, /document\.body\.style\.overflow = "hidden"/)
 })

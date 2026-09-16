@@ -434,6 +434,20 @@ export default function ControlPage() {
   })
   const [deshacerLista, setDeshacerLista] = useState<{ items: ItemLista[]; activo: number | null; mensaje: string } | null>(null)
   const deshacerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const deshacerListaRef = useRef(deshacerLista)
+  useEffect(() => { deshacerListaRef.current = deshacerLista }, [deshacerLista])
+  const ejecutarDeshacerLista = () => {
+    const anterior = deshacerListaRef.current
+    if (!anterior) return
+    setLista(anterior.items)
+    setIndiceActivoLista(anterior.activo)
+    setIndiceLista(anterior.activo)
+    setDeshacerLista(null)
+    deshacerListaRef.current = null
+    if (deshacerTimerRef.current) clearTimeout(deshacerTimerRef.current)
+    setMensajeFlash("↩️ Cambio deshecho")
+    setTimeout(() => setMensajeFlash(""), 1600)
+  }
   const [flashListaCulto, setFlashListaCulto] = useState(false)
   const [idsCancionesConAcordes, setIdsCancionesConAcordes] = useState<string[]>([])
   const [cargandoControl, setCargandoControl] = useState(true)
@@ -2121,6 +2135,9 @@ useEffect(() => {
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
       e.preventDefault(); guardarCultoRef.current(); return
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && deshacerListaRef.current) {
+      e.preventDefault(); ejecutarDeshacerLista(); return
     }
     if (e.key === "?" && !(e.target as HTMLElement)?.matches?.("input,textarea")) {
       e.preventDefault(); setAyudaAtajosAbierta(v => !v); return
@@ -4992,14 +5009,7 @@ return (
 {deshacerLista && (
   <div style={{ position:"fixed", left:"50%", bottom:isMobile ? 76 : 24, transform:"translateX(-50%)", zIndex:2200, width:"min(430px,calc(100vw - 24px))", padding:"10px 11px 10px 14px", borderRadius:13, background:"rgba(15,23,42,.98)", border:"1px solid rgba(148,163,184,.3)", boxShadow:"0 18px 50px rgba(0,0,0,.55)", display:"flex", alignItems:"center", gap:12 }}>
     <span style={{ flex:1, minWidth:0, fontSize:12.5, color:"#e2e8f0", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{deshacerLista.mensaje}</span>
-    <button onClick={() => {
-      setLista(deshacerLista.items)
-      setIndiceActivoLista(deshacerLista.activo)
-      setIndiceLista(deshacerLista.activo)
-      setDeshacerLista(null)
-      if (deshacerTimerRef.current) clearTimeout(deshacerTimerRef.current)
-      mostrarFeedbackLista("↩️ Cambio deshecho")
-    }} style={{ border:0, borderRadius:8, padding:"7px 11px", background:"#2563eb", color:"white", fontSize:12, fontWeight:850, cursor:"pointer" }}>DESHACER</button>
+    <button onClick={ejecutarDeshacerLista} style={{ border:0, borderRadius:8, padding:"7px 11px", background:"#2563eb", color:"white", fontSize:12, fontWeight:850, cursor:"pointer" }}>DESHACER <span style={{ opacity:.65, fontSize:10 }}>Ctrl+Z</span></button>
   </div>
 )}
 
@@ -7199,7 +7209,7 @@ return (
 {ayudaAtajosAbierta && <div onClick={() => setAyudaAtajosAbierta(false)} style={{ position:"fixed", inset:0, zIndex:3100, background:"rgba(2,6,23,.78)", display:"grid", placeItems:"center", padding:16 }}>
   <div onClick={e => e.stopPropagation()} style={{ width:"min(460px,100%)", borderRadius:18, padding:20, background:"#111c30", border:"1px solid rgba(148,163,184,.2)", boxShadow:"0 25px 70px rgba(0,0,0,.6)" }}>
     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}><strong style={{ fontSize:18 }}>⌨️ Atajos del Control</strong><button onClick={() => setAyudaAtajosAbierta(false)} style={{ border:0, background:"transparent", color:"white", fontSize:20, cursor:"pointer" }}>×</button></div>
-    {[["Ctrl + K","Buscar canción o acción"],["Ctrl + S","Guardar o actualizar el culto"],["→ / Espacio","Siguiente parte"],["←","Parte anterior"],["+ / −","Cambiar tamaño de letra"],["?","Abrir o cerrar esta ayuda"]].map(([tecla, desc]) => <div key={tecla} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 0", borderBottom:"1px solid rgba(255,255,255,.06)" }}><kbd style={{ minWidth:92, textAlign:"center", padding:"6px 8px", borderRadius:7, background:"rgba(255,255,255,.08)", color:"#bfdbfe", fontWeight:800 }}>{tecla}</kbd><span style={{ color:"#cbd5e1" }}>{desc}</span></div>)}
+    {[["Ctrl + K","Buscar canción o acción"],["Ctrl + S","Guardar o actualizar el culto"],["Ctrl + Z","Deshacer el último cambio de la lista"],["→ / Espacio","Siguiente parte"],["←","Parte anterior"],["+ / −","Cambiar tamaño de letra"],["?","Abrir o cerrar esta ayuda"]].map(([tecla, desc]) => <div key={tecla} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 0", borderBottom:"1px solid rgba(255,255,255,.06)" }}><kbd style={{ minWidth:92, textAlign:"center", padding:"6px 8px", borderRadius:7, background:"rgba(255,255,255,.08)", color:"#bfdbfe", fontWeight:800 }}>{tecla}</kbd><span style={{ color:"#cbd5e1" }}>{desc}</span></div>)}
   </div>
 </div>}
 <OnboardingTour
