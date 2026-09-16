@@ -89,3 +89,11 @@ test("el centro de comandos navega resultados heterogéneos con teclado", () => 
   assert.match(centro, /claveSeleccionada/)
   assert.match(centro, /↑↓ seleccionar/)
 })
+
+test("la búsqueda universal encuentra letras y mantiene visible la selección", () => {
+  assert.match(centro, /c\.texto_busqueda/)
+  assert.match(centro, /c\.categoria/)
+  assert.match(centro, /const fragmentoLetra/)
+  assert.match(centro, /scrollIntoView\(\{ block:"nearest" \}\)/)
+  assert.match(centro, /data-comando-clave/)
+})
