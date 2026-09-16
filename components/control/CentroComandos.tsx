@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 type CancionComando = { id: string; titulo: string; tono?: string; numero?: number }
 type ItemComando = { titulo?: string; tipo?: string }
 type RecursoComando = { url: string; nombre: string; local: boolean; carpeta: string; video: boolean }
+type CultoComando = { id: string; nombre?: string; fecha?: string }
 
 interface Props {
   abierto: boolean
@@ -13,12 +14,15 @@ interface Props {
   favoritos: string[]
   recientes: string[]
   recursos: RecursoComando[]
+  cultos: CultoComando[]
+  cultoActivoId: string | null
   onCerrar: () => void
   onProyectar: (id: string) => void
   onAgregar: (cancion: CancionComando) => void
   onProyectarLista: (indice: number) => void
   onFavorito: (id: string) => void
   onRecurso: (recurso: RecursoComando, agregar: boolean) => void
+  onAbrirCulto: (id: string) => Promise<boolean>
   tieneLogo: boolean
   onMensaje: (texto: string, agregar: boolean) => void
   onAccion: (accion: "espera" | "negro" | "revision") => void
@@ -26,7 +30,7 @@ interface Props {
 
 const normalizar = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
 
-export default function CentroComandos({ abierto, canciones, lista, favoritos, recientes, recursos, tieneLogo, onCerrar, onProyectar, onAgregar, onProyectarLista, onFavorito, onRecurso, onMensaje, onAccion }: Props) {
+export default function CentroComandos({ abierto, canciones, lista, favoritos, recientes, recursos, cultos, cultoActivoId, tieneLogo, onCerrar, onProyectar, onAgregar, onProyectarLista, onFavorito, onRecurso, onAbrirCulto, onMensaje, onAccion }: Props) {
   const [q, setQ] = useState("")
   const [vista, setVista] = useState<"sugeridas" | "favoritas" | "recientes">("sugeridas")
   const [mensajeAbierto, setMensajeAbierto] = useState(false)
@@ -58,6 +62,11 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
     if (!nq) return []
     return recursos.filter(r => normalizar(`${r.nombre} ${r.carpeta || ""} ${r.video ? "video" : "imagen"}`).includes(nq)).slice(0, 6)
   }, [q, recursos])
+  const cultosEncontrados = useMemo(() => {
+    const nq = normalizar(q.trim())
+    if (!nq) return []
+    return cultos.filter(c => normalizar(c.nombre || "Sin nombre").includes(nq)).slice(0, 5)
+  }, [q, cultos])
 
   if (!abierto) return null
   return (
@@ -104,6 +113,12 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
           {q && lista.map((it, i) => ({...it, i})).filter(it => normalizar(it.titulo || "").includes(normalizar(q))).slice(0,4).map(it => (
             <button key={`lista-${it.i}`} onClick={() => { onProyectarLista(it.i); onCerrar() }} style={{ width:"100%", display:"flex", gap:10, alignItems:"center", textAlign:"left", padding:"10px 12px", marginBottom:5, borderRadius:10, border:"1px solid rgba(34,197,94,.2)", background:"rgba(34,197,94,.07)", color:"white", cursor:"pointer" }}><span>📋</span><span style={{ flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{it.titulo || "Elemento del culto"}</span><small style={{ color:"#86efac" }}>En la lista · Proyectar</small></button>
           ))}
+          {q && cultosEncontrados.length > 0 && <>
+            <div style={{ padding:"7px 8px 5px", color:"#64748b", fontSize:10, fontWeight:900, letterSpacing:1 }}>CULTOS GUARDADOS</div>
+            {cultosEncontrados.map(c => <button key={c.id} onClick={async () => { if (await onAbrirCulto(c.id)) onCerrar() }} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, textAlign:"left", padding:"10px 12px", marginBottom:4, borderRadius:10, border:`1px solid ${c.id === cultoActivoId ? "rgba(96,165,250,.38)" : "rgba(255,255,255,.08)"}`, background:c.id === cultoActivoId ? "rgba(37,99,235,.13)" : "rgba(255,255,255,.035)", color:"white", cursor:"pointer" }}>
+              <span>📂</span><span style={{ flex:1, minWidth:0 }}><b style={{ display:"block", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c.nombre || "Sin nombre"}</b>{c.fecha && <small style={{ color:"#94a3b8" }}>{new Date(c.fecha).toLocaleDateString("es-CL")}</small>}</span><small style={{ color:c.id === cultoActivoId ? "#93c5fd" : "#94a3b8" }}>{c.id === cultoActivoId ? "ABIERTO" : "Abrir"}</small>
+            </button>)}
+          </>}
           {q && recursosEncontrados.length > 0 && <>
             <div style={{ padding:"7px 8px 5px", color:"#64748b", fontSize:10, fontWeight:900, letterSpacing:1 }}>GALERÍA</div>
             {recursosEncontrados.map(r => <div className="selah-centro-fila" key={r.url} style={{ alignItems:"center", gap:8, padding:"7px 8px", borderRadius:11, background:"rgba(168,85,247,.055)", marginBottom:4 }}>
@@ -129,7 +144,7 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
               <button onClick={() => { onProyectar(c.id); onCerrar() }} title="Proyectar ahora" style={{ width:38, height:36, borderRadius:9, border:0, background:"#2563eb", color:"white", cursor:"pointer" }}>▶</button>
             </div>
           })}
-          {!resultados.length && !recursosEncontrados.length && <div style={{ padding:28, textAlign:"center", color:"#94a3b8" }}>{q ? `No encontré canciones ni recursos con “${q}”.` : vista === "favoritas" ? "Todavía no has marcado canciones favoritas." : "Todavía no hay canciones recientes."}</div>}
+          {!resultados.length && !recursosEncontrados.length && !cultosEncontrados.length && <div style={{ padding:28, textAlign:"center", color:"#94a3b8" }}>{q ? `No encontré canciones, recursos ni cultos con “${q}”.` : vista === "favoritas" ? "Todavía no has marcado canciones favoritas." : "Todavía no hay canciones recientes."}</div>}
         </div>
         <div className="selah-centro-pie" style={{ gap:12, padding:"9px 14px", borderTop:"1px solid rgba(255,255,255,.07)", color:"#64748b", fontSize:10 }}><span>↵ proyectar primera</span><span>★ favorita</span><span>+ Lista prepara sin proyectar</span></div>
       </div>

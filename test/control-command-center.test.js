@@ -56,3 +56,11 @@ test("el buscador universal encuentra y opera recursos de Galería", () => {
   assert.match(control, /proyectarMediaDesdeGaleria/)
   assert.match(control, /selah-galeria-cache-/)
 })
+
+test("el buscador abre cultos sin perder cambios silenciosamente", () => {
+  assert.match(centro, /CULTOS GUARDADOS/)
+  assert.match(centro, /cultosEncontrados/)
+  assert.match(control, /const abrirCultoGuardado/)
+  assert.match(control, /Hay cambios sin guardar en el culto actual/)
+  assert.match(control, /if \(!ok\) return false/)
+})

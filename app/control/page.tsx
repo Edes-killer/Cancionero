@@ -2687,6 +2687,19 @@ const cargarListaDesdeBD = async (id: string) => {
   if (typeof window !== "undefined") localStorage.removeItem(STORAGE_KEY)
 }
 
+const abrirCultoGuardado = async (id: string) => {
+  if (id === listaIdActual) return true
+  if (hayCambiosCulto) {
+    const ok = await confirmar(
+      "Hay cambios sin guardar en el culto actual. Si abres otra lista, esos cambios se perderán.",
+      { textoOk:"Abrir de todos modos", peligro:true }
+    )
+    if (!ok) return false
+  }
+  await cargarListaDesdeBD(id)
+  return true
+}
+
 
 const irAItemLista = async (i: number, alFinal = false) => {
   if (!socket) return
@@ -6674,7 +6687,7 @@ return (
                 <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                   <button
                     className="ctrl-btn"
-                    onClick={() => { setMenuCultoAbierto(null); cargarListaDesdeBD(c.id) }}
+                    onClick={() => { setMenuCultoAbierto(null); void abrirCultoGuardado(c.id) }}
                     style={{
                       padding: "7px 10px", borderRadius: 9, border: "none",
                       background: "#2563eb", color: "white", fontWeight: 700,
@@ -7156,12 +7169,15 @@ return (
   favoritos={favoritosControl}
   recientes={recientesControl}
   recursos={galeriaImagenes.map(img => ({ ...img, video:esUrlVideo(img.url) }))}
+  cultos={cultos}
+  cultoActivoId={listaIdActual}
   onCerrar={() => setCentroComandosAbierto(false)}
   onProyectar={id => { void proyectar(id) }}
   onAgregar={c => { void agregarALista(c) }}
   onProyectarLista={i => { void proyectarDesdeLista(i) }}
   onFavorito={alternarFavoritoControl}
   onRecurso={(recurso, agregar) => agregar ? agregarMediaDesdeGaleria(recurso) : proyectarMediaDesdeGaleria(recurso)}
+  onAbrirCulto={abrirCultoGuardado}
   tieneLogo={!!logoEsperaUrl.trim()}
   onMensaje={(texto, agregar) => {
     setMensajeRapido(texto)
