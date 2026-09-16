@@ -4,6 +4,7 @@
 import BibleAutocomplete from "@/components/BibleAutocomplete"
 import OnboardingTour from "@/components/OnboardingTour"
 import EstadoOperativo from "@/components/ui/EstadoOperativo"
+import CentroComandos from "@/components/control/CentroComandos"
 import { TOUR_CONTROL, TOUR_CONTROL_MOBILE } from "@/lib/tours"
 
 import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -411,6 +412,16 @@ export default function ControlPage() {
   const [indiceItemReordenando, setIndiceItemReordenando] = useState<number | null>(null)
   const [menuCultoAbierto, setMenuCultoAbierto] = useState<string | null>(null)
   const [mensajeFlash, setMensajeFlash] = useState("")
+  const [centroComandosAbierto, setCentroComandosAbierto] = useState(false)
+  const [ayudaAtajosAbierta, setAyudaAtajosAbierta] = useState(false)
+  const [favoritosControl, setFavoritosControl] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("selah-control-favoritos") || "[]") } catch { return [] }
+  })
+  const [recientesControl, setRecientesControl] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("selah-control-recientes") || "[]") } catch { return [] }
+  })
+  const [deshacerLista, setDeshacerLista] = useState<{ items: ItemLista[]; activo: number | null; mensaje: string } | null>(null)
+  const deshacerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [flashListaCulto, setFlashListaCulto] = useState(false)
   const [idsCancionesConAcordes, setIdsCancionesConAcordes] = useState<string[]>([])
   const [cargandoControl, setCargandoControl] = useState(true)
@@ -1658,6 +1669,11 @@ const proyectar = async (id: string, destinoConfirmado = false) => {
   }
 
   setActivaId(id)
+  setRecientesControl(prev => {
+    const nueva = [id, ...prev.filter(x => x !== id)].slice(0, 12)
+    try { localStorage.setItem("selah-control-recientes", JSON.stringify(nueva)) } catch {}
+    return nueva
+  })
   requestAnimationFrame(() => {
     centrarCancionEnLista(id)
   })
@@ -2087,6 +2103,12 @@ const cambiarZoom = useCallback((delta: number) => {
 // No se disparan si estás escribiendo en el buscador (input/textarea).
 useEffect(() => {
   const onKey = (e: KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault(); setCentroComandosAbierto(v => !v); return
+    }
+    if (e.key === "?" && !(e.target as HTMLElement)?.matches?.("input,textarea")) {
+      e.preventDefault(); setAyudaAtajosAbierta(v => !v); return
+    }
     const t = e.target as HTMLElement
     const escribiendo = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
     if (escribiendo) return
@@ -2153,6 +2175,10 @@ const mostrarFeedbackLista = (mensaje: string) => {
 const moverItemLista = (from: number, to: number) => {
   if (from === to || from < 0 || to < 0) return
 
+  if (deshacerTimerRef.current) clearTimeout(deshacerTimerRef.current)
+  setDeshacerLista({ items: [...lista], activo: indiceActivoLista, mensaje: "Orden de la lista modificado" })
+  deshacerTimerRef.current = setTimeout(() => setDeshacerLista(null), 8000)
+
   setLista(prev => {
     const nueva = [...prev]
     const [movido] = nueva.splice(from, 1)
@@ -2197,6 +2223,10 @@ const bajarItemLista = (i: number) => {
 
 const eliminarDeLista = async (index: number) => {
   const item = lista[index]
+
+  if (deshacerTimerRef.current) clearTimeout(deshacerTimerRef.current)
+  setDeshacerLista({ items: [...lista], activo: indiceActivoLista, mensaje: `Se quitó “${item?.titulo || "elemento"}”` })
+  deshacerTimerRef.current = setTimeout(() => setDeshacerLista(null), 8000)
 
   setLista(prev => prev.filter((_, i) => i !== index))
   setIndiceItemReordenando(prev => prev === index ? null : prev !== null && prev > index ? prev - 1 : prev)
@@ -4912,6 +4942,19 @@ return (
     pointerEvents: "none"
   }}>{mensajeFlash}</div>
 )}
+{deshacerLista && (
+  <div style={{ position:"fixed", left:"50%", bottom:isMobile ? 76 : 24, transform:"translateX(-50%)", zIndex:2200, width:"min(430px,calc(100vw - 24px))", padding:"10px 11px 10px 14px", borderRadius:13, background:"rgba(15,23,42,.98)", border:"1px solid rgba(148,163,184,.3)", boxShadow:"0 18px 50px rgba(0,0,0,.55)", display:"flex", alignItems:"center", gap:12 }}>
+    <span style={{ flex:1, minWidth:0, fontSize:12.5, color:"#e2e8f0", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{deshacerLista.mensaje}</span>
+    <button onClick={() => {
+      setLista(deshacerLista.items)
+      setIndiceActivoLista(deshacerLista.activo)
+      setIndiceLista(deshacerLista.activo)
+      setDeshacerLista(null)
+      if (deshacerTimerRef.current) clearTimeout(deshacerTimerRef.current)
+      mostrarFeedbackLista("↩️ Cambio deshecho")
+    }} style={{ border:0, borderRadius:8, padding:"7px 11px", background:"#2563eb", color:"white", fontSize:12, fontWeight:850, cursor:"pointer" }}>DESHACER</button>
+  </div>
+)}
 
 <div style={{
   height: isMobile && alturaVP ? `${alturaVP - 52}px` : "calc(100dvh - 52px)",
@@ -4960,6 +5003,11 @@ return (
           </div>
         )}
       </div>
+      <button type="button" onClick={() => setCentroComandosAbierto(true)} title="Buscar canciones y ejecutar acciones rápidas (Ctrl+K)" style={{
+        height:isMobile ? 40 : 38, padding:isMobile ? "0 10px" : "0 12px", borderRadius:10,
+        border:"1px solid rgba(148,163,184,.2)", background:"rgba(255,255,255,.055)", color:"#dbeafe",
+        fontSize:isMobile ? 17 : 12, fontWeight:800, cursor:"pointer", flexShrink:0,
+      }}>{isMobile ? "⌕" : "⌕ Buscar  Ctrl+K"}</button>
       {!isMobile && (
         <button type="button" onClick={() => setRevisionCultoAbierta(true)} title="Revisar que todo esté listo antes del culto" style={{
           height:38, padding:"0 12px", borderRadius:10, border:"1px solid rgba(96,165,250,.3)",
@@ -7023,8 +7071,8 @@ return (
                 {/* Menú expandido */}
                 {menuItemAbierto === i && (
                   <div style={{ width: "100%", display: "flex", justifyContent:"flex-end" }}>
-                    <button className="ctrl-btn"
-                      onClick={async () => { if (await confirmar("¿Eliminar este elemento?", { textoOk: "Eliminar", peligro: true })) { eliminarDeLista(i); setMenuItemAbierto(null) } }}
+                    <button className="ctrl-btn" data-ayuda="Quita este elemento. Tendrás 8 segundos para deshacer la acción."
+                      onClick={() => { void eliminarDeLista(i); setMenuItemAbierto(null) }}
                       style={{ padding:"8px 14px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.15)", color: "#fca5a5", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>🗑️ Eliminar de la lista</button>
                   </div>
                 )}
@@ -7050,6 +7098,34 @@ return (
     </div>
   </div>
 </div></div>
+<CentroComandos
+  abierto={centroComandosAbierto}
+  canciones={canciones}
+  lista={lista}
+  favoritos={favoritosControl}
+  recientes={recientesControl}
+  onCerrar={() => setCentroComandosAbierto(false)}
+  onProyectar={id => { void proyectar(id) }}
+  onAgregar={c => { void agregarALista(c) }}
+  onProyectarLista={i => { void proyectarDesdeLista(i) }}
+  onFavorito={id => setFavoritosControl(prev => {
+    const nueva = prev.includes(id) ? prev.filter(x => x !== id) : [id, ...prev]
+    try { localStorage.setItem("selah-control-favoritos", JSON.stringify(nueva)) } catch {}
+    return nueva
+  })}
+  onAccion={accion => {
+    if (accion === "espera") proyectarPantallaEspera()
+    else if (accion === "negro") proyectarPantallaNegra()
+    else if (accion === "mensaje") proyectarMensajeRapido()
+    else setRevisionCultoAbierta(true)
+  }}
+/>
+{ayudaAtajosAbierta && <div onClick={() => setAyudaAtajosAbierta(false)} style={{ position:"fixed", inset:0, zIndex:3100, background:"rgba(2,6,23,.78)", display:"grid", placeItems:"center", padding:16 }}>
+  <div onClick={e => e.stopPropagation()} style={{ width:"min(460px,100%)", borderRadius:18, padding:20, background:"#111c30", border:"1px solid rgba(148,163,184,.2)", boxShadow:"0 25px 70px rgba(0,0,0,.6)" }}>
+    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}><strong style={{ fontSize:18 }}>⌨️ Atajos del Control</strong><button onClick={() => setAyudaAtajosAbierta(false)} style={{ border:0, background:"transparent", color:"white", fontSize:20, cursor:"pointer" }}>×</button></div>
+    {[["Ctrl + K","Buscar canción o acción"],["→ / Espacio","Siguiente parte"],["←","Parte anterior"],["+ / −","Cambiar tamaño de letra"],["?","Abrir o cerrar esta ayuda"]].map(([tecla, desc]) => <div key={tecla} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 0", borderBottom:"1px solid rgba(255,255,255,.06)" }}><kbd style={{ minWidth:92, textAlign:"center", padding:"6px 8px", borderRadius:7, background:"rgba(255,255,255,.08)", color:"#bfdbfe", fontWeight:800 }}>{tecla}</kbd><span style={{ color:"#cbd5e1" }}>{desc}</span></div>)}
+  </div>
+</div>}
 <OnboardingTour
   id={isMobile ? "tour-control-mobile-v2" : "tour-control"}
   pasos={isMobile ? TOUR_CONTROL_MOBILE : TOUR_CONTROL}
