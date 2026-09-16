@@ -81,17 +81,31 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
     if (!nq) return []
     return cultos.filter(c => normalizar(c.nombre || "Sin nombre").includes(nq)).slice(0, 5)
   }, [q, cultos])
+  const comandosEncontrados = useMemo(() => {
+    const nq = normalizar(q.trim())
+    if (!nq) return []
+    const comandos: Array<{ id:string; icono:string; nombre:string; detalle:string; palabras:string; ejecutar:() => void | boolean }> = [
+      { id:"mensaje", icono:"💬", nombre:"Escribir mensaje", detalle:"Mostrar un aviso o agregarlo al culto", palabras:"mensaje aviso texto escribir", ejecutar:() => { setQ(""); setBibliaAbierta(false); setMensajeAbierto(true); return false } },
+      { id:"palabra", icono:"📖", nombre:"Buscar Palabra", detalle:"Proyectar o agregar una cita bíblica", palabras:"palabra biblia versiculo cita", ejecutar:() => { setQ(""); setMensajeAbierto(false); setBibliaAbierta(true); return false } },
+      { id:"espera", icono:"⏳", nombre:tieneLogo ? "Espera con logo" : "Pantalla de espera", detalle:"Mostrar una pausa preparada", palabras:"espera logo pausa intermedio", ejecutar:() => onAccion("espera") },
+      { id:"apagar", icono:"⚫", nombre:"Apagar pantalla", detalle:"Mostrar el fondo de descanso", palabras:"apagar negro descanso pantalla", ejecutar:() => onAccion("negro") },
+      { id:"revisar", icono:"✓", nombre:"Revisar culto", detalle:"Comprobar conexión, proyector y lista", palabras:"revisar comprobar listo culto", ejecutar:() => onAccion("revision") },
+      { id:"guardar", icono:"💾", nombre:"Guardar culto", detalle:"Guardar o actualizar la lista", palabras:"guardar actualizar culto lista", ejecutar:() => onAccion("guardar") },
+    ]
+    return comandos.filter(c => normalizar(`${c.nombre} ${c.palabras}`).includes(nq))
+  }, [q, tieneLogo, onAccion])
   const itemsEncontrados = useMemo(() => {
     const nq = normalizar(q.trim())
     if (!nq) return []
     return lista.map((item, indice) => ({ item, indice })).filter(x => normalizar(x.item.titulo || "").includes(nq)).slice(0, 4)
   }, [q, lista])
   const opcionesTeclado = useMemo<Array<{ clave:string; ejecutar:() => void | boolean | Promise<void | boolean> }>>(() => [
+    ...comandosEncontrados.map(c => ({ clave:`comando-${c.id}`, ejecutar:c.ejecutar })),
     ...itemsEncontrados.map(x => ({ clave:`lista-${x.indice}`, ejecutar:() => onProyectarLista(x.indice) })),
     ...cultosEncontrados.map(c => ({ clave:`culto-${c.id}`, ejecutar:() => onAbrirCulto(c.id) })),
     ...recursosEncontrados.map(r => ({ clave:`recurso-${r.url}`, ejecutar:() => onRecurso(r, false) })),
     ...resultados.map(c => ({ clave:`cancion-${c.id}`, ejecutar:() => onProyectar(c.id) })),
-  ], [itemsEncontrados, cultosEncontrados, recursosEncontrados, resultados, onProyectarLista, onAbrirCulto, onRecurso, onProyectar])
+  ], [comandosEncontrados, itemsEncontrados, cultosEncontrados, recursosEncontrados, resultados, onProyectarLista, onAbrirCulto, onRecurso, onProyectar])
   const claveSeleccionada = opcionesTeclado[Math.min(seleccion, Math.max(0, opcionesTeclado.length - 1))]?.clave
 
   useEffect(() => { setSeleccion(0) }, [q, vista])
@@ -149,7 +163,7 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
             else if (e.key === "ArrowDown") { e.preventDefault(); setSeleccion(i => Math.min(Math.max(0, opcionesTeclado.length - 1), i + 1)) }
             else if (e.key === "ArrowUp") { e.preventDefault(); setSeleccion(i => Math.max(0, i - 1)) }
             else if (e.key === "Enter") { e.preventDefault(); void ejecutarSeleccion() }
-          }} placeholder="Busca canciones, cultos o recursos…" style={{ flex:1, minWidth:0, border:0, outline:0, background:"transparent", color:"white", fontSize:17, fontWeight:650 }} />
+          }} placeholder="Busca contenido o escribe una acción…" style={{ flex:1, minWidth:0, border:0, outline:0, background:"transparent", color:"white", fontSize:17, fontWeight:650 }} />
           <kbd style={{ padding:"4px 7px", borderRadius:6, background:"rgba(255,255,255,.07)", color:"#94a3b8", fontSize:11 }}>ESC</kbd>
         </div>
 
@@ -179,6 +193,10 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
         </div>}
 
         <div ref={resultadosRef} style={{ overflowY:"auto", maxHeight:"55vh", padding:10 }}>
+          {q && comandosEncontrados.length > 0 && <>
+            <div style={{ padding:"5px 8px", color:"#64748b", fontSize:10, fontWeight:900, letterSpacing:1 }}>ACCIONES</div>
+            {comandosEncontrados.map(c => <button key={c.id} data-comando-clave={`comando-${c.id}`} onMouseEnter={() => seleccionarClave(`comando-${c.id}`)} onClick={async () => { const resultado = await c.ejecutar(); if (resultado !== false) onCerrar() }} style={{ width:"100%", display:"flex", alignItems:"center", gap:10, textAlign:"left", padding:"9px 11px", marginBottom:4, borderRadius:10, border:`1px solid ${claveSeleccionada === `comando-${c.id}` ? "#60a5fa" : "rgba(96,165,250,.15)"}`, background:claveSeleccionada === `comando-${c.id}` ? "rgba(37,99,235,.16)" : "rgba(37,99,235,.055)", color:"white", cursor:"pointer" }}><span style={{ fontSize:17 }}>{c.icono}</span><span style={{ flex:1 }}><b style={{ display:"block", fontSize:12.5 }}>{c.nombre}</b><small style={{ color:"#94a3b8" }}>{c.detalle}</small></span><span style={{ color:"#64748b" }}>↵</span></button>)}
+          </>}
           {q && itemsEncontrados.map(({item:it, indice:i}) => (
             <button key={`lista-${i}`} data-comando-clave={`lista-${i}`} onMouseEnter={() => seleccionarClave(`lista-${i}`)} onClick={() => { onProyectarLista(i); onCerrar() }} style={{ width:"100%", display:"flex", gap:10, alignItems:"center", textAlign:"left", padding:"10px 12px", marginBottom:5, borderRadius:10, border:`1px solid ${claveSeleccionada === `lista-${i}` ? "#60a5fa" : "rgba(34,197,94,.2)"}`, background:claveSeleccionada === `lista-${i}` ? "rgba(37,99,235,.16)" : "rgba(34,197,94,.07)", color:"white", cursor:"pointer" }}><span>📋</span><span style={{ flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{it.titulo || "Elemento del culto"}</span><small style={{ color:"#86efac" }}>En la lista · Proyectar</small></button>
           ))}
@@ -215,7 +233,7 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
               <button onClick={() => { onProyectar(c.id); onCerrar() }} title="Proyectar ahora" style={{ width:38, height:36, borderRadius:9, border:0, background:"#2563eb", color:"white", cursor:"pointer" }}>▶</button>
             </div>
           })}
-          {!resultados.length && !recursosEncontrados.length && !cultosEncontrados.length && <div style={{ padding:28, textAlign:"center", color:"#94a3b8" }}>{q ? `No encontré canciones, recursos ni cultos con “${q}”.` : vista === "favoritas" ? "Todavía no has marcado canciones favoritas." : "Todavía no hay canciones recientes."}</div>}
+          {!resultados.length && !recursosEncontrados.length && !cultosEncontrados.length && !comandosEncontrados.length && <div style={{ padding:28, textAlign:"center", color:"#94a3b8" }}>{q ? `No encontré contenido ni acciones con “${q}”.` : vista === "favoritas" ? "Todavía no has marcado canciones favoritas." : "Todavía no hay canciones recientes."}</div>}
         </div>
         <div className="selah-centro-pie" style={{ gap:12, padding:"9px 14px", borderTop:"1px solid rgba(255,255,255,.07)", color:"#64748b", fontSize:10 }}><span>↑↓ seleccionar</span><span>↵ ejecutar</span><span>★ favorita</span><span>+ Lista prepara sin proyectar</span></div>
       </div>

@@ -10,7 +10,7 @@ const centro = fs.readFileSync(path.join(raiz, "components/control/CentroComando
 test("Control ofrece búsqueda universal por teclado y botón", () => {
   assert.match(control, /e\.key\.toLowerCase\(\) === "k"/)
   assert.match(control, /Buscar  Ctrl\+K/)
-  assert.match(centro, /Busca canciones, cultos o recursos/)
+  assert.match(centro, /Busca contenido o escribe una acción/)
 })
 
 test("favoritas y recientes quedan disponibles sin saturar Control móvil", () => {
@@ -96,4 +96,13 @@ test("la búsqueda universal encuentra letras y mantiene visible la selección",
   assert.match(centro, /const fragmentoLetra/)
   assert.match(centro, /scrollIntoView\(\{ block:"nearest" \}\)/)
   assert.match(centro, /data-comando-clave/)
+})
+
+test("el buscador reconoce comandos operativos escritos", () => {
+  assert.match(centro, /const comandosEncontrados/)
+  for (const comando of ["mensaje", "palabra", "espera", "apagar", "revisar", "guardar"]) {
+    assert.match(centro, new RegExp(`id:\"${comando}\"`))
+  }
+  assert.match(centro, />ACCIONES</)
+  assert.match(centro, /comando-\$\{c\.id\}/)
 })
