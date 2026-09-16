@@ -99,6 +99,8 @@ interface FondoConfig {
   ajuste?: string
 }
 
+const firmaCultoEditable = (items: ItemLista[], nombre: string) => JSON.stringify({ items, nombre: nombre || "" })
+
 export default function ControlPage() {
   const { confirmar, ConfirmUI } = useConfirm()
   const { pedirTexto, PromptUI } = usePrompt()
@@ -184,6 +186,9 @@ export default function ControlPage() {
 
   const [index, setIndex] = useState(estadoGuardado?.index || 0)
   const [lista, setLista] = useState<ItemLista[]>(Array.isArray(listaGuardada?.items) ? listaGuardada.items : [])
+  const [firmaCultoGuardado, setFirmaCultoGuardado] = useState(() =>
+    firmaCultoEditable(Array.isArray(listaGuardada?.items) ? listaGuardada.items : [], listaGuardada?.nombre || "")
+  )
   const [activaId, setActivaId] = useState<string | null>(estadoGuardado?.activaId || null)
   const [cultos, setCultos] = useState<CultoData[]>([])
   const [listaIdActual, setListaIdActual] = useState<string | null>(listaGuardada?.listaId || null)
@@ -220,6 +225,7 @@ export default function ControlPage() {
     setOrdenar(v); localStorage.setItem("canciones-orden", v)
   }
   const [nombreCulto, setNombreCulto] = useState(listaGuardada?.nombre || "")
+  const hayCambiosCulto = !!listaIdActual && firmaCultoEditable(lista, nombreCulto) !== firmaCultoGuardado
   const [partes, setPartes] = useState<Parte[]>(estadoGuardado?.partes || [])
   const [tituloActual, setTituloActual] = useState(estadoGuardado?.titulo || "")
 
@@ -399,6 +405,7 @@ export default function ControlPage() {
   const loopCoroRef = useRef(loopCoro)
   const siguienteRef = useRef<() => Promise<void>>(async () => {})
   const anteriorRef = useRef<() => Promise<void>>(async () => {})
+  const guardarCultoRef = useRef<() => void>(() => {})
   const audioSilenciosoRef = useRef<HTMLAudioElement | null>(null)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [mensajeRapido, setMensajeRapido] = useState("Oremos")
@@ -2112,6 +2119,9 @@ useEffect(() => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
       e.preventDefault(); setCentroComandosAbierto(v => !v); return
     }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+      e.preventDefault(); guardarCultoRef.current(); return
+    }
     if (e.key === "?" && !(e.target as HTMLElement)?.matches?.("input,textarea")) {
       e.preventDefault(); setAyudaAtajosAbierta(v => !v); return
     }
@@ -2356,6 +2366,8 @@ const guardarCulto = async () => {
     await cargarListaDesdeBD(listaIdFinal)
   }
 }
+
+guardarCultoRef.current = () => { void guardarCulto() }
 
 const guardarCultoComoCopia = async () => {
   if (sinConexion) {
@@ -2662,6 +2674,7 @@ const cargarListaDesdeBD = async (id: string) => {
   })
 
   setLista(listaOrdenada)
+  setFirmaCultoGuardado(firmaCultoEditable(listaOrdenada, culto?.nombre || ""))
   precargarPartesLista(listaOrdenada) // ✅ precarga partes en segundo plano
   setIndiceLista(null)
   setIndiceActivoLista(null)
@@ -4996,7 +5009,7 @@ return (
         </div>
         {nombreCulto && (
           <div style={{ fontSize: 10, opacity: 0.4, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {listaIdActual ? "✏️ " : ""}{nombreCulto}
+            {listaIdActual ? "✏️ " : ""}{nombreCulto}{hayCambiosCulto ? " · CAMBIOS SIN GUARDAR" : ""}
           </div>
         )}
       </div>
@@ -6973,8 +6986,8 @@ return (
             border: "1px solid rgba(59,130,246,0.25)",
             display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap"
           }}>
-            <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.85 }}>
-              ✏️ Editando culto guardado
+            <div style={{ fontSize: 12, fontWeight: 700, color:hayCambiosCulto ? "#fbbf24" : "#bfdbfe" }}>
+              {hayCambiosCulto ? "● Cambios sin guardar" : "✓ Culto guardado al día"}
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               <button className="ctrl-btn" onClick={guardarCulto}
@@ -7103,7 +7116,7 @@ return (
               color: "white", fontWeight: 800, fontSize: 14, cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8
             }}>
-              💾 {listaIdActual ? "Actualizar culto" : "Guardar lista de culto"}
+              💾 {listaIdActual ? (hayCambiosCulto ? "Guardar cambios" : "Culto guardado") : "Guardar lista de culto"}
             </button>
           </div>
         )}
@@ -7138,7 +7151,7 @@ return (
 {ayudaAtajosAbierta && <div onClick={() => setAyudaAtajosAbierta(false)} style={{ position:"fixed", inset:0, zIndex:3100, background:"rgba(2,6,23,.78)", display:"grid", placeItems:"center", padding:16 }}>
   <div onClick={e => e.stopPropagation()} style={{ width:"min(460px,100%)", borderRadius:18, padding:20, background:"#111c30", border:"1px solid rgba(148,163,184,.2)", boxShadow:"0 25px 70px rgba(0,0,0,.6)" }}>
     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}><strong style={{ fontSize:18 }}>⌨️ Atajos del Control</strong><button onClick={() => setAyudaAtajosAbierta(false)} style={{ border:0, background:"transparent", color:"white", fontSize:20, cursor:"pointer" }}>×</button></div>
-    {[["Ctrl + K","Buscar canción o acción"],["→ / Espacio","Siguiente parte"],["←","Parte anterior"],["+ / −","Cambiar tamaño de letra"],["?","Abrir o cerrar esta ayuda"]].map(([tecla, desc]) => <div key={tecla} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 0", borderBottom:"1px solid rgba(255,255,255,.06)" }}><kbd style={{ minWidth:92, textAlign:"center", padding:"6px 8px", borderRadius:7, background:"rgba(255,255,255,.08)", color:"#bfdbfe", fontWeight:800 }}>{tecla}</kbd><span style={{ color:"#cbd5e1" }}>{desc}</span></div>)}
+    {[["Ctrl + K","Buscar canción o acción"],["Ctrl + S","Guardar o actualizar el culto"],["→ / Espacio","Siguiente parte"],["←","Parte anterior"],["+ / −","Cambiar tamaño de letra"],["?","Abrir o cerrar esta ayuda"]].map(([tecla, desc]) => <div key={tecla} style={{ display:"flex", alignItems:"center", gap:12, padding:"9px 0", borderBottom:"1px solid rgba(255,255,255,.06)" }}><kbd style={{ minWidth:92, textAlign:"center", padding:"6px 8px", borderRadius:7, background:"rgba(255,255,255,.08)", color:"#bfdbfe", fontWeight:800 }}>{tecla}</kbd><span style={{ color:"#cbd5e1" }}>{desc}</span></div>)}
   </div>
 </div>}
 <OnboardingTour
