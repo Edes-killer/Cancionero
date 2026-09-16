@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 
 type CancionComando = { id: string; titulo: string; tono?: string; numero?: number }
 type ItemComando = { titulo?: string; tipo?: string }
+type RecursoComando = { url: string; nombre: string; local: boolean; carpeta: string; video: boolean }
 
 interface Props {
   abierto: boolean
@@ -11,11 +12,13 @@ interface Props {
   lista: ItemComando[]
   favoritos: string[]
   recientes: string[]
+  recursos: RecursoComando[]
   onCerrar: () => void
   onProyectar: (id: string) => void
   onAgregar: (cancion: CancionComando) => void
   onProyectarLista: (indice: number) => void
   onFavorito: (id: string) => void
+  onRecurso: (recurso: RecursoComando, agregar: boolean) => void
   tieneLogo: boolean
   onMensaje: (texto: string, agregar: boolean) => void
   onAccion: (accion: "espera" | "negro" | "revision") => void
@@ -23,7 +26,7 @@ interface Props {
 
 const normalizar = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
 
-export default function CentroComandos({ abierto, canciones, lista, favoritos, recientes, tieneLogo, onCerrar, onProyectar, onAgregar, onProyectarLista, onFavorito, onMensaje, onAccion }: Props) {
+export default function CentroComandos({ abierto, canciones, lista, favoritos, recientes, recursos, tieneLogo, onCerrar, onProyectar, onAgregar, onProyectarLista, onFavorito, onRecurso, onMensaje, onAccion }: Props) {
   const [q, setQ] = useState("")
   const [vista, setVista] = useState<"sugeridas" | "favoritas" | "recientes">("sugeridas")
   const [mensajeAbierto, setMensajeAbierto] = useState(false)
@@ -50,6 +53,11 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
         })
     return base.slice(0, 12)
   }, [q, canciones, favoritos, recientes, vista])
+  const recursosEncontrados = useMemo(() => {
+    const nq = normalizar(q.trim())
+    if (!nq) return []
+    return recursos.filter(r => normalizar(`${r.nombre} ${r.carpeta || ""} ${r.video ? "video" : "imagen"}`).includes(nq)).slice(0, 6)
+  }, [q, recursos])
 
   if (!abierto) return null
   return (
@@ -96,6 +104,15 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
           {q && lista.map((it, i) => ({...it, i})).filter(it => normalizar(it.titulo || "").includes(normalizar(q))).slice(0,4).map(it => (
             <button key={`lista-${it.i}`} onClick={() => { onProyectarLista(it.i); onCerrar() }} style={{ width:"100%", display:"flex", gap:10, alignItems:"center", textAlign:"left", padding:"10px 12px", marginBottom:5, borderRadius:10, border:"1px solid rgba(34,197,94,.2)", background:"rgba(34,197,94,.07)", color:"white", cursor:"pointer" }}><span>📋</span><span style={{ flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{it.titulo || "Elemento del culto"}</span><small style={{ color:"#86efac" }}>En la lista · Proyectar</small></button>
           ))}
+          {q && recursosEncontrados.length > 0 && <>
+            <div style={{ padding:"7px 8px 5px", color:"#64748b", fontSize:10, fontWeight:900, letterSpacing:1 }}>GALERÍA</div>
+            {recursosEncontrados.map(r => <div className="selah-centro-fila" key={r.url} style={{ alignItems:"center", gap:8, padding:"7px 8px", borderRadius:11, background:"rgba(168,85,247,.055)", marginBottom:4 }}>
+              <div style={{ width:42, height:32, borderRadius:7, overflow:"hidden", background:"#020617", flexShrink:0, display:"grid", placeItems:"center" }}>{r.video ? <span>🎬</span> : <img src={r.url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />}</div>
+              <div className="selah-comando-titulo" style={{ flex:1, minWidth:0 }}><b style={{ display:"block", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontSize:12.5 }}>{r.nombre}</b><small style={{ color:"#94a3b8" }}>{r.video ? "Video" : "Imagen"}{r.carpeta ? ` · ${r.carpeta}` : ""}</small></div>
+              <button onClick={() => { onRecurso(r, true); onCerrar() }} style={{ padding:"7px 9px", borderRadius:8, border:"1px solid rgba(196,181,253,.25)", background:"rgba(124,58,237,.11)", color:"#ddd6fe", fontWeight:800, cursor:"pointer" }}>+ Lista</button>
+              <button onClick={() => { onRecurso(r, false); onCerrar() }} style={{ width:38, height:35, borderRadius:8, border:0, background:"#7c3aed", color:"white", cursor:"pointer" }}>▶</button>
+            </div>)}
+          </>}
           {!q && <div style={{ display:"flex", gap:6, padding:"3px 5px 9px" }}>
             {([['sugeridas','Sugeridas'],['favoritas',`★ Favoritas (${favoritos.length})`],['recientes','Recientes']] as const).map(([id,label]) => <button key={id} onClick={() => setVista(id)} style={{ padding:"6px 9px", borderRadius:999, border:`1px solid ${vista === id ? 'rgba(96,165,250,.45)' : 'rgba(255,255,255,.08)'}`, background:vista === id ? 'rgba(37,99,235,.16)' : 'transparent', color:vista === id ? '#bfdbfe' : '#94a3b8', fontSize:11, fontWeight:800, cursor:'pointer' }}>{label}</button>)}
           </div>}
@@ -112,7 +129,7 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
               <button onClick={() => { onProyectar(c.id); onCerrar() }} title="Proyectar ahora" style={{ width:38, height:36, borderRadius:9, border:0, background:"#2563eb", color:"white", cursor:"pointer" }}>▶</button>
             </div>
           })}
-          {!resultados.length && <div style={{ padding:28, textAlign:"center", color:"#94a3b8" }}>{q ? `No encontré canciones con “${q}”.` : vista === "favoritas" ? "Todavía no has marcado canciones favoritas." : "Todavía no hay canciones recientes."}</div>}
+          {!resultados.length && !recursosEncontrados.length && <div style={{ padding:28, textAlign:"center", color:"#94a3b8" }}>{q ? `No encontré canciones ni recursos con “${q}”.` : vista === "favoritas" ? "Todavía no has marcado canciones favoritas." : "Todavía no hay canciones recientes."}</div>}
         </div>
         <div className="selah-centro-pie" style={{ gap:12, padding:"9px 14px", borderTop:"1px solid rgba(255,255,255,.07)", color:"#64748b", fontSize:10 }}><span>↵ proyectar primera</span><span>★ favorita</span><span>+ Lista prepara sin proyectar</span></div>
       </div>

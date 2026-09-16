@@ -3832,6 +3832,18 @@ const agregarMediaDesdeGaleria = (img: { url:string; nombre:string; local:boolea
   agregarItemAListaConFeedback({ tipo, url:img.url, titulo:img.nombre }, `✅ Agregada: ${img.nombre}`)
 }
 
+const proyectarMediaDesdeGaleria = (img: { url:string; nombre:string; local:boolean; carpeta:string }, destinoConfirmado = false) => {
+  if (!socket) { verificarServidor(); return }
+  if (!destinoConfirmado && pedirDestinoSiFalta(() => proyectarMediaDesdeGaleria(img, true))) return
+  detenerCarruselTimer()
+  setActivaId(null); setIndiceLista(null); setIndiceActivoLista(null)
+  setPartes([]); setIndex(0); limpiarModoBiblia()
+  setAprendiendo(false); detenerAutoAvance(); setEstadoEspecialActivo("")
+  setCarruselUrlActual(img.url)
+  setCarruselActivo(true)
+  socket.emit("mostrar-imagen", { url:img.url, iglesia:"", video:esUrlVideo(img.url) })
+}
+
 const guardarCarpetasGaleria = (carpetas: string[]) => {
   const limpias = Array.from(new Set(carpetas.map(c => c.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "es"))
   setCarpetasGaleria(limpias)
@@ -4003,6 +4015,18 @@ const abrirBibliotecaVisual = async () => {
     setCargandoGaleria(false)
   }
 }
+
+// El centro de comandos también consulta la caché de Galería. Si aún no se
+// abrió el módulo durante esta sesión, carga los recursos en segundo plano sin
+// bloquear la escritura ni cambiar el panel visible del operador.
+useEffect(() => {
+  if (!centroComandosAbierto || galeriaImagenes.length > 0 || !iglesiaIdActual) return
+  try {
+    const cache = JSON.parse(localStorage.getItem(`selah-galeria-cache-${iglesiaIdActual}`) || "[]")
+    if (Array.isArray(cache) && cache.length) setGaleriaImagenes(cache)
+  } catch {}
+  void cargarGaleriaImagenes().then(setGaleriaImagenes).catch(() => {})
+}, [centroComandosAbierto, iglesiaIdActual])
 
 const procesarArchivoGaleria = async (input: HTMLInputElement) => {
   const file = input.files?.[0]
@@ -7131,11 +7155,13 @@ return (
   lista={lista}
   favoritos={favoritosControl}
   recientes={recientesControl}
+  recursos={galeriaImagenes.map(img => ({ ...img, video:esUrlVideo(img.url) }))}
   onCerrar={() => setCentroComandosAbierto(false)}
   onProyectar={id => { void proyectar(id) }}
   onAgregar={c => { void agregarALista(c) }}
   onProyectarLista={i => { void proyectarDesdeLista(i) }}
   onFavorito={alternarFavoritoControl}
+  onRecurso={(recurso, agregar) => agregar ? agregarMediaDesdeGaleria(recurso) : proyectarMediaDesdeGaleria(recurso)}
   tieneLogo={!!logoEsperaUrl.trim()}
   onMensaje={(texto, agregar) => {
     setMensajeRapido(texto)

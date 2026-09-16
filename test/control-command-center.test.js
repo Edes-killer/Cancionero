@@ -47,3 +47,12 @@ test("Control advierte cambios pendientes y permite guardarlos con Ctrl S", () =
   assert.match(control, /e\.key\.toLowerCase\(\) === "s"/)
   assert.match(control, /guardarCultoRef\.current\(\)/)
 })
+
+test("el buscador universal encuentra y opera recursos de Galería", () => {
+  assert.match(centro, /recursosEncontrados/)
+  assert.match(centro, />GALERÍA</)
+  assert.match(centro, /onRecurso\(r, true\)/)
+  assert.match(centro, /onRecurso\(r, false\)/)
+  assert.match(control, /proyectarMediaDesdeGaleria/)
+  assert.match(control, /selah-galeria-cache-/)
+})
