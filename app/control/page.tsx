@@ -2221,7 +2221,7 @@ const bajarItemLista = (i: number) => {
   moverItemLista(i, i + 1)
 }
 
-const eliminarDeLista = async (index: number) => {
+const eliminarDeLista = (index: number) => {
   const item = lista[index]
 
   if (deshacerTimerRef.current) clearTimeout(deshacerTimerRef.current)
@@ -2231,21 +2231,10 @@ const eliminarDeLista = async (index: number) => {
   setLista(prev => prev.filter((_, i) => i !== index))
   setIndiceItemReordenando(prev => prev === index ? null : prev !== null && prev > index ? prev - 1 : prev)
 
-  if (!listaIdActual) return
-
-  const { data: items } = await supabase
-    .from("items_lista")
-    .select("*")
-    .eq("lista_id", listaIdActual)
-    .order("orden")
-
-  const itemBD = items?.[index]
-  if (!itemBD) return
-
-  await supabase
-    .from("items_lista")
-    .delete()
-    .eq("id", itemBD.id)
+  // En un culto guardado la eliminación queda como edición pendiente, igual
+  // que mover o agregar. La base de datos se actualiza recién al pulsar
+  // "Actualizar culto"; así DESHACER restaura de verdad el estado anterior y
+  // nunca deja la interfaz distinta de lo almacenado en Supabase.
 }
 
 // ✅ Helper: convierte un item de lista en fila para items_lista
