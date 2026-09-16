@@ -203,6 +203,10 @@ test("Dashboard y Control presentan un único flujo y una Galería principal", (
   assert.match(control, /<summary[^>]*>🎨 Apariencia del proyector<\/summary>/)
   assert.match(control, /<summary[^>]*>🌄 Fondo para canciones<\/summary>/)
   assert.match(control, /La carga, PowerPoint, carpetas y carruseles viven ahora en la/)
+  assert.match(control, /aria-label="Buscar en la galería"/)
+  assert.match(control, /Opciones de \$\{img\.nombre\}/)
+  assert.match(control, /renombrarMediaGaleria\(img\)/)
+  assert.match(control, /✕ Eliminar/)
 })
 
 test("Control conserva la lista por iglesia y recupera la presencia del proyector", () => {

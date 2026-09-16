@@ -3859,6 +3859,17 @@ const moverMediaACarpeta = (url: string, carpeta: string) => {
   })
 }
 
+const renombrarMediaGaleria = async (img: { url:string; nombre:string; local:boolean; carpeta:string }) => {
+  const nuevo = await pedirTexto("Nuevo nombre para el recurso:", { valorInicial: img.nombre, textoOk: "Guardar" })
+  if (nuevo == null) return
+  const nombre = nuevo.trim()
+  if (!nombre || nombre === img.nombre) return
+  try { localStorage.setItem("img-nombre-" + img.url, nombre) } catch {}
+  await sincronizarMetadataMedia({ ...img, nombre })
+  setGaleriaImagenes(prev => prev.map(item => item.url === img.url ? { ...item, nombre } : item))
+  flashCtrl(`✅ Renombrado: ${nombre}`)
+}
+
 const eliminarMediaGaleria = async (img: { url:string; nombre:string; local:boolean; carpeta:string }) => {
   if (!(await confirmar(`¿Eliminar “${img.nombre}” de la biblioteca?`, { textoOk:"Eliminar", peligro:true }))) return
   try {
@@ -5579,6 +5590,7 @@ return (
             </div>
             </div>
             <div style={{ display:"flex", gap:5, marginTop:7, overflowX:"auto", alignItems:"center" }}>
+              <input value={busquedaGaleria} onChange={e => setBusquedaGaleria(e.target.value)} placeholder="Buscar…" aria-label="Buscar en la galería" style={{ flex:"1 0 105px", width:105, minWidth:105, maxWidth:180, height:29, boxSizing:"border-box", padding:"5px 8px", borderRadius:8, border:"1px solid rgba(255,255,255,.1)", background:"#0a1525", color:"white", fontSize:10.5, outline:"none" }} />
               {([['todo','Todo'],['imagen','Imágenes'],['video','Videos']] as const).map(([id,nombre]) => (
                 <button key={id} onClick={() => setFiltroGaleria(id)} style={{ flexShrink:0, padding:"6px 9px", borderRadius:8, border:`1px solid ${filtroGaleria===id ? "rgba(96,165,250,.55)" : "rgba(255,255,255,.09)"}`, background:filtroGaleria===id ? "rgba(37,99,235,.18)" : "rgba(255,255,255,.03)", color:filtroGaleria===id ? "#bfdbfe" : "rgba(255,255,255,.55)", fontSize:11, fontWeight:750 }}>{nombre}</button>
               ))}
@@ -5599,17 +5611,23 @@ return (
               ) : galeriaFiltrada.map(img => {
                 const video = esUrlVideo(img.url)
                 const numeroCarrusel = selCarrusel.indexOf(img.url)
-                return <div key={img.url} style={{ minWidth:0, position:"relative", border:`${numeroCarrusel >= 0 ? 3 : 1}px solid ${numeroCarrusel >= 0 ? "#22c55e" : "rgba(255,255,255,.09)"}`, borderRadius:9, overflow:"hidden", background:numeroCarrusel >= 0 ? "rgba(22,163,74,.12)" : "rgba(255,255,255,.035)", color:"white" }}>
-                  <div role="button" tabIndex={0} aria-label={modoCarrusel ? `Seleccionar ${img.nombre} para el carrusel` : `Agregar ${img.nombre} al culto`} onClick={() => modoCarrusel ? toggleSelCarrusel(img.url) : agregarMediaDesdeGaleria(img)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); modoCarrusel ? toggleSelCarrusel(img.url) : agregarMediaDesdeGaleria(img) } }} style={{ aspectRatio:"16/10", background:"#050a12", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", cursor:"pointer" }}>
+                return <div key={img.url} style={{ minWidth:0, position:"relative", border:`${numeroCarrusel >= 0 ? 3 : 1}px solid ${numeroCarrusel >= 0 ? "#22c55e" : "rgba(255,255,255,.09)"}`, borderRadius:9, overflow:"visible", background:numeroCarrusel >= 0 ? "rgba(22,163,74,.12)" : "rgba(255,255,255,.035)", color:"white" }}>
+                  <div role="button" tabIndex={0} aria-label={modoCarrusel ? `Seleccionar ${img.nombre} para el carrusel` : `Agregar ${img.nombre} al culto`} onClick={() => modoCarrusel ? toggleSelCarrusel(img.url) : agregarMediaDesdeGaleria(img)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); modoCarrusel ? toggleSelCarrusel(img.url) : agregarMediaDesdeGaleria(img) } }} style={{ aspectRatio:"16/10", borderRadius:"8px 8px 0 0", background:"#050a12", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", cursor:"pointer" }}>
                     {video ? <video src={img.url} muted preload="metadata" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <img src={img.url} alt="" loading="lazy" style={{ width:"100%", height:"100%", objectFit:"cover" }} />}
                     {numeroCarrusel >= 0 && <span style={{ position:"absolute", top:6, left:6, width:25, height:25, borderRadius:"50%", background:"#16a34a", color:"white", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:900, boxShadow:"0 2px 8px rgba(0,0,0,.45)" }}>{numeroCarrusel + 1}</span>}
                   </div>
-                  <div style={{ padding:"5px 6px", fontSize:9.5, fontWeight:700, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{video ? "🎬 " : ""}{img.nombre}</div>
-                  <div style={{ display:"flex", gap:4, padding:"0 5px 5px" }}>
-                    <select aria-label={`Mover ${img.nombre} a una carpeta`} value={img.carpeta} onChange={e => moverMediaACarpeta(img.url, e.target.value)} style={{ minWidth:0, flex:1, height:27, borderRadius:6, border:"1px solid rgba(255,255,255,.12)", background:"#111827", color:"rgba(255,255,255,.75)", fontSize:9 }}>
-                      <option value="">Sin carpeta</option>{carpetasGaleria.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <button aria-label={`Eliminar ${img.nombre}`} onClick={() => void eliminarMediaGaleria(img)} style={{ width:28, height:27, borderRadius:6, border:"1px solid rgba(239,68,68,.3)", background:"rgba(239,68,68,.1)", color:"#fca5a5", cursor:"pointer" }}>✕</button>
+                  <div style={{ minHeight:28, display:"flex", alignItems:"center", gap:4, padding:"4px 5px" }}>
+                    <div title={img.nombre} style={{ minWidth:0, flex:1, fontSize:9.5, fontWeight:700, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{video ? "🎬 " : ""}{img.nombre}</div>
+                    <details onClick={e => e.stopPropagation()} style={{ position:"relative", flexShrink:0 }}>
+                      <summary aria-label={`Opciones de ${img.nombre}`} style={{ width:25, height:24, borderRadius:6, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"white", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", listStyle:"none", fontSize:14 }}>⋮</summary>
+                      <div style={{ position:"absolute", zIndex:25, right:0, top:28, width:155, padding:6, borderRadius:8, border:"1px solid rgba(255,255,255,.12)", background:"#111827", boxShadow:"0 10px 28px rgba(0,0,0,.55)", display:"grid", gap:5 }}>
+                        <button onClick={() => void renombrarMediaGaleria(img)} style={{ padding:"6px 8px", textAlign:"left", borderRadius:6, border:"none", background:"rgba(255,255,255,.05)", color:"white", fontSize:10.5, cursor:"pointer" }}>✎ Renombrar</button>
+                        <select aria-label={`Mover ${img.nombre} a una carpeta`} value={img.carpeta} onChange={e => moverMediaACarpeta(img.url, e.target.value)} style={{ minWidth:0, height:28, borderRadius:6, border:"1px solid rgba(255,255,255,.12)", background:"#0a1525", color:"rgba(255,255,255,.8)", fontSize:9.5 }}>
+                          <option value="">📁 Sin carpeta</option>{carpetasGaleria.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        <button aria-label={`Eliminar ${img.nombre}`} onClick={() => void eliminarMediaGaleria(img)} style={{ padding:"6px 8px", textAlign:"left", borderRadius:6, border:"1px solid rgba(239,68,68,.25)", background:"rgba(239,68,68,.09)", color:"#fca5a5", fontSize:10.5, cursor:"pointer" }}>✕ Eliminar</button>
+                      </div>
+                    </details>
                   </div>
                 </div>
               })}
