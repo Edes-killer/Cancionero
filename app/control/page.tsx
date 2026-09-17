@@ -2975,6 +2975,23 @@ const limpiarCultoActual = () => {
   limpiarModoBiblia()
 }
 
+const confirmarYLimpiarCulto = async (textoOk: string) => {
+  const hayContenido = lista.length > 0 || partes.length > 0 || !!nombreCulto || paginasBiblia.length > 0
+  if (!hayContenido) {
+    limpiarCultoActual()
+    return true
+  }
+
+  const hayTrabajoSinGuardar = hayCambiosCulto || !listaIdActual
+  const mensaje = hayTrabajoSinGuardar
+    ? "Hay cambios sin guardar. Si continúas, se perderá el trabajo actual."
+    : "El culto actual está guardado. ¿Quieres cerrar esta lista?"
+  const ok = await confirmar(mensaje, { textoOk })
+  if (!ok) return false
+  limpiarCultoActual()
+  return true
+}
+
 const categoriasDisponibles = Array.from(
   new Set(
     canciones
@@ -6527,13 +6544,7 @@ return (
 
                 <button
                   className="ctrl-btn"
-                  onClick={async () => {
-                    const hayAlgo = lista.length > 0 || partes.length > 0 || !!nombreCulto
-                    if (hayAlgo) {
-                      if (!(await confirmar("¿Limpiar el control y crear nueva lista?", { textoOk: "Limpiar" }))) return
-                    }
-                    limpiarCultoActual()
-                  }}
+                  onClick={() => confirmarYLimpiarCulto("Nueva lista")}
                   style={{
                     flex: 1, padding: "10px 12px", borderRadius: 10,
                     border: "1px solid rgba(255,255,255,0.08)",
@@ -7080,7 +7091,7 @@ return (
                 📄
               </button>
               <button className="ctrl-btn"
-                onClick={async () => { if (await confirmar("¿Salir del modo edición?", { textoOk: "Salir" })) limpiarCultoActual() }}
+                onClick={() => confirmarYLimpiarCulto("Cerrar lista")}
                 style={{ padding: "5px 10px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.15)", color: "#fca5a5", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
                 ✕
               </button>

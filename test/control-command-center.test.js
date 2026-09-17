@@ -126,3 +126,10 @@ test("guardar un culto existente es directo y recuperable ante fallos", () => {
   assert.match(guardar, /setGuardandoCulto\(true\)/)
   assert.match(guardar, /finally[\s\S]*setGuardandoCulto\(false\)/)
 })
+
+test("crear o cerrar una lista protege los cambios sin guardar", () => {
+  assert.match(control, /const confirmarYLimpiarCulto = async/)
+  assert.match(control, /Hay cambios sin guardar\. Si continúas, se perderá el trabajo actual\./)
+  assert.match(control, /onClick=\{\(\) => confirmarYLimpiarCulto\("Nueva lista"\)\}/)
+  assert.match(control, /onClick=\{\(\) => confirmarYLimpiarCulto\("Cerrar lista"\)\}/)
+})

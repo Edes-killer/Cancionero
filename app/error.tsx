@@ -33,7 +33,7 @@ export default function ErrorBoundary({ error, reset }: { error: Error & { diges
           Algo falló al cargar esta pantalla
         </div>
         <div style={{ fontSize: 14, opacity: 0.6, lineHeight: 1.6, marginBottom: 24 }}>
-          No se pudo mostrar el contenido correctamente. Podés intentar de nuevo sin salir de la app.
+          No se pudo mostrar el contenido correctamente. Puedes intentar de nuevo sin salir de la app.
         </div>
         <button
           onClick={reset}
