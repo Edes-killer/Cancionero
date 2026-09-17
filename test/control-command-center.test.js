@@ -133,3 +133,10 @@ test("crear o cerrar una lista protege los cambios sin guardar", () => {
   assert.match(control, /onClick=\{\(\) => confirmarYLimpiarCulto\("Nueva lista"\)\}/)
   assert.match(control, /onClick=\{\(\) => confirmarYLimpiarCulto\("Cerrar lista"\)\}/)
 })
+
+test("los cultos nuevos y el cierre de ventana conservan el trabajo pendiente", () => {
+  assert.match(control, /listaGuardada\?\.listaId[\s\S]*firmaCultoEditable\(\[\], ""\)/)
+  assert.match(control, /const hayCambiosCulto = firmaCultoEditable\(lista, nombreCulto\) !== firmaCultoGuardado/)
+  assert.match(control, /window\.addEventListener\("beforeunload", advertirCierre\)/)
+  assert.match(control, /setFirmaCultoGuardado\(firmaCultoEditable\(\[\], ""\)\)/)
+})

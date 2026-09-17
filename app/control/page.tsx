@@ -187,7 +187,9 @@ export default function ControlPage() {
   const [index, setIndex] = useState(estadoGuardado?.index || 0)
   const [lista, setLista] = useState<ItemLista[]>(Array.isArray(listaGuardada?.items) ? listaGuardada.items : [])
   const [firmaCultoGuardado, setFirmaCultoGuardado] = useState(() =>
-    firmaCultoEditable(Array.isArray(listaGuardada?.items) ? listaGuardada.items : [], listaGuardada?.nombre || "")
+    listaGuardada?.listaId
+      ? firmaCultoEditable(Array.isArray(listaGuardada?.items) ? listaGuardada.items : [], listaGuardada?.nombre || "")
+      : firmaCultoEditable([], "")
   )
   const [activaId, setActivaId] = useState<string | null>(estadoGuardado?.activaId || null)
   const [cultos, setCultos] = useState<CultoData[]>([])
@@ -225,7 +227,9 @@ export default function ControlPage() {
     setOrdenar(v); localStorage.setItem("canciones-orden", v)
   }
   const [nombreCulto, setNombreCulto] = useState(listaGuardada?.nombre || "")
-  const hayCambiosCulto = !!listaIdActual && firmaCultoEditable(lista, nombreCulto) !== firmaCultoGuardado
+  // También cuenta los cultos NUEVOS: todavía no existen en Supabase, aunque
+  // el borrador se haya recuperado desde la caché local al volver a Control.
+  const hayCambiosCulto = firmaCultoEditable(lista, nombreCulto) !== firmaCultoGuardado
   const [partes, setPartes] = useState<Parte[]>(estadoGuardado?.partes || [])
   const [tituloActual, setTituloActual] = useState(estadoGuardado?.titulo || "")
 
@@ -2117,6 +2121,19 @@ useEffect(() => {
   }
 }, [lista, listaIdActual, nombreCulto])
 
+// La caché local permite recuperar el borrador al navegar por Selah, pero al
+// cerrar o recargar la ventana conviene advertir que aún no está respaldado en
+// Supabase. El navegador muestra su propio texto de confirmación por seguridad.
+useEffect(() => {
+  if (!hayCambiosCulto) return
+  const advertirCierre = (e: BeforeUnloadEvent) => {
+    e.preventDefault()
+    e.returnValue = ""
+  }
+  window.addEventListener("beforeunload", advertirCierre)
+  return () => window.removeEventListener("beforeunload", advertirCierre)
+}, [hayCambiosCulto])
+
 // ── Zoom (tamaño de letra del proyector) por delta ────────────────────────
 const cambiarZoom = useCallback((delta: number) => {
   const v = Math.min(200, Math.max(50, zoomActualRef.current + delta))
@@ -2972,6 +2989,7 @@ const limpiarCultoActual = () => {
   setIndiceActivoLista(null)
   setPartes([])
   setIndex(0)
+  setFirmaCultoGuardado(firmaCultoEditable([], ""))
   limpiarModoBiblia()
 }
 
