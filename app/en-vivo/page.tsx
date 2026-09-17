@@ -332,13 +332,14 @@ export default function EnVivoPage() {
   const [celularOn, setCelularOn] = useState(false)           // hay un celular conectado como cámara
   const [camModal, setCamModal] = useState(false)             // modal de emparejamiento (QR)
   const [camCodigo, setCamCodigo] = useState("")
-  const [camEstado, setCamEstado] = useState<"esperando" | "conectado" | "error">("esperando")
+  const [camEstado, setCamEstado] = useState<"abriendo" | "esperando" | "conectado" | "error">("esperando")
   const [camError, setCamError] = useState("")
   const phoneVideoRef = useRef<HTMLVideoElement | null>(null)
   const phoneStreamRef = useRef<MediaStream | null>(null)
   const pcHostRef = useRef<RTCPeerConnection | null>(null)
   const camSocketRef = useRef<Socket | null>(null)
   const camCodigoRef = useRef("")
+  const camIcePendienteRef = useRef<RTCIceCandidateInit[]>([])
 
   // ── Emisión directa (link propio en la red): el PC emite a N espectadores ──────
   const [emisionOn, setEmisionOn] = useState(false)
@@ -1155,6 +1156,7 @@ export default function EnVivoPage() {
   const cerrarCamaraCelular = (avisar = true) => {
     try { if (avisar) camSocketRef.current?.emit("camara:fin", { codigo: camCodigoRef.current }) } catch {}
     try { pcHostRef.current?.close() } catch {}; pcHostRef.current = null
+    camIcePendienteRef.current = []
     try { camSocketRef.current?.close() } catch {}; camSocketRef.current = null
     phoneStreamRef.current?.getTracks().forEach(t => t.stop()); phoneStreamRef.current = null
     if (phoneVideoRef.current) phoneVideoRef.current.srcObject = null
@@ -1168,15 +1170,22 @@ export default function EnVivoPage() {
   const abrirCamaraCelular = async () => {
     const tx = (window as any).transmision
     if (!tx?.infoRedCamara) { setErrorTx("Usar el celular como cámara funciona solo en la app de escritorio."); return }
-    setCamError(""); setCamEstado("esperando")
+    setCamError(""); setCamEstado("abriendo")
     const codigo = Math.random().toString(36).slice(2, 8).toUpperCase()
     camCodigoRef.current = codigo; setCamCodigo(codigo)
     setCamModal(true)
 
     // Señalización (host): espera la oferta del celular y responde.
-    const socket = io(getSocketUrl(), { transports: ["websocket", "polling"], forceNew: true })
+    // El host SIEMPRE es este mismo Electron. No usar la IP guardada para la
+    // APK: puede pertenecer a una interfaz anterior o a un repetidor.
+    const socket = io("http://127.0.0.1:4000", { transports: ["websocket", "polling"], forceNew: true, timeout: 5000 })
     camSocketRef.current = socket
-    socket.on("connect", () => socket.emit("camara:host", { codigo }))
+    socket.on("connect", () => socket.emit("camara:host", { codigo }, (resp: any) => {
+      if (resp?.ok) { setCamEstado("esperando"); return }
+      setCamEstado("error")
+      setCamError("El PC no pudo abrir la sala de cámara.")
+      logError(`Cámara celular: host rechazado (${resp?.error || "sin respuesta"})`, { tipo: "socket", pagina: "/en-vivo" })
+    }))
     socket.on("camara:senal", async ({ data }: any) => {
       if (!data) return
       try {
@@ -1205,13 +1214,21 @@ export default function EnVivoPage() {
             else if (pc.connectionState === "failed") { setCamEstado("error"); setCamError("No se pudo enlazar con el celular. ¿Están en la misma red?"); logError("Cámara celular: enlace WebRTC falló", { tipo: "socket", pagina: "/en-vivo" }) }
           }
           await pc.setRemoteDescription(data.sdp)
+          const pendientes = camIcePendienteRef.current.splice(0)
+          for (const candidate of pendientes) await pc.addIceCandidate(candidate)
           const answer = await pc.createAnswer()
           await pc.setLocalDescription(answer)
           socket.emit("camara:senal", { codigo, data: { tipo: "answer", sdp: pc.localDescription } })
-        } else if (data.tipo === "ice" && data.candidate && pcHostRef.current) {
-          await pcHostRef.current.addIceCandidate(data.candidate)
+        } else if (data.tipo === "ice" && data.candidate) {
+          const pc = pcHostRef.current
+          if (pc?.remoteDescription) await pc.addIceCandidate(data.candidate)
+          else camIcePendienteRef.current.push(data.candidate)
         }
-      } catch {}
+      } catch (e: any) {
+        setCamEstado("error")
+        setCamError("Falló el intercambio WebRTC con el celular.")
+        logError(`Cámara celular: señal ${data?.tipo || "desconocida"} falló: ${e?.message || e}`, { tipo: "socket", pagina: "/en-vivo" })
+      }
     })
     // El celular se cayó (2º plano, red…). NO cerramos: el PC sigue esperando en la
     // sala para que el celular se reconecte solo con el mismo código (queda el último
@@ -2131,7 +2148,7 @@ export default function EnVivoPage() {
                 <div style={{ fontSize: 46, fontWeight: 900, letterSpacing: 8, color: "#93c5fd", margin: "8px 0 4px", background: "rgba(37,99,235,0.1)", borderRadius: 12, padding: "10px 0" }}>{camCodigo}</div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 14, fontSize: 13, color: camEstado === "error" ? "#f87171" : "#fbbf24", fontWeight: 700 }}>
                   <span style={{ width: 9, height: 9, borderRadius: 99, background: camEstado === "error" ? "#f87171" : "#fbbf24" }} />
-                  {camEstado === "error" ? (camError || "Error") : "Esperando el celular…"}
+                  {camEstado === "error" ? (camError || "Error") : camEstado === "abriendo" ? "Abriendo sala segura…" : "Esperando el celular…"}
                 </div>
                 <button onClick={() => cerrarCamaraCelular(true)} style={botonBase({ background: "rgba(255,255,255,0.06)", color: C.suave, width: "100%", padding: "11px", marginTop: 16 })}>Cancelar</button>
               </>

@@ -1211,12 +1211,17 @@ try {
     // video va directo PC↔celular por la LAN (no pasa por el servidor).
     const salaCam = (c) => "cam-" + String(c || "").trim().toUpperCase()
 
-    socket.on("camara:host", ({ codigo } = {}) => {
-      if (!codigo) return
-      socket.data.camaraCodigo = codigo
+    socket.on("camara:host", ({ codigo } = {}, cb) => {
+      const codigoFinal = String(codigo || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8)
+      if (codigoFinal.length < 4) {
+        if (typeof cb === "function") cb({ ok: false, error: "codigo-invalido" })
+        return
+      }
+      socket.data.camaraCodigo = codigoFinal
       socket.data.camaraRol = "host"
-      socket.join(salaCam(codigo))
-      console.log("📷 host de cámara:", codigo)
+      socket.join(salaCam(codigoFinal))
+      if (typeof cb === "function") cb({ ok: true, codigo: codigoFinal })
+      console.log("📷 host de cámara:", codigoFinal)
     })
 
     socket.on("camara:unir", ({ codigo } = {}, cb) => {

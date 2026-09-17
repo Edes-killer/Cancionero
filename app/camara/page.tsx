@@ -31,6 +31,7 @@ export default function CamaraMovil() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)     // preview local (solo video)
   const pcRef = useRef<RTCPeerConnection | null>(null)
+  const icePendienteRef = useRef<RTCIceCandidateInit[]>([])
   const socketRef = useRef<Socket | null>(null)
   const videoSenderRef = useRef<RTCRtpSender | null>(null)
   const videoTrackRef = useRef<MediaStreamTrack | null>(null)
@@ -162,6 +163,7 @@ export default function CamaraMovil() {
 
   const iniciarWebRTC = async (socket: Socket) => {
     try { pcRef.current?.close() } catch {}
+    icePendienteRef.current = []
     const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] })
     pcRef.current = pc
     const salida = new MediaStream()
@@ -215,7 +217,7 @@ export default function CamaraMovil() {
     // servido por el PC, usamos el host del propio URL.
     const esApp = typeof window !== "undefined" && !!(window as any).Capacitor
     const url = esApp ? getSocketUrl() : `http://${window.location.hostname}:4000`
-    const socket = io(url, { transports: ["websocket", "polling"], forceNew: true, reconnection: false })
+    const socket = io(url, { transports: ["websocket", "polling"], forceNew: true, reconnection: false, timeout: 5000 })
     socketRef.current = socket
 
     socket.on("connect", () => {
@@ -236,9 +238,17 @@ export default function CamaraMovil() {
     socket.on("camara:senal", async ({ data }: any) => {
       const pc = pcRef.current; if (!pc || !data) return
       try {
-        if (data.tipo === "answer") await pc.setRemoteDescription(data.sdp)
-        else if (data.tipo === "ice" && data.candidate) await pc.addIceCandidate(data.candidate)
-      } catch {}
+        if (data.tipo === "answer") {
+          await pc.setRemoteDescription(data.sdp)
+          const pendientes = icePendienteRef.current.splice(0)
+          for (const candidate of pendientes) await pc.addIceCandidate(candidate)
+        } else if (data.tipo === "ice" && data.candidate) {
+          if (pc.remoteDescription) await pc.addIceCandidate(data.candidate)
+          else icePendienteRef.current.push(data.candidate)
+        }
+      } catch (e: any) {
+        logConex(`WebRTC celular: señal ${data?.tipo || "desconocida"} falló: ${e?.message || e}`)
+      }
     })
     // El PC cerró la cámara A PROPÓSITO → dejar de reintentar.
     socket.on("camara:par-fin", () => { quiereConectadoRef.current = false; setError("El PC cerró la cámara."); cerrar(false) })
