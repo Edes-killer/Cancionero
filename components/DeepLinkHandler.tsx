@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { conTimeout } from '@/lib/timeout'
 import { navegarSPA } from '@/lib/navegar'
-import { establecerSesionUnaVez } from '@/lib/authCallback'
+import { establecerSesionDesdeUrl } from '@/lib/authCallback'
 
 export function DeepLinkHandler() {
   const router = useRouter()
@@ -50,17 +50,14 @@ export function DeepLinkHandler() {
 
           const frag = url.includes('#') ? url.split('#')[1] : ''
           const qstr = url.includes('?') ? url.split('?')[1]?.split('#')[0] : ''
-          const hp   = new URLSearchParams(frag)
-          const qp   = new URLSearchParams(qstr)
-
-          const access_token  = hp.get('access_token')  || qp.get('access_token')
-          const refresh_token = hp.get('refresh_token') || qp.get('refresh_token')
-          const error         = hp.get('error')         || qp.get('error')
+          const hp = new URLSearchParams(frag), qp = new URLSearchParams(qstr)
+          const error = hp.get('error') || qp.get('error')
 
           if (error) { navegarSPA(router, '/login?error=oauth', { replace: true }); return }
 
-          if (access_token && refresh_token) {
-            const r = await establecerSesionUnaVez(access_token, refresh_token)
+          const esCallbackAuth = hp.has('access_token') || qp.has('access_token') || hp.has('code') || qp.has('code')
+          if (esCallbackAuth) {
+            const r = await establecerSesionDesdeUrl(url)
             if (r !== "ok") { navegarSPA(router, '/login?error=session', { replace: true }); return }
             // ✅ Si veníamos de aceptar una invitación, volver ahí para
             // terminarla -- antes esto siempre mandaba al home y el código

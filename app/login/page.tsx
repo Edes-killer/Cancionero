@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { conTimeout } from "@/lib/timeout"
-import { establecerSesionUnaVez } from "@/lib/authCallback"
+import { establecerSesionDesdeUrl } from "@/lib/authCallback"
+import { logError } from "@/lib/Errorlogger"
 
 function LoginContent() {
   const [email, setEmail] = useState("")
@@ -38,23 +39,13 @@ function LoginContent() {
       App.addListener('appUrlOpen', async ({ url }) => {
         // ✅ Cerrar el navegador interno apenas volvemos con el callback
         try { const { Browser } = await import('@capacitor/browser'); await Browser.close() } catch {}
-        if (!url.includes('access_token')) return
-
-        const hash   = url.includes('#') ? url.split('#')[1] : ''
-        const query  = url.includes('?') ? url.split('?')[1]?.split('#')[0] : ''
-        const hP     = new URLSearchParams(hash)
-        const qP     = new URLSearchParams(query)
-        const access_token  = hP.get('access_token')  || qP.get('access_token')
-        const refresh_token = hP.get('refresh_token') || qP.get('refresh_token')
-
-        if (!access_token || !refresh_token) {
-          return
-        }
-
-        const r = await establecerSesionUnaVez(access_token, refresh_token)
+        const r = await establecerSesionDesdeUrl(url)
         if (r === "ok") {
           window.location.href = '/'
         } else {
+          const detalle = r === "sin-datos" ? "Google regresó sin token ni código de sesión." : `No se pudo establecer la sesión (${r}).`
+          logError(`OAuth APK: ${detalle}`, { tipo: "autenticacion", pagina: "/login" })
+          setError(detalle + " Intenta nuevamente.")
           setCargando(false)
         }
       })
@@ -68,8 +59,10 @@ function LoginContent() {
         else setCargando(false)
       })
 
-      App.getLaunchUrl().then(r => {
-        console.log('[Login] 🚀 launchUrl:', r?.url || 'null')
+      App.getLaunchUrl().then(async r => {
+        if (!r?.url || !r.url.startsWith('com.tuiglesia.cancionero')) return
+        const resultado = await establecerSesionDesdeUrl(r.url)
+        if (resultado === "ok") window.location.href = '/'
       }).catch(() => {})
     }).catch(e => console.error('[Login] error importando App:', e))
   }, [])
