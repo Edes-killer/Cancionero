@@ -56,6 +56,22 @@ test("la cadena de video conserva detalle Full HD y registra la fuente real", ()
   assert.match(transmision, /▶ salida de video: \$\{SALIDA_ANCHO\}×\$\{SALIDA_ALTO\} @ 30 fps/)
 })
 
+test("el celular negocia su capacidad nativa y prioriza resolución", () => {
+  assert.match(movil, /width: \{ ideal: 3840 \}, height: \{ ideal: 2160 \}/)
+  assert.match(movil, /degradationPreference = "maintain-resolution"/)
+  assert.match(movil, /maxBitrate = 20_000_000/)
+  assert.match(movil, /setResolucion\(`/)
+})
+
+test("la sala de cámara dirige señales y admite varios celulares", () => {
+  assert.match(electron, /hostId.*camaraRol === "host"/s)
+  assert.match(electron, /cb\(\{ ok: true, peerId: socket\.id, hostId \}\)/)
+  assert.match(electron, /if \(para.*io\.to\(para\)\.emit\("camara:senal"/)
+  assert.match(transmision, /pcHostsRef = useRef<Map<string, RTCPeerConnection>>/)
+  assert.match(transmision, /phoneStreamsRef = useRef<Map<string, MediaStream>>/)
+  assert.match(transmision, /celulares\.map\(c => <option/)
+})
+
 test("una APK recién instalada busca el PC sin obligar a entrar en Ajustes", () => {
   assert.match(inicio, /if \(esApk && !localStorage\.getItem\("servidor_ip"\)\) void descubrir\(\)/)
   assert.match(inicio, /Buscando el computador…/)

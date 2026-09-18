@@ -1227,25 +1227,27 @@ try {
     socket.on("camara:unir", ({ codigo } = {}, cb) => {
       const room = salaCam(codigo)
       const set = io.sockets.adapter.rooms.get(room)
-      const hayHost = !!set && [...set].some(id => io.sockets.sockets.get(id)?.data?.camaraRol === "host")
-      if (!hayHost) { if (typeof cb === "function") cb({ ok: false, error: "no-host" }); return }
+      const hostId = set && [...set].find(id => io.sockets.sockets.get(id)?.data?.camaraRol === "host")
+      if (!hostId) { if (typeof cb === "function") cb({ ok: false, error: "no-host" }); return }
       socket.data.camaraCodigo = codigo
       socket.data.camaraRol = "emisor"
       socket.join(room)
-      socket.broadcast.to(room).emit("camara:emisor-listo")
-      if (typeof cb === "function") cb({ ok: true })
+      io.to(hostId).emit("camara:emisor-listo", { peerId: socket.id })
+      if (typeof cb === "function") cb({ ok: true, peerId: socket.id, hostId })
       console.log("📷 emisor unido:", codigo)
     })
 
     // Relay de la señalización (oferta/respuesta/ICE) al OTRO peer de la sala.
-    socket.on("camara:senal", ({ codigo, data } = {}) => {
+    socket.on("camara:senal", ({ codigo, data, para } = {}) => {
       if (!codigo || !data) return
-      socket.broadcast.to(salaCam(codigo)).emit("camara:senal", { data, de: socket.data.camaraRol })
+      const paquete = { data, de: socket.id, rol: socket.data.camaraRol }
+      if (para && io.sockets.sockets.get(para)?.rooms?.has(salaCam(codigo))) io.to(para).emit("camara:senal", paquete)
+      else socket.broadcast.to(salaCam(codigo)).emit("camara:senal", paquete)
     })
 
     socket.on("camara:fin", ({ codigo } = {}) => {
       const c = codigo || socket.data.camaraCodigo
-      if (c) socket.broadcast.to(salaCam(c)).emit("camara:par-fin", { de: socket.data.camaraRol })
+      if (c) socket.broadcast.to(salaCam(c)).emit("camara:par-fin", { de: socket.id, rol: socket.data.camaraRol })
     })
 
     // ── Señalización WebRTC: "emisión directa" (link propio en la red) ──────────

@@ -27,6 +27,7 @@ export default function CamaraMovil() {
   const [diag, setDiag] = useState("")   // diagnóstico si falla el cambio de cámara
   const [codigo, setCodigo] = useState("")
   const [facing, setFacing] = useState<"environment" | "user">("environment")
+  const [resolucion, setResolucion] = useState("detectando…")
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)     // preview local (solo video)
@@ -37,6 +38,7 @@ export default function CamaraMovil() {
   const videoTrackRef = useRef<MediaStreamTrack | null>(null)
   const audioTrackRef = useRef<MediaStreamTrack | null>(null) // mic del celular (se obtiene 1 vez)
   const codigoRef = useRef("")
+  const hostIdRef = useRef("")
   useEffect(() => { codigoRef.current = codigo }, [codigo])
 
   // Reconexión automática: recordamos que el usuario QUIERE estar conectado, para
@@ -78,7 +80,9 @@ export default function CamaraMovil() {
   // eligiendo la frontal/trasera por etiqueta, o por heurística si no hay labels).
   const obtenerStreamCamara = async (modo: "environment" | "user", incluirAudio: boolean): Promise<MediaStream> => {
     const audio = incluirAudio ? AUDIO_HIFI : false
-    const vBase = { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }
+    // Pedimos el máximo razonable y dejamos que Android negocie la capacidad
+    // nativa real del sensor. No imponemos 1080p ni reducimos una cámara 4K.
+    const vBase = { width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } }
     const gUM = (video: MediaTrackConstraints) => navigator.mediaDevices.getUserMedia({ video, audio })
     const errs: string[] = []
     try { return await gUM({ facingMode: { exact: modo } as any, ...vBase }) } catch (e: any) { errs.push("exact=" + (e?.name || "?")) }
@@ -110,6 +114,10 @@ export default function CamaraMovil() {
     if (incluirAudio) { const a = s.getAudioTracks()[0]; if (a) audioTrackRef.current = a }
     if (videoSenderRef.current && nuevoVideo) { try { await videoSenderRef.current.replaceTrack(nuevoVideo) } catch {} }
     videoTrackRef.current = nuevoVideo
+    if (nuevoVideo) {
+      const cfg = nuevoVideo.getSettings()
+      setResolucion(`${cfg.width || "?"}×${cfg.height || "?"} · ${Math.round(cfg.frameRate || 0) || "?"} FPS`)
+    }
     ponerPreview(nuevoVideo)
     setEstado(prev => (prev === "conectado" ? "conectado" : "listo")); setError("")
   }
@@ -171,8 +179,18 @@ export default function CamaraMovil() {
     const salida = new MediaStream()
     if (videoTrackRef.current) salida.addTrack(videoTrackRef.current)
     if (audioTrackRef.current) salida.addTrack(audioTrackRef.current)
-    for (const t of salida.getTracks()) { const snd = pc.addTrack(t, salida); if (t.kind === "video") videoSenderRef.current = snd }
-    pc.onicecandidate = e => { if (e.candidate) socket.emit("camara:senal", { codigo: codigoRef.current, data: { tipo: "ice", candidate: e.candidate } }) }
+    for (const t of salida.getTracks()) {
+      const snd = pc.addTrack(t, salida)
+      if (t.kind === "video") {
+        videoSenderRef.current = snd
+        const p: any = snd.getParameters()
+        p.degradationPreference = "maintain-resolution"
+        p.encodings = p.encodings?.length ? p.encodings : [{}]
+        p.encodings[0].maxBitrate = 20_000_000
+        snd.setParameters(p).catch(() => {})
+      }
+    }
+    pc.onicecandidate = e => { if (e.candidate) socket.emit("camara:senal", { codigo: codigoRef.current, para: hostIdRef.current, data: { tipo: "ice", candidate: e.candidate } }) }
     pc.onconnectionstatechange = () => {
       const st = pc.connectionState
       if (st === "connected") { setEstado("conectado"); setError("") }
@@ -180,7 +198,7 @@ export default function CamaraMovil() {
     }
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
-    socket.emit("camara:senal", { codigo: codigoRef.current, data: { tipo: "offer", sdp: pc.localDescription } })
+    socket.emit("camara:senal", { codigo: codigoRef.current, para: hostIdRef.current, data: { tipo: "offer", sdp: pc.localDescription } })
   }
 
   // Vigila el track de video: si el equipo lo mata (típico al ir a 2º plano), reconecta.
@@ -233,6 +251,7 @@ export default function CamaraMovil() {
           } else { setError("No se pudo unir a la sala."); setEstado("error"); logConex("camara:unir falló (sala)") }
           return
         }
+        hostIdRef.current = resp.hostId || ""
         try { localStorage.setItem("selah-camara-codigo", cod) } catch {}
         setError(""); iniciarWebRTC(socket)
       })
@@ -349,7 +368,7 @@ export default function CamaraMovil() {
           <span style={{ width: 10, height: 10, borderRadius: 99, background: chip.c, boxShadow: conectado ? `0 0 8px ${chip.c}` : "none" }} />
           <span style={{ color: chip.c }}>{chip.t}</span>
         </div>
-        <span style={{ fontSize: 12, opacity: 0.85 }}>Selah · Cámara</span>
+        <span style={{ fontSize: 12, opacity: 0.85, textAlign: "right" }}>Selah · Cámara<br />{resolucion}</span>
       </div>
 
       {/* Panel inferior */}
