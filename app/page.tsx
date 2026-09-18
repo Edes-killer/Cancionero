@@ -51,6 +51,7 @@ export default function InicioPage() {
   const [categorias,           setCategorias]           = useState<{nombre:string,total:number}[]>([])
 
   const [servidorActivo, setServidorActivo] = useState<boolean | null>(null)
+  const [buscandoServidor, setBuscandoServidor] = useState(false)
   const [servidorIp,     setServidorIp]     = useState("")
   const [canalConectado, setCanalConectado] = useState<boolean | null>(null)
   const [canalIp, setCanalIp] = useState("")
@@ -98,6 +99,27 @@ export default function InicioPage() {
     let descubriendo = false
     let ultimoDescubrimiento = 0
     const esApk = !!(window as any).Capacitor
+    const descubrir = async () => {
+      if (cancelado || descubriendo) return false
+      descubriendo = true
+      ultimoDescubrimiento = Date.now()
+      if (!cancelado) setBuscandoServidor(true)
+      try {
+        const encontrada = await buscarServidorEnRed()
+        if (encontrada && !cancelado) {
+          localStorage.setItem("servidor_ip", encontrada)
+          setServidorIp(encontrada)
+          setServidorActivo(true)
+          fallos = 0
+          return true
+        }
+        return false
+      } catch { return false }
+      finally {
+        descubriendo = false
+        if (!cancelado) setBuscandoServidor(false)
+      }
+    }
     const ping = async (forzar = false) => {
       if (cancelado || enCurso || (!forzar && esApk && document.visibilityState === "hidden")) return
       enCurso = true
@@ -114,24 +136,16 @@ export default function InicioPage() {
       } catch {
         if (!cancelado) setServidorActivo(false)
         fallos++
-        if (!esApk || fallos < 3 || descubriendo || Date.now() - ultimoDescubrimiento < 60000) return
-        descubriendo = true
-        ultimoDescubrimiento = Date.now()
-        try {
-          const encontrada = await buscarServidorEnRed()
-          if (encontrada && !cancelado) {
-            localStorage.setItem("servidor_ip", encontrada)
-            setServidorIp(encontrada)
-            setServidorActivo(true)
-            fallos = 0
-          }
-        } catch { /* ignorar — se queda el banner de "servidor no detectado" */ }
-        finally { descubriendo = false }
+        if (!esApk || descubriendo || Date.now() - ultimoDescubrimiento < 60000) return
+        await descubrir()
       } finally {
         enCurso = false
       }
     }
-    void ping()
+    // Instalación nueva: no perder tiempo probando localhost dentro del celular.
+    // Buscar el PC inmediatamente; con una IP guardada primero se valida esa IP.
+    if (esApk && !localStorage.getItem("servidor_ip")) void descubrir()
+    else void ping()
     if (!esApk) return () => { cancelado = true }
     const intervalo = window.setInterval(() => void ping(), 5000)
     const alVolver = () => { if (document.visibilityState === "visible") void ping() }
@@ -198,12 +212,14 @@ export default function InicioPage() {
 
   const canalActual = canalConectado === true && canalIp === servidorIp
   const conexionLista = servidorActivo === true && (!esApp || (canalActual && pcConectado))
-  const tituloConexion = !servidorActivo ? "Sin conexión con el computador"
+  const tituloConexion = buscandoServidor ? "Buscando el computador…"
+    : !servidorActivo ? "Sin conexión con el computador"
     : esApp && !canalActual ? "Computador detectado · sincronizando"
     : esApp && !pcConectado ? "Servidor conectado · escritorio no disponible"
     : esApp && proyectorConectado ? "Proyector conectado"
     : esApp ? "Computador listo · sin proyector" : "Conectado con el computador"
-  const detalleConexion = !servidorActivo ? "Revisa la IP o abre Selah Live en el computador"
+  const detalleConexion = buscandoServidor ? "Selah está revisando automáticamente la red local"
+    : !servidorActivo ? "Revisa la IP o abre Selah Live en el computador"
     : esApp && !canalActual ? "El servidor responde, pero falta confirmar la sala y el PIN"
     : esApp && !pcConectado ? "El servidor responde, pero no hay ventana de escritorio disponible"
     : esApp && proyectorConectado ? "La pantalla de proyección está abierta"
@@ -447,7 +463,7 @@ export default function InicioPage() {
           </div>
 
           {/* ══ ESTADO DEL SERVIDOR ════════════════════════════════════════ */}
-          {servidorActivo !== null && (
+          {(servidorActivo !== null || buscandoServidor) && (
             <div data-tour="inicio-conexion" style={{ padding:"12px 16px", borderRadius:12, display:"flex", alignItems:"center", gap:10, background: conexionLista?"rgba(34,197,94,0.06)":servidorActivo?"rgba(245,158,11,0.06)":"rgba(239,68,68,0.06)", border:`1px solid ${conexionLista?"rgba(34,197,94,0.15)":servidorActivo?"rgba(245,158,11,0.2)":"rgba(239,68,68,0.15)"}` }}>
               <div style={{ width:8, height:8, borderRadius:"50%", background: conexionLista?"#22c55e":servidorActivo?"#f59e0b":"#ef4444", flexShrink:0 }} />
               <div style={{ flex:1 }}>
@@ -463,8 +479,8 @@ export default function InicioPage() {
                   para ellos "no hacía nada". El operador del PC (admin) es quien
                   configura el servidor. */}
               {(rol === null || rol === "admin") && (
-                <button onClick={() => navegarSPA(router, "/configuracion")} style={{ padding:"5px 12px", borderRadius:7, border:"none", background: servidorActivo?"rgba(34,197,94,0.1)":"rgba(239,68,68,0.15)", color: servidorActivo?"#4ade80":"#fca5a5", fontSize:12, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
-                  {servidorActivo ? "Detalles" : "Configurar"}
+                <button disabled={buscandoServidor} onClick={() => navegarSPA(router, "/configuracion")} style={{ padding:"5px 12px", borderRadius:7, border:"none", background: servidorActivo?"rgba(34,197,94,0.1)":"rgba(239,68,68,0.15)", color: servidorActivo?"#4ade80":"#fca5a5", fontSize:12, fontWeight:700, cursor:buscandoServidor?"wait":"pointer", opacity:buscandoServidor ? .6 : 1, flexShrink:0 }}>
+                  {buscandoServidor ? "Buscando…" : servidorActivo ? "Detalles" : "Configurar"}
                 </button>
               )}
             </div>

@@ -5,6 +5,8 @@ const { readFileSync } = require("node:fs")
 const movil = readFileSync("app/camara/page.tsx", "utf8")
 const transmision = readFileSync("app/en-vivo/page.tsx", "utf8")
 const electron = readFileSync("electron/main.js", "utf8")
+const inicio = readFileSync("app/page.tsx", "utf8")
+const servidor = readFileSync("lib/servidor.ts", "utf8")
 
 test("Electron abre la sala de cámara en su servidor local y confirma el registro", () => {
   assert.match(transmision, /io\("http:\/\/127\.0\.0\.1:4000"/)
@@ -43,4 +45,16 @@ test("la transmisión evita comprimir dos veces con el mismo bitrate bajo", () =
   assert.match(transmision, /videoBitsPerSecond: bitrateCaptura\(bitrateRef\.current\) \* 1000/)
   assert.match(electron, /"-rate_control", "cbr", "-scenario", "live_streaming"/)
   assert.match(electron, /"-b:a", "160k", "-ar", "48000"/)
+})
+
+test("una APK recién instalada busca el PC sin obligar a entrar en Ajustes", () => {
+  assert.match(inicio, /if \(esApk && !localStorage\.getItem\("servidor_ip"\)\) void descubrir\(\)/)
+  assert.match(inicio, /Buscando el computador…/)
+  assert.match(inicio, /Selah está revisando automáticamente la red local/)
+  assert.match(servidor, /for \(let i = 1; i <= 254; i\+\+\) SUBREDES_COMUNES\.forEach/)
+})
+
+test("la reconexión RTMPS espera a que Facebook libere la sesión anterior", () => {
+  assert.match(transmision, /Math\.min\(5000 \* n, 30000\)/)
+  assert.match(transmision, /Facebook puede tardar varios segundos en liberar una sesión RTMPS caída/)
 })

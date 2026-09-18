@@ -1051,7 +1051,9 @@ export default function EnVivoPage() {
     const n = (intentoRef.current || 0) + 1; intentoRef.current = n; setIntento(n)
     setTxEstado("reconectando")
     if (n > 30) { setTxEstado("error"); setErrorTx("No se pudo reconectar tras varios intentos. Revisa tu conexión."); return }
-    const espera = Math.min(2000 * n, 10000)
+    // Facebook puede tardar varios segundos en liberar una sesión RTMPS caída.
+    // Reintentar a los 2 s provoca "TLS fatal alert" con la misma clave aún activa.
+    const espera = Math.min(5000 * n, 30000)
     reconTimerRef.current = setTimeout(async () => {
       reconTimerRef.current = null
       if (detenidoRef.current) return

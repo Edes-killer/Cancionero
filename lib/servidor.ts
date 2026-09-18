@@ -30,7 +30,10 @@ export async function buscarServidorEnRed(
   onProgreso?: (mensaje: string) => void
 ): Promise<string | null> {
   const ips: string[] = []
-  SUBREDES_COMUNES.forEach(sub => { for (let i = 1; i <= 254; i++) ips.push(`${sub}.${i}`) })
+  // Intercalar subredes por host: primero .1 de todas, luego .2 de todas, etc.
+  // Antes se revisaban los 254 equipos de 192.168.1.* antes de siquiera probar
+  // 192.168.100.*, haciendo muy lenta la detección típica detrás de repetidores.
+  for (let i = 1; i <= 254; i++) SUBREDES_COMUNES.forEach(sub => ips.push(`${sub}.${i}`))
 
   const BATCH = 30
   for (let i = 0; i < ips.length; i += BATCH) {
