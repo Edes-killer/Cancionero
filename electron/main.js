@@ -110,9 +110,9 @@ function construirArgsFFmpeg(encoder, rtmpUrls, bitrateKbps) {
   const kf = ["-force_key_frames", "expr:gte(t,n_forced*2)"]
   let video
   if (encoder === "h264_qsv") {
-    video = ["-c:v", "h264_qsv", "-b:v", vb, "-maxrate", vb, "-bufsize", buf, "-g", "60", "-look_ahead", "0", ...kf]
+    video = ["-c:v", "h264_qsv", "-preset", "medium", "-scenario", "livestreaming", "-b:v", vb, "-maxrate", vb, "-bufsize", buf, "-g", "60", "-look_ahead", "0", ...kf]
   } else if (encoder === "h264_mf") {
-    video = ["-c:v", "h264_mf", "-b:v", vb, "-g", "60", ...kf]
+    video = ["-c:v", "h264_mf", "-rate_control", "cbr", "-scenario", "live_streaming", "-b:v", vb, "-maxrate", vb, "-bufsize", buf, "-pix_fmt", "yuv420p", "-g", "60", ...kf]
   } else {
     video = [
       "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-pix_fmt", "yuv420p",
@@ -120,7 +120,7 @@ function construirArgsFFmpeg(encoder, rtmpUrls, bitrateKbps) {
       "-b:v", vb, "-maxrate", vb, "-bufsize", buf,
     ]
   }
-  const audio = ["-c:a", "aac", "-b:a", "128k", "-ar", "44100"]
+  const audio = ["-c:a", "aac", "-b:a", "160k", "-ar", "48000"]
   const comun = [...base, ...video, ...audio, "-max_muxing_queue_size", "1024"]
   if (rtmpUrls.length === 1) return [...comun, "-f", "flv", rtmpUrls[0]]
   // Varios destinos: un solo encode → muxer tee a todas las plataformas.

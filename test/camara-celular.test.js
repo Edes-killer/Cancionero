@@ -29,3 +29,18 @@ test("los fallos WebRTC dejan diagnóstico visible y persistente", () => {
   assert.match(transmision, /Falló el intercambio WebRTC con el celular/)
   assert.match(transmision, /Cámara celular: señal/)
 })
+
+test("la APK corrige una IP de router o repetidor buscando el PC real", () => {
+  assert.match(movil, /buscarServidorEnRed/)
+  assert.match(movil, /No responde esa IP\. Buscando el PC con Selah en la red/)
+  assert.match(movil, /localStorage\.setItem\("servidor_ip", ip\)/)
+  assert.match(movil, /PC encontrado en \$\{ip\}\. Reconectando/)
+})
+
+test("la transmisión evita comprimir dos veces con el mismo bitrate bajo", () => {
+  assert.match(transmision, /baja: 2500, media: 4500, alta: 6000/)
+  assert.match(transmision, /const bitrateCaptura =/)
+  assert.match(transmision, /videoBitsPerSecond: bitrateCaptura\(bitrateRef\.current\) \* 1000/)
+  assert.match(electron, /"-rate_control", "cbr", "-scenario", "live_streaming"/)
+  assert.match(electron, /"-b:a", "160k", "-ar", "48000"/)
+})

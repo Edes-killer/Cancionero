@@ -352,7 +352,10 @@ export default function EnVivoPage() {
   const emiPeersRef = useRef<Map<string, RTCPeerConnection>>(new Map())
 
   const [calidad, setCalidad] = useState<"baja" | "media" | "alta">("media")
-  const CALIDAD_KBPS: Record<string, number> = { baja: 1200, media: 2500, alta: 4500 }
+  // 720p necesita margen para conservar rostros, movimiento y letras. La
+  // captura interna usa aún más bitrate porque FFmpeg vuelve a comprimirla.
+  const CALIDAD_KBPS: Record<string, number> = { baja: 2500, media: 4500, alta: 6000 }
+  const bitrateCaptura = (salidaKbps: number) => Math.min(12_000, Math.max(6_000, salidaKbps * 2))
 
   const [transiciones, setTransiciones] = useState(true) // fundido al cambiar de escena
   const transRef = useRef<{ hasta: number; snap: HTMLCanvasElement } | null>(null)
@@ -379,7 +382,7 @@ export default function EnVivoPage() {
   // Refs para reconectar sin re-suscribir listeners.
   const mimeRef = useRef<string>("video/webm")
   const urlsTxRef = useRef<string[]>([])
-  const bitrateRef = useRef<number>(2500) // kbps elegido para la sesión
+  const bitrateRef = useRef<number>(4500) // kbps elegido para la sesión
   const detenidoRef = useRef(false) // el usuario pidió terminar → no reconectar
   const reconTimerRef = useRef<any>(null)
   const reconectarRef = useRef<() => void>(() => {})
@@ -1004,7 +1007,7 @@ export default function EnVivoPage() {
     if (!res?.ok) { setErrorTx(res?.error || "No se pudo iniciar la transmisión."); logError(`Transmisión no inició: ${res?.error || "?"}`, { tipo: "socket", pagina: "/en-vivo" }); return false }
     try {
       const salida = streamSalida(); if (!salida) return false
-      const rec = new MediaRecorder(salida, { mimeType: mimeRef.current, videoBitsPerSecond: bitrateRef.current * 1000, audioBitsPerSecond: 256_000 })
+      const rec = new MediaRecorder(salida, { mimeType: mimeRef.current, videoBitsPerSecond: bitrateCaptura(bitrateRef.current) * 1000, audioBitsPerSecond: 256_000 })
       rec.ondataavailable = async ev => {
         if (!ev.data || !ev.data.size) return
         try {
@@ -1088,7 +1091,7 @@ export default function EnVivoPage() {
     mimeRef.current = mime
     urlsTxRef.current = rtmpUrls
     bitrateRef.current = CALIDAD_KBPS[calidad]
-    setLogsTx(prev => [...prev, `▶ formato de captura: ${mime}`, `▶ destinos: ${rtmpUrls.length}`, `▶ calidad: ${calidad} (${CALIDAD_KBPS[calidad]}k)`, grabar ? "● grabación local: activada" : "○ grabación local: desactivada"])
+    setLogsTx(prev => [...prev, `▶ formato de captura: ${mime}`, `▶ destinos: ${rtmpUrls.length}`, `▶ calidad de salida: ${calidad} (${CALIDAD_KBPS[calidad]}k)`, `▶ captura interna: ${bitrateCaptura(CALIDAD_KBPS[calidad])}k`, grabar ? "● grabación local: activada" : "○ grabación local: desactivada"])
 
     // Abrir la grabación ANTES de arrancar el grabador: así el primer trozo (que
     // trae la cabecera mkv) sí queda en el archivo.
@@ -1981,7 +1984,7 @@ export default function EnVivoPage() {
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12.5, color: C.tenue, minWidth: 58 }}>Calidad</span>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {([["baja", "Baja", "1.2 Mbps · internet lento"], ["media", "Media", "2.5 Mbps · recomendada"], ["alta", "Alta", "4.5 Mbps · buena subida"]] as const).map(([id, txt, sub]) => (
+                  {([["baja", "Baja", "2.5 Mbps · conexión limitada"], ["media", "Media", "4.5 Mbps · recomendada"], ["alta", "Alta", "6 Mbps · máxima nitidez"]] as const).map(([id, txt, sub]) => (
                     <button key={id} title={sub} onClick={() => { setCalidad(id); try { localStorage.setItem("en-vivo-calidad", id) } catch {} }}
                       style={{ padding: "8px 12px", borderRadius: 9, cursor: "pointer", fontSize: 12.5, fontWeight: 700,
                         background: calidad === id ? "rgba(37,99,235,0.2)" : C.panel2,

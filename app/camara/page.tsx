@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { io, Socket } from "socket.io-client"
-import { getSocketUrl } from "@/lib/servidor"
+import { buscarServidorEnRed, getSocketUrl } from "@/lib/servidor"
 import { logError } from "@/lib/Errorlogger"
 import OnboardingTour from "@/components/OnboardingTour"
 import { TOUR_CAMARA_MOVIL } from "@/lib/tours"
@@ -45,6 +45,8 @@ export default function CamaraMovil() {
   const quiereConectadoRef = useRef(false)
   const reconectandoRef = useRef(false)
   const reintentoTimerRef = useRef<any>(0)
+  const descubriendoServidorRef = useRef(false)
+  const ultimoDescubrimientoRef = useRef(0)
   const ultimoLogConexRef = useRef(0)   // throttle del log de errores de conexión
   const logConex = (m: string) => {
     const now = Date.now()
@@ -254,7 +256,35 @@ export default function CamaraMovil() {
     socket.on("camara:par-fin", () => { quiereConectadoRef.current = false; setError("El PC cerró la cámara."); cerrar(false) })
     // Caídas de red / socket → reintentar mientras el usuario quiera estar conectado.
     socket.on("disconnect", () => { if (quiereConectadoRef.current) programarReconexion() })
-    socket.on("connect_error", (e: any) => { logConex(`connect_error a ${url}: ${e?.message || e}`); if (quiereConectadoRef.current) programarReconexion() })
+    socket.on("connect_error", async (e: any) => {
+      logConex(`connect_error a ${url}: ${e?.message || e}`)
+      if (!quiereConectadoRef.current) return
+
+      // Una IP manual puede ser la del router/repetidor y no la del PC. Si no
+      // responde, buscar una instalación real de Selah (/info) y corregirla.
+      const ahora = Date.now()
+      if (!descubriendoServidorRef.current && ahora - ultimoDescubrimientoRef.current > 60_000) {
+        descubriendoServidorRef.current = true
+        ultimoDescubrimientoRef.current = ahora
+        setError("No responde esa IP. Buscando el PC con Selah en la red…")
+        try {
+          const ip = await buscarServidorEnRed()
+          if (ip && quiereConectadoRef.current) {
+            localStorage.setItem("servidor_ip", ip)
+            setError(`PC encontrado en ${ip}. Reconectando…`)
+            socket.removeAllListeners("disconnect")
+            socket.removeAllListeners("connect_error")
+            try { socket.close() } catch {}
+            descubriendoServidorRef.current = false
+            await establecerConexion()
+            return
+          }
+          setError("No se encontró el PC. Revisa que Selah esté abierto y que el repetidor permita ver otros dispositivos.")
+        } catch {}
+        descubriendoServidorRef.current = false
+      }
+      if (quiereConectadoRef.current) programarReconexion()
+    })
   }
 
   const conectar = async () => {
