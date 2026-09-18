@@ -46,7 +46,12 @@ const C = {
   azul: "#2563eb", verde: "#16a34a", rojo: "#dc2626", ambar: "#f59e0b",
 }
 
-const ANCHO = 1280, ALTO = 720 // lienzo de salida (720p)
+// El editor conserva coordenadas lógicas 1280x720 para no romper posiciones
+// guardadas, pero el lienzo real y la emisión trabajan a 1920x1080. El contexto
+// se escala 1.5x antes de dibujar: ganamos detalle sin cambiar el diseño.
+const ANCHO = 1280, ALTO = 720
+const SALIDA_ANCHO = 1920, SALIDA_ALTO = 1080
+const ESCALA_SALIDA = SALIDA_ANCHO / ANCHO
 const CELULAR = "__celular__" // "deviceId" especial: la cámara es el celular (WebRTC)
 
 // Sección colapsable de los controles (a nivel módulo para no perder su estado
@@ -352,7 +357,7 @@ export default function EnVivoPage() {
   const emiPeersRef = useRef<Map<string, RTCPeerConnection>>(new Map())
 
   const [calidad, setCalidad] = useState<"baja" | "media" | "alta">("media")
-  // 720p necesita margen para conservar rostros, movimiento y letras. La
+  // 1080p necesita margen para conservar rostros, movimiento y letras. La
   // captura interna usa aún más bitrate porque FFmpeg vuelve a comprimirla.
   const CALIDAD_KBPS: Record<string, number> = { baja: 2500, media: 4500, alta: 6000 }
   const bitrateCaptura = (salidaKbps: number) => Math.min(12_000, Math.max(6_000, salidaKbps * 2))
@@ -469,8 +474,8 @@ export default function EnVivoPage() {
         // El audio puede venir del CELULAR (mic del celular) → acá no se pide mic.
         const constraints: MediaStreamConstraints = {
           video: camaraId === CELULAR ? false
-               : camaraId ? { deviceId: { exact: camaraId }, width: { ideal: 1280 }, height: { ideal: 720 } }
-                          : { width: { ideal: 1280 }, height: { ideal: 720 } },
+               : camaraId ? { deviceId: { exact: camaraId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, min: 24 } }
+                          : { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, min: 24 } },
           audio: microId === CELULAR ? false
                : microId ? { deviceId: { exact: microId }, ...audioBase } : audioBase,
         }
@@ -622,7 +627,7 @@ export default function EnVivoPage() {
       try {
         stream2Ref.current?.getTracks().forEach(t => t.stop())
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: camara2Id }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { deviceId: { exact: camara2Id }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, min: 24 } },
         })
         if (cancelado) { stream.getTracks().forEach(t => t.stop()); return }
         stream2Ref.current = stream
@@ -804,6 +809,9 @@ export default function EnVivoPage() {
       // Blindado: un error acá NO debe matar el bucle (antes lo mataba y se
       // congelaba todo). Pase lo que pase, re-agendamos el siguiente fotograma.
       try {
+        // Todas las funciones de diseño usan el sistema lógico 1280x720. El
+        // backing store es 1080p, por eso restablecemos esta escala cada frame.
+        ctx.setTransform(ESCALA_SALIDA, 0, 0, ESCALA_SALIDA, 0, 0)
         const cont = contenidoRef.current
         // Cada "slot" de cámara puede ser la cámara local o el CELULAR (WebRTC).
         const v1 = cont.cam1Celular ? phoneVideoRef.current : videoRef.current
@@ -825,9 +833,9 @@ export default function EnVivoPage() {
         const claveEscena = `${cont.escena}|${cont.pantallaOn ? "p" : ""}`
         if (cont.transiciones && escenaDibujadaRef.current && escenaDibujadaRef.current !== claveEscena && canvas.width) {
           let snap = transRef.current?.snap
-          if (!snap) { snap = document.createElement("canvas"); snap.width = ANCHO; snap.height = ALTO }
+          if (!snap) { snap = document.createElement("canvas"); snap.width = SALIDA_ANCHO; snap.height = SALIDA_ALTO }
           const sctx = snap.getContext("2d")
-          if (sctx) { sctx.clearRect(0, 0, ANCHO, ALTO); sctx.drawImage(canvas, 0, 0) }
+          if (sctx) { sctx.clearRect(0, 0, SALIDA_ANCHO, SALIDA_ALTO); sctx.drawImage(canvas, 0, 0) }
           transRef.current = { hasta: performance.now() + 350, snap }
         }
         escenaDibujadaRef.current = claveEscena
@@ -936,6 +944,23 @@ export default function EnVivoPage() {
   // fuente era el celular (no hay getUserMedia local → streamRef queda en null).
   const hayFuenteVideo = (): boolean =>
     !!(streamRef.current?.getVideoTracks().length || stream2Ref.current || phoneStreamRef.current || screenStreamRef.current)
+
+  // Dejar en el registro la resolución REAL negociada, no solamente la pedida.
+  // Algunas cámaras virtuales aceptan 1080p en constraints pero entregan 720p
+  // o menos según su propia configuración; esto permite detectarlo sin adivinar.
+  const diagnosticoFuentesVideo = (): string[] => {
+    const fuentes: Array<[string, MediaStream | null]> = [
+      ["cámara 1", streamRef.current],
+      ["cámara 2", stream2Ref.current],
+      ["cámara celular", phoneStreamRef.current],
+      ["pantalla", screenStreamRef.current],
+    ]
+    return fuentes.flatMap(([nombre, stream]) => stream?.getVideoTracks().map(track => {
+      const s = track.getSettings()
+      const ancho = s.width || "?", alto = s.height || "?", fps = s.frameRate ? Math.round(s.frameRate) : "?"
+      return `▶ ${nombre}: ${ancho}×${alto} @ ${fps} fps · ${track.label || "sin etiqueta"}`
+    }) || [])
+  }
 
   // Una espera o la proyección completa se generan en el lienzo y son una salida
   // válida aun sin cámara. Las escenas "Cámara" sí exigen una fuente real.
@@ -1093,7 +1118,15 @@ export default function EnVivoPage() {
     mimeRef.current = mime
     urlsTxRef.current = rtmpUrls
     bitrateRef.current = CALIDAD_KBPS[calidad]
-    setLogsTx(prev => [...prev, `▶ formato de captura: ${mime}`, `▶ destinos: ${rtmpUrls.length}`, `▶ calidad de salida: ${calidad} (${CALIDAD_KBPS[calidad]}k)`, `▶ captura interna: ${bitrateCaptura(CALIDAD_KBPS[calidad])}k`, grabar ? "● grabación local: activada" : "○ grabación local: desactivada"])
+    setLogsTx(prev => [...prev,
+      `▶ salida de video: ${SALIDA_ANCHO}×${SALIDA_ALTO} @ 30 fps`,
+      ...diagnosticoFuentesVideo(),
+      `▶ formato de captura: ${mime}`,
+      `▶ destinos: ${rtmpUrls.length}`,
+      `▶ calidad de salida: ${calidad} (${CALIDAD_KBPS[calidad]}k)`,
+      `▶ captura interna: ${bitrateCaptura(CALIDAD_KBPS[calidad])}k`,
+      grabar ? "● grabación local: activada" : "○ grabación local: desactivada",
+    ])
 
     // Abrir la grabación ANTES de arrancar el grabador: así el primer trozo (que
     // trae la cabecera mkv) sí queda en el archivo.
@@ -1452,7 +1485,7 @@ export default function EnVivoPage() {
         <div data-tour="tx-salida" style={{ padding: 10, borderRadius: 20, background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))", border: "1px solid rgba(255,255,255,0.12)", boxShadow: "0 14px 40px rgba(0,0,0,0.45)" }}>
         {/* Vista previa (lo que saldría al aire) */}
         <div style={{ position: "relative", zIndex: 5, borderRadius: 12, overflow: "hidden", border: "2px solid rgba(255,255,255,0.3)", background: "#000", aspectRatio: "16 / 9", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.6)" }}>
-          <canvas ref={canvasRef} width={ANCHO} height={ALTO}
+          <canvas ref={canvasRef} width={SALIDA_ANCHO} height={SALIDA_ALTO}
             style={{ width: "100%", height: "100%", display: "block" }} />
 
           {/* Editor: manijas para mover/redimensionar objetos (solo escenas con
@@ -1507,7 +1540,7 @@ export default function EnVivoPage() {
           )}
         </div>
           <div style={{ marginTop: 8, textAlign: "center", fontSize: 10.5, letterSpacing: 0.5, color: C.tenue, fontWeight: 700 }}>
-            CUADRO 1280 × 720 — TODO LO DE ADENTRO SALE AL AIRE
+            SALIDA FULL HD 1920 × 1080 — TODO LO DE ADENTRO SALE AL AIRE
           </div>
         </div>
 

@@ -47,6 +47,15 @@ test("la transmisión evita comprimir dos veces con el mismo bitrate bajo", () =
   assert.match(electron, /"-b:a", "160k", "-ar", "48000"/)
 })
 
+test("la cadena de video conserva detalle Full HD y registra la fuente real", () => {
+  assert.match(transmision, /const SALIDA_ANCHO = 1920, SALIDA_ALTO = 1080/)
+  assert.match(transmision, /width: \{ ideal: 1920 \}, height: \{ ideal: 1080 \}/)
+  assert.match(transmision, /width=\{SALIDA_ANCHO\} height=\{SALIDA_ALTO\}/)
+  assert.match(transmision, /ctx\.setTransform\(ESCALA_SALIDA/)
+  assert.match(transmision, /diagnosticoFuentesVideo/)
+  assert.match(transmision, /▶ salida de video: \$\{SALIDA_ANCHO\}×\$\{SALIDA_ALTO\} @ 30 fps/)
+})
+
 test("una APK recién instalada busca el PC sin obligar a entrar en Ajustes", () => {
   assert.match(inicio, /if \(esApk && !localStorage\.getItem\("servidor_ip"\)\) void descubrir\(\)/)
   assert.match(inicio, /Buscando el computador…/)
