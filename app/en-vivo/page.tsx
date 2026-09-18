@@ -1213,7 +1213,14 @@ export default function EnVivoPage() {
     const tx = (window as any).transmision
     if (!tx?.infoRedCamara) { setErrorTx("Usar el celular como cámara funciona solo en la app de escritorio."); return }
     setCamError(""); setCamEstado("abriendo")
-    const codigo = Math.random().toString(36).slice(2, 8).toUpperCase()
+    // Código estable por instalación: el APK puede recordarlo y reconectarse
+    // solo la próxima vez que Electron abra la sala.
+    let codigo = ""
+    try { codigo = localStorage.getItem("selah-camara-host-code") || "" } catch {}
+    if (!/^[A-Z0-9]{6,8}$/.test(codigo)) {
+      codigo = Math.random().toString(36).slice(2, 8).toUpperCase()
+      try { localStorage.setItem("selah-camara-host-code", codigo) } catch {}
+    }
     camCodigoRef.current = codigo; setCamCodigo(codigo)
     setCamModal(true)
 

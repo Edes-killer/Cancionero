@@ -1500,6 +1500,26 @@ function createWindow() {
       }
     }
 
+    // Transmisión corre en su propia ventana operativa. Así el usuario puede
+    // volver a Control en la ventana principal sin desmontar cámaras, WebRTC,
+    // grabación ni ffmpeg.
+    if (url.includes("/en-vivo")) {
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: {
+          width: 1280, height: 820, minWidth: 980, minHeight: 650,
+          title: "Selah Live — Transmisión",
+          backgroundColor: "#060d1a",
+          webPreferences: {
+            preload: path.join(__dirname, "preload.js"),
+            contextIsolation: true,
+            nodeIntegration: false,
+            backgroundThrottling: false,
+          },
+        },
+      }
+    }
+
     return { action: "allow" }
   })
 

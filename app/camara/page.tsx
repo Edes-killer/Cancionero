@@ -50,6 +50,7 @@ export default function CamaraMovil() {
   const descubriendoServidorRef = useRef(false)
   const ultimoDescubrimientoRef = useRef(0)
   const ultimoLogConexRef = useRef(0)   // throttle del log de errores de conexión
+  const autoConexionRef = useRef(false)
   const logConex = (m: string) => {
     const now = Date.now()
     if (now - ultimoLogConexRef.current < 15000) return   // máx 1 cada 15 s (reintentos)
@@ -85,13 +86,22 @@ export default function CamaraMovil() {
     const vBase = { width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } }
     const gUM = (video: MediaTrackConstraints) => navigator.mediaDevices.getUserMedia({ video, audio })
     const errs: string[] = []
+    // Después del primer permiso Android ya entrega etiquetas confiables. Para
+    // voltear, ir directo al deviceId evita que dos intentos facingMode dejen el
+    // HAL de cámara ocupado antes de probar la frontal correcta.
+    const camsPrevias = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput")
+    const reFront = /front|frontal|face|self|user/i
+    const reBack = /back|rear|tras|environment|world|main/i
+    const porEtiqueta = camsPrevias.find(d => (modo === "user" ? reFront : reBack).test(d.label))
+    if (porEtiqueta?.deviceId) {
+      try { return await gUM({ deviceId: { exact: porEtiqueta.deviceId }, ...vBase }) }
+      catch (e: any) { errs.push("directo=" + (e?.name || "?")) }
+    }
     try { return await gUM({ facingMode: { exact: modo } as any, ...vBase }) } catch (e: any) { errs.push("exact=" + (e?.name || "?")) }
     try { return await gUM({ facingMode: modo as any, ...vBase }) } catch (e: any) { errs.push("suave=" + (e?.name || "?")) }
     // Fallback definitivo: elegir por deviceId.
     const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput")
     const frontal = modo === "user"
-    const reFront = /front|frontal|face|self|user/i
-    const reBack = /back|rear|tras|environment|world|main/i
     let elegida = cams.find(d => (frontal ? reFront : reBack).test(d.label))
     // Sin etiquetas útiles: heurística — la trasera suele ser la 1ª, la frontal la última.
     if (!elegida && cams.length > 1) elegida = frontal ? cams[cams.length - 1] : cams[0]
@@ -130,12 +140,13 @@ export default function CamaraMovil() {
       // Soltar del TODO la cámara actual (track + stream + preview) para que el
       // equipo la LIBERE. En Samsung/One UI la cámara física tarda ~1-2 s en
       // liberarse; si abrimos la otra de inmediato da NotReadableError ("ocupada").
+      try { await videoSenderRef.current?.replaceTrack(null) } catch {}
       try { videoTrackRef.current.stop() } catch {}
       videoTrackRef.current = null
       try { streamRef.current?.getTracks().forEach(t => t.stop()) } catch {}
       if (videoRef.current) videoRef.current.srcObject = null
       // Reintentar con esperas CRECIENTES (NotReadableError suele ser transitorio).
-      const esperas = [250, 500, 900, 1400]
+      const esperas = [900, 1400, 2200, 3200]
       for (const ms of esperas) {
         await new Promise(r => setTimeout(r, ms))
         try {
@@ -312,6 +323,16 @@ export default function CamaraMovil() {
     quiereConectadoRef.current = true
     await establecerConexion()
   }
+
+  // Si ya existe un código guardado, la cámara se enlaza sola apenas el sensor
+  // queda listo. Si Electron aún no abrió la sala, el reconector seguirá
+  // esperando sin obligar al usuario a entrar a Ajustes ni tocar Conectar.
+  useEffect(() => {
+    if (autoConexionRef.current || estado !== "listo" || !codigo.trim()) return
+    autoConexionRef.current = true
+    void conectar()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estado, codigo])
 
   const cerrar = (avisar = true) => {
     quiereConectadoRef.current = false

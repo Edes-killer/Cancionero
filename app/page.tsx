@@ -448,7 +448,7 @@ export default function InicioPage() {
                 else window.open(`${window.location.origin}/musicos`, "_blank")
               }},
               { icon:"📅", label:"Historial",        sub:"Cultos y estadísticas",        border:"rgba(245,158,11,0.3)", bg:"rgba(245,158,11,0.1)", ibg:"rgba(245,158,11,0.25)",  action:() => navegarSPA(router, "/historial") },
-              { icon:"🎥", label:"Transmisión",      sub:"Transmite en vivo · Premium",   border:"rgba(245,158,11,0.3)", bg:"rgba(245,158,11,0.08)", ibg:"rgba(245,158,11,0.2)",  action:() => navegarSPA(router, "/en-vivo") },
+              { icon:"🎥", label:"Transmisión",      sub:"Transmite en vivo · Premium",   border:"rgba(245,158,11,0.3)", bg:"rgba(245,158,11,0.08)", ibg:"rgba(245,158,11,0.2)",  action:() => window.open(`${window.location.origin}/en-vivo`, "selah-transmision") },
               { icon:"📷", label:"Cámara",           sub:"Este celular como cámara",       border:"rgba(37,99,235,0.3)", bg:"rgba(37,99,235,0.08)", ibg:"rgba(37,99,235,0.2)",  action:() => navegarSPA(router, "/camara"), soloLider:true, soloApp:true },
               { icon:"⚙️", label:"Configuración",  sub:"Iglesia, servidor y ajustes",    border:"rgba(255,255,255,0.08)", bg:"rgba(255,255,255,0.04)", ibg:"rgba(255,255,255,0.07)", action:() => navegarSPA(router, "/configuracion"), soloAdmin:true },
             ].filter(t => (!(t as any).soloAdmin || rol === null || rol === "admin") && (!(t as any).soloLider || rol === null || rol === "admin" || rol === "lider") && (!(t as any).soloApp || esApp)).map(({ icon, label, sub, border, bg, ibg, action }) => (

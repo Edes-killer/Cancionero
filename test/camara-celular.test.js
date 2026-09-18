@@ -72,6 +72,25 @@ test("la sala de cámara dirige señales y admite varios celulares", () => {
   assert.match(transmision, /celulares\.map\(c => <option/)
 })
 
+test("la cámara recuerda la sala y se reconecta sin pasar por Ajustes", () => {
+  assert.match(transmision, /selah-camara-host-code/)
+  assert.match(movil, /autoConexionRef/)
+  assert.match(movil, /estado !== "listo" \|\| !codigo\.trim\(\)/)
+  assert.match(movil, /void conectar\(\)/)
+})
+
+test("Android libera el sender antes de abrir la cámara frontal", () => {
+  assert.match(movil, /videoSenderRef\.current\?\.replaceTrack\(null\)/)
+  assert.match(movil, /const esperas = \[900, 1400, 2200, 3200\]/)
+  assert.match(movil, /porEtiqueta\?\.deviceId/)
+})
+
+test("Transmisión se abre aparte para sobrevivir al navegar a Control", () => {
+  assert.match(inicio, /window\.open\(`\$\{window\.location\.origin\}\/en-vivo`, "selah-transmision"\)/)
+  assert.match(electron, /Transmisión corre en su propia ventana operativa/)
+  assert.match(electron, /backgroundThrottling: false/)
+})
+
 test("una APK recién instalada busca el PC sin obligar a entrar en Ajustes", () => {
   assert.match(inicio, /if \(esApk && !localStorage\.getItem\("servidor_ip"\)\) void descubrir\(\)/)
   assert.match(inicio, /Buscando el computador…/)
