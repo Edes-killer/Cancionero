@@ -72,17 +72,26 @@ test("la sala de cámara dirige señales y admite varios celulares", () => {
   assert.match(transmision, /celulares\.map\(c => <option/)
 })
 
-test("la cámara recuerda la sala y se reconecta sin pasar por Ajustes", () => {
+test("la cámara recuerda la sala pero permite reemplazar un código antiguo", () => {
   assert.match(transmision, /selah-camara-host-code/)
-  assert.match(movil, /autoConexionRef/)
-  assert.match(movil, /estado !== "listo" \|\| !codigo\.trim\(\)/)
-  assert.match(movil, /void conectar\(\)/)
+  assert.match(movil, /const cambiarCodigo = \(\) =>/)
+  assert.match(movil, /localStorage\.removeItem\("selah-camara-codigo"\)/)
+  assert.match(movil, /Cambiar código/)
 })
 
 test("Android libera el sender antes de abrir la cámara frontal", () => {
   assert.match(movil, /videoSenderRef\.current\?\.replaceTrack\(null\)/)
   assert.match(movil, /const esperas = \[900, 1400, 2200, 3200\]/)
   assert.match(movil, /porEtiqueta\?\.deviceId/)
+  assert.match(movil, /getUserMedia\(\{ video, audio \}\)/)
+  assert.match(movil, /nuevoVideo\.applyConstraints\(VIDEO_MAX\)/)
+})
+
+test("un estado WebRTC transitorio no provoca un bucle de reconexión", () => {
+  assert.match(movil, /estableciendoRef/)
+  assert.match(movil, /pc\.connectionState === "disconnected"/)
+  assert.match(movil, /}, 8000\)/)
+  assert.match(movil, /removeAllListeners\(\)/)
 })
 
 test("Transmisión se abre aparte para sobrevivir al navegar a Control", () => {

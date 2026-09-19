@@ -6,11 +6,13 @@
 // (oferta/respuesta/ICE) viaja por el Socket.IO del PC; el video va directo.
 
 import { useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { io, Socket } from "socket.io-client"
 import { buscarServidorEnRed, getSocketUrl } from "@/lib/servidor"
 import { logError } from "@/lib/Errorlogger"
 import OnboardingTour from "@/components/OnboardingTour"
 import { TOUR_CAMARA_MOVIL } from "@/lib/tours"
+import { navegarSPA } from "@/lib/navegar"
 
 type Estado = "abriendo" | "listo" | "conectando" | "conectado" | "error"
 
@@ -20,8 +22,10 @@ const AUDIO_HIFI: MediaTrackConstraints = {
   echoCancellation: false, noiseSuppression: false, autoGainControl: false,
   sampleRate: { ideal: 48000 }, channelCount: { ideal: 2 },
 }
+const VIDEO_MAX: MediaTrackConstraints = { width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } }
 
 export default function CamaraMovil() {
+  const router = useRouter()
   const [estado, setEstado] = useState<Estado>("abriendo")
   const [error, setError] = useState("")
   const [diag, setDiag] = useState("")   // diagnóstico si falla el cambio de cámara
@@ -50,7 +54,7 @@ export default function CamaraMovil() {
   const descubriendoServidorRef = useRef(false)
   const ultimoDescubrimientoRef = useRef(0)
   const ultimoLogConexRef = useRef(0)   // throttle del log de errores de conexión
-  const autoConexionRef = useRef(false)
+  const estableciendoRef = useRef(false)
   const logConex = (m: string) => {
     const now = Date.now()
     if (now - ultimoLogConexRef.current < 15000) return   // máx 1 cada 15 s (reintentos)
@@ -83,7 +87,7 @@ export default function CamaraMovil() {
     const audio = incluirAudio ? AUDIO_HIFI : false
     // Pedimos el máximo razonable y dejamos que Android negocie la capacidad
     // nativa real del sensor. No imponemos 1080p ni reducimos una cámara 4K.
-    const vBase = { width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } }
+    const vBase = VIDEO_MAX
     const gUM = (video: MediaTrackConstraints) => navigator.mediaDevices.getUserMedia({ video, audio })
     const errs: string[] = []
     // Después del primer permiso Android ya entrega etiquetas confiables. Para
@@ -94,7 +98,9 @@ export default function CamaraMovil() {
     const reBack = /back|rear|tras|environment|world|main/i
     const porEtiqueta = camsPrevias.find(d => (modo === "user" ? reFront : reBack).test(d.label))
     if (porEtiqueta?.deviceId) {
-      try { return await gUM({ deviceId: { exact: porEtiqueta.deviceId }, ...vBase }) }
+      // Abrir primero sin resolución exigida: varios WebView/Samsung devuelven
+      // NotReadableError al cambiar de sensor y negociar 4K en la misma llamada.
+      try { return await gUM({ deviceId: { exact: porEtiqueta.deviceId } }) }
       catch (e: any) { errs.push("directo=" + (e?.name || "?")) }
     }
     try { return await gUM({ facingMode: { exact: modo } as any, ...vBase }) } catch (e: any) { errs.push("exact=" + (e?.name || "?")) }
@@ -108,7 +114,7 @@ export default function CamaraMovil() {
     if (!elegida) elegida = cams[0]
     const lista = cams.map(c => c.label || "(sin nombre)").join(" | ")
     if (!elegida) { setDiag(`0 cámaras · ${errs.join(" ")}`); throw new Error("sin-camaras") }
-    try { return await gUM({ deviceId: { exact: elegida.deviceId }, ...vBase }) }
+    try { return await gUM({ deviceId: { exact: elegida.deviceId } }) }
     catch (e: any) {
       errs.push("id=" + (e?.name || "?"))
       const d = `${cams.length} cám: ${lista} · ${errs.join(" ")}`
@@ -125,6 +131,9 @@ export default function CamaraMovil() {
     if (videoSenderRef.current && nuevoVideo) { try { await videoSenderRef.current.replaceTrack(nuevoVideo) } catch {} }
     videoTrackRef.current = nuevoVideo
     if (nuevoVideo) {
+      // Con el sensor ya abierto, pedir su mejor resolución. Si no acepta el
+      // cambio conservamos la resolución nativa que Android eligió.
+      try { await nuevoVideo.applyConstraints(VIDEO_MAX) } catch {}
       const cfg = nuevoVideo.getSettings()
       setResolucion(`${cfg.width || "?"}×${cfg.height || "?"} · ${Math.round(cfg.frameRate || 0) || "?"} FPS`)
     }
@@ -204,8 +213,17 @@ export default function CamaraMovil() {
     pc.onicecandidate = e => { if (e.candidate) socket.emit("camara:senal", { codigo: codigoRef.current, para: hostIdRef.current, data: { tipo: "ice", candidate: e.candidate } }) }
     pc.onconnectionstatechange = () => {
       const st = pc.connectionState
-      if (st === "connected") { setEstado("conectado"); setError("") }
-      else if ((st === "failed" || st === "disconnected") && quiereConectadoRef.current) programarReconexion()
+      if (st === "connected") { estableciendoRef.current = false; setEstado("conectado"); setError("") }
+      else if (st === "failed" && quiereConectadoRef.current) { estableciendoRef.current = false; programarReconexion() }
+      else if (st === "disconnected" && quiereConectadoRef.current) {
+        // `disconnected` suele durar segundos durante cambios de WiFi/cámara.
+        // Esperar evita cerrar y recrear enlaces sanos en un bucle.
+        setTimeout(() => {
+          if (pcRef.current === pc && pc.connectionState === "disconnected" && quiereConectadoRef.current) {
+            estableciendoRef.current = false; programarReconexion()
+          }
+        }, 8000)
+      }
     }
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
@@ -220,7 +238,7 @@ export default function CamaraMovil() {
 
   // Programa un reintento (con guarda para no apilar varios).
   const programarReconexion = () => {
-    if (!quiereConectadoRef.current || reconectandoRef.current) return
+    if (!quiereConectadoRef.current || reconectandoRef.current || estableciendoRef.current) return
     reconectandoRef.current = true
     setEstado("conectando")
     clearTimeout(reintentoTimerRef.current)
@@ -232,15 +250,17 @@ export default function CamaraMovil() {
 
   // Establece (o restablece) la conexión con el PC usando el código guardado.
   const establecerConexion = async () => {
+    if (estableciendoRef.current) return
+    estableciendoRef.current = true
     const cod = codigoRef.current.trim().toUpperCase()
-    if (!cod) { setError("Escribe el código que muestra el PC."); return }
+    if (!cod) { estableciendoRef.current = false; setError("Escribe el código que muestra el PC."); return }
     try { pcRef.current?.close() } catch {}; pcRef.current = null
-    try { socketRef.current?.close() } catch {}; socketRef.current = null
+    try { socketRef.current?.removeAllListeners(); socketRef.current?.close() } catch {}; socketRef.current = null
     videoSenderRef.current = null
     // Cámara viva: si el track murió o quedó congelado (2º plano), re-tomarla.
     const t = videoTrackRef.current
     const vivo = t && t.readyState === "live" && !t.muted
-    if (!vivo) { if (!(await abrirCamara(facingRef.current, true))) { if (quiereConectadoRef.current) programarReconexion(); return } }
+    if (!vivo) { if (!(await abrirCamara(facingRef.current, true))) { estableciendoRef.current = false; if (quiereConectadoRef.current) programarReconexion(); return } }
     vigilarTrack()
     setEstado("conectando")
     // En la APK (Capacitor) la página está empaquetada → window.location es
@@ -254,6 +274,7 @@ export default function CamaraMovil() {
     socket.on("connect", () => {
       socket.emit("camara:unir", { codigo: cod }, (resp: any) => {
         if (!resp?.ok) {
+          estableciendoRef.current = false
           if (resp?.error === "no-host") {
             // El PC aún no está esperando: reintentar en unos segundos.
             setError("Esperando a que el PC abra “Usar celular como cámara”…")
@@ -287,6 +308,7 @@ export default function CamaraMovil() {
     // Caídas de red / socket → reintentar mientras el usuario quiera estar conectado.
     socket.on("disconnect", () => { if (quiereConectadoRef.current) programarReconexion() })
     socket.on("connect_error", async (e: any) => {
+      estableciendoRef.current = false
       logConex(`connect_error a ${url}: ${e?.message || e}`)
       if (!quiereConectadoRef.current) return
 
@@ -324,24 +346,21 @@ export default function CamaraMovil() {
     await establecerConexion()
   }
 
-  // Si ya existe un código guardado, la cámara se enlaza sola apenas el sensor
-  // queda listo. Si Electron aún no abrió la sala, el reconector seguirá
-  // esperando sin obligar al usuario a entrar a Ajustes ni tocar Conectar.
-  useEffect(() => {
-    if (autoConexionRef.current || estado !== "listo" || !codigo.trim()) return
-    autoConexionRef.current = true
-    void conectar()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [estado, codigo])
-
   const cerrar = (avisar = true) => {
     quiereConectadoRef.current = false
-    clearTimeout(reintentoTimerRef.current); reconectandoRef.current = false
+    clearTimeout(reintentoTimerRef.current); reconectandoRef.current = false; estableciendoRef.current = false
     try { if (avisar) socketRef.current?.emit("camara:fin", { codigo: codigoRef.current }) } catch {}
     try { pcRef.current?.close() } catch {}; pcRef.current = null
     try { socketRef.current?.close() } catch {}; socketRef.current = null
     videoSenderRef.current = null
     setEstado(videoTrackRef.current ? "listo" : "error")
+  }
+
+  const cambiarCodigo = () => {
+    cerrar(true)
+    setCodigo(""); codigoRef.current = ""
+    setError(""); setEstado(videoTrackRef.current ? "listo" : "error")
+    try { localStorage.removeItem("selah-camara-codigo") } catch {}
   }
 
   // Mantener la pantalla encendida y RECONECTAR al volver a primer plano.
@@ -386,6 +405,7 @@ export default function CamaraMovil() {
       {/* Barra de estado arriba */}
       <div data-tour="camara-estado" style={{ position: "absolute", top: 0, left: 0, right: 0, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0))" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 800 }}>
+          <button onClick={() => { cerrar(true); navegarSPA(router, "/") }} aria-label="Volver al inicio" style={{ border: "1px solid rgba(255,255,255,.25)", background: "rgba(0,0,0,.35)", color: "white", borderRadius: 10, padding: "7px 10px", fontWeight: 800 }}>←</button>
           <span style={{ width: 10, height: 10, borderRadius: 99, background: chip.c, boxShadow: conectado ? `0 0 8px ${chip.c}` : "none" }} />
           <span style={{ color: chip.c }}>{chip.t}</span>
         </div>
@@ -409,7 +429,10 @@ export default function CamaraMovil() {
           <button data-tour="camara-voltear" onClick={voltear}
             style={{ flex: "0 0 auto", padding: "14px 16px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.12)", color: "#fff", fontSize: 15, fontWeight: 700 }}>🔄 Voltear</button>
           {conectado
-            ? <button onClick={() => cerrar(true)} style={{ flex: 1, padding: "14px", borderRadius: 14, border: "none", background: "#dc2626", color: "#fff", fontSize: 16, fontWeight: 800 }}>■ Detener</button>
+            ? <>
+                <button onClick={cambiarCodigo} style={{ flex: 1, padding: "14px 10px", borderRadius: 14, border: "1px solid rgba(255,255,255,.28)", background: "rgba(255,255,255,.12)", color: "#fff", fontSize: 14, fontWeight: 800 }}>⌨ Cambiar código</button>
+                <button onClick={() => cerrar(true)} style={{ flex: 1, padding: "14px", borderRadius: 14, border: "none", background: "#dc2626", color: "#fff", fontSize: 16, fontWeight: 800 }}>■ Detener</button>
+              </>
             : <button onClick={conectar} disabled={estado === "conectando"} style={{ flex: 1, padding: "14px", borderRadius: 14, border: "none", background: estado === "conectando" ? "#555" : "#2563eb", color: "#fff", fontSize: 16, fontWeight: 800 }}>
                 {estado === "conectando" ? "Conectando…" : "▶ Conectar al PC"}
               </button>}
