@@ -26,7 +26,7 @@ import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk, getP
 import { limitarAnchoBiblioteca, limitarPosMonitor } from "@/lib/controlLayout"
 import { esParteCoro, construirSecuenciaCoro as crearSecuenciaCoro, resincronizarPosicion } from "@/lib/secuenciaCoro"
 import { normalizarTiempos, duracionParte } from "@/lib/tiemposAuto"
-import { exportarListaTexto, nombreArchivoLista } from "@/lib/exportarListaTexto"
+import { exportarListaTexto, nombreArchivoLista, nombreArchivoListaWord } from "@/lib/exportarListaTexto"
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 interface Cancion {
@@ -2439,11 +2439,31 @@ const descargarListaTexto = async () => {
   const nombre = nombreCulto.trim() || "Lista de culto"
   const contenido = exportarListaTexto(nombre, lista)
   const archivo = new File(["\uFEFF", contenido], nombreArchivoLista(nombre), { type: "text/plain;charset=utf-8" })
+  await compartirODescargarArchivo(archivo, nombre)
+}
+
+const descargarListaWord = async () => {
+  if (!lista.length) return
+  const nombre = nombreCulto.trim() || "Lista de culto"
+  try {
+    const { exportarListaWord } = await import("@/lib/exportarListaWord")
+    const contenido = await exportarListaWord(nombre, lista)
+    const archivo = new File([contenido], nombreArchivoListaWord(nombre), {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    })
+    await compartirODescargarArchivo(archivo, nombre)
+  } catch (error) {
+    logCatch(error, "Exportar lista a Word")
+    flashCtrl("No se pudo preparar el archivo Word. Prueba exportar como .txt.")
+  }
+}
+
+const compartirODescargarArchivo = async (archivo: File, nombre: string) => {
   try {
     // En el móvil, compartir permite elegir Archivos, correo o mensajería.
     if (navigator.canShare?.({ files: [archivo] }) && navigator.share) {
       await navigator.share({ files: [archivo], title: nombre })
-      flashCtrl("✅ Lista de texto compartida")
+      flashCtrl("✅ Archivo compartido")
       return
     }
   } catch (error) {
@@ -2458,7 +2478,7 @@ const descargarListaTexto = async () => {
   enlace.click()
   enlace.remove()
   setTimeout(() => URL.revokeObjectURL(url), 30_000)
-  flashCtrl("✅ Lista exportada como archivo de texto")
+  flashCtrl(`✅ Archivo ${archivo.name.endsWith(".docx") ? "Word" : "de texto"} exportado`)
 }
 
 guardarCultoRef.current = () => { void guardarCulto() }
@@ -7260,6 +7280,11 @@ return (
               data-ayuda="Descarga el orden actual como archivo .txt, con las citas y textos bíblicos para preparar o compartir un estudio. No modifica la lista guardada."
               style={{ width:"100%", marginTop:8, padding:"10px", borderRadius:12, border:"1px solid rgba(255,255,255,.15)", background:"rgba(255,255,255,.05)", color:"#e2e8f0", fontWeight:750, fontSize:13, cursor:"pointer" }}>
               📄 Exportar estudio / lista (.txt)
+            </button>
+            <button className="ctrl-btn" type="button" onClick={() => void descargarListaWord()}
+              data-ayuda="Crea un documento de Word editable (.docx) con el orden, las citas bíblicas y los textos del estudio. No modifica la lista guardada."
+              style={{ width:"100%", marginTop:8, padding:"10px", borderRadius:12, border:"1px solid rgba(255,255,255,.15)", background:"rgba(255,255,255,.05)", color:"#e2e8f0", fontWeight:750, fontSize:13, cursor:"pointer" }}>
+              📝 Exportar para Word (.docx)
             </button>
           </div>
         )}

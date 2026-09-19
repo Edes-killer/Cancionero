@@ -24,6 +24,10 @@ export function nombreArchivoLista(nombre: string): string {
   return `${seguro}.txt`
 }
 
+export function nombreArchivoListaWord(nombre: string): string {
+  return nombreArchivoLista(nombre).replace(/\.txt$/, ".docx")
+}
+
 export function exportarListaTexto(nombre: string, items: ElementoExportable[]): string {
   const lineas = [limpio(nombre) || "Lista de culto", "=".repeat(42), ""]
 
