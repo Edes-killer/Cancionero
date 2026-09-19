@@ -26,6 +26,7 @@ import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk, getP
 import { limitarAnchoBiblioteca, limitarPosMonitor } from "@/lib/controlLayout"
 import { esParteCoro, construirSecuenciaCoro as crearSecuenciaCoro, resincronizarPosicion } from "@/lib/secuenciaCoro"
 import { normalizarTiempos, duracionParte } from "@/lib/tiemposAuto"
+import { exportarListaTexto, nombreArchivoLista } from "@/lib/exportarListaTexto"
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 interface Cancion {
@@ -2431,6 +2432,33 @@ const guardarCulto = async () => {
   } finally {
     setGuardandoCulto(false)
   }
+}
+
+const descargarListaTexto = async () => {
+  if (!lista.length) return
+  const nombre = nombreCulto.trim() || "Lista de culto"
+  const contenido = exportarListaTexto(nombre, lista)
+  const archivo = new File(["\uFEFF", contenido], nombreArchivoLista(nombre), { type: "text/plain;charset=utf-8" })
+  try {
+    // En el móvil, compartir permite elegir Archivos, correo o mensajería.
+    if (navigator.canShare?.({ files: [archivo] }) && navigator.share) {
+      await navigator.share({ files: [archivo], title: nombre })
+      flashCtrl("✅ Lista de texto compartida")
+      return
+    }
+  } catch (error) {
+    if ((error as Error).name === "AbortError") return
+    // Si falla el diálogo nativo, intentamos la descarga normal.
+  }
+  const url = URL.createObjectURL(archivo)
+  const enlace = document.createElement("a")
+  enlace.href = url
+  enlace.download = archivo.name
+  document.body.appendChild(enlace)
+  enlace.click()
+  enlace.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 30_000)
+  flashCtrl("✅ Lista exportada como archivo de texto")
 }
 
 guardarCultoRef.current = () => { void guardarCulto() }
@@ -7227,6 +7255,11 @@ return (
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8
             }}>
               {guardandoCulto ? "⏳ Guardando…" : `💾 ${listaIdActual ? (hayCambiosCulto ? "Guardar cambios" : "Culto guardado") : "Guardar lista de culto"}`}
+            </button>
+            <button className="ctrl-btn" type="button" onClick={() => void descargarListaTexto()}
+              data-ayuda="Descarga el orden actual como archivo .txt, con las citas y textos bíblicos para preparar o compartir un estudio. No modifica la lista guardada."
+              style={{ width:"100%", marginTop:8, padding:"10px", borderRadius:12, border:"1px solid rgba(255,255,255,.15)", background:"rgba(255,255,255,.05)", color:"#e2e8f0", fontWeight:750, fontSize:13, cursor:"pointer" }}>
+              📄 Exportar estudio / lista (.txt)
             </button>
           </div>
         )}
