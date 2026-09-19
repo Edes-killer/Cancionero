@@ -18,6 +18,7 @@ const LINKS = [
   { href: "/",              label: "Inicio",    icon: "⌂", ayuda:"Vuelve al resumen y los accesos principales." },
   { href: "/canciones",     label: "Canciones", icon: "🎵", ayuda:"Administra letras, tonos, acordes y el repertorio." },
   { href: "/control",       label: "Control",   icon: "🎛️", ayuda:"Prepara y opera la proyección del culto." },
+  { href: "/en-vivo",       label: "Transmitir", icon: "🎥", ayuda:"Abre la consola de transmisión en vivo de tu iglesia.", soloLider: true, soloPremium: true },
   { href: "/camara",        label: "Cámara",    icon: "📷", ayuda:"Usa este celular como cámara para la transmisión.", soloLider: true },
   { href: "/configuracion", label: "Ajustes",   icon: "⚙️", ayuda:"Configura la iglesia, dispositivos, red y preferencias." },
 ]
@@ -48,7 +49,7 @@ const SelahLogo = ({ size = 30 }: { size?: number }) => (
 export default function Navbar() {
   const pathname = usePathname()
   const router = useRouter()
-  const { iglesiaId } = useApp()
+  const { iglesiaId, plan } = useApp()
   const [isMobile, setIsMobile] = useState(false)
   const [menuAbierto, setMenuAbierto] = useState(false)
   const [cerrando, setCerrando] = useState(false)
@@ -121,7 +122,8 @@ export default function Navbar() {
   // Config: solo admin. Cámara (transmisión): solo admin/líder (los músicos no
   // la ven). Mientras no se sabe el rol se muestran; el AuthProvider igual bloquea.
   const linksVisibles = LINKS.filter(l =>
-    l.href === "/camara" ? (esApp && (rol === null || rol === "admin" || rol === "lider"))
+    ("soloPremium" in l && l.soloPremium && plan !== "premium") ? false
+    : l.href === "/camara" ? (esApp && (rol === null || rol === "admin" || rol === "lider"))
     : l.href === "/configuracion" ? (rol === null || rol === "admin")
     : (l as any).soloLider ? (rol === null || rol === "admin" || rol === "lider")
     : true
@@ -178,7 +180,13 @@ export default function Navbar() {
               {linksVisibles.map(({ href, label, icon, ayuda }) => {
                 const activo = isActive(href)
                 return (
-                  <Link key={href} href={href} data-ayuda={ayuda} style={{
+                  <Link key={href} href={href} data-ayuda={ayuda}
+                    onClick={e => {
+                      if (href === "/en-vivo") {
+                        e.preventDefault()
+                        window.open(`${window.location.origin}/en-vivo`, "selah-transmision")
+                      }
+                    }} style={{
                     display: "flex", alignItems: "center", gap: 5,
                     padding: "5px 10px", borderRadius: 8,
                     textDecoration: "none", fontSize: 13,
@@ -290,6 +298,12 @@ export default function Navbar() {
                   // El comportamiento distinto va solo en onClick, que no
                   // afecta el HTML renderizado ni la hidratación.
                   onClick={e => {
+                    if (href === "/en-vivo" && !isCapacitor) {
+                      e.preventDefault()
+                      setMenuAbierto(false)
+                      window.open(`${window.location.origin}/en-vivo`, "selah-transmision")
+                      return
+                    }
                     // ✅ En el APK usamos router SPA (navegarSPA) en vez de dejar
                     // que <Link> haga su prefetch/nav propio, para pasar por la
                     // misma ruta de navegación que el resto de la app.
