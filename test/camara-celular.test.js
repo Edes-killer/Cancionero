@@ -56,10 +56,10 @@ test("la cadena de video conserva detalle Full HD y registra la fuente real", ()
   assert.match(transmision, /▶ salida de video: \$\{SALIDA_ANCHO\}×\$\{SALIDA_ALTO\} @ 30 fps/)
 })
 
-test("el celular negocia su capacidad nativa y prioriza resolución", () => {
-  assert.match(movil, /width: \{ ideal: 3840 \}, height: \{ ideal: 2160 \}/)
-  assert.match(movil, /degradationPreference = "maintain-resolution"/)
-  assert.match(movil, /maxBitrate = 20_000_000/)
+test("el celular ofrece 4K explícito y prioriza fluidez en el envío", () => {
+  assert.match(movil, /calidad === "4k" \? 3840/)
+  assert.match(movil, /degradationPreference = "maintain-framerate"/)
+  assert.match(movil, /maxFramerate = 30/)
   assert.match(movil, /setResolucion\(`/)
 })
 
@@ -81,10 +81,29 @@ test("la cámara recuerda la sala pero permite reemplazar un código antiguo", (
 
 test("Android libera el sender antes de abrir la cámara frontal", () => {
   assert.match(movil, /videoSenderRef\.current\?\.replaceTrack\(null\)/)
-  assert.match(movil, /const esperas = \[900, 1400, 2200, 3200\]/)
   assert.match(movil, /for \(const candidata of candidatas\)/)
   assert.match(movil, /getUserMedia\(\{ video, audio \}\)/)
-  assert.match(movil, /nuevoVideo\.applyConstraints\(VIDEO_MAX\)/)
+  assert.match(movil, /nuevoVideo\.applyConstraints\(restriccionesVideo\(calidadRef.current\)\)/)
+})
+
+test("una captura tardía libera video y micrófono al salir antes del permiso", async () => {
+  const { capturaVigente } = await import("../lib/capturaVigente.ts")
+  let resolver
+  let activa = true
+  let paradas = 0
+  const captura = new Promise(resolve => { resolver = resolve })
+  const resultado = capturaVigente(() => captura, () => activa)
+  activa = false
+  resolver({ getTracks: () => [{ stop: () => paradas++ }, { stop: () => paradas++ }] })
+  await assert.rejects(resultado, /captura-cancelada/)
+  assert.equal(paradas, 2)
+})
+
+test("una pantalla desmontada no solicita otra cámara", async () => {
+  const { capturaVigente } = await import("../lib/capturaVigente.ts")
+  let peticiones = 0
+  await assert.rejects(capturaVigente(async () => { peticiones++; return { getTracks: () => [] } }, () => false), /captura-cancelada/)
+  assert.equal(peticiones, 0)
 })
 
 test("un estado WebRTC transitorio no provoca un bucle de reconexión", () => {

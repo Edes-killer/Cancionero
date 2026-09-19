@@ -382,6 +382,16 @@ valor también debe ser una clave `sb_publishable_...`; nunca una clave secreta 
 
 ## 13. Notas para quien continúe
 
+### Incidente abierto: cámara móvil y sincronía (2026-09-19)
+
+La prueba física de dos cámaras volvió a mostrar lag, desfase de audio y NotReadableError al
+abrir los sensores frontales. No darlo por resuelto solo porque compila o pasan pruebas de código.
+Se serializó la apertura de captura, se liberan resultados tardíos tras desmontar la pantalla,
+y hay recuperación liberando también la sesión de micrófono. Automática solicita Full HD;
+4K es seleccionable. WebRTC prioriza fluidez y las dos pantallas muestran mediciones reales.
+Transmisión permite retrasar el audio por micrófono; esto no adelanta audio ni elimina automáticamente
+el retraso de un video recibido. Procedimiento y límites: `docs/QA-CAMARA-TRANSMISION.md`.
+
 1. Se edita el código directamente en `/app`, `/electron`, etc. (ya NO existe el viejo flujo de "copiar
    outputs antes del build").
 2. Las API routes de Next (`/api/...`) no corren en APK ni Electron → la Biblia usa el server 4000.

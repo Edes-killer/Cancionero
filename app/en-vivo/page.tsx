@@ -320,6 +320,9 @@ export default function EnVivoPage() {
   const escenaRef = useRef<string>("camara-letra")
   const salidaCtxRef = useRef<AudioContext | null>(null)
   const gainRef = useRef<GainNode | null>(null)
+  const delayAudioRef = useRef<DelayNode | null>(null)
+  const [retardoAudioMs, setRetardoAudioMs] = useState(0)
+  const retardoAudioRef = useRef(0)
   const destRef = useRef<MediaStreamAudioDestinationNode | null>(null)
   const srcNodeRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const vuFillRef = useRef<HTMLDivElement | null>(null)   // barra de nivel (se anima por DOM, sin re-render)
@@ -349,6 +352,54 @@ export default function EnVivoPage() {
   const camSocketRef = useRef<Socket | null>(null)
   const camCodigoRef = useRef("")
   const camIcePendienteRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map())
+  const [recepcionCamara, setRecepcionCamara] = useState<string[]>([])
+
+  useEffect(() => {
+    let valor = 0
+    try { valor = Number(localStorage.getItem(`en-vivo-retardo-audio-${microId}`)) || 0 } catch {}
+    valor = Math.max(0, Math.min(2000, valor))
+    retardoAudioRef.current = valor; setRetardoAudioMs(valor)
+    if (delayAudioRef.current) delayAudioRef.current.delayTime.value = valor / 1000
+  }, [microId])
+
+  useEffect(() => {
+    let activo = true
+    let ocupado = false
+    const previos = new Map<string, { tiempo: number; frames: number; bytes: number; delay: number; emitidos: number }>()
+    let muestras = 0
+    const timer = setInterval(async () => {
+      if (ocupado) return
+      ocupado = true
+      const lineas: string[] = []
+      try {
+        for (const [id, pc] of pcHostsRef.current) {
+          if (pc.connectionState !== "connected") continue
+          const stats = await pc.getStats()
+          if (!activo || pcHostsRef.current.get(id) !== pc) continue
+          stats.forEach(s => {
+            if (s.type !== "inbound-rtp" || s.kind !== "video") return
+            const key = `${id}:${s.id}`
+            const previo = previos.get(key)
+            const dt = previo ? (s.timestamp - previo.tiempo) / 1000 : 0
+            if (previo && dt > 0) {
+              const fps = Math.max(0, (s.framesDecoded - previo.frames) / dt)
+              const mbps = Math.max(0, (s.bytesReceived - previo.bytes) * 8 / dt / 1e6)
+              const n = s.jitterBufferEmittedCount - previo.emitidos
+              const buffer = n > 0 ? Math.max(0, (s.jitterBufferDelay - previo.delay) * 1000 / n) : 0
+              lineas.push(`Celular ${id.slice(0, 5)}: ${s.frameWidth || "?"}×${s.frameHeight || "?"} · ${fps.toFixed(0)} FPS · ${mbps.toFixed(1)} Mbps · búfer ${buffer.toFixed(0)} ms`)
+            }
+            previos.set(key, { tiempo:s.timestamp, frames:s.framesDecoded, bytes:s.bytesReceived, delay:s.jitterBufferDelay || 0, emitidos:s.jitterBufferEmittedCount || 0 })
+          })
+        }
+        if (activo) {
+          setRecepcionCamara(lineas)
+          if (++muestras % 3 === 0 && lineas.length) setLogsTx(prev => [...prev, ...lineas.map(l => `▶ recibido ${l}`)].slice(-120))
+        }
+      } catch { /* El enlace puede cerrarse durante getStats. */ }
+      finally { ocupado = false }
+    }, 5000)
+    return () => { activo = false; clearInterval(timer) }
+  }, [])
 
   // ── Emisión directa (link propio en la red): el PC emite a N espectadores ──────
   const [emisionOn, setEmisionOn] = useState(false)
@@ -659,7 +710,7 @@ export default function EnVivoPage() {
     try { emiSocketRef.current?.close() } catch {}
     try { srcNodeRef.current?.disconnect() } catch {}
     try { salidaCtxRef.current?.close() } catch {}
-    salidaCtxRef.current = null; gainRef.current = null; destRef.current = null; srcNodeRef.current = null
+    salidaCtxRef.current = null; gainRef.current = null; delayAudioRef.current = null; destRef.current = null; srcNodeRef.current = null
   }, [])
 
   // Refrescar la lista cuando conectas/desconectas una cámara (o el celular por
@@ -982,9 +1033,12 @@ export default function EnVivoPage() {
       if (!Ctx) return null
       // 48 kHz: la tasa nativa del códec opus → sin remuestreos que degraden.
       let ctx: AudioContext
-      try { ctx = new Ctx({ sampleRate: 48000 }) } catch { ctx = new Ctx() }
+      try { ctx = new Ctx({ sampleRate: 48000, latencyHint: "interactive" }) } catch { ctx = new Ctx() }
       salidaCtxRef.current = ctx
       gainRef.current = ctx.createGain()
+      delayAudioRef.current = ctx.createDelay(2)
+      delayAudioRef.current.delayTime.value = retardoAudioRef.current / 1000
+      delayAudioRef.current.connect(gainRef.current)
       destRef.current = ctx.createMediaStreamDestination()
       gainRef.current.connect(destRef.current)
     }
@@ -1007,7 +1061,7 @@ export default function EnVivoPage() {
     if (track) {
       try {
         const src = ctx.createMediaStreamSource(new MediaStream([track]))
-        src.connect(gainRef.current)
+        src.connect(delayAudioRef.current || gainRef.current)
         srcNodeRef.current = src
       } catch {}
     }
@@ -1591,6 +1645,18 @@ export default function EnVivoPage() {
               <div ref={vuPeakRef} style={{ position: "absolute", top: -2, bottom: -2, left: "0%", width: 2, background: "rgba(255,255,255,0.9)" }} />
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", marginTop:3, fontSize:8.5, color:C.tenue, fontVariantNumeric:"tabular-nums" }}><span>silencio</span><span>nivel recomendado</span><span>saturación</span></div>
+            <label style={{ display:"flex", alignItems:"center", gap:10, marginTop:12, fontSize:12 }}>
+              Retrasar audio
+              <input type="range" min={0} max={2000} step={20} value={retardoAudioMs} aria-label="Retraso del audio en milisegundos"
+                onChange={e => {
+                  const valor = Number(e.target.value)
+                  setRetardoAudioMs(valor); retardoAudioRef.current = valor
+                  if (delayAudioRef.current) delayAudioRef.current.delayTime.value = valor / 1000
+                  try { localStorage.setItem(`en-vivo-retardo-audio-${microId}`, String(valor)) } catch {}
+                }} style={{ flex:1, minWidth:50 }} />
+              <span>{retardoAudioMs} ms</span>
+            </label>
+            <div style={{ fontSize:11, color:C.tenue, marginTop:5 }}>Si oyes la palmada antes de ver las manos juntas, aumenta este valor. Si el audio llega después, vuelve a 0 y revisa la fuente elegida. El ajuste se guarda por micrófono.</div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
               <span style={{ fontSize: 11.5, color: C.suave, fontWeight: 700, minWidth: 62 }}>🔊 Volumen</span>
               <input type="range" min={0} max={150} value={volMic}
@@ -1632,6 +1698,7 @@ export default function EnVivoPage() {
         <video ref={screenVideoRef} autoPlay muted playsInline
           style={{ position: "absolute", width: 2, height: 2, opacity: 0, pointerEvents: "none", left: 0, top: 0 }} />
         {/* Cámaras celulares WebRTC. Cada móvil conserva su video independiente. */}
+        {recepcionCamara.length > 0 && <div style={{ fontSize:11, color:C.suave, padding:8 }}>{recepcionCamara.map(l => <div key={l}>{l}</div>)}<div style={{ color:C.tenue }}>Medición recibida en el PC. El búfer no representa el retraso total hasta Facebook.</div></div>}
         {celulares.map(c => <video key={c.id} ref={el => {
           if (el) {
             phoneVideosRef.current.set(c.id, el)
