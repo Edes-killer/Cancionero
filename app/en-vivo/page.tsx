@@ -20,6 +20,8 @@ import EstadoOperativo from "@/components/ui/EstadoOperativo"
 import { copiarTexto } from "@/lib/copiar"
 import OnboardingTour from "@/components/OnboardingTour"
 import { TOUR_TRANSMISION } from "@/lib/tours"
+import { crearCadenaAudioEmision, ajustarAudioEmision, medirAudio, type CadenaAudioEmision } from "@/lib/audioEmision"
+import PanelAudioProfesional from "@/components/transmision/PanelAudioProfesional"
 
 type Escena = "camara" | "camara-letra" | "letra" | "espera"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
@@ -310,17 +312,19 @@ export default function EnVivoPage() {
   const limpiarAudioRef = useRef(false)
   const [sinAudio, setSinAudio] = useState(false) // el micro lleva un rato en silencio
   const [audioGen, setAudioGen] = useState(0) // sube cada vez que hay un track de audio nuevo listo
-  const audioCtxRef = useRef<any>(null)
-  const analyserRef = useRef<AnalyserNode | null>(null)
-  // Volumen del micrófono. El audio de salida pasa por un grafo WebAudio estable
-  // (fuente→ganancia→destino): el track de salida NO cambia al cambiar de micro,
-  // así la transmisión no se queda muda. La ganancia también silencia en "espera".
+  // El destino Web Audio permanece estable al cambiar de micrófono. El motor
+  // comparte medición, retardo, volumen, protección de picos y silencio final.
   const [volMic, setVolMic] = useState(100) // 0..150 (%)
   const volMicRef = useRef(100)
   const escenaRef = useRef<string>("camara-letra")
   const salidaCtxRef = useRef<AudioContext | null>(null)
   const gainRef = useRef<GainNode | null>(null)
   const delayAudioRef = useRef<DelayNode | null>(null)
+  const cadenaAudioRef = useRef<CadenaAudioEmision | null>(null)
+  const monitorGainRef = useRef<GainNode | null>(null)
+  const monitorOperacionRef = useRef(0)
+  const [monitorAudio, setMonitorAudio] = useState(false)
+  const medicionAudioRef = useRef({ entradaDb:-96, salidaDb:-96, reduccionDb:0, saturado:false })
   const [retardoAudioMs, setRetardoAudioMs] = useState(0)
   const retardoAudioRef = useRef(0)
   const destRef = useRef<MediaStreamAudioDestinationNode | null>(null)
@@ -360,6 +364,16 @@ export default function EnVivoPage() {
     valor = Math.max(0, Math.min(2000, valor))
     retardoAudioRef.current = valor; setRetardoAudioMs(valor)
     if (delayAudioRef.current) delayAudioRef.current.delayTime.value = valor / 1000
+    let volumen = 100
+    try {
+      const guardado = localStorage.getItem(`en-vivo-vol-mic-${microId}`) ?? localStorage.getItem("en-vivo-vol-mic")
+      if (guardado !== null && Number.isFinite(Number(guardado))) volumen = Math.max(0, Math.min(150, Number(guardado)))
+    } catch {}
+    setVolMic(volumen); volMicRef.current = volumen
+    // Un cambio de dispositivo nunca empieza a sonar por los parlantes solo.
+    if (monitorGainRef.current) monitorGainRef.current.gain.value = 0
+    monitorOperacionRef.current++
+    setMonitorAudio(false)
   }, [microId])
 
   useEffect(() => {
@@ -598,47 +612,41 @@ export default function EnVivoPage() {
     track.applyConstraints({ echoCancellation: limpiarAudio, noiseSuppression: limpiarAudio, autoGainControl: limpiarAudio }).catch(() => {})
   }, [limpiarAudio, audioGen])
 
-  // Medidor de nivel (VU): analiza el track de audio y anima la barra por DOM
-  // (sin re-render). Avisa si el micrófono lleva un rato en silencio.
+  // Dos mediciones sobre el mismo motor: entrada y salida real, incluido Espera.
   useEffect(() => {
-    // El VU mide la fuente de audio ACTIVA (celular si es el mic elegido, si no el PC).
-    const celTrack = phoneStreamsRef.current.get(idFuenteCelular(microId))?.getAudioTracks?.()[0]
-    const track = (esFuenteCelular(microId) && celTrack) ? celTrack : streamRef.current?.getAudioTracks()[0]
-    if (!track) return
     let cancelado = false
-    try {
-      const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext
-      if (!Ctx) return
-      const ctx = new Ctx(); audioCtxRef.current = ctx
-      try { ctx.resume?.() } catch {}
-      const src = ctx.createMediaStreamSource(new MediaStream([track]))
-      const an = ctx.createAnalyser(); an.fftSize = 1024; an.smoothingTimeConstant = 0.75
-      src.connect(an); analyserRef.current = an
-      const datos = new Uint8Array(an.fftSize)
-      let pico = 0
-      const loop = () => {
-        if (cancelado) return
-        an.getByteTimeDomainData(datos)
-        let sum = 0
-        for (let i = 0; i < datos.length; i++) { const v = (datos[i] - 128) / 128; sum += v * v }
-        const rms = Math.sqrt(sum / datos.length)              // 0..1
-        const nivel = Math.min(1, rms * 2.2)                    // realce para lectura visual
-        pico = Math.max(nivel, pico * 0.92)                     // pico con caída suave
-        if (nivel > 0.02) ultimoSonidoRef.current = Date.now()
-        const col = nivel > 0.9 ? "#f87171" : nivel > 0.65 ? "#fbbf24" : "#4ade80"
-        if (vuFillRef.current) { vuFillRef.current.style.width = `${Math.round(nivel * 100)}%`; vuFillRef.current.style.background = col }
-        if (vuPeakRef.current) vuPeakRef.current.style.left = `${Math.round(pico * 100)}%`
-        rafVuRef.current = requestAnimationFrame(loop)
+    const entrada = new Float32Array(2048), salida = new Float32Array(2048)
+    let ultimoRender = 0, saturadoHasta = 0, ultimoAviso = 0
+    const loop = () => {
+      if (cancelado) return
+      const motor = cadenaAudioRef.current
+      if (motor) {
+        motor.entradaMedidor.getFloatTimeDomainData(entrada)
+        motor.salida.getFloatTimeDomainData(salida)
+        const e = medirAudio(entrada), s = medirAudio(salida)
+        const ahora = Date.now()
+        if (e.rmsDb > -50) ultimoSonidoRef.current = ahora
+        if (e.picoDb >= -0.5) saturadoHasta = ahora + 2000
+        const nivel = Math.max(0, Math.min(1, (s.picoDb + 60) / 60))
+        if (vuFillRef.current) { vuFillRef.current.style.width = `${Math.round(nivel * 100)}%`; vuFillRef.current.style.background = s.picoDb > -3 ? "#f87171" : s.picoDb > -12 ? "#fbbf24" : "#4ade80" }
+        if (vuPeakRef.current) vuPeakRef.current.style.left = `${Math.round(nivel * 100)}%`
+        if (ahora - ultimoRender > 250) {
+          medicionAudioRef.current = { entradaDb:e.picoDb, salidaDb:s.picoDb, reduccionDb:motor.proteccion.reduction, saturado:ahora < saturadoHasta }
+          ultimoRender = ahora
+        }
+        if (e.picoDb >= -0.5 && ahora - ultimoAviso > 30000) {
+          ultimoAviso = ahora
+          void logError("Entrada de micrófono cerca de saturación; revisar ganancia del dispositivo", { tipo:"audio", pagina:"/en-vivo", detalle:{ picoDb:e.picoDb } })
+        }
       }
       rafVuRef.current = requestAnimationFrame(loop)
-    } catch { /* Web Audio no disponible: sin medidor */ }
+    }
+    rafVuRef.current = requestAnimationFrame(loop)
     return () => {
       cancelado = true
       cancelAnimationFrame(rafVuRef.current)
-      try { audioCtxRef.current?.close() } catch {}
-      audioCtxRef.current = null; analyserRef.current = null
     }
-  }, [audioGen, microId, celularOn])
+  }, [])
 
   // Re-enchufar el micro ACTIVO al grafo de salida cuando cambia (device o celular).
   // El track de salida (destino) no cambia → la transmisión/emisión no se corta.
@@ -647,7 +655,7 @@ export default function EnVivoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioGen, microId, celularOn])
 
-  // Volumen del micro + silenciar en "espera" (gain=0), sin cortar el track.
+  // Volumen del micro y silencio final en Espera, sin cortar el track.
   useEffect(() => {
     escenaRef.current = escena
     volMicRef.current = volMic
@@ -658,7 +666,7 @@ export default function EnVivoPage() {
   // Aviso de "sin audio": el micro lleva >4s en silencio mientras hay cámara.
   useEffect(() => {
     if (permiso !== "ok") return
-    const t = setInterval(() => setSinAudio(Date.now() - ultimoSonidoRef.current > 4000), 1000)
+    const t = setInterval(() => setSinAudio(escenaRef.current !== "espera" && Date.now() - ultimoSonidoRef.current > 4000), 1000)
     return () => clearInterval(t)
   }, [permiso])
 
@@ -710,7 +718,9 @@ export default function EnVivoPage() {
     try { emiSocketRef.current?.close() } catch {}
     try { srcNodeRef.current?.disconnect() } catch {}
     try { salidaCtxRef.current?.close() } catch {}
+    monitorOperacionRef.current++
     salidaCtxRef.current = null; gainRef.current = null; delayAudioRef.current = null; destRef.current = null; srcNodeRef.current = null
+    cadenaAudioRef.current = null; monitorGainRef.current = null
   }, [])
 
   // Refrescar la lista cuando conectas/desconectas una cámara (o el celular por
@@ -1023,10 +1033,8 @@ export default function EnVivoPage() {
     !!canvasRef.current && (hayFuenteVideo() || escenaRef.current === "letra" || escenaRef.current === "espera")
 
   // ── Grafo de audio de salida (WebAudio) ──────────────────────────────────────
-  // fuente(mic activo) → ganancia → destino. El track del DESTINO es estable: la
-  // transmisión/emisión lo captura una vez y no se corta aunque cambies de micro
-  // (solo re-enchufamos la fuente a la ganancia). La ganancia da volumen y silencia
-  // en la escena "espera" (gain=0), sin cortar el track.
+  // El track del destino se captura una vez. Se reemplaza únicamente la fuente
+  // al cambiar de micro; emisión, grabación y pruebas usan el mismo procesamiento.
   const asegurarAudioSalida = (): AudioContext | null => {
     if (!salidaCtxRef.current) {
       const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext
@@ -1035,18 +1043,22 @@ export default function EnVivoPage() {
       let ctx: AudioContext
       try { ctx = new Ctx({ sampleRate: 48000, latencyHint: "interactive" }) } catch { ctx = new Ctx() }
       salidaCtxRef.current = ctx
-      gainRef.current = ctx.createGain()
-      delayAudioRef.current = ctx.createDelay(2)
-      delayAudioRef.current.delayTime.value = retardoAudioRef.current / 1000
-      delayAudioRef.current.connect(gainRef.current)
+      const cadena = crearCadenaAudioEmision(ctx)
+      cadenaAudioRef.current = cadena
+      gainRef.current = cadena.volumen
+      delayAudioRef.current = cadena.retardo
+      ajustarAudioEmision(cadena, ctx, volMicRef.current, retardoAudioRef.current, escenaRef.current === "espera")
       destRef.current = ctx.createMediaStreamDestination()
-      gainRef.current.connect(destRef.current)
+      cadena.salida.connect(destRef.current)
+      const monitor = cadena.monitor
+      monitor.connect(ctx.destination)
+      monitorGainRef.current = monitor
     }
-    try { salidaCtxRef.current.resume?.() } catch {}
+    void salidaCtxRef.current.resume().catch(e => logError(`No se pudo activar el motor de audio: ${e.message}`, { tipo:"audio", pagina:"/en-vivo" }))
     return salidaCtxRef.current
   }
   const aplicarVolumenSalida = () => {
-    if (gainRef.current) gainRef.current.gain.value = escenaRef.current === "espera" ? 0 : volMicRef.current / 100
+    if (cadenaAudioRef.current && salidaCtxRef.current) ajustarAudioEmision(cadenaAudioRef.current, salidaCtxRef.current, volMicRef.current, retardoAudioRef.current, escenaRef.current === "espera")
   }
   const trackMicActivo = (): MediaStreamTrack | null => {
     const cel = phoneStreamsRef.current.get(idFuenteCelular(microId))?.getAudioTracks?.()[0]
@@ -1061,11 +1073,30 @@ export default function EnVivoPage() {
     if (track) {
       try {
         const src = ctx.createMediaStreamSource(new MediaStream([track]))
-        src.connect(delayAudioRef.current || gainRef.current)
+        src.connect(cadenaAudioRef.current!.entrada)
         srcNodeRef.current = src
-      } catch {}
+      } catch (e) { void logError(`No se pudo conectar el micrófono a la salida: ${e instanceof Error ? e.message : String(e)}`, { tipo:"audio", pagina:"/en-vivo" }) }
     }
     aplicarVolumenSalida()
+  }
+
+  const cambiarRetardoAudio = (valor: number) => {
+    setRetardoAudioMs(valor); retardoAudioRef.current = valor
+    aplicarVolumenSalida()
+    try { localStorage.setItem(`en-vivo-retardo-audio-${microId}`, String(valor)) } catch {}
+  }
+
+  const alternarMonitoreoAudio = async () => {
+    const operacion = ++monitorOperacionRef.current
+    const ctx = asegurarAudioSalida()
+    if (!ctx || !monitorGainRef.current) return
+    try {
+      await ctx.resume()
+      if (operacion !== monitorOperacionRef.current || ctx !== salidaCtxRef.current || !monitorGainRef.current) return
+      const nuevo = !monitorAudio
+      monitorGainRef.current.gain.value = nuevo ? 0.65 : 0
+      setMonitorAudio(nuevo)
+    } catch (e) { void logError(`No se pudo escuchar el audio: ${e instanceof Error ? e.message : String(e)}`, { tipo:"audio", pagina:"/en-vivo" }); flash("No se pudo activar la escucha. Revisa el dispositivo de sonido.") }
   }
 
   // Un MediaStream nuevo del lienzo + el audio del grafo (track de destino ESTABLE).
@@ -1637,30 +1668,18 @@ export default function EnVivoPage() {
         {permiso === "ok" && (
           <div style={{ marginTop: 12, background: C.panel, border: `1px solid ${sinAudio ? "rgba(248,113,113,0.5)" : C.borde}`, borderRadius: 12, padding: "11px 13px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-              <span style={{ fontSize: 11.5, fontWeight: 800, color: C.suave, display: "flex", alignItems: "center", gap: 6 }}>🎙️ Audio del micrófono</span>
+              <span style={{ fontSize: 11.5, fontWeight: 800, color: C.suave, display: "flex", alignItems: "center", gap: 6 }}>🎙️ Audio de salida</span>
               {sinAudio && <span style={{ fontSize: 11, fontWeight: 800, color: "#f87171" }}>⚠ Sin señal</span>}
             </div>
-            <div style={{ position: "relative", height: 12, borderRadius: 99, background: "linear-gradient(90deg,rgba(74,222,128,.16) 0 68%,rgba(251,191,36,.2) 68% 86%,rgba(248,113,113,.2) 86%)", overflow: "hidden" }}>
+            <div style={{ position: "relative", height: 12, borderRadius: 99, background: "linear-gradient(90deg,rgba(74,222,128,.16) 0 80%,rgba(251,191,36,.2) 80% 95%,rgba(248,113,113,.2) 95%)", overflow: "hidden" }}>
               <div ref={vuFillRef} style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "0%", background: "#4ade80", borderRadius: 99 }} />
               <div ref={vuPeakRef} style={{ position: "absolute", top: -2, bottom: -2, left: "0%", width: 2, background: "rgba(255,255,255,0.9)" }} />
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", marginTop:3, fontSize:8.5, color:C.tenue, fontVariantNumeric:"tabular-nums" }}><span>silencio</span><span>nivel recomendado</span><span>saturación</span></div>
-            <label style={{ display:"flex", alignItems:"center", gap:10, marginTop:12, fontSize:12 }}>
-              Retrasar audio
-              <input type="range" min={0} max={2000} step={20} value={retardoAudioMs} aria-label="Retraso del audio en milisegundos"
-                onChange={e => {
-                  const valor = Number(e.target.value)
-                  setRetardoAudioMs(valor); retardoAudioRef.current = valor
-                  if (delayAudioRef.current) delayAudioRef.current.delayTime.value = valor / 1000
-                  try { localStorage.setItem(`en-vivo-retardo-audio-${microId}`, String(valor)) } catch {}
-                }} style={{ flex:1, minWidth:50 }} />
-              <span>{retardoAudioMs} ms</span>
-            </label>
-            <div style={{ fontSize:11, color:C.tenue, marginTop:5 }}>Si oyes la palmada antes de ver las manos juntas, aumenta este valor. Si el audio llega después, vuelve a 0 y revisa la fuente elegida. El ajuste se guarda por micrófono.</div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
               <span style={{ fontSize: 11.5, color: C.suave, fontWeight: 700, minWidth: 62 }}>🔊 Volumen</span>
               <input type="range" min={0} max={150} value={volMic}
-                onChange={e => { const v = Number(e.target.value); setVolMic(v); volMicRef.current = v; try { localStorage.setItem("en-vivo-vol-mic", String(v)) } catch {} }}
+                onChange={e => { const v = Number(e.target.value); setVolMic(v); volMicRef.current = v; try { localStorage.setItem(`en-vivo-vol-mic-${microId}`, String(v)) } catch {} }}
                 style={{ flex: 1 }} aria-label="Volumen del micrófono" />
               <span style={{ fontSize: 12, fontWeight: 800, color: volMic === 0 ? "#f87171" : C.texto, minWidth: 40, textAlign: "right" }}>{volMic}%</span>
             </div>
@@ -1679,6 +1698,15 @@ export default function EnVivoPage() {
                 </button>
               </label>
             </div>
+            <PanelAudioProfesional
+              leerMedicion={() => medicionAudioRef.current}
+              monitor={monitorAudio} cambiarMonitor={() => { void alternarMonitoreoAudio() }}
+              retardoMs={retardoAudioMs} cambiarRetardo={cambiarRetardoAudio}
+              crearStream={() => hayFuenteVideo() && trackMicActivo()?.readyState === "live" ? streamSalida() : null}
+              bloqueado={txEstado !== "idle" || grabandoSolo || emisionOn}
+              enEspera={escena === "espera"}
+              micNombre={esFuenteCelular(microId) ? celulares.find(c => c.id === idFuenteCelular(microId))?.nombre || "Celular" : micros.find(m => m.id === microId)?.label || "Micrófono predeterminado"}
+            />
           </div>
         )}
 

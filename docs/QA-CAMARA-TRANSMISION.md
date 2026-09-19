@@ -35,3 +35,22 @@ que estas correcciones permitan abrir su sensor frontal.
    la cámara ocupada. Volver a ejecutar el paso 2.
 
 No publicar como corrección definitiva del sensor hasta completar esta prueba en el teléfono afectado.
+
+## Audio profesional — primera entrega
+
+- El medidor muestra la salida procesada; entrada y salida tienen lectura de pico en dBFS.
+- Protección de picos con compresor de relación alta. No garantiza un límite de pico verdadero ni
+  repara audio recortado en el micrófono. La entrada próxima a saturación avisa y se registra.
+- Espera silencia al final de la cadena, después del retardo y del compresor.
+- Escucha local por la salida de sonido predeterminada, siempre apagada al abrir o cambiar micrófono.
+  Debe usarse con audífonos. Su ganancia es independiente de la emisión.
+- Calibración: clip temporal de 8 segundos dentro de Selah, con reproducción y ajuste manual.
+  Se bloquea durante emisión/grabación y Espera. Al cerrar no detiene el micrófono compartido.
+- Volumen y retardo se guardan por identificador de micrófono en este PC. El identificador de una
+  cámara móvil aún depende de la conexión: conservar perfiles entre nuevas conexiones queda pendiente.
+
+`npm.cmd run qa:audio` ejecuta Web Audio real de Electron con señales sintéticas y una interfaz
+de calibración con video de canvas. Verifica retraso efectivo, silencio, compresión, independencia
+del monitoreo, generación del clip y liberación de video sin detener el audio compartido.
+No abre dispositivos físicos ni transmite a internet. Estas pruebas no sustituyen la verificación
+de sincronía con cámara/micrófono reales ni las pruebas prolongadas del culto.

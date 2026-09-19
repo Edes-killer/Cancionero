@@ -392,6 +392,13 @@ y hay recuperación liberando también la sesión de micrófono. Automática sol
 Transmisión permite retrasar el audio por micrófono; esto no adelanta audio ni elimina automáticamente
 el retraso de un video recibido. Procedimiento y límites: `docs/QA-CAMARA-TRANSMISION.md`.
 
+Primera entrega de audio profesional: `lib/audioEmision.ts` centraliza medición de entrada/salida,
+retardo, volumen, compresión de picos y silencio final. `PanelAudioProfesional` ofrece escucha local
+apagada por defecto y un clip de calibración de 8 s sin publicar. La grabación de prueba detiene
+solo su pista de video; el audio de salida se comparte. Ejecutar `npm.cmd run qa:audio` para probar
+el procesamiento real y el flujo de interfaz con fuentes sintéticas. No declarar hardware validado
+por estos tests. Los perfiles persistentes de cámaras móviles aún necesitan identidad estable.
+
 1. Se edita el código directamente en `/app`, `/electron`, etc. (ya NO existe el viejo flujo de "copiar
    outputs antes del build").
 2. Las API routes de Next (`/api/...`) no corren en APK ni Electron → la Biblia usa el server 4000.
