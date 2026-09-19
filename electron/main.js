@@ -120,8 +120,12 @@ function construirArgsFFmpeg(encoder, rtmpUrls, bitrateKbps) {
       "-b:v", vb, "-maxrate", vb, "-bufsize", buf,
     ]
   }
+  // El canvas entrega 30 fps aunque una cámara móvil entregue 19/24 fps. Forzar
+  // CFR y resincronizar el audio contra el reloj de video evita que la voz se
+  // adelante o atrase progresivamente durante un culto largo.
+  const sincronizacion = ["-vf", "fps=30", "-fps_mode", "cfr", "-af", "aresample=async=1000:first_pts=0"]
   const audio = ["-c:a", "aac", "-b:a", "160k", "-ar", "48000"]
-  const comun = [...base, ...video, ...audio, "-max_muxing_queue_size", "1024"]
+  const comun = [...base, ...sincronizacion, ...video, ...audio, "-max_muxing_queue_size", "1024"]
   if (rtmpUrls.length === 1) return [...comun, "-f", "flv", rtmpUrls[0]]
   // Varios destinos: un solo encode → muxer tee a todas las plataformas.
   // -flags +global_header es necesario para que el tee escriba la cabecera.

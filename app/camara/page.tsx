@@ -96,12 +96,17 @@ export default function CamaraMovil() {
     const camsPrevias = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput")
     const reFront = /front|frontal|face|self|user/i
     const reBack = /back|rear|tras|environment|world|main/i
-    const porEtiqueta = camsPrevias.find(d => (modo === "user" ? reFront : reBack).test(d.label))
-    if (porEtiqueta?.deviceId) {
+    const candidatas = camsPrevias.filter(d => (modo === "user" ? reFront : reBack).test(d.label))
+    for (const candidata of candidatas) {
       // Abrir primero sin resolución exigida: varios WebView/Samsung devuelven
       // NotReadableError al cambiar de sensor y negociar 4K en la misma llamada.
-      try { return await gUM({ deviceId: { exact: porEtiqueta.deviceId } }) }
-      catch (e: any) { errs.push("directo=" + (e?.name || "?")) }
+      // Algunos equipos publican DOS cámaras frontales; probamos ambas, no solo
+      // la primera (que puede ser un sensor auxiliar no abrible por WebView).
+      try { return await gUM({ deviceId: { exact: candidata.deviceId } }) }
+      catch (e: any) {
+        errs.push(`${candidata.label || "directa"}=` + (e?.name || "?"))
+        await new Promise(r => setTimeout(r, 500))
+      }
     }
     try { return await gUM({ facingMode: { exact: modo } as any, ...vBase }) } catch (e: any) { errs.push("exact=" + (e?.name || "?")) }
     try { return await gUM({ facingMode: modo as any, ...vBase }) } catch (e: any) { errs.push("suave=" + (e?.name || "?")) }
@@ -428,14 +433,11 @@ export default function CamaraMovil() {
         <div style={{ display: "flex", gap: 10 }}>
           <button data-tour="camara-voltear" onClick={voltear}
             style={{ flex: "0 0 auto", padding: "14px 16px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.12)", color: "#fff", fontSize: 15, fontWeight: 700 }}>🔄 Voltear</button>
-          {conectado
-            ? <>
-                <button onClick={cambiarCodigo} style={{ flex: 1, padding: "14px 10px", borderRadius: 14, border: "1px solid rgba(255,255,255,.28)", background: "rgba(255,255,255,.12)", color: "#fff", fontSize: 14, fontWeight: 800 }}>⌨ Cambiar código</button>
-                <button onClick={() => cerrar(true)} style={{ flex: 1, padding: "14px", borderRadius: 14, border: "none", background: "#dc2626", color: "#fff", fontSize: 16, fontWeight: 800 }}>■ Detener</button>
-              </>
-            : <button onClick={conectar} disabled={estado === "conectando"} style={{ flex: 1, padding: "14px", borderRadius: 14, border: "none", background: estado === "conectando" ? "#555" : "#2563eb", color: "#fff", fontSize: 16, fontWeight: 800 }}>
-                {estado === "conectando" ? "Conectando…" : "▶ Conectar al PC"}
-              </button>}
+          {conectado && <button onClick={cambiarCodigo} style={{ flex: 1, padding: "14px 10px", borderRadius: 14, border: "1px solid rgba(255,255,255,.28)", background: "rgba(255,255,255,.12)", color: "#fff", fontSize: 14, fontWeight: 800 }}>⌨ Cambiar código</button>}
+          <button onClick={() => conectado ? cerrar(true) : conectar()} disabled={estado === "conectando"}
+            style={{ flex: 1, padding: "14px", borderRadius: 14, border: "none", background: estado === "conectando" ? "#555" : conectado ? "#dc2626" : "#2563eb", color: "#fff", fontSize: 16, fontWeight: 800 }}>
+            {estado === "conectando" ? "Conectando…" : conectado ? "■ Desconectar" : "▶ Conectar al PC"}
+          </button>
         </div>
         <div style={{ fontSize: 12, opacity: 0.7, textAlign: "center" }}>
           {conectado ? "Deja esta pantalla abierta. Apunta la cámara al frente." : "Escanea el QR del PC o escribe el código. Ambos en la misma red WiFi."}

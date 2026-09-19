@@ -82,7 +82,7 @@ test("la cámara recuerda la sala pero permite reemplazar un código antiguo", (
 test("Android libera el sender antes de abrir la cámara frontal", () => {
   assert.match(movil, /videoSenderRef\.current\?\.replaceTrack\(null\)/)
   assert.match(movil, /const esperas = \[900, 1400, 2200, 3200\]/)
-  assert.match(movil, /porEtiqueta\?\.deviceId/)
+  assert.match(movil, /for \(const candidata of candidatas\)/)
   assert.match(movil, /getUserMedia\(\{ video, audio \}\)/)
   assert.match(movil, /nuevoVideo\.applyConstraints\(VIDEO_MAX\)/)
 })
