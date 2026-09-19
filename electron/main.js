@@ -169,7 +169,11 @@ function registrarIPCTransmision() {
       const aLog = (txt) => { try { fs.appendFileSync(rutaLogTransmision(), txt) } catch {} }
 
       const enviar = (canal, dato) => {
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(canal, dato)
+        // Transmisión ahora vive en una BrowserWindow independiente. El motor
+        // debe informar a ESA ventana aunque Inicio/Control siga en la principal.
+        for (const win of BrowserWindow.getAllWindows()) {
+          if (!win.isDestroyed() && win.webContents.getURL().includes("/en-vivo")) win.webContents.send(canal, dato)
+        }
       }
       proc.stderr.on("data", d => {
         const m = d.toString(); console.error("[ffmpeg]", m); aLog(m); enviar("transmision:log", m)

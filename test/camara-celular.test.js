@@ -111,3 +111,10 @@ test("la reconexión RTMPS espera a que Facebook libere la sesión anterior", ()
   assert.match(transmision, /Math\.min\(5000 \* n, 30000\)/)
   assert.match(transmision, /Facebook puede tardar varios segundos en liberar una sesión RTMPS caída/)
 })
+
+test("los fragmentos de transmisión mantienen orden y la ventana separada recibe eventos", () => {
+  assert.match(transmision, /let colaChunks = Promise\.resolve\(\)/)
+  assert.match(transmision, /colaChunks = colaChunks\.then\(async \(\) =>/)
+  assert.match(electron, /BrowserWindow\.getAllWindows\(\)/)
+  assert.match(electron, /webContents\.getURL\(\)\.includes\("\/en-vivo"\)/)
+})

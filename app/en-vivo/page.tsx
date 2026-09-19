@@ -1037,16 +1037,21 @@ export default function EnVivoPage() {
     try {
       const salida = streamSalida(); if (!salida) return false
       const rec = new MediaRecorder(salida, { mimeType: mimeRef.current, videoBitsPerSecond: bitrateCaptura(bitrateRef.current) * 1000, audioBitsPerSecond: 256_000 })
-      rec.ondataavailable = async ev => {
+      // Los Blob llegan en orden, pero arrayBuffer() es asíncrono: sin cola, el
+      // segundo puede terminar antes del primero y FFmpeg recibe timestamps
+      // hacia atrás (AAC "Queue input is backward in time").
+      let colaChunks = Promise.resolve()
+      rec.ondataavailable = ev => {
         if (!ev.data || !ev.data.size) return
-        try {
-          const buf = new Uint8Array(await ev.data.arrayBuffer())
+        const blob = ev.data
+        colaChunks = colaChunks.then(async () => {
+          const buf = new Uint8Array(await blob.arrayBuffer())
           tx.enviarChunk(buf)
           if (grabActivaRef.current) {
             tx.enviarChunkGrabacion?.(buf)
             grabBytesRef.current += buf.byteLength; setGrabMB(Math.round(grabBytesRef.current / 1048576))
           }
-        } catch {}
+        }).catch(e => logError(`Fragmento de transmisión perdido: ${e?.message || e}`, { tipo: "audio", pagina: "/en-vivo" }))
       }
       rec.start(250)
       recRef.current = rec

@@ -139,7 +139,21 @@ export default function CamaraMovil() {
       // Con el sensor ya abierto, pedir su mejor resolución. Si no acepta el
       // cambio conservamos la resolución nativa que Android eligió.
       try { await nuevoVideo.applyConstraints(VIDEO_MAX) } catch {}
-      const cfg = nuevoVideo.getSettings()
+      let cfg = nuevoVideo.getSettings()
+      // 4K a 19 FPS genera cuadros repetidos y latencia, no una señal más
+      // profesional. Si el propio sensor anuncia menos de 24 FPS en UHD,
+      // negociar 1080p a 30 FPS y conservar la orientación del móvil.
+      if ((cfg.frameRate || 30) < 24 && (cfg.width || 0) * (cfg.height || 0) > 1920 * 1080) {
+        const vertical = (cfg.height || 0) > (cfg.width || 0)
+        try {
+          await nuevoVideo.applyConstraints({
+            width: { ideal: vertical ? 1080 : 1920 },
+            height: { ideal: vertical ? 1920 : 1080 },
+            frameRate: { ideal: 30 },
+          })
+          cfg = nuevoVideo.getSettings()
+        } catch {}
+      }
       setResolucion(`${cfg.width || "?"}×${cfg.height || "?"} · ${Math.round(cfg.frameRate || 0) || "?"} FPS`)
     }
     ponerPreview(nuevoVideo)
@@ -169,9 +183,12 @@ export default function CamaraMovil() {
         } catch { /* aún ocupada — seguir reintentando */ }
       }
       // No se pudo: recuperar la cámara anterior para no quedar en negro.
-      try { await aplicarStream(await obtenerStreamCamara(facingRef.current, false), false) } catch {}
-      setError("No se pudo abrir la cámara frontal (puede estar en uso o no disponible).")
-      setEstado("error")
+      let recuperada = false
+      try { await aplicarStream(await obtenerStreamCamara(facingRef.current, false), false); recuperada = true } catch {}
+      setError(recuperada
+        ? "Android no permitió abrir la cámara frontal. Se restauró la cámara anterior."
+        : "No se pudo abrir la cámara frontal ni restaurar la anterior.")
+      if (!recuperada) setEstado("error")
       return false
     }
     // Montaje o apertura con audio.
