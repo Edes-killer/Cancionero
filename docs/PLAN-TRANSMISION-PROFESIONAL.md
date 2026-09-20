@@ -44,11 +44,33 @@ Las pruebas unitarias verifican la política y sus deltas, no simulan hardware n
 para aislar el escalado explícito; producción usa maintain-framerate y Chromium también
 puede adaptar internamente. No equivale a probar la política completa bajo congestión real.
 
-## 3. Captura móvil nativa — pendiente de prototipo y comparación
+## 3. Captura móvil nativa — laboratorio local implementado; comparación pendiente
 
 Evaluar CameraX/Camera2 integrado con WebRTC y comparar contra la captura actual de WebView.
 Debe demostrar mejora de apertura frontal/trasera, enfoque, exposición y continuidad en
 varios equipos antes de sustituir el motor. No exigir una aplicación externa al usuario.
+
+Primera prueba aislada con CameraX 1.5.3: Activity nativa y plugin Capacitor exclusivamente
+en `src/debug`, con dependencias `debugImplementation`. Frontal/trasera, enfoque por toque,
+preview que conserva proporciones, resolución real y FPS de cuadros entregados al analizador.
+Objetivo comparativo 1080p con selección alternativa de CameraX; no promete 1080p en todos los
+sensores. No abre micrófono ni guarda imágenes. Informe local acotado a 200 entradas.
+
+Se abre desde Cámara → Laboratorio de cámara, únicamente desconectado. Navegar a la página
+de laboratorio desmonta y libera la captura web antes de abrir la nativa manualmente.
+En producción no está el plugin, Activity ni dependencias CameraX. `/camara-lab` conserva
+la restricción de líder/admin y muestra indisponibilidad fuera de debug Android.
+
+Validación: build web, compilación debug y Java release; 82 tests JS existentes y 4 tests
+JVM nuevos del contador de FPS. Verificado grafo release sin androidx.camera. No hay teléfono
+conectado ni AVD configurado: apertura, enfoque, orientación y permisos requieren prueba física.
+**Todavía NO está integrada con WebRTC, ni sustituye la cámara de transmisión.**
+La decisión de integrar requiere comparar frontal/trasera, temperatura, FPS y reconexión
+en varios dispositivos; un resultado visual bueno aislado no basta.
+
+Referencias oficiales: [Preview y ciclo de vida](https://developer.android.com/media/camera/camerax/preview),
+[análisis de cuadros](https://developer.android.com/media/camera/camerax/analyze),
+[versiones CameraX](https://developer.android.com/jetpack/androidx/releases/camera).
 
 ## 4. Continuidad del culto — pendiente de ampliación y pruebas
 

@@ -406,6 +406,13 @@ Escritorio muestra recepción por celular y permite descargar métricas locales 
 usa maintain-resolution para aislar la adaptación interna de Chromium, mientras producción
 prioriza FPS. No demuestra adaptación en WiFi real ni compatibilidad frontal de Android.
 
+Captura nativa: laboratorio CameraX solo en APK debug (`android/app/src/debug`, ruta
+`/camara-lab`, plugin `CamaraNativaLab`). No transmite, no usa micrófono ni reemplaza WebRTC.
+Se inicia desconectado después de abandonar la pantalla de cámara web. Informe nativo local
+con apertura, errores, sensor y FPS de análisis. No confundir FPS de análisis con FPS enviados.
+Producción excluye dependencias, Activity y plugin nativos; no anunciar solución del fallo
+frontal sin pruebas físicas. Protocolo: `docs/QA-CAMARA-NATIVA.md`.
+
 1. Se edita el código directamente en `/app`, `/electron`, etc. (ya NO existe el viejo flujo de "copiar
    outputs antes del build").
 2. Las API routes de Next (`/api/...`) no corren en APK ni Electron → la Biblia usa el server 4000.

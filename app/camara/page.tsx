@@ -15,6 +15,7 @@ import { TOUR_CAMARA_MOVIL } from "@/lib/tours"
 import { navegarSPA } from "@/lib/navegar"
 import { capturaVigente } from "@/lib/capturaVigente"
 import { CalidadAdaptativa, medirEnvio, PERFILES_ENVIO, type MuestraEnvio } from "@/lib/calidadAdaptativa"
+import { laboratorioNativoDisponible } from "@/lib/camaraNativaLab"
 
 type Estado = "abriendo" | "listo" | "conectando" | "conectado" | "error"
 
@@ -42,6 +43,8 @@ export default function CamaraMovil() {
   const [cambiandoCamara, setCambiandoCamara] = useState(false)
   const [calidad, setCalidad] = useState<CalidadCamara>("auto")
   const [envioReal, setEnvioReal] = useState("")
+  const [labDisponible, setLabDisponible] = useState(false)
+  useEffect(() => { setLabDisponible(laboratorioNativoDisponible()) }, [])
   const [ajusteAutomatico, setAjusteAutomatico] = useState("")
   const calidadRef = useRef<CalidadCamara>("auto")
   const aperturaRef = useRef<Promise<boolean> | null>(null)
@@ -622,6 +625,15 @@ export default function CamaraMovil() {
         <div style={{ fontSize: 12, opacity: 0.7, textAlign: "center" }}>
           {conectado ? "Deja esta pantalla abierta. Apunta la cámara al frente." : "Escanea el QR del PC o escribe el código. Ambos en la misma red WiFi."}
         </div>
+        {labDisponible && <details style={{ fontSize:12 }}>
+          <summary>Laboratorio de cámara · solo debug</summary>
+          <p>Prueba nativa sin transmitir. Desconecta del PC antes de abrirla.</p>
+          <button disabled={conectado || cambiandoCamara || estado === "conectando"} onClick={() => {
+            if (quiereConectadoRef.current || aperturaRef.current) { setError("Desconecta la cámara del PC antes de probar el laboratorio."); return }
+            cerrar(true)
+            navegarSPA(router, "/camara-lab")
+          }}>Probar frontal / trasera con CameraX</button>
+        </details>}
       </div>
       <OnboardingTour id="tour-camara-movil-v1" pasos={TOUR_CAMARA_MOVIL} nombrePagina="Cámara del celular" />
     </div>
