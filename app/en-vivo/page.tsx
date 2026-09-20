@@ -25,6 +25,7 @@ import PanelAudioProfesional from "@/components/transmision/PanelAudioProfesiona
 import { medirRecepcion, type MuestraRecepcion } from "@/lib/calidadAdaptativa"
 import { VigenciaVideo } from "@/lib/vigenciaVideo"
 import { claveCamara, EnlacesCamara } from "@/lib/identidadCamara"
+import { dibujarCamaraCompleta } from "@/lib/encuadreCamara"
 
 type Escena = "camara" | "camara-letra" | "letra" | "espera"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
@@ -990,9 +991,7 @@ export default function EnVivoPage() {
             const w = sv.videoWidth * es, h = sv.videoHeight * es
             ctx.drawImage(sv, (ANCHO - w) / 2, (ALTO - h) / 2, w, h)
           } else if (v && v.videoWidth > 0) {
-            const escala = Math.max(ANCHO / v.videoWidth, ALTO / v.videoHeight)
-            const w = v.videoWidth * escala, h = v.videoHeight * escala
-            ctx.drawImage(v, (ANCHO - w) / 2, (ALTO - h) / 2, w, h)
+            dibujarCamaraCompleta(ctx, v, 0, 0, ANCHO, ALTO)
           } else {
             dibujarFondoBrandeado(ctx)
           }
@@ -1005,9 +1004,7 @@ export default function EnVivoPage() {
             const { x, y } = cont.pipPos, pw = cont.pipTam, ph = pw * 9 / 16
             ctx.save()
             redondear(ctx, x, y, pw, ph, 12); ctx.clip()
-            const es = Math.max(pw / pip.videoWidth, ph / pip.videoHeight)
-            const w = pip.videoWidth * es, h = pip.videoHeight * es
-            ctx.drawImage(pip, x + (pw - w) / 2, y + (ph - h) / 2, w, h)
+            dibujarCamaraCompleta(ctx, pip, x, y, pw, ph)
             ctx.restore()
             ctx.strokeStyle = "rgba(255,255,255,0.9)"; ctx.lineWidth = 3
             redondear(ctx, x, y, pw, ph, 12); ctx.stroke()
