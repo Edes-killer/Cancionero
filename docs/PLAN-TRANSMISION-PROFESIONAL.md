@@ -77,6 +77,18 @@ Referencias oficiales: [Preview y ciclo de vida](https://developer.android.com/m
 Recuperación por destino, alternativa cuando se pierde una cámara, grabación local recuperable
 tras cierre inesperado y detección de poco espacio. Probar cortes provocados de red y fuentes.
 
+Primera entrega: compositor vigila cada cámara local/remota por pista y contador de cuadros.
+Pista no disponible se oculta inmediatamente; tres segundos sin nuevos cuadros activan fondo
+brandeado, sin mensajes técnicos al público ni cambio automático a otra cámara. El PiP se oculta
+independientemente. Recuperación tras un segundo de cuadros continuos. Audio y proceso de
+emisión no se modifican. Aviso al operador y registro limitado a una incidencia cada 30 s.
+Sin contador compatible solo se verifica disponibilidad de pista; no afirmar detección de
+congelación en ese caso. `qa:video` verifica corte/retorno reales en WebRTC local sintético.
+
+Pendiente explícito: identidad persistente de móviles y reasignación cuando cambie socket ID;
+el guardián no resuelve esa reconexión por sí mismo. También pendientes destinos, disco y
+grabación recuperable. La prueba no demuestra funcionamiento en todos los teléfonos.
+
 ## 5. Eficiencia del motor — pendiente de medición
 
 Cuantificar costo de canvas → MediaRecorder → FFmpeg, comparar alternativas y selección de

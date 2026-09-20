@@ -56,6 +56,20 @@ No abre dispositivos físicos ni transmite a internet. Estas pruebas no sustituy
 de sincronía con cámara/micrófono reales ni las pruebas prolongadas del culto.
 # Calidad adaptativa: prueba de campo
 
+## Continuidad visual
+
+En una grabación local de prueba (no durante un culto), seleccionar una cámara y luego
+desconectarla. La salida debe mostrar fondo brandeado conservando los elementos de la escena;
+el aviso técnico aparece solo en el panel del operador. El audio no cambia de fuente.
+Si el enlace sigue vivo pero deja de entregar cuadros, permitir hasta 3 s para detectar
+congelación. Al volver cuadros continuos de la misma fuente, esperar 1 s para recuperar imagen.
+En modo dos cámaras, la pérdida del PiP solo debe ocultar ese recuadro. No debe ponerse otra
+cámara a pantalla completa sin intervención. Repetir con Cámara 1 y Cámara 2 al aire.
+Si el móvil retorna como una entrada nueva del selector, reasignarlo manualmente: identidad
+persistente y recuperación por nuevo socket ID continúan pendientes.
+
+## Adaptación
+
 1. Instalar la APK debug actual y reiniciar escritorio con `npm.cmd run electron:dev`.
 2. Conectar el celular y seleccionar calidad Automática. Comparar «Enviado» del celular
    con «Diagnóstico de cámaras celulares» en escritorio. No comparar esos FPS con la

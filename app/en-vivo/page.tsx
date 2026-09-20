@@ -23,6 +23,7 @@ import { TOUR_TRANSMISION } from "@/lib/tours"
 import { crearCadenaAudioEmision, ajustarAudioEmision, medirAudio, type CadenaAudioEmision } from "@/lib/audioEmision"
 import PanelAudioProfesional from "@/components/transmision/PanelAudioProfesional"
 import { medirRecepcion, type MuestraRecepcion } from "@/lib/calidadAdaptativa"
+import { VigenciaVideo } from "@/lib/vigenciaVideo"
 
 type Escena = "camara" | "camara-letra" | "letra" | "espera"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
@@ -358,6 +359,7 @@ export default function EnVivoPage() {
   const camCodigoRef = useRef("")
   const camIcePendienteRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map())
   const [recepcionCamara, setRecepcionCamara] = useState<string[]>([])
+  const [avisoContinuidad, setAvisoContinuidad] = useState("")
   const informeCamarasRef = useRef<string[]>([])
 
   useEffect(() => {
@@ -888,6 +890,22 @@ export default function EnVivoPage() {
     const ctx = canvas?.getContext("2d")
     if (!canvas || !ctx) return
 
+    const vigilantes = new WeakMap<HTMLVideoElement, { pista: MediaStreamTrack | undefined; control: VigenciaVideo }>()
+    let ultimoAviso = ""
+    let huboVideo = false
+    let ultimoLogContinuidad = -Infinity
+    const videoVigente = (video: HTMLVideoElement | null) => {
+      if (!video) return false
+      const pista = video.srcObject instanceof MediaStream ? video.srcObject.getVideoTracks()[0] : undefined
+      let entrada = vigilantes.get(video)
+      if (!entrada || entrada.pista !== pista) {
+        entrada = { pista, control: new VigenciaVideo() }; vigilantes.set(video, entrada)
+      }
+      const disponible = !!pista && pista.readyState === "live" && pista.enabled && !pista.muted && video.readyState >= 2 && video.videoWidth > 0
+      const cuadros = typeof video.getVideoPlaybackQuality === "function" ? video.getVideoPlaybackQuality().totalVideoFrames : null
+      return entrada.control.actualizar(performance.now(), cuadros, disponible)
+    }
+
     const dibujar = () => {
       // Blindado: un error acá NO debe matar el bucle (antes lo mataba y se
       // congelaba todo). Pase lo que pase, re-agendamos el siguiente fotograma.
@@ -899,8 +917,22 @@ export default function EnVivoPage() {
         // Cada "slot" de cámara puede ser la cámara local o el CELULAR (WebRTC).
         const v1 = cont.cam1Fuente ? phoneVideosRef.current.get(cont.cam1Fuente) || null : videoRef.current
         const v2 = cont.cam2Fuente ? phoneVideosRef.current.get(cont.cam2Fuente) || null : video2Ref.current
-        // Cámara al aire (1 o 2). Si la 2 no está lista, cae a la 1.
-        const v = (cont.camaraActiva === 2 && v2 && v2.videoWidth > 0) ? v2 : v1
+        const sana1 = videoVigente(v1), sana2 = videoVigente(v2)
+        // No mostrar un cuadro congelado ni cambiar a otra cámara sin elección del operador.
+        const v = cont.camaraActiva === 2 ? (sana2 ? v2 : null) : (sana1 ? v1 : null)
+        if (v) huboVideo = true
+        const conCamara = cont.escena === "camara" || cont.escena === "camara-letra"
+        const aviso = conCamara && !cont.pantallaOn && !v
+          ? "La cámara seleccionada no entrega video. Se muestra el fondo de la iglesia; el audio continúa."
+          : conCamara && ((cont.camaraActiva === "ambas" && !sana2) || (cont.pantallaOn && cont.camaraEnPip && !sana1))
+            ? "El recuadro de cámara está temporalmente oculto por falta de video." : ""
+        if (aviso !== ultimoAviso) {
+          ultimoAviso = aviso; setAvisoContinuidad(aviso)
+          if (aviso && huboVideo && performance.now() - ultimoLogContinuidad > 30000) {
+            ultimoLogContinuidad = performance.now()
+            void logError(`Continuidad de cámara: ${aviso}`, { pagina: "/en-vivo", tipo: "general" })
+          }
+        }
         const logo = logoImgRef.current
         const imagen = imagenImgRef.current
         const esLetra = cont.escena === "letra"
@@ -959,11 +991,13 @@ export default function EnVivoPage() {
             const escala = Math.max(ANCHO / v.videoWidth, ALTO / v.videoHeight)
             const w = v.videoWidth * escala, h = v.videoHeight * escala
             ctx.drawImage(v, (ANCHO - w) / 2, (ALTO - h) / 2, w, h)
+          } else {
+            dibujarFondoBrandeado(ctx)
           }
           // Recuadro (PiP): la cámara del presentador sobre la pantalla, o la
           // Cámara 2 en modo "ambas". Ambos usan la misma caja movible.
-          const pip = (cont.pantallaOn && cont.camaraEnPip && v1 && v1.videoWidth > 0) ? v1
-                    : (!cont.pantallaOn && cont.camaraActiva === "ambas" && v2 && v2.videoWidth > 0) ? v2
+          const pip = (cont.pantallaOn && cont.camaraEnPip && sana1) ? v1
+                    : (!cont.pantallaOn && cont.camaraActiva === "ambas" && sana2) ? v2
                     : null
           if (pip) {
             const { x, y } = cont.pipPos, pw = cont.pipTam, ph = pw * 9 / 16
@@ -1403,8 +1437,8 @@ export default function EnVivoPage() {
       }
     })
     // El celular se cayó (2º plano, red…). NO cerramos: el PC sigue esperando en la
-    // sala para que el celular se reconecte solo con el mismo código (queda el último
-    // cuadro congelado hasta que vuelve). Solo "Desconectar" cierra de verdad.
+    // sala para que el celular se reconecte con el mismo código. El compositor oculta
+    // cuadros congelados; un socket nuevo aún requiere reasignar la fuente en el selector.
     socket.on("camara:par-fin", ({ de }: any = {}) => {
       if (de && pcHostsRef.current.has(de)) {
         try { pcHostsRef.current.get(de)?.close() } catch {}
@@ -1744,6 +1778,7 @@ export default function EnVivoPage() {
         <video ref={screenVideoRef} autoPlay muted playsInline
           style={{ position: "absolute", width: 2, height: 2, opacity: 0, pointerEvents: "none", left: 0, top: 0 }} />
         {/* Cámaras celulares WebRTC. Cada móvil conserva su video independiente. */}
+        {avisoContinuidad && <div role="status" style={{ padding:10, color:"#fde68a", fontSize:13 }}>{avisoContinuidad} La imagen volverá cuando se estabilice la fuente.</div>}
         <details style={{ fontSize:12, color:C.suave, padding:8 }}>
           <summary>Diagnóstico de cámaras celulares</summary>
           {recepcionCamara.length ? recepcionCamara.map(l => <div key={l} style={{ paddingTop:6 }}>{l}</div>) : <div>No hay mediciones de cámaras celulares activas.</div>}

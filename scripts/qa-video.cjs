@@ -17,9 +17,10 @@ if (!process.versions.electron) {
       const ts = require('typescript')
       const fuente = fs.readFileSync(path.join(__dirname, '../lib/calidadAdaptativa.ts'), 'utf8')
       const compilado = ts.transpileModule(fuente, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
+      const vigilancia = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../lib/vigenciaVideo.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
       await win.loadURL('data:text/html,<title>QA WebRTC Selah</title>')
       const resultado = await win.webContents.executeJavaScript(`(async () => {
-        const exports = {}; ${compilado}
+        const exports = {}; ${compilado} ${vigilancia}
         const a = new RTCPeerConnection({ iceServers: [] }), b = new RTCPeerConnection({ iceServers: [] });
         const visor = document.createElement('video'); visor.autoplay = true; visor.muted = true; document.body.appendChild(visor);
         b.ontrack = e => { visor.srcObject = e.streams[0]; void visor.play(); };
@@ -48,8 +49,16 @@ if (!process.versions.electron) {
           const ajustar = async nivel => { const p = sender.getParameters(); const perfil = exports.PERFILES_ENVIO[nivel]; p.encodings[0].scaleResolutionDownBy=perfil.escala; p.encodings[0].maxBitrate=perfil.bitrate; p.encodings[0].maxFramerate=30; await sender.setParameters(p); };
           await ajustar(2); await esperar(async () => await ancho()===640, 'No redujo resolución recibida');
           await ajustar(0); await esperar(async () => await ancho()===1280, 'No recuperó resolución recibida');
+          const control = new exports.VigenciaVideo();
+          const vigente = () => control.actualizar(performance.now(), visor.getVideoPlaybackQuality().totalVideoFrames, true);
+          if(visor.getVideoPlaybackQuality().totalVideoFrames <= 0) throw new Error('El contador de cuadros del receptor no funciona');
+          vigente();
+          await sender.replaceTrack(null);
+          await esperar(() => !vigente(), 'No detectó el congelamiento real del receptor');
+          await sender.replaceTrack(pista);
+          await esperar(() => vigente(), 'No recuperó la cámara después del corte');
           if(sender.track!==pista || pista.readyState!=='live' || a.connectionState!=='connected' || negociaciones!==inicial) throw new Error('Se reinició la fuente o negociación');
-          return { ok:true, detalle:'1280 → 640 → 1280 recibidos; misma pista y conexión, sin renegociar' };
+          return { ok:true, detalle:'1280 → 640 → 1280; corte detectado y recuperación de cuadros; misma pista y conexión, sin renegociar' };
         } finally { clearInterval(timer); stream.getTracks().forEach(t=>t.stop()); a.close(); b.close(); }
       })()`)
       console.log(JSON.stringify(resultado))

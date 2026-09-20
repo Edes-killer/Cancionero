@@ -413,6 +413,12 @@ con apertura, errores, sensor y FPS de análisis. No confundir FPS de análisis 
 Producción excluye dependencias, Activity y plugin nativos; no anunciar solución del fallo
 frontal sin pruebas físicas. Protocolo: `docs/QA-CAMARA-NATIVA.md`.
 
+Continuidad visual: `VigenciaVideo` detecta ausencia de cuadros (3 s) o pista no disponible.
+El compositor usa fondo brandeado y oculta PiP perdido, sin cambiar micrófono ni cámara elegida.
+Retorna tras 1 s de cuadros continuos. Aviso privado y errores con límite de frecuencia.
+`qa:video` verifica corte/restauración del sender real además del escalado. No resuelve aún
+la reasignación de celulares que reconectan con un socket ID distinto.
+
 1. Se edita el código directamente en `/app`, `/electron`, etc. (ya NO existe el viejo flujo de "copiar
    outputs antes del build").
 2. Las API routes de Next (`/api/...`) no corren en APK ni Electron → la Biblia usa el server 4000.
