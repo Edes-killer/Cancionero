@@ -1,6 +1,11 @@
 # Selah Live — Documento de Diseño (SDD) y Contexto de Desarrollo
 
-> Versión del documento: 2026-09-12 · App: **v0.5.31** · Mantener al día al cerrar cada release.
+> Versión del documento: 2026-09-20 · Candidata: **v0.5.34** (prerelease) · Estable publicada: v0.5.33.
+
+Prueba en iglesia: `docs/PRUEBA-IGLESIA-0.5.34.md`. Alcance y pendientes:
+`docs/RELEASE-0.5.34.md`. No anunciar sincronización de ajustes en nube ni cobro/gating
+completo de planes: están acordados, no implementados. La candidata vive en
+`codex/release-0.5.34`; no fusionar a main ni promover Latest hasta validar en terreno.
 
 ---
 
