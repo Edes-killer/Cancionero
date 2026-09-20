@@ -397,7 +397,7 @@ retardo, volumen, compresión de picos y silencio final. `PanelAudioProfesional`
 apagada por defecto y un clip de calibración de 8 s sin publicar. La grabación de prueba detiene
 solo su pista de video; el audio de salida se comparte. Ejecutar `npm.cmd run qa:audio` para probar
 el procesamiento real y el flujo de interfaz con fuentes sintéticas. No declarar hardware validado
-por estos tests. Los perfiles persistentes de cámaras móviles aún necesitan identidad estable.
+por estos tests. Los perfiles de cámaras móviles usan ahora identidad estable por instalación.
 
 Segunda entrega: `lib/calidadAdaptativa.ts` limita bitrate/escala de envío únicamente en modo
 automático, con histéresis y confirmación de `setParameters`. No reinicia captura ni conexión.
@@ -416,8 +416,13 @@ frontal sin pruebas físicas. Protocolo: `docs/QA-CAMARA-NATIVA.md`.
 Continuidad visual: `VigenciaVideo` detecta ausencia de cuadros (3 s) o pista no disponible.
 El compositor usa fondo brandeado y oculta PiP perdido, sin cambiar micrófono ni cámara elegida.
 Retorna tras 1 s de cuadros continuos. Aviso privado y errores con límite de frecuencia.
-`qa:video` verifica corte/restauración del sender real además del escalado. No resuelve aún
-la reasignación de celulares que reconectan con un socket ID distinto.
+`qa:video` verifica corte/restauración del sender real además del escalado.
+`identidadCamara.ts` conserva un UUID por instalación en la APK y separa la fuente del socket.
+El servidor adjunta la identidad validada; escritorio conserva selectores y perfiles de audio
+durante reconexiones en la misma sesión, ignorando cierres/candidatos atrasados. Un celular
+no debe detenerse por el aviso de desconexión de otro. Duplicados activos se rechazan hasta
+que cierre el enlace anterior. Requiere actualizar APK y escritorio; no restaura el armado
+completo tras reiniciar escritorio ni conserva identidad después de borrar datos de la APK.
 
 1. Se edita el código directamente en `/app`, `/electron`, etc. (ya NO existe el viejo flujo de "copiar
    outputs antes del build").

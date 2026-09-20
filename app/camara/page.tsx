@@ -16,6 +16,7 @@ import { navegarSPA } from "@/lib/navegar"
 import { capturaVigente } from "@/lib/capturaVigente"
 import { CalidadAdaptativa, medirEnvio, PERFILES_ENVIO, type MuestraEnvio } from "@/lib/calidadAdaptativa"
 import { laboratorioNativoDisponible } from "@/lib/camaraNativaLab"
+import { identidadCamara, accionFinCamara } from "@/lib/identidadCamara"
 
 type Estado = "abriendo" | "listo" | "conectando" | "conectado" | "error"
 
@@ -62,6 +63,7 @@ export default function CamaraMovil() {
   const audioTrackRef = useRef<MediaStreamTrack | null>(null) // mic del celular (se obtiene 1 vez)
   const codigoRef = useRef("")
   const hostIdRef = useRef("")
+  const identidadRef = useRef("")
   useEffect(() => { codigoRef.current = codigo }, [codigo])
 
   // Reconexión automática: recordamos que el usuario QUIERE estar conectado, para
@@ -389,10 +391,17 @@ export default function CamaraMovil() {
     socketRef.current = socket
 
     socket.on("connect", () => {
-      socket.emit("camara:unir", { codigo: cod }, (resp: any) => {
+      if (!identidadRef.current) {
+        try { identidadRef.current = identidadCamara(localStorage, () => crypto.randomUUID()) }
+        catch { identidadRef.current = "" } // APK anterior o contexto sin crypto: compatibilidad por socket.
+      }
+      socket.emit("camara:unir", { codigo: cod, dispositivoId: identidadRef.current }, (resp: any) => {
         if (!resp?.ok) {
           estableciendoRef.current = false
-          if (resp?.error === "no-host") {
+          if (resp?.error === "identidad-ocupada") {
+            setError("Esperando que termine la conexión anterior de este celular…")
+            if (quiereConectadoRef.current) programarReconexion()
+          } else if (resp?.error === "no-host") {
             // El PC aún no está esperando: reintentar en unos segundos.
             setError("Esperando a que el PC abra “Usar celular como cámara”…")
             logConex(`camara:unir sin host (código ${cod})`)
@@ -421,7 +430,13 @@ export default function CamaraMovil() {
       }
     })
     // El PC cerró la cámara A PROPÓSITO → dejar de reintentar.
-    socket.on("camara:par-fin", () => { quiereConectadoRef.current = false; setError("El PC cerró la cámara."); cerrar(false) })
+    socket.on("camara:par-fin", (aviso = {}) => {
+      if (socket !== socketRef.current) return
+      const accion = accionFinCamara(aviso, hostIdRef.current)
+      if (accion === "cerrar") { quiereConectadoRef.current = false; setError("El PC cerró la cámara."); cerrar(false) }
+      else if (accion === "reintentar" && quiereConectadoRef.current) programarReconexion()
+      // La salida de otro celular no debe desconectar esta cámara.
+    })
     // Caídas de red / socket → reintentar mientras el usuario quiera estar conectado.
     socket.on("disconnect", () => { if (quiereConectadoRef.current) programarReconexion() })
     socket.on("connect_error", async (e: any) => {

@@ -24,6 +24,7 @@ import { crearCadenaAudioEmision, ajustarAudioEmision, medirAudio, type CadenaAu
 import PanelAudioProfesional from "@/components/transmision/PanelAudioProfesional"
 import { medirRecepcion, type MuestraRecepcion } from "@/lib/calidadAdaptativa"
 import { VigenciaVideo } from "@/lib/vigenciaVideo"
+import { claveCamara, EnlacesCamara } from "@/lib/identidadCamara"
 
 type Escena = "camara" | "camara-letra" | "letra" | "espera"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
@@ -355,6 +356,7 @@ export default function EnVivoPage() {
   const phoneVideosRef = useRef<Map<string, HTMLVideoElement>>(new Map())
   const phoneStreamsRef = useRef<Map<string, MediaStream>>(new Map())
   const pcHostsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
+  const enlacesCamaraRef = useRef(new EnlacesCamara())
   const camSocketRef = useRef<Socket | null>(null)
   const camCodigoRef = useRef("")
   const camIcePendienteRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map())
@@ -397,7 +399,7 @@ export default function EnVivoPage() {
             conexiones.set(id, pc)
           }
           if (pc.connectionState !== "connected") {
-            lineas.push(`Celular ${id.slice(0, 5)}: sin enlace de video activo`)
+            lineas.push(`Celular ${id.replace(/^movil-/, "").slice(0, 5)}: sin enlace de video activo`)
             for (const key of previos.keys()) if (key.startsWith(`${id}:`)) previos.delete(key)
             continue
           }
@@ -409,9 +411,9 @@ export default function EnVivoPage() {
             const lectura = medirRecepcion(s, previos.get(key) ?? null)
             if (lectura) {
               const { fps, mbps, bufferMs, aviso } = lectura
-              lineas.push(`Celular ${id.slice(0, 5)}: ${s.frameWidth || "?"}×${s.frameHeight || "?"} · ${fps.toFixed(0)} FPS recibidos · ${mbps.toFixed(1)} Mbps · búfer ${bufferMs === null ? "no disponible" : `${bufferMs.toFixed(0)} ms`}${aviso ? ` — ${aviso}` : ""}`)
+              lineas.push(`Celular ${id.replace(/^movil-/, "").slice(0, 5)}: ${s.frameWidth || "?"}×${s.frameHeight || "?"} · ${fps.toFixed(0)} FPS recibidos · ${mbps.toFixed(1)} Mbps · búfer ${bufferMs === null ? "no disponible" : `${bufferMs.toFixed(0)} ms`}${aviso ? ` — ${aviso}` : ""}`)
             } else {
-              lineas.push(`Celular ${id.slice(0, 5)}: esperando medición de video`)
+              lineas.push(`Celular ${id.replace(/^movil-/, "").slice(0, 5)}: esperando medición de video`)
             }
             previos.set(key, { id:s.id, timestamp:s.timestamp, framesDecoded:s.framesDecoded, bytesReceived:s.bytesReceived, jitterBufferDelay:s.jitterBufferDelay, jitterBufferEmittedCount:s.jitterBufferEmittedCount })
           })
@@ -1069,7 +1071,7 @@ export default function EnVivoPage() {
     const fuentes: Array<[string, MediaStream | null]> = [
       ["cámara 1", streamRef.current],
       ["cámara 2", stream2Ref.current],
-      ...[...phoneStreamsRef.current.entries()].map(([id, stream]) => [`celular ${id.slice(0, 5)}`, stream] as [string, MediaStream]),
+      ...[...phoneStreamsRef.current.entries()].map(([id, stream]) => [`celular ${id.replace(/^movil-/, "").slice(0, 5)}`, stream] as [string, MediaStream]),
       ["pantalla", screenStreamRef.current],
     ]
     return fuentes.flatMap(([nombre, stream]) => stream?.getVideoTracks().map(track => {
@@ -1343,7 +1345,7 @@ export default function EnVivoPage() {
     camIcePendienteRef.current.clear()
     try { camSocketRef.current?.close() } catch {}; camSocketRef.current = null
     phoneStreamsRef.current.forEach(s => s.getTracks().forEach(t => t.stop())); phoneStreamsRef.current.clear()
-    phoneVideosRef.current.clear(); setCelulares([])
+    phoneVideosRef.current.clear(); enlacesCamaraRef.current.limpiar(); setCelulares([])
     setCelularOn(false); setCamModal(false); setCamEstado("esperando")
     // Liberar los slots que apuntaban al celular (cámara y mic vuelven al PC).
     setCamaraId(prev => esFuenteCelular(prev) ? "" : prev)
@@ -1377,28 +1379,34 @@ export default function EnVivoPage() {
       setCamError("El PC no pudo abrir la sala de cámara.")
       logError(`Cámara celular: host rechazado (${resp?.error || "sin respuesta"})`, { tipo: "socket", pagina: "/en-vivo" })
     }))
-    socket.on("camara:senal", async ({ data, de }: any) => {
-      if (!data || !de) return
+    socket.on("camara:senal", async ({ data, de: peerId, dispositivoId }: any) => {
+      if (!data || typeof peerId !== "string" || socket !== camSocketRef.current) return
+      const de = claveCamara(peerId, dispositivoId)
       try {
         if (data.tipo === "offer") {
+          enlacesCamaraRef.current.registrar(de, peerId)
           try { pcHostsRef.current.get(de)?.close() } catch {}
           const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] })
           pcHostsRef.current.set(de, pc)
-          camIcePendienteRef.current.set(de, [])
+          // ICE puede adelantarse a la oferta: conservarlo por socket, no por identidad.
+          if (!camIcePendienteRef.current.has(peerId)) camIcePendienteRef.current.set(peerId, [])
           pc.ontrack = (e) => {
+            if (pcHostsRef.current.get(de) !== pc || !enlacesCamaraRef.current.vigente(de, peerId)) return
             phoneStreamsRef.current.set(de, e.streams[0])
             setCelulares(prev => prev.some(c => c.id === de) ? prev : [...prev, { id: de, nombre: `Celular ${prev.length + 1}` }])
             setCelularOn(true)
             setTimeout(() => {
+              if (pcHostsRef.current.get(de) !== pc) return
               const video = phoneVideosRef.current.get(de)
               if (video) { video.srcObject = e.streams[0]; video.play().catch(() => {}) }
             }, 0)
             setAudioGen(g => g + 1)   // re-enganchar el audio del celular + VU (también al reconectar)
           }
-          pc.onicecandidate = (e) => { if (e.candidate) socket.emit("camara:senal", { codigo, para: de, data: { tipo: "ice", candidate: e.candidate } }) }
+          pc.onicecandidate = (e) => { if (e.candidate && pcHostsRef.current.get(de) === pc) socket.emit("camara:senal", { codigo, para: peerId, data: { tipo: "ice", candidate: e.candidate } }) }
           pc.onconnectionstatechange = () => {
+            if (pcHostsRef.current.get(de) !== pc) return
             if (pc.connectionState === "connected") {
-              setCelularOn(true); setCamEstado("conectado")
+              setCelularOn(true); setCamEstado("conectado"); setCamError("")
               const hayCam1 = !!streamRef.current?.getVideoTracks().length
               const fuente = CELULAR_PREFIJO + de
               if (hayCam1) {
@@ -1417,17 +1425,21 @@ export default function EnVivoPage() {
             else if (pc.connectionState === "failed") { setCamError("Se desconectó una cámara celular; Selah sigue esperando su regreso."); logError(`Cámara celular ${de}: enlace WebRTC falló`, { tipo: "socket", pagina: "/en-vivo" }) }
           }
           await pc.setRemoteDescription(data.sdp)
-          const pendientes = camIcePendienteRef.current.get(de)?.splice(0) || []
+          if (pcHostsRef.current.get(de) !== pc) return
+          const pendientes = camIcePendienteRef.current.get(peerId)?.splice(0) || []
           for (const candidate of pendientes) await pc.addIceCandidate(candidate)
           const answer = await pc.createAnswer()
           await pc.setLocalDescription(answer)
-          socket.emit("camara:senal", { codigo, para: de, data: { tipo: "answer", sdp: pc.localDescription } })
+          if (pcHostsRef.current.get(de) !== pc) return
+          socket.emit("camara:senal", { codigo, para: peerId, data: { tipo: "answer", sdp: pc.localDescription } })
         } else if (data.tipo === "ice" && data.candidate) {
-          const pc = pcHostsRef.current.get(de)
+          const pc = enlacesCamaraRef.current.vigente(de, peerId) ? pcHostsRef.current.get(de) : undefined
           if (pc?.remoteDescription) await pc.addIceCandidate(data.candidate)
           else {
-            const lista = camIcePendienteRef.current.get(de) || []
-            lista.push(data.candidate); camIcePendienteRef.current.set(de, lista)
+            const lista = camIcePendienteRef.current.get(peerId) || []
+            if (lista.length < 64 && (camIcePendienteRef.current.has(peerId) || camIcePendienteRef.current.size < 64)) {
+              lista.push(data.candidate); camIcePendienteRef.current.set(peerId, lista)
+            }
           }
         }
       } catch (e: any) {
@@ -1438,12 +1450,19 @@ export default function EnVivoPage() {
     })
     // El celular se cayó (2º plano, red…). NO cerramos: el PC sigue esperando en la
     // sala para que el celular se reconecte con el mismo código. El compositor oculta
-    // cuadros congelados; un socket nuevo aún requiere reasignar la fuente en el selector.
-    socket.on("camara:par-fin", ({ de }: any = {}) => {
+    // cuadros congelados y la identidad estable conserva los selectores y perfiles de audio.
+    socket.on("camara:par-fin", ({ de: peerId, dispositivoId }: any = {}) => {
+      if (typeof peerId !== "string" || socket !== camSocketRef.current) return
+      const de = claveCamara(peerId, dispositivoId)
+      camIcePendienteRef.current.delete(peerId)
+      if (!enlacesCamaraRef.current.retirar(de, peerId)) return
       if (de && pcHostsRef.current.has(de)) {
         try { pcHostsRef.current.get(de)?.close() } catch {}
         pcHostsRef.current.delete(de); phoneStreamsRef.current.delete(de)
-        setCelulares(prev => prev.filter(c => c.id !== de))
+        const video = phoneVideosRef.current.get(de)
+        if (video) video.srcObject = null
+        // Conservar la opción y su nombre para recuperar cámara y micrófono al volver.
+        setAudioGen(g => g + 1)
       }
       setCamEstado(pcHostsRef.current.size ? "conectado" : "esperando")
     })
@@ -1836,7 +1855,7 @@ export default function EnVivoPage() {
               <select value={camaraId} onChange={e => { const val = e.target.value; setCamaraId(val); if (val === camara2Id) setCamara2Id("") }} style={selectEstilo}>
                 {camaras.length === 0 && <option value="">(sin cámaras)</option>}
                 {camaras.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-                {celulares.map(c => <option key={c.id} value={CELULAR_PREFIJO + c.id}>📱 {c.nombre}</option>)}
+                {celulares.map(c => <option key={c.id} value={CELULAR_PREFIJO + c.id}>📱 {c.nombre}{phoneStreamsRef.current.has(c.id) ? "" : " · desconectado"}</option>)}
               </select>
             </label>
             <label style={{ fontSize: 12.5, color: C.tenue }}>
@@ -1844,7 +1863,7 @@ export default function EnVivoPage() {
               <select value={camara2Id} onChange={e => setCamara2Id(e.target.value)} style={selectEstilo}>
                 <option value="">(ninguna)</option>
                 {camaras.filter(c => c.id !== camaraId).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-                {celulares.filter(c => camaraId !== CELULAR_PREFIJO + c.id).map(c => <option key={c.id} value={CELULAR_PREFIJO + c.id}>📱 {c.nombre}</option>)}
+                {celulares.filter(c => camaraId !== CELULAR_PREFIJO + c.id).map(c => <option key={c.id} value={CELULAR_PREFIJO + c.id}>📱 {c.nombre}{phoneStreamsRef.current.has(c.id) ? "" : " · desconectado"}</option>)}
               </select>
             </label>
             <label style={{ fontSize: 12.5, color: C.tenue, gridColumn: "1 / -1" }}>
@@ -1852,7 +1871,7 @@ export default function EnVivoPage() {
               <select value={microId} onChange={e => setMicroId(e.target.value)} style={selectEstilo}>
                 {micros.length === 0 && <option value="">(sin micrófonos)</option>}
                 {micros.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-                {celulares.map(c => <option key={c.id} value={CELULAR_PREFIJO + c.id}>📱 Micrófono de {c.nombre}</option>)}
+                {celulares.map(c => <option key={c.id} value={CELULAR_PREFIJO + c.id}>📱 Micrófono de {c.nombre}{phoneStreamsRef.current.has(c.id) ? "" : " · desconectado"}</option>)}
               </select>
             </label>
           </div>

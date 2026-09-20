@@ -65,8 +65,27 @@ Si el enlace sigue vivo pero deja de entregar cuadros, permitir hasta 3 s para d
 congelación. Al volver cuadros continuos de la misma fuente, esperar 1 s para recuperar imagen.
 En modo dos cámaras, la pérdida del PiP solo debe ocultar ese recuadro. No debe ponerse otra
 cámara a pantalla completa sin intervención. Repetir con Cámara 1 y Cámara 2 al aire.
-Si el móvil retorna como una entrada nueva del selector, reasignarlo manualmente: identidad
-persistente y recuperación por nuevo socket ID continúan pendientes.
+Con APK y escritorio actualizados, el celular debe retornar a la misma entrada del selector
+aunque cambie el socket. Versiones antiguas y borrado de datos no conservan esta identidad.
+
+### Reconexión y dos celulares
+
+1. Reiniciar Electron en desarrollo e instalar la APK debug actual en ambos celulares.
+2. Asignar A a Cámara 1 y B a Cámara 2. Seleccionar micrófono de A y ajustar su volumen
+   y retraso. Grabar localmente, sin publicar.
+3. Desconectar A mediante su botón. B debe seguir conectado; la entrada de A debe quedar
+   marcada desconectada, sin cambiar las selecciones. El micrófono de A quedará sin señal,
+   no debe sustituirse silenciosamente por el de B.
+4. Reconectar A: debe recuperar Cámara 1 y el micrófono con el mismo volumen/retraso.
+   No deben aparecer entradas duplicadas. Repetir intercambiando los celulares.
+5. Solo en esta grabación de prueba, apagar y encender el WiFi del teléfono (no modificar
+   IP, controlador ni configuración del PC). La recuperación puede esperar a que el servidor
+   detecte el enlace anterior caído; no prometer reconexión instantánea.
+6. Confirmar que un cierre intencional de la sala desde PC detiene los reintentos. Una caída
+   inesperada debe permitirlos. Registrar resultado y modelo de teléfono.
+
+Estas pruebas físicas quedan pendientes; el laboratorio automático comprueba identidad,
+aislamiento de avisos y protocolo de reconexión, no la sincronía audiovisual real.
 
 ## Adaptación
 

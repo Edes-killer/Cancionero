@@ -1232,11 +1232,17 @@ try {
       console.log("📷 host de cámara:", codigoFinal)
     })
 
-    socket.on("camara:unir", ({ codigo } = {}, cb) => {
+    socket.on("camara:unir", ({ codigo, dispositivoId } = {}, cb) => {
       const room = salaCam(codigo)
       const set = io.sockets.adapter.rooms.get(room)
       const hostId = set && [...set].find(id => io.sockets.sockets.get(id)?.data?.camaraRol === "host")
       if (!hostId) { if (typeof cb === "function") cb({ ok: false, error: "no-host" }); return }
+      const identidad = typeof dispositivoId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(dispositivoId) ? dispositivoId.toLowerCase() : null
+      if (identidad && [...set].some(id => id !== socket.id && io.sockets.sockets.get(id)?.data?.camaraDispositivo === identidad)) {
+        if (typeof cb === "function") cb({ ok: false, error: "identidad-ocupada" })
+        return
+      }
+      socket.data.camaraDispositivo = identidad
       socket.data.camaraCodigo = codigo
       socket.data.camaraRol = "emisor"
       socket.join(room)
@@ -1247,15 +1253,19 @@ try {
 
     // Relay de la señalización (oferta/respuesta/ICE) al OTRO peer de la sala.
     socket.on("camara:senal", ({ codigo, data, para } = {}) => {
-      if (!codigo || !data) return
-      const paquete = { data, de: socket.id, rol: socket.data.camaraRol }
+      if (!codigo || !data || !socket.rooms.has(salaCam(codigo)) || salaCam(codigo) !== salaCam(socket.data.camaraCodigo)) return
+      const paquete = { data, de: socket.id, rol: socket.data.camaraRol, dispositivoId: socket.data.camaraDispositivo }
       if (para && io.sockets.sockets.get(para)?.rooms?.has(salaCam(codigo))) io.to(para).emit("camara:senal", paquete)
       else socket.broadcast.to(salaCam(codigo)).emit("camara:senal", paquete)
     })
 
     socket.on("camara:fin", ({ codigo } = {}) => {
-      const c = codigo || socket.data.camaraCodigo
-      if (c) socket.broadcast.to(salaCam(c)).emit("camara:par-fin", { de: socket.id, rol: socket.data.camaraRol })
+      const c = socket.data.camaraCodigo
+      if (codigo && salaCam(codigo) !== salaCam(c)) return
+      if (c) {
+        socket.broadcast.to(salaCam(c)).emit("camara:par-fin", { de: socket.id, rol: socket.data.camaraRol, dispositivoId: socket.data.camaraDispositivo, intencional: true })
+        socket.leave(salaCam(c)); socket.data.camaraCodigo = null; socket.data.camaraDispositivo = null
+      }
     })
 
     // ── Señalización WebRTC: "emisión directa" (link propio en la red) ──────────
@@ -1313,7 +1323,7 @@ try {
       if (sala) setImmediate(() => emitirPresenciaSala(sala))
       // Avisar al otro peer de la cámara si uno se cae.
       if (socket.data?.camaraCodigo) {
-        socket.broadcast.to(salaCam(socket.data.camaraCodigo)).emit("camara:par-fin", { de: socket.data.camaraRol })
+        socket.broadcast.to(salaCam(socket.data.camaraCodigo)).emit("camara:par-fin", { de: socket.id, rol: socket.data.camaraRol, dispositivoId: socket.data.camaraDispositivo, intencional: false })
       }
       // Emisión directa: si cae un espectador, avisar al emisor para que cierre su
       // PC; si cae el emisor, avisar a todos los espectadores.

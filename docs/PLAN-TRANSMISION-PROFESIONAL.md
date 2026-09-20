@@ -13,8 +13,8 @@ con todos los teléfonos ni valida cada fallo anterior por separado.
 - Volumen y retraso por identificador de micrófono.
 - QA con señales sintéticas en Web Audio real y prueba de interfaz en Electron.
 
-Pendiente: validar micrófonos físicos, deriva en grabaciones largas e identidad persistente
-de cada celular entre conexiones. El retraso solo compensa audio adelantado. La protección
+Pendiente: validar micrófonos físicos y deriva en grabaciones largas. La identidad persistente
+del celular ya vincula sus perfiles entre conexiones. El retraso solo compensa audio adelantado. La protección
 actual es compresión de picos, no un limitador de pico verdadero certificado.
 
 ## 2. Calidad y diagnóstico automáticos — primera entrega implementada
@@ -85,9 +85,18 @@ emisión no se modifican. Aviso al operador y registro limitado a una incidencia
 Sin contador compatible solo se verifica disponibilidad de pista; no afirmar detección de
 congelación en ese caso. `qa:video` verifica corte/retorno reales en WebRTC local sintético.
 
-Pendiente explícito: identidad persistente de móviles y reasignación cuando cambie socket ID;
-el guardián no resuelve esa reconexión por sí mismo. También pendientes destinos, disco y
-grabación recuperable. La prueba no demuestra funcionamiento en todos los teléfonos.
+Identidad persistente implementada: UUID aleatorio local, sin IMEI ni huella del dispositivo.
+Las fuentes y perfiles de audio ya no dependen del socket efímero. Durante la sesión de escritorio
+se conserva el nombre, Cámara 1/2 y micrófono seleccionado cuando el celular pierde conexión.
+Un enlace atrasado no cierra al nuevo; una identidad duplicada activa se rechaza y se reintenta.
+Desconectar otro celular no detiene los demás. Aviso de cierre intencional del host se distingue
+de caída inesperada. La identidad es correlación, no una credencial de autorización.
+
+Validación: pruebas de identidad y prueba Socket.IO real con handlers del servidor, puerto
+local efímero, desconexión y nuevo socket. No prueba imagen/audio físicos ni restaura el armado
+al reiniciar escritorio. Requiere APK y escritorio nuevos; borrar datos de APK cambia identidad.
+Pendientes destinos, disco y grabación recuperable. La prueba no demuestra funcionamiento
+en todos los teléfonos.
 
 ## 5. Eficiencia del motor — pendiente de medición
 
