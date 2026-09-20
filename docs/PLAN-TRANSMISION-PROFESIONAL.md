@@ -17,11 +17,32 @@ Pendiente: validar micrófonos físicos, deriva en grabaciones largas e identida
 de cada celular entre conexiones. El retraso solo compensa audio adelantado. La protección
 actual es compresión de picos, no un limitador de pico verdadero certificado.
 
-## 2. Calidad y diagnóstico automáticos — pendiente
+## 2. Calidad y diagnóstico automáticos — primera entrega implementada
 
 Usar mediciones de envío, recepción y codificación para detectar saturación sostenida,
 adaptar calidad con recuperación gradual y producir avisos accionables. Conservar un
 informe de la sesión sin claves RTMP. Diferenciar FPS de captura, de recepción y de salida.
+
+Implementado: modo automático del celular ajusta bitrate y escala del sender WebRTC
+sin detener pistas ni renegociar. Tres muestras limitadas por CPU/red reducen un nivel;
+diez muestras estables recuperan uno, con 15 segundos mínimos entre cambios. Las
+selecciones manuales no activan esta política. Si el navegador rechaza el ajuste, se
+conserva el nivel anterior, se avisa y se registra el error. FPS bajos sin causa conocida
+no se atribuyen automáticamente a la red. La captura sigue siendo la elegida; el ajuste
+afecta al envío, no garantiza aliviar el costo de captura del sensor.
+
+En escritorio: diagnóstico por celular de FPS recibidos, bitrate y búfer incremental,
+con avisos y descarga de las últimas 480 líneas de medición. Se conserva localmente
+el último informe (muestras cada 15 segundos); no incluye logs FFmpeg ni claves RTMP.
+Las mediciones faltantes se muestran como desconocidas, no como cero.
+
+Pendiente: validación física de adaptación en distintos WebView, integración de estas
+medidas con carga del encoder final y reporte completo de sesión/audio/destinos.
+Las pruebas unitarias verifican la política y sus deltas, no simulan hardware ni WiFi real.
+`npm.cmd run qa:video` prueba dos peers WebRTC reales en Electron, con video sintético:
+1280 → 640 → 1280 sin sustituir pista ni renegociar. Este laboratorio usa maintain-resolution
+para aislar el escalado explícito; producción usa maintain-framerate y Chromium también
+puede adaptar internamente. No equivale a probar la política completa bajo congestión real.
 
 ## 3. Captura móvil nativa — pendiente de prototipo y comparación
 

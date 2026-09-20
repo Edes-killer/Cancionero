@@ -14,6 +14,7 @@ import OnboardingTour from "@/components/OnboardingTour"
 import { TOUR_CAMARA_MOVIL } from "@/lib/tours"
 import { navegarSPA } from "@/lib/navegar"
 import { capturaVigente } from "@/lib/capturaVigente"
+import { CalidadAdaptativa, medirEnvio, PERFILES_ENVIO, type MuestraEnvio } from "@/lib/calidadAdaptativa"
 
 type Estado = "abriendo" | "listo" | "conectando" | "conectado" | "error"
 
@@ -41,6 +42,7 @@ export default function CamaraMovil() {
   const [cambiandoCamara, setCambiandoCamara] = useState(false)
   const [calidad, setCalidad] = useState<CalidadCamara>("auto")
   const [envioReal, setEnvioReal] = useState("")
+  const [ajusteAutomatico, setAjusteAutomatico] = useState("")
   const calidadRef = useRef<CalidadCamara>("auto")
   const aperturaRef = useRef<Promise<boolean> | null>(null)
   const cicloCapturaRef = useRef(0)
@@ -506,25 +508,59 @@ export default function CamaraMovil() {
 
   useEffect(() => {
     let activo = true
-    let anterior: { id: string; bytes: number; frames: number; tiempo: number } | null = null
+    let ocupado = false
+    let anterior: MuestraEnvio | null = null
+    let enlace: RTCPeerConnection | null = null
+    let pista: MediaStreamTrack | null = null
+    let adaptador = new CalidadAdaptativa()
     const timer = setInterval(async () => {
+      if (!activo || ocupado) return
       const pc = pcRef.current
-      if (!pc || pc.connectionState !== "connected") { if (activo) setEnvioReal(""); anterior = null; return }
+      if (!pc || pc.connectionState !== "connected") { setEnvioReal(""); anterior = null; return }
+      ocupado = true
       try {
+        if (pc !== enlace || pista !== videoTrackRef.current) {
+          if (pc !== enlace) { adaptador = new CalidadAdaptativa(); setAjusteAutomatico("") }
+          enlace = pc; pista = videoTrackRef.current; anterior = null
+        }
         const stats = await pc.getStats()
         if (!activo || pc !== pcRef.current) return
-        stats.forEach(s => {
-          if (s.type !== "outbound-rtp" || s.kind !== "video") return
-          const segundos = anterior && anterior.id === s.id ? (s.timestamp - anterior.tiempo) / 1000 : 0
-          if (segundos > 0 && anterior) {
-            const fps = Math.max(0, (s.framesEncoded - anterior.frames) / segundos)
-            const mbps = Math.max(0, (s.bytesSent - anterior.bytes) * 8 / segundos / 1e6)
+        for (const s of stats.values()) {
+          if (s.type !== "outbound-rtp" || s.kind !== "video") continue
+          const muestra = medirEnvio(s, anterior)
+          anterior = { id: s.id, timestamp: s.timestamp, bytesSent: s.bytesSent, framesEncoded: s.framesEncoded }
+          if (muestra) {
+            const { fps, mbps } = muestra
             const razon = s.qualityLimitationReason === "cpu" ? " · limitado por el teléfono" : s.qualityLimitationReason === "bandwidth" ? " · limitado por la red" : ""
             setEnvioReal(`Enviado: ${s.frameWidth || "?"}×${s.frameHeight || "?"} · ${fps.toFixed(0)} FPS · ${mbps.toFixed(1)} Mbps${razon}`)
+            const sender = videoSenderRef.current
+            if (calidadRef.current === "auto" && sender && sender.track === pista) {
+              const ahora = performance.now()
+              const nivel = adaptador.observar(ahora, fps, s.qualityLimitationReason)
+              if (nivel !== null) {
+                const perfil = PERFILES_ENVIO[nivel]
+                const parametros = sender.getParameters()
+                if (!parametros.encodings?.length) { adaptador.fallar(ahora); continue }
+                parametros.encodings[0].maxBitrate = perfil.bitrate
+                parametros.encodings[0].scaleResolutionDownBy = perfil.escala
+                parametros.encodings[0].maxFramerate = 30
+                parametros.degradationPreference = "maintain-framerate"
+                try {
+                  await sender.setParameters(parametros)
+                  if (!activo || pc !== pcRef.current || sender !== videoSenderRef.current) return
+                  adaptador.confirmar(nivel, ahora)
+                  setAjusteAutomatico(`Calidad automática: ${perfil.nombre}. Se recuperará gradualmente si el envío permanece estable.`)
+                } catch {
+                  adaptador.fallar(ahora)
+                  if (activo && pc === pcRef.current) setAjusteAutomatico("El teléfono no aceptó el ajuste automático. Se mantiene el envío actual.")
+                  void logError("El emisor WebRTC rechazó el ajuste automático de calidad", { tipo: "general", pagina: "/camara" })
+                }
+              }
+            }
           }
-          anterior = { id: s.id, tiempo: s.timestamp, bytes: s.bytesSent, frames: s.framesEncoded }
-        })
+        }
       } catch { /* El enlace puede cerrarse mientras llega la muestra. */ }
+      finally { ocupado = false }
     }, 3000)
     return () => { activo = false; clearInterval(timer) }
   }, [])
@@ -562,6 +598,7 @@ export default function CamaraMovil() {
           </select>
         </label>
         {envioReal && <div style={{ fontSize:12, color:"#bfdbfe" }}>{envioReal}</div>}
+        {calidad === "auto" && ajusteAutomatico && <div role="status" style={{ fontSize:12, color:"#fde68a" }}>{ajusteAutomatico}</div>}
         {error && <div style={{ background: "rgba(220,38,38,0.85)", borderRadius: 12, padding: "10px 14px", fontSize: 13.5, fontWeight: 600 }}>⚠️ {error}</div>}
         {diag && <div style={{ background: "rgba(0,0,0,0.55)", borderRadius: 10, padding: "8px 12px", fontSize: 11, fontFamily: "monospace", color: "#fca5a5", wordBreak: "break-word" }}>🔧 {diag}</div>}
 

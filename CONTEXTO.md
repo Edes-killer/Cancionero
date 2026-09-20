@@ -399,6 +399,13 @@ solo su pista de video; el audio de salida se comparte. Ejecutar `npm.cmd run qa
 el procesamiento real y el flujo de interfaz con fuentes sintéticas. No declarar hardware validado
 por estos tests. Los perfiles persistentes de cámaras móviles aún necesitan identidad estable.
 
+Segunda entrega: `lib/calidadAdaptativa.ts` limita bitrate/escala de envío únicamente en modo
+automático, con histéresis y confirmación de `setParameters`. No reinicia captura ni conexión.
+Escritorio muestra recepción por celular y permite descargar métricas locales (sin logs RTMP).
+`npm.cmd run qa:video` verifica escalado explícito y continuidad con WebRTC sintético local;
+usa maintain-resolution para aislar la adaptación interna de Chromium, mientras producción
+prioriza FPS. No demuestra adaptación en WiFi real ni compatibilidad frontal de Android.
+
 1. Se edita el código directamente en `/app`, `/electron`, etc. (ya NO existe el viejo flujo de "copiar
    outputs antes del build").
 2. Las API routes de Next (`/api/...`) no corren en APK ni Electron → la Biblia usa el server 4000.

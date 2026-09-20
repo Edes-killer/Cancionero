@@ -54,3 +54,20 @@ de calibración con video de canvas. Verifica retraso efectivo, silencio, compre
 del monitoreo, generación del clip y liberación de video sin detener el audio compartido.
 No abre dispositivos físicos ni transmite a internet. Estas pruebas no sustituyen la verificación
 de sincronía con cámara/micrófono reales ni las pruebas prolongadas del culto.
+# Calidad adaptativa: prueba de campo
+
+1. Instalar la APK debug actual y reiniciar escritorio con `npm.cmd run electron:dev`.
+2. Conectar el celular y seleccionar calidad Automática. Comparar «Enviado» del celular
+   con «Diagnóstico de cámaras celulares» en escritorio. No comparar esos FPS con la
+   velocidad promedio de FFmpeg como si midieran lo mismo.
+3. Hacer una grabación local, sin publicar. Alejarse gradualmente del punto de acceso
+   sin cambiar IP ni configuración del adaptador. Si WebRTC informa limitación sostenida,
+   debe bajar un nivel de envío; no debe desconectar ni reiniciar la cámara.
+4. Volver a buena señal. Una recuperación de nivel requiere diez muestras estables
+   (~30 s). No exigir recuperación cuando el teléfono continúa limitado por CPU.
+5. Seleccionar manualmente Full HD: Selah ya no debe modificar la calidad mediante esta
+   política (el navegador aún puede adaptar por su cuenta). Probar también voltear y
+   reconectar. Anotar modelo, Android y versión de WebView ante cualquier fallo.
+6. Descargar el informe de cámaras desde escritorio. Incluye las últimas 480 líneas,
+   guardadas cada 15 s, sin destinos ni claves RTMP. Validar imagen y sincronía viendo
+   la grabación: las métricas solas no certifican calidad profesional.

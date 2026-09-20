@@ -22,6 +22,7 @@ import OnboardingTour from "@/components/OnboardingTour"
 import { TOUR_TRANSMISION } from "@/lib/tours"
 import { crearCadenaAudioEmision, ajustarAudioEmision, medirAudio, type CadenaAudioEmision } from "@/lib/audioEmision"
 import PanelAudioProfesional from "@/components/transmision/PanelAudioProfesional"
+import { medirRecepcion, type MuestraRecepcion } from "@/lib/calidadAdaptativa"
 
 type Escena = "camara" | "camara-letra" | "letra" | "espera"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
@@ -357,6 +358,7 @@ export default function EnVivoPage() {
   const camCodigoRef = useRef("")
   const camIcePendienteRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map())
   const [recepcionCamara, setRecepcionCamara] = useState<string[]>([])
+  const informeCamarasRef = useRef<string[]>([])
 
   useEffect(() => {
     let valor = 0
@@ -379,7 +381,8 @@ export default function EnVivoPage() {
   useEffect(() => {
     let activo = true
     let ocupado = false
-    const previos = new Map<string, { tiempo: number; frames: number; bytes: number; delay: number; emitidos: number }>()
+    const previos = new Map<string, MuestraRecepcion>()
+    const conexiones = new Map<string, RTCPeerConnection>()
     let muestras = 0
     const timer = setInterval(async () => {
       if (ocupado) return
@@ -387,27 +390,42 @@ export default function EnVivoPage() {
       const lineas: string[] = []
       try {
         for (const [id, pc] of pcHostsRef.current) {
-          if (pc.connectionState !== "connected") continue
+          if (conexiones.get(id) !== pc) {
+            for (const key of previos.keys()) if (key.startsWith(`${id}:`)) previos.delete(key)
+            conexiones.set(id, pc)
+          }
+          if (pc.connectionState !== "connected") {
+            lineas.push(`Celular ${id.slice(0, 5)}: sin enlace de video activo`)
+            for (const key of previos.keys()) if (key.startsWith(`${id}:`)) previos.delete(key)
+            continue
+          }
           const stats = await pc.getStats()
           if (!activo || pcHostsRef.current.get(id) !== pc) continue
           stats.forEach(s => {
             if (s.type !== "inbound-rtp" || s.kind !== "video") return
             const key = `${id}:${s.id}`
-            const previo = previos.get(key)
-            const dt = previo ? (s.timestamp - previo.tiempo) / 1000 : 0
-            if (previo && dt > 0) {
-              const fps = Math.max(0, (s.framesDecoded - previo.frames) / dt)
-              const mbps = Math.max(0, (s.bytesReceived - previo.bytes) * 8 / dt / 1e6)
-              const n = s.jitterBufferEmittedCount - previo.emitidos
-              const buffer = n > 0 ? Math.max(0, (s.jitterBufferDelay - previo.delay) * 1000 / n) : 0
-              lineas.push(`Celular ${id.slice(0, 5)}: ${s.frameWidth || "?"}×${s.frameHeight || "?"} · ${fps.toFixed(0)} FPS · ${mbps.toFixed(1)} Mbps · búfer ${buffer.toFixed(0)} ms`)
+            const lectura = medirRecepcion(s, previos.get(key) ?? null)
+            if (lectura) {
+              const { fps, mbps, bufferMs, aviso } = lectura
+              lineas.push(`Celular ${id.slice(0, 5)}: ${s.frameWidth || "?"}×${s.frameHeight || "?"} · ${fps.toFixed(0)} FPS recibidos · ${mbps.toFixed(1)} Mbps · búfer ${bufferMs === null ? "no disponible" : `${bufferMs.toFixed(0)} ms`}${aviso ? ` — ${aviso}` : ""}`)
+            } else {
+              lineas.push(`Celular ${id.slice(0, 5)}: esperando medición de video`)
             }
-            previos.set(key, { tiempo:s.timestamp, frames:s.framesDecoded, bytes:s.bytesReceived, delay:s.jitterBufferDelay || 0, emitidos:s.jitterBufferEmittedCount || 0 })
+            previos.set(key, { id:s.id, timestamp:s.timestamp, framesDecoded:s.framesDecoded, bytesReceived:s.bytesReceived, jitterBufferDelay:s.jitterBufferDelay, jitterBufferEmittedCount:s.jitterBufferEmittedCount })
           })
+        }
+        for (const id of conexiones.keys()) if (!pcHostsRef.current.has(id)) {
+          conexiones.delete(id)
+          for (const key of previos.keys()) if (key.startsWith(`${id}:`)) previos.delete(key)
         }
         if (activo) {
           setRecepcionCamara(lineas)
-          if (++muestras % 3 === 0 && lineas.length) setLogsTx(prev => [...prev, ...lineas.map(l => `▶ recibido ${l}`)].slice(-120))
+          if (++muestras % 3 === 0 && lineas.length) {
+            setLogsTx(prev => [...prev, ...lineas.map(l => `▶ recibido ${l}`)].slice(-120))
+            // Solo métricas construidas aquí: nunca incorporar logs FFmpeg ni destinos RTMP.
+            informeCamarasRef.current = [...informeCamarasRef.current, ...lineas.map(l => `${new Date().toISOString()} · ${l}`)].slice(-480)
+            try { localStorage.setItem("selah-ultimo-informe-camaras", JSON.stringify(informeCamarasRef.current)) } catch { /* Cuota local: el informe en memoria sigue disponible. */ }
+          }
         }
       } catch { /* El enlace puede cerrarse durante getStats. */ }
       finally { ocupado = false }
@@ -1726,7 +1744,24 @@ export default function EnVivoPage() {
         <video ref={screenVideoRef} autoPlay muted playsInline
           style={{ position: "absolute", width: 2, height: 2, opacity: 0, pointerEvents: "none", left: 0, top: 0 }} />
         {/* Cámaras celulares WebRTC. Cada móvil conserva su video independiente. */}
-        {recepcionCamara.length > 0 && <div style={{ fontSize:11, color:C.suave, padding:8 }}>{recepcionCamara.map(l => <div key={l}>{l}</div>)}<div style={{ color:C.tenue }}>Medición recibida en el PC. El búfer no representa el retraso total hasta Facebook.</div></div>}
+        <details style={{ fontSize:12, color:C.suave, padding:8 }}>
+          <summary>Diagnóstico de cámaras celulares</summary>
+          {recepcionCamara.length ? recepcionCamara.map(l => <div key={l} style={{ paddingTop:6 }}>{l}</div>) : <div>No hay mediciones de cámaras celulares activas.</div>}
+          <div style={{ color:C.tenue, paddingTop:6 }}>FPS recibidos en el PC, no FPS de la emisión final. El búfer no es el retraso total hasta Facebook.</div>
+          <button type="button" onClick={() => {
+            let lineas = informeCamarasRef.current
+            if (!lineas.length) {
+              try {
+                const guardado: unknown = JSON.parse(localStorage.getItem("selah-ultimo-informe-camaras") || "[]")
+                if (Array.isArray(guardado)) lineas = guardado.filter((l): l is string => typeof l === "string").slice(-480)
+              } catch { /* Informe ausente o corrupto. */ }
+            }
+            const contenido = ["Selah Live · Diagnóstico de recepción de cámaras", "Muestras cada 15 segundos. No mide la latencia hasta la plataforma.", ...lineas, ...(lineas.length ? [] : ["Sin muestras guardadas."])].join("\n")
+            const url = URL.createObjectURL(new Blob([contenido], { type:"text/plain;charset=utf-8" }))
+            const a = document.createElement("a"); a.href = url; a.download = "selah-diagnostico-camaras.txt"; a.click()
+            setTimeout(() => URL.revokeObjectURL(url), 1000)
+          }} style={{ marginTop:8 }}>Descargar último informe de cámaras</button>
+        </details>
         {celulares.map(c => <video key={c.id} ref={el => {
           if (el) {
             phoneVideosRef.current.set(c.id, el)
