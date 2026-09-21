@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld("transmision", {
   iniciar: (opts) => ipcRenderer.invoke("transmision:iniciar", opts),
   detener: () => ipcRenderer.invoke("transmision:detener"),
   abrirLog: () => ipcRenderer.invoke("transmision:abrirLog"),
+  diagnostico: () => ipcRenderer.invoke("transmision:diagnostico"),
   enviarChunk: (chunk) => ipcRenderer.send("transmision:chunk", chunk),
   // Grabación local (respaldo del culto)
   iniciarGrabacion: (opts) => ipcRenderer.invoke("grabacion:iniciar", opts),

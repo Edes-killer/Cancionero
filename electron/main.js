@@ -16,6 +16,7 @@ const net = require("net")
 const os = require("os")
 const { spawn } = require("child_process")
 const SELAH_VERSION = require("../package.json").version
+const { DiagnosticoTransmision, ocultarDestinos } = require("./diagnostico-transmision")
 
 // ── Transmisión en vivo (Incremento 2): canvas+audio (webm) → ffmpeg → RTMP ──
 // ffmpeg va empaquetado (ffmpeg-static). En la app empaquetada el binario se
@@ -146,6 +147,8 @@ app.on("before-quit", () => {
 })
 
 function registrarIPCTransmision() {
+  let diagnosticoTx = null
+  ipcMain.handle("transmision:diagnostico", () => diagnosticoTx?.estado(ffmpegProc?.stdin?.writableLength || 0, !!ffmpegProc) || null)
   // Iniciar: levanta ffmpeg leyendo webm por stdin y empujando a RTMP.
   ipcMain.handle("transmision:iniciar", async (_e, { rtmpUrl, rtmpUrls, bitrateKbps } = {}) => {
     try {
@@ -160,13 +163,19 @@ function registrarIPCTransmision() {
       const args = construirArgsFFmpeg(encoder, urls, bitrateKbps)
       const proc = spawn(ffmpegPath, args, { stdio: ["pipe", "ignore", "pipe"] })
       ffmpegProc = proc
+      const diagnostico = new DiagnosticoTransmision()
+      diagnosticoTx = diagnostico
 
       // Registro a archivo para diagnóstico (el usuario puede mandárnoslo).
       try {
         const cab = `\n===== ${new Date().toLocaleString()} · encoder=${encoder} =====\nffmpeg ${args.join(" ")}\n`
-        fs.appendFileSync(rutaLogTransmision(), cab)
+        fs.appendFileSync(rutaLogTransmision(), ocultarDestinos(cab))
       } catch {}
-      const aLog = (txt) => { try { fs.appendFileSync(rutaLogTransmision(), txt) } catch {} }
+      const aLog = (txt) => { try { fs.appendFileSync(rutaLogTransmision(), ocultarDestinos(txt)) } catch {} }
+      const resumenTimer = setInterval(() => {
+        if (ffmpegProc === proc) aLog(`\n[diagnóstico ${new Date().toISOString()}] ${JSON.stringify(diagnostico.estado(proc.stdin.writableLength, true))}\n`)
+      }, 10000)
+      proc.once("close", () => { clearInterval(resumenTimer); aLog(`\n[diagnóstico final] ${JSON.stringify(diagnostico.estado(proc.stdin.writableLength, false))}\n`) })
 
       const enviar = (canal, dato) => {
         // Transmisión ahora vive en una BrowserWindow independiente. El motor
@@ -175,10 +184,21 @@ function registrarIPCTransmision() {
           if (!win.isDestroyed() && win.webContents.getURL().includes("/en-vivo")) win.webContents.send(canal, dato)
         }
       }
+      let stderrPendiente = ""
       proc.stderr.on("data", d => {
-        const m = d.toString(); console.error("[ffmpeg]", m); aLog(m); enviar("transmision:log", m)
-        const st = parseStats(m); if (st) enviar("transmision:stats", st)
+        diagnostico.stderr(d.toString())
+        stderrPendiente += d.toString()
+        const lineas = stderrPendiente.split(/[\r\n]/); stderrPendiente = lineas.pop()
+        // No divulgar mitades de una URL/clave cortada entre dos chunks.
+        for (const linea of lineas) {
+          if (!linea) continue
+          const m = ocultarDestinos(linea) + "\n"
+          console.error("[ffmpeg]", m); aLog(m); enviar("transmision:log", m)
+          const st = parseStats(linea); if (st) enviar("transmision:stats", st)
+        }
+        if (stderrPendiente.length > 65536) stderrPendiente = "[línea excesiva omitida]"
       })
+      proc.once("close", () => { if (stderrPendiente) { diagnostico.stderr("\n"); aLog(stderrPendiente + "\n") } })
       proc.on("error", err => { aLog(`\n[error de proceso] ${err.message}\n`); enviar("transmision:estado", { estado: "error", error: err.message, inesperado: !pararIntencional }); if (ffmpegProc === proc) ffmpegProc = null })
       proc.on("close", code => { aLog(`\n[ffmpeg terminó con código ${code}]\n`); enviar("transmision:estado", { estado: "terminado", code, inesperado: !pararIntencional }); if (ffmpegProc === proc) ffmpegProc = null })
       proc.stdin.on("error", () => {}) // evitar crash si RTMP corta el pipe
@@ -190,7 +210,11 @@ function registrarIPCTransmision() {
   // Cada trozo de video/audio que llega del renderer → stdin de ffmpeg.
   ipcMain.on("transmision:chunk", (_e, chunk) => {
     try {
-      if (ffmpegProc && ffmpegProc.stdin && ffmpegProc.stdin.writable) ffmpegProc.stdin.write(Buffer.from(chunk))
+      if (ffmpegProc && ffmpegProc.stdin && ffmpegProc.stdin.writable) {
+        const datos = Buffer.from(chunk)
+        diagnosticoTx?.chunk(datos.length)
+        ffmpegProc.stdin.write(datos)
+      }
     } catch { /* el cierre/error del proceso lo maneja */ }
   })
 

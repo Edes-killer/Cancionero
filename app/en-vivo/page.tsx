@@ -294,6 +294,20 @@ export default function EnVivoPage() {
   const [errorTx, setErrorTx] = useState<string | null>(null)
   const [segundos, setSegundos] = useState(0)
   const [logsTx, setLogsTx] = useState<string[]>([])
+  const [diagTx, setDiagTx] = useState<any>(null)
+  const [diagDisponible, setDiagDisponible] = useState(false)
+  useEffect(() => {
+    let activo = true, ocupado = false
+    const timer = setInterval(async () => {
+      const tx = (window as any).transmision
+      if (!tx?.diagnostico || ocupado) return
+      ocupado = true
+      try { const d = await tx.diagnostico(); if (activo) { setDiagTx(d); setDiagDisponible(true) } }
+      catch { if (activo) setDiagDisponible(false) }
+      finally { ocupado = false }
+    }, 2000)
+    return () => { activo = false; clearInterval(timer) }
+  }, [])
   const recRef = useRef<MediaRecorder | null>(null)
   const txEstadoRef = useRef(txEstado)
   useEffect(() => { txEstadoRef.current = txEstado }, [txEstado])
@@ -2186,6 +2200,18 @@ export default function EnVivoPage() {
 
         {/* Salir en vivo */}
         <div id="panel-salida"><Seccion titulo="Salir en vivo" sub="Transmite a tu plataforma" defaultOpen dataTour="tx-salir-vivo">
+          {diagTx && <div role="status" style={{ padding: 12, marginBottom: 12, border: `1px solid ${C.borde}`, borderRadius: 10 }}>
+            <strong>Diagnóstico rápido</strong>
+            <div style={{ marginTop: 6 }}>{diagDisponible ? diagTx.diagnostico : "Diagnóstico no disponible; no usar los últimos valores como estado actual."}</div>
+            {diagDisponible && <div style={{ fontSize: 12, marginTop: 6, color: C.suave }}>
+              Captura recibida: {diagTx.entradaMs == null ? "sin datos" : `hace ${(diagTx.entradaMs / 1000).toFixed(0)} s`} · Cola: {(diagTx.colaBytes / 1048576).toFixed(1)} MB<br />
+              Avance FFmpeg: {diagTx.avanceMs == null ? "sin confirmar" : `hace ${(diagTx.avanceMs / 1000).toFixed(0)} s`} · Cuadros: {diagTx.cuadros} · Avisos de tiempos: {diagTx.avisosTiempo}
+            </div>}
+            <button style={{ ...botonBase({}), marginTop: 8 }} onClick={async () => {
+              const informe = `Diagnóstico Selah · ${new Date().toISOString()}\n${JSON.stringify({ disponible: diagDisponible, ...diagTx }, null, 2)}\nNo confirma publicación ni recepción por cada plataforma.`
+              flash(await copiarTexto(informe) ? "Diagnóstico copiado" : "No se pudo copiar el diagnóstico")
+            }}>Copiar diagnóstico</button>
+          </div>}
           <div style={{ fontSize: 12.5, color: C.tenue, marginBottom: 16 }}>Transmite esta vista directo a tu plataforma.</div>
 
           {!esEscritorio ? (
@@ -2232,8 +2258,9 @@ export default function EnVivoPage() {
                     </div>
                   )
                   const sp = salud?.speed ?? null
-                  const saludTxt = sp == null ? "—" : sp >= 0.95 ? "Fluido" : sp >= 0.8 ? "Justo" : "Lento"
-                  const saludCol = sp == null ? C.suave : sp >= 0.95 ? "#4ade80" : sp >= 0.8 ? "#fbbf24" : "#f87171"
+                  const reciente = diagDisponible && diagTx?.activo && diagTx.avanceMs != null && diagTx.avanceMs <= 12000
+                  const saludTxt = !reciente ? "Sin confirmar" : sp == null ? "—" : sp > 1.2 ? "Irregular" : sp >= 0.95 ? "Con avance" : sp >= 0.8 ? "Justo" : "Lento"
+                  const saludCol = !reciente || sp == null ? C.suave : sp >= 0.95 && sp <= 1.2 ? "#4ade80" : "#fbbf24"
                   const grabando = !!grabInfo && !grabInfo.listo
                   return [
                     chip("Bitrate", salud?.bitrate != null ? `${(salud.bitrate / 1000).toFixed(1)} Mbps` : "—"),
