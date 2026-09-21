@@ -17,6 +17,7 @@ const os = require("os")
 const { spawn } = require("child_process")
 const SELAH_VERSION = require("../package.json").version
 const { DiagnosticoTransmision, ocultarDestinos } = require("./diagnostico-transmision")
+const { escribirFragmento } = require("./escritura-transmision")
 
 // ── Transmisión en vivo (Incremento 2): canvas+audio (webm) → ffmpeg → RTMP ──
 // ffmpeg va empaquetado (ffmpeg-static). En la app empaquetada el binario se
@@ -148,6 +149,7 @@ app.on("before-quit", () => {
 
 function registrarIPCTransmision() {
   let diagnosticoTx = null
+  let sesionTx = null
   ipcMain.handle("transmision:diagnostico", () => diagnosticoTx?.estado(ffmpegProc?.stdin?.writableLength || 0, !!ffmpegProc) || null)
   // Iniciar: levanta ffmpeg leyendo webm por stdin y empujando a RTMP.
   ipcMain.handle("transmision:iniciar", async (_e, { rtmpUrl, rtmpUrls, bitrateKbps } = {}) => {
@@ -163,6 +165,8 @@ function registrarIPCTransmision() {
       const args = construirArgsFFmpeg(encoder, urls, bitrateKbps)
       const proc = spawn(ffmpegPath, args, { stdio: ["pipe", "ignore", "pipe"] })
       ffmpegProc = proc
+      const sesion = { id: require("crypto").randomUUID(), proc, propietario: _e.sender.id }
+      sesionTx = sesion
       const diagnostico = new DiagnosticoTransmision()
       diagnosticoTx = diagnostico
 
@@ -199,23 +203,33 @@ function registrarIPCTransmision() {
         if (stderrPendiente.length > 65536) stderrPendiente = "[línea excesiva omitida]"
       })
       proc.once("close", () => { if (stderrPendiente) { diagnostico.stderr("\n"); aLog(stderrPendiente + "\n") } })
-      proc.on("error", err => { aLog(`\n[error de proceso] ${err.message}\n`); enviar("transmision:estado", { estado: "error", error: err.message, inesperado: !pararIntencional }); if (ffmpegProc === proc) ffmpegProc = null })
-      proc.on("close", code => { aLog(`\n[ffmpeg terminó con código ${code}]\n`); enviar("transmision:estado", { estado: "terminado", code, inesperado: !pararIntencional }); if (ffmpegProc === proc) ffmpegProc = null })
+      proc.on("error", err => { aLog(`\n[error de proceso] ${err.message}\n`); if (ffmpegProc === proc) { enviar("transmision:estado", { estado: "error", error: err.message, inesperado: !pararIntencional }); ffmpegProc = null } })
+      proc.on("close", code => { aLog(`\n[ffmpeg terminó con código ${code}]\n`); if (ffmpegProc === proc) { enviar("transmision:estado", { estado: "terminado", code, inesperado: !pararIntencional }); ffmpegProc = null } })
       proc.stdin.on("error", () => {}) // evitar crash si RTMP corta el pipe
 
-      return { ok: true, encoder }
+      return { ok: true, encoder, sesionId: sesion.id }
     } catch (e) { return { ok: false, error: e.message || String(e) } }
   })
 
   // Cada trozo de video/audio que llega del renderer → stdin de ffmpeg.
-  ipcMain.on("transmision:chunk", (_e, chunk) => {
+  ipcMain.handle("transmision:chunk-confirmado", async (e, { sesionId, chunk } = {}) => {
+    const sesion = sesionTx
+    if (!sesion || sesion.id !== sesionId || sesion.propietario !== e.sender.id || ffmpegProc !== sesion.proc) return { ok: false, error: "Sesión de envío vencida." }
     try {
-      if (ffmpegProc && ffmpegProc.stdin && ffmpegProc.stdin.writable) {
-        const datos = Buffer.from(chunk)
-        diagnosticoTx?.chunk(datos.length)
-        ffmpegProc.stdin.write(datos)
-      }
-    } catch { /* el cierre/error del proceso lo maneja */ }
+      const datos = Buffer.from(chunk)
+      diagnosticoTx?.chunk(datos.length)
+      await escribirFragmento(sesion.proc.stdin, datos)
+      return { ok: true }
+    } catch (e) {
+      if (ffmpegProc === sesion.proc) { try { fs.appendFileSync(rutaLogTransmision(), `\n[atasco de entrada] ${e.message}\n`) } catch {}; sesion.proc.kill("SIGKILL") }
+      return { ok: false, error: e.message }
+    }
+  })
+  ipcMain.handle("transmision:abortar-atasco", (e, sesionId) => {
+    if (sesionTx?.id === sesionId && sesionTx.propietario === e.sender.id && ffmpegProc === sesionTx.proc) {
+      try { fs.appendFileSync(rutaLogTransmision(), "\n[atasco de captura] Cola del renderer excedida; reiniciar contenedor.\n") } catch {}
+      ffmpegProc.kill("SIGKILL")
+    }
   })
 
   // Detener: cerrar stdin para que ffmpeg termine limpio; forzar si se demora.

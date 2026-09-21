@@ -132,8 +132,10 @@ test("la reconexión RTMPS espera a que Facebook libere la sesión anterior", ()
 })
 
 test("los fragmentos de transmisión mantienen orden y la ventana separada recibe eventos", () => {
-  assert.match(transmision, /let colaChunks = Promise\.resolve\(\)/)
-  assert.match(transmision, /colaChunks = colaChunks\.then\(async \(\) =>/)
+  assert.match(transmision, /new ColaTransmision/)
+  assert.match(transmision, /colaChunks\.agregar\(blob.size, async \(\) =>/)
+  assert.match(transmision, /await tx\.enviarChunkConfirmado\(res.sesionId, buf\)/)
+  assert.match(electron, /sesion.id !== sesionId/)
   assert.match(electron, /BrowserWindow\.getAllWindows\(\)/)
   assert.match(electron, /webContents\.getURL\(\)\.includes\("\/en-vivo"\)/)
 })

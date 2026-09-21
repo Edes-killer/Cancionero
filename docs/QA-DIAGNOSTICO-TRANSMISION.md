@@ -15,8 +15,14 @@ Doce segundos sin cuadros nuevos tras el arranque indica salida sin avance confi
 Los umbrales son alertas operativas, no garantía de recepción/publicación en Facebook.
 Multidestino tiene métricas agregadas, no confirmación individual por destino.
 
-No se ha implementado aún límite de cola/backpressure ni reparación de timestamps.
-No se reintenta ni se interrumpe una emisión como efecto de este diagnóstico.
+La protección de entrada posterior limita la cola del renderer a 8 MiB y la escritura
+al pipe a 8 MiB, esperando confirmación antes del siguiente fragmento. Si una escritura
+tarda cinco segundos o se excede el límite, se cierra ese proceso y se usa la reconexión
+existente con contenedor nuevo. La confirmación no significa recepción por Facebook.
+Cada intento lleva identidad de sesión y propietario; fragmentos viejos no entran al
+nuevo proceso. Las métricas por sí solas no detienen el envío. No se ha corregido aún
+la causa de los timestamps del caso real. El respaldo local comparte grabador y puede
+tener huecos durante reconexiones; no anunciar grabación ininterrumpida.
 
 QA automatizado: captura ausente, cola alta, líneas FFmpeg fragmentadas, frame 793
 repetido (caso del culto), rechazo URL, errores de tiempo y redacción de destinos.

@@ -26,6 +26,7 @@ import { medirRecepcion, type MuestraRecepcion } from "@/lib/calidadAdaptativa"
 import { VigenciaVideo } from "@/lib/vigenciaVideo"
 import { claveCamara, EnlacesCamara } from "@/lib/identidadCamara"
 import { dibujarCamaraCompleta } from "@/lib/encuadreCamara"
+import { ColaTransmision } from "@/lib/colaTransmision"
 
 type Escena = "camara" | "camara-letra" | "letra" | "espera"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
@@ -1217,6 +1218,7 @@ export default function EnVivoPage() {
   const arrancarStreamRecorder = async (): Promise<boolean> => {
     const tx = (window as any).transmision
     if (!tx) return false
+    if (!tx.enviarChunkConfirmado) { setErrorTx("Actualiza el escritorio para usar el envío protegido."); return false }
     const res = await tx.iniciar({ rtmpUrls: urlsTxRef.current, bitrateKbps: bitrateRef.current })
     if (!res?.ok) { setErrorTx(res?.error || "No se pudo iniciar la transmisión."); logError(`Transmisión no inició: ${res?.error || "?"}`, { tipo: "socket", pagina: "/en-vivo" }); return false }
     try {
@@ -1225,18 +1227,25 @@ export default function EnVivoPage() {
       // Los Blob llegan en orden, pero arrayBuffer() es asíncrono: sin cola, el
       // segundo puede terminar antes del primero y FFmpeg recibe timestamps
       // hacia atrás (AAC "Queue input is backward in time").
-      let colaChunks = Promise.resolve()
+      const colaChunks = new ColaTransmision(mensaje => {
+        if (recRef.current !== rec) return // un fallo tardío no altera el intento nuevo
+        setErrorTx(mensaje); logError(mensaje, { tipo: "audio", pagina: "/en-vivo" })
+        void tx.abortarAtasco(res.sesionId).catch(() => {})
+      })
       rec.ondataavailable = ev => {
         if (!ev.data || !ev.data.size) return
         const blob = ev.data
-        colaChunks = colaChunks.then(async () => {
+        colaChunks.agregar(blob.size, async () => {
+          if (recRef.current !== rec) return
           const buf = new Uint8Array(await blob.arrayBuffer())
-          tx.enviarChunk(buf)
+          if (recRef.current !== rec) return
           if (grabActivaRef.current) {
             tx.enviarChunkGrabacion?.(buf)
             grabBytesRef.current += buf.byteLength; setGrabMB(Math.round(grabBytesRef.current / 1048576))
           }
-        }).catch(e => logError(`Fragmento de transmisión perdido: ${e?.message || e}`, { tipo: "audio", pagina: "/en-vivo" }))
+          const confirmacion = await tx.enviarChunkConfirmado(res.sesionId, buf)
+          if (!confirmacion?.ok) throw Error(confirmacion?.error || "El motor no confirmó la entrada de video.")
+        })
       }
       rec.start(250)
       recRef.current = rec
@@ -1261,7 +1270,8 @@ export default function EnVivoPage() {
   }
 
   // Reconexión automática: al caerse ffmpeg de forma inesperada, reintenta con
-  // espera creciente. La grabación local sigue intacta durante todo el proceso.
+  // espera creciente. Conserva los segmentos previos, pero puede haber huecos
+  // mientras se recrea el grabador compartido con el envío.
   const reconectar = () => {
     if (detenidoRef.current) return
     if (reconTimerRef.current) return // ya hay un reintento agendado (evita duplicar)

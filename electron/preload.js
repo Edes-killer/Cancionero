@@ -20,7 +20,8 @@ contextBridge.exposeInMainWorld("transmision", {
   detener: () => ipcRenderer.invoke("transmision:detener"),
   abrirLog: () => ipcRenderer.invoke("transmision:abrirLog"),
   diagnostico: () => ipcRenderer.invoke("transmision:diagnostico"),
-  enviarChunk: (chunk) => ipcRenderer.send("transmision:chunk", chunk),
+  enviarChunkConfirmado: (sesionId, chunk) => ipcRenderer.invoke("transmision:chunk-confirmado", { sesionId, chunk }),
+  abortarAtasco: (sesionId) => ipcRenderer.invoke("transmision:abortar-atasco", sesionId),
   // Grabación local (respaldo del culto)
   iniciarGrabacion: (opts) => ipcRenderer.invoke("grabacion:iniciar", opts),
   estadoGrabacion: () => ipcRenderer.invoke("grabacion:estado"),
