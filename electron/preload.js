@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld("transmision", {
   enviarChunk: (chunk) => ipcRenderer.send("transmision:chunk", chunk),
   // Grabación local (respaldo del culto)
   iniciarGrabacion: (opts) => ipcRenderer.invoke("grabacion:iniciar", opts),
+  estadoGrabacion: () => ipcRenderer.invoke("grabacion:estado"),
   detenerGrabacion: () => ipcRenderer.invoke("grabacion:detener"),
   nuevoSegmentoGrabacion: () => ipcRenderer.invoke("grabacion:nuevoSegmento"),
   enviarChunkGrabacion: (chunk) => ipcRenderer.send("grabacion:chunk", chunk),

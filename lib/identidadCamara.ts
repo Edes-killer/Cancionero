@@ -17,6 +17,7 @@ export class EnlacesCamara {
   private enlaces = new Map<string, string>()
   registrar(clave: string, socket: string) { this.enlaces.set(clave, socket) }
   vigente(clave: string, socket: string) { return this.enlaces.get(clave) === socket }
+  socketDe(clave: string) { return this.enlaces.get(clave) }
   retirar(clave: string, socket: string) {
     if (!this.vigente(clave, socket)) return false
     this.enlaces.delete(clave); return true

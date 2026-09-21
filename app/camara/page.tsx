@@ -17,6 +17,7 @@ import { capturaVigente } from "@/lib/capturaVigente"
 import { CalidadAdaptativa, medirEnvio, PERFILES_ENVIO, type MuestraEnvio } from "@/lib/calidadAdaptativa"
 import { laboratorioNativoDisponible } from "@/lib/camaraNativaLab"
 import { identidadCamara, accionFinCamara } from "@/lib/identidadCamara"
+import { avisoCamaraPC, type EstadoCamaraPC } from "@/lib/estadoCamaraPC"
 
 type Estado = "abriendo" | "listo" | "conectando" | "conectado" | "error"
 
@@ -36,6 +37,13 @@ const restriccionesVideo = (calidad: CalidadCamara): MediaTrackConstraints => ({
 export default function CamaraMovil() {
   const router = useRouter()
   const [estado, setEstado] = useState<Estado>("abriendo")
+  const [estadoPC, setEstadoPC] = useState<EstadoCamaraPC | null>(null)
+  const [relojPC, setRelojPC] = useState(Date.now())
+  useEffect(() => {
+    if (estado !== "conectado") setEstadoPC(null)
+    const timer = setInterval(() => setRelojPC(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [estado])
   const [error, setError] = useState("")
   const [diag, setDiag] = useState("")   // diagnóstico si falla el cambio de cámara
   const [codigo, setCodigo] = useState("")
@@ -414,7 +422,13 @@ export default function CamaraMovil() {
         setError(""); iniciarWebRTC(socket)
       })
     })
-    socket.on("camara:senal", async ({ data }: any) => {
+    socket.on("camara:senal", async ({ data, de, rol }: any) => {
+      if (socket !== socketRef.current || de !== hostIdRef.current) return
+      if (data?.tipo === "estado-pc") {
+        if (rol !== "host" || ![true, false, null].includes(data.video) || !["activa", "detenida", "sin-datos", "error", "desconocida"].includes(data.grabacion)) return
+        setEstadoPC({ recibido: Date.now(), video: data.video, grabacion: data.grabacion })
+        return
+      }
       const pc = pcRef.current; if (!pc || !data) return
       try {
         if (data.tipo === "answer") {
@@ -584,7 +598,15 @@ export default function CamaraMovil() {
   }, [])
 
   const conectado = estado === "conectado"
-  const chip = conectado ? { t: "● Transmitiendo al PC", c: "#22c55e" }
+  const avisoPC = avisoCamaraPC(estadoPC, relojPC)
+  const ultimoAvisoPC = useRef("")
+  useEffect(() => {
+    if (estado !== "conectado") { ultimoAvisoPC.current = ""; return }
+    if (avisoPC.texto === ultimoAvisoPC.current) return
+    ultimoAvisoPC.current = avisoPC.texto
+    if (avisoPC.alerta && estadoPC) logConex(`Estado confirmado/expirado del PC: ${avisoPC.texto}`)
+  }, [estado, avisoPC.texto, avisoPC.alerta, estadoPC])
+  const chip = conectado ? { t: "Enlace con el PC", c: avisoPC.alerta ? "#fbbf24" : "#22c55e" }
     : estado === "conectando" ? { t: "Conectando…", c: "#fbbf24" }
     : estado === "error" ? { t: "Sin conexión", c: "#f87171" }
     : { t: "Cámara lista", c: "#93c5fd" }
@@ -605,6 +627,10 @@ export default function CamaraMovil() {
       </div>
 
       {/* Panel inferior */}
+      {(conectado || estado === "conectando") && <div role="status" aria-live="polite" style={{ position: "absolute", top: 80, left: 16, right: 16, padding: "12px 14px", borderRadius: 12, background: avisoPC.alerta ? "rgba(127,29,29,.95)" : "rgba(20,83,45,.95)", fontSize: 14, fontWeight: 700 }}>
+        {avisoPC.alerta ? "⚠ " : "● "}{avisoPC.texto}
+        <div style={{ marginTop: 5, fontSize: 11, fontWeight: 400 }}>Estado de la salida del PC; no confirma publicación en Facebook ni que esta cámara esté seleccionada.</div>
+      </div>}
       <div data-tour="camara-controles" style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "18px 16px calc(20px + env(safe-area-inset-bottom))", display: "flex", flexDirection: "column", gap: 12, background: "linear-gradient(0deg, rgba(0,0,0,0.72), rgba(0,0,0,0))" }}>
         <label style={{ display:"flex", alignItems:"center", gap:10, fontSize:13 }}>
           Calidad

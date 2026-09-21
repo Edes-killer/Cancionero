@@ -209,7 +209,15 @@ function registrarIPCTransmision() {
   })
 
   // ── Grabación local (respaldo) ────────────────────────────────────────────
+  let grabUltimosBytes = 0, grabUltimoAvance = 0
+  ipcMain.handle("grabacion:estado", () => {
+    if (!grabStream) return { estado: "detenida" }
+    if (grabStream.errored || grabStream.destroyed) return { estado: "error" }
+    if (grabStream.bytesWritten > grabUltimosBytes) { grabUltimosBytes = grabStream.bytesWritten; grabUltimoAvance = Date.now() }
+    return { estado: grabUltimoAvance && Date.now() - grabUltimoAvance < 8000 ? "activa" : "sin-datos" }
+  })
   function abrirSegmento() {
+    grabUltimosBytes = 0; grabUltimoAvance = 0
     const idx = grabSegs.length
     const ruta = idx === 0 ? `${grabBase}.mkv` : `${grabBase} (${idx + 1}).mkv`
     grabStream = fs.createWriteStream(ruta)
@@ -1254,6 +1262,7 @@ try {
     // Relay de la señalización (oferta/respuesta/ICE) al OTRO peer de la sala.
     socket.on("camara:senal", ({ codigo, data, para } = {}) => {
       if (!codigo || !data || !socket.rooms.has(salaCam(codigo)) || salaCam(codigo) !== salaCam(socket.data.camaraCodigo)) return
+      if (data.tipo === "estado-pc" && socket.data.camaraRol !== "host") return
       const paquete = { data, de: socket.id, rol: socket.data.camaraRol, dispositivoId: socket.data.camaraDispositivo }
       if (para && io.sockets.sockets.get(para)?.rooms?.has(salaCam(codigo))) io.to(para).emit("camara:senal", paquete)
       else socket.broadcast.to(salaCam(codigo)).emit("camara:senal", paquete)

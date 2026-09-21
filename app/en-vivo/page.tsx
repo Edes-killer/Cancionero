@@ -475,6 +475,41 @@ export default function EnVivoPage() {
   const flash = (m: string) => { setAviso(m); if (avisoTimerRef.current) clearTimeout(avisoTimerRef.current); avisoTimerRef.current = setTimeout(() => setAviso(""), 2200) }
   const grabBytesRef = useRef(0)
   const grabActivaRef = useRef(false)
+  // Confirmación dirigida a cada celular: recepción REAL y escritura local,
+  // independiente de que Socket.IO continúe conectado o Facebook publique.
+  useEffect(() => {
+    let activo = true, ocupado = false
+    const muestras = new Map<RTCPeerConnection, { cuadros: number; avance: number }>()
+    const timer = setInterval(async () => {
+      const socket = camSocketRef.current
+      if (!socket?.connected || ocupado) return
+      ocupado = true
+      try {
+        const grabacion = await (window as any).transmision?.estadoGrabacion?.().catch(() => null)
+        for (const [clave, pc] of pcHostsRef.current) {
+          let video: boolean | null = null
+          try {
+            const stats = await pc.getStats()
+            let cuadros: number | null = null
+            stats.forEach(s => { if (s.type === "inbound-rtp" && (s.kind === "video" || s.mediaType === "video") && typeof s.framesDecoded === "number") cuadros = s.framesDecoded })
+            if (cuadros !== null) {
+              const previa = muestras.get(pc), ahora = Date.now()
+              const avance = !previa || cuadros !== previa.cuadros ? ahora : previa.avance
+              muestras.set(pc, { cuadros, avance })
+              video = cuadros > 0 && ahora - avance < 6000
+            }
+            if (pc.connectionState !== "connected") video = false
+          } catch { video = false }
+          const para = enlacesCamaraRef.current.socketDe(clave)
+          if (activo && socket === camSocketRef.current && pcHostsRef.current.get(clave) === pc && para) {
+            socket.emit("camara:senal", { codigo: camCodigoRef.current, para, data: { tipo: "estado-pc", video, grabacion: grabacion?.estado || "desconocida" } })
+          }
+        }
+        for (const pc of muestras.keys()) if (![...pcHostsRef.current.values()].includes(pc)) muestras.delete(pc)
+      } finally { ocupado = false }
+    }, 2000)
+    return () => { activo = false; clearInterval(timer) }
+  }, [])
 
   // Refs para reconectar sin re-suscribir listeners.
   const mimeRef = useRef<string>("video/webm")
