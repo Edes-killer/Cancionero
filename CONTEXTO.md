@@ -1,18 +1,18 @@
 # Selah Live — Documento de Diseño (SDD) y Contexto de Desarrollo
 
-> Versión del documento: 2026-09-22 · Candidata: **v0.5.35** (prerelease) · Estable publicada: v0.5.33.
+> Versión del documento: 2026-09-23 · Candidata local: **v0.5.36** · Estable publicada: v0.5.33.
 
-Prueba y reparaciones actuales: `docs/RELEASE-0.5.35.md`. Pendientes generales:
+Prueba y reparaciones actuales: `docs/RELEASE-0.5.36.md`. Pendientes generales:
 `docs/RELEASE-0.5.34.md`. No anunciar sincronización de ajustes en nube ni cobro/gating
 completo de planes: están acordados, no implementados. La candidata vive en
-`codex/release-0.5.35`; no fusionar a main ni promover Latest hasta validar en terreno.
+`codex/release-0.5.36`; no fusionar a main ni promover Latest hasta validar en terreno.
 
 **Estado posterior al ensayo del 22/09:** la candidata 0.5.35 falló en terreno.
 El timeout fijo de escritura de 5 s introdujo reinicios; se reemplazó en código por
 vigilancia de progreso y se bloqueó la reconexión automática por atasco local. Un
 ensayo MediaRecorder reprodujo regresiones DTS de audio; se corrigió el síntoma de
-arranque con numeración por muestras después del remuestreo. Estas reparaciones aún
-no están empaquetadas. Evidencia, límites y próximos ensayos en
+arranque con numeración por muestras después del remuestreo. La candidata local 0.5.36
+incorpora estas reparaciones; no está publicada. Evidencia, límites y próximos ensayos en
 `docs/QA-DIAGNOSTICO-TRANSMISION.md`; no declarar resuelto Facebook ni el desfase físico.
 
 ---
