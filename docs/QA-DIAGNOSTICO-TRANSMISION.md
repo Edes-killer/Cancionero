@@ -17,8 +17,11 @@ Multidestino tiene métricas agregadas, no confirmación individual por destino.
 
 La protección de entrada posterior limita la cola del renderer a 8 MiB y la escritura
 al pipe a 8 MiB, esperando confirmación antes del siguiente fragmento. Si una escritura
-tarda cinco segundos o se excede el límite, se cierra ese proceso y se usa la reconexión
-existente con contenedor nuevo. La confirmación no significa recepción por Facebook.
+tarda sin progreso treinta segundos o se excede el límite, se detiene ese intento con
+error visible SIN reconexión automática por atasco local. La vigilancia se renueva si
+los cuadros de FFmpeg o bytes escritos avanzan; no basta una estadística repetida.
+Esto reemplaza el timeout fijo de cinco segundos publicado en 0.5.35, que provocó
+reinicios repetidos en terreno. La confirmación no significa recepción por Facebook.
 Cada intento lleva identidad de sesión y propietario; fragmentos viejos no entran al
 nuevo proceso. Las métricas por sí solas no detienen el envío. No se ha corregido aún
 la causa de los timestamps del caso real. El respaldo local comparte grabador y puede
@@ -28,3 +31,13 @@ QA automatizado: captura ausente, cola alta, líneas FFmpeg fragmentadas, frame 
 repetido (caso del culto), rechazo URL, errores de tiempo y redacción de destinos.
 QA físico pendiente: iniciar Espera, grabar, cambiar escena, abrir Facebook y repetir
 recorrido entre pisos con respaldo local. Copiar diagnóstico y exportar logs al fallo.
+
+Ensayo reproducible: `node scripts/qa-envio-local.cjs 60` (o `900` para 15 minutos).
+Genera 1080p30 H264+Opus y usa los argumentos reales del encoder h264_mf contra un
+receptor FLV/TCP limitado a 127.0.0.1. No publica, no lee cámaras ni micrófonos.
+No sustituye el ensayo MediaRecorder/WebRTC/RTMPS: solo aísla entrada, encoder y salida
+local. Exige cuadros esperados, salida recibida y ausencia de avisos de timestamps.
+
+Resultado del ensayo local de 60 s posterior a 0.5.35: 1800 cuadros, 0 avisos de
+tiempos, 46 490 883 bytes recibidos, ambos procesos terminaron con código 0. Pendiente
+ensayo de 15 minutos y captura real MediaRecorder con cámara/Espera/Facebook.

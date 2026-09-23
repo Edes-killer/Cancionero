@@ -1230,7 +1230,7 @@ export default function EnVivoPage() {
       const colaChunks = new ColaTransmision(mensaje => {
         if (recRef.current !== rec) return // un fallo tardío no altera el intento nuevo
         setErrorTx(mensaje); logError(mensaje, { tipo: "audio", pagina: "/en-vivo" })
-        void tx.abortarAtasco(res.sesionId).catch(() => {})
+        void tx.abortarAtasco(res.sesionId, mensaje.startsWith("Se acumuló") ? "cola" : "entrega").catch(() => {})
       })
       rec.ondataavailable = ev => {
         if (!ev.data || !ev.data.size) return

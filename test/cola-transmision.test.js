@@ -23,7 +23,7 @@ test('cola saturada falla una vez y no descarta fragmentos para continuar un con
 })
 test('pipe bloqueado vence plazo y limpia listeners', async () => {
   const sink = new Writable({ write() {} })
-  await assert.rejects(escribirFragmento(sink, Buffer.from('video'), 20), /no consume/)
+  await assert.rejects(escribirFragmento(sink, Buffer.from('video'), 20), /no confirma progreso/)
   assert.equal(sink.listenerCount('error'), 0); assert.equal(sink.listenerCount('close'), 0)
   sink.destroy()
 })
@@ -32,6 +32,20 @@ test('cierre del motor libera espera sin aguardar timeout', async () => {
   const pendiente = escribirFragmento(sink, Buffer.from('video'))
   sink.destroy()
   await assert.rejects(pendiente, /cerró/)
+})
+
+test('escritura pendiente no vence si FFmpeg sigue avanzando', async () => {
+  let cuadros = 0
+  const sink = new Writable({ write(b, _, cb) { setTimeout(cb, 160) } })
+  const timer = setInterval(() => cuadros++, 10)
+  try { await escribirFragmento(sink, Buffer.from('video'), 50, () => cuadros) }
+  finally { clearInterval(timer); sink.destroy() }
+})
+
+test('estadísticas repetidas no se confunden con progreso', async () => {
+  const sink = new Writable({ write() {} })
+  try { await assert.rejects(escribirFragmento(sink, Buffer.from('video'), 30, () => 793), /no confirma progreso/) }
+  finally { sink.destroy() }
 })
 test('error de escritura detiene la cola y no lanza tareas siguientes', async () => {
   const sink = new Writable({ write(b, _, cb) { cb(Error('pipe roto')) } })

@@ -165,7 +165,7 @@ function registrarIPCTransmision() {
       const args = construirArgsFFmpeg(encoder, urls, bitrateKbps)
       const proc = spawn(ffmpegPath, args, { stdio: ["pipe", "ignore", "pipe"] })
       ffmpegProc = proc
-      const sesion = { id: require("crypto").randomUUID(), proc, propietario: _e.sender.id }
+      const sesion = { id: require("crypto").randomUUID(), proc, propietario: _e.sender.id, falloEntrada: null }
       sesionTx = sesion
       const diagnostico = new DiagnosticoTransmision()
       diagnosticoTx = diagnostico
@@ -204,7 +204,7 @@ function registrarIPCTransmision() {
       })
       proc.once("close", () => { if (stderrPendiente) { diagnostico.stderr("\n"); aLog(stderrPendiente + "\n") } })
       proc.on("error", err => { aLog(`\n[error de proceso] ${err.message}\n`); if (ffmpegProc === proc) { enviar("transmision:estado", { estado: "error", error: err.message, inesperado: !pararIntencional }); ffmpegProc = null } })
-      proc.on("close", code => { aLog(`\n[ffmpeg terminó con código ${code}]\n`); if (ffmpegProc === proc) { enviar("transmision:estado", { estado: "terminado", code, inesperado: !pararIntencional }); ffmpegProc = null } })
+      proc.on("close", code => { aLog(`\n[ffmpeg terminó con código ${code}]\n`); if (ffmpegProc === proc) { enviar("transmision:estado", { estado: "terminado", code, error: sesion.falloEntrada, inesperado: !pararIntencional && !sesion.falloEntrada }); ffmpegProc = null } })
       proc.stdin.on("error", () => {}) // evitar crash si RTMP corta el pipe
 
       return { ok: true, encoder, sesionId: sesion.id }
@@ -218,16 +218,18 @@ function registrarIPCTransmision() {
     try {
       const datos = Buffer.from(chunk)
       diagnosticoTx?.chunk(datos.length)
-      await escribirFragmento(sesion.proc.stdin, datos)
+      await escribirFragmento(sesion.proc.stdin, datos, 30000, () => diagnosticoTx?.cuadros || 0)
       return { ok: true }
     } catch (e) {
-      if (ffmpegProc === sesion.proc) { try { fs.appendFileSync(rutaLogTransmision(), `\n[atasco de entrada] ${e.message}\n`) } catch {}; sesion.proc.kill("SIGKILL") }
+      if (ffmpegProc === sesion.proc) { sesion.falloEntrada = e.message; try { fs.appendFileSync(rutaLogTransmision(), `\n[atasco de entrada] ${e.message}\n`) } catch {}; sesion.proc.kill("SIGKILL") }
       return { ok: false, error: e.message }
     }
   })
-  ipcMain.handle("transmision:abortar-atasco", (e, sesionId) => {
+  ipcMain.handle("transmision:abortar-atasco", (e, sesionId, motivo) => {
     if (sesionTx?.id === sesionId && sesionTx.propietario === e.sender.id && ffmpegProc === sesionTx.proc) {
-      try { fs.appendFileSync(rutaLogTransmision(), "\n[atasco de captura] Cola del renderer excedida; reiniciar contenedor.\n") } catch {}
+      const descripcion = motivo === "cola" ? "Límite de video pendiente alcanzado. Envío detenido; revisar rendimiento antes de reintentar." : "Falló la entrega al motor. Envío detenido; revisar diagnóstico antes de reintentar."
+      sesionTx.falloEntrada = sesionTx.falloEntrada || descripcion
+      try { fs.appendFileSync(rutaLogTransmision(), `\n[protección de entrada] ${sesionTx.falloEntrada}\n`) } catch {}
       ffmpegProc.kill("SIGKILL")
     }
   })
