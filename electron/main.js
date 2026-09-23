@@ -125,7 +125,9 @@ function construirArgsFFmpeg(encoder, rtmpUrls, bitrateKbps) {
   // El canvas entrega 30 fps aunque una cámara móvil entregue 19/24 fps. Forzar
   // CFR y resincronizar el audio contra el reloj de video evita que la voz se
   // adelante o atrase progresivamente durante un culto largo.
-  const sincronizacion = ["-vf", "fps=30", "-fps_mode", "cfr", "-af", "aresample=async=1000:first_pts=0"]
+  // Tras compensar huecos contra el reloj original, numerar las muestras de audio
+  // evita timestamps regresivos de arranque H264/Opus de MediaRecorder.
+  const sincronizacion = ["-vf", "fps=30", "-fps_mode", "cfr", "-af", "aresample=async=1000:first_pts=0,asetpts=N/SR/TB"]
   const audio = ["-c:a", "aac", "-b:a", "160k", "-ar", "48000"]
   const comun = [...base, ...sincronizacion, ...video, ...audio, "-max_muxing_queue_size", "1024"]
   if (rtmpUrls.length === 1) return [...comun, "-f", "flv", rtmpUrls[0]]

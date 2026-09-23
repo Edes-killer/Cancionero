@@ -41,3 +41,20 @@ local. Exige cuadros esperados, salida recibida y ausencia de avisos de timestam
 Resultado del ensayo local de 60 s posterior a 0.5.35: 1800 cuadros, 0 avisos de
 tiempos, 46 490 883 bytes recibidos, ambos procesos terminaron con código 0. Pendiente
 ensayo de 15 minutos y captura real MediaRecorder con cámara/Espera/Facebook.
+
+## Captura MediaRecorder: reproducción y reparación parcial
+
+`npm.cmd run qa:captura -- 60` ejecuta Electron oculto con canvas 1080p30, oscilador
+inaudible localmente, diez segundos iniciales de silencio y luego audio, MediaRecorder
+H264/Opus a 12 Mbps y chunks de 250 ms, cola e IPC confirmados, FFmpeg h264_mf y
+receptor FLV/TCP local. No usa dispositivo real, WebRTC ni RTMPS/Facebook.
+
+Antes del cambio: ensayo 30 s, 900 cuadros y tres advertencias iguales al registro:
+AAC backward in time y dos DTS regresivos. Después de aresample se aplica
+`asetpts=N/SR/TB`, numeración por muestras descrita en
+https://ffmpeg.org/ffmpeg-filters.html#asetpts . No se altera el reloj de video.
+Después: ensayo 60 s, 1799 cuadros de salida, cero avisos de tiempos, 19 890 828 bytes
+recibidos y proceso terminado con código 0. 118 pruebas de regresión aprobadas.
+Esto corrige el síntoma de arranque reproducido; no prueba sincronía labial perfecta
+ni explica por sí solo el rendimiento 0.54x de la iglesia. Pendiente ensayo de 900 s,
+medición de desfase con pulsos audio/video y prueba WebRTC/dispositivos/plataforma.
