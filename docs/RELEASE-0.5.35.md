@@ -1,5 +1,11 @@
 # Selah Live 0.5.35 — prueba en iglesia
 
+> Actualización posterior a la prueba de terreno: **no usar esta candidata para una
+> emisión importante**. El timeout fijo de cinco segundos introdujo reinicios repetidos.
+> Las reparaciones posteriores del watchdog y de timestamps están en el código, pero
+> NO en los instaladores de esta publicación. Seguimiento y pruebas:
+> [QA de transmisión](QA-DIAGNOSTICO-TRANSMISION.md).
+
 Instalar manualmente el EXE en el PC y `selah-live.apk` en el celular. APK release
 firmada, no debug. Esta candidata no reemplaza Latest 0.5.33 ni requiere SQL.
 

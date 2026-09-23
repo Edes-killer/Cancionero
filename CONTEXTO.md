@@ -7,6 +7,14 @@ Prueba y reparaciones actuales: `docs/RELEASE-0.5.35.md`. Pendientes generales:
 completo de planes: están acordados, no implementados. La candidata vive en
 `codex/release-0.5.35`; no fusionar a main ni promover Latest hasta validar en terreno.
 
+**Estado posterior al ensayo del 22/09:** la candidata 0.5.35 falló en terreno.
+El timeout fijo de escritura de 5 s introdujo reinicios; se reemplazó en código por
+vigilancia de progreso y se bloqueó la reconexión automática por atasco local. Un
+ensayo MediaRecorder reprodujo regresiones DTS de audio; se corrigió el síntoma de
+arranque con numeración por muestras después del remuestreo. Estas reparaciones aún
+no están empaquetadas. Evidencia, límites y próximos ensayos en
+`docs/QA-DIAGNOSTICO-TRANSMISION.md`; no declarar resuelto Facebook ni el desfase físico.
+
 ---
 
 ## 1. Resumen del proyecto

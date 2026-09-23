@@ -23,8 +23,9 @@ los cuadros de FFmpeg o bytes escritos avanzan; no basta una estadística repeti
 Esto reemplaza el timeout fijo de cinco segundos publicado en 0.5.35, que provocó
 reinicios repetidos en terreno. La confirmación no significa recepción por Facebook.
 Cada intento lleva identidad de sesión y propietario; fragmentos viejos no entran al
-nuevo proceso. Las métricas por sí solas no detienen el envío. No se ha corregido aún
-la causa de los timestamps del caso real. El respaldo local comparte grabador y puede
+nuevo proceso. Las métricas por sí solas no detienen el envío. Se reprodujo y corrigió
+un síntoma de timestamps de arranque (ver abajo), no todos los fallos del caso real.
+El respaldo local comparte grabador y puede
 tener huecos durante reconexiones; no anunciar grabación ininterrumpida.
 
 QA automatizado: captura ausente, cola alta, líneas FFmpeg fragmentadas, frame 793
@@ -56,5 +57,39 @@ https://ffmpeg.org/ffmpeg-filters.html#asetpts . No se altera el reloj de video.
 Después: ensayo 60 s, 1799 cuadros de salida, cero avisos de tiempos, 19 890 828 bytes
 recibidos y proceso terminado con código 0. 118 pruebas de regresión aprobadas.
 Esto corrige el síntoma de arranque reproducido; no prueba sincronía labial perfecta
-ni explica por sí solo el rendimiento 0.54x de la iglesia. Pendiente ensayo de 900 s,
-medición de desfase con pulsos audio/video y prueba WebRTC/dispositivos/plataforma.
+ni explica por sí solo el rendimiento 0.54x de la iglesia.
+
+Ensayo prolongado completado: **900 s, 27 000 cuadros de salida, cero avisos de
+timestamps, 308 248 322 bytes recibidos, código 0**. Son 30 cuadros/s de promedio;
+el conteo agregado no demuestra que cada intervalo haya sido perfectamente fluido.
+No hubo reinicio del proceso. Pendiente validación WebRTC/dispositivos/plataforma.
+
+## Medición de sincronía sintética
+
+`npm.cmd run qa:captura -- 30 --pulsos` alterna negro y destellos blancos de 200 ms
+con tonos programados en el mismo reloj AudioContext, cada cinco segundos. Guarda la
+salida FLV en un directorio temporal `selah-captura-qa-*` y la decodifica con FFmpeg:
+`blackdetect` y `silencedetect` permiten comparar inicios de imagen y sonido.
+El resultado incluye diferencias firmadas en ms (positivo: audio posterior al video).
+Exige todos los pulsos programados, al menos dos, y desfase absoluto máximo de 200 ms.
+El cierre de silencio/negro al final del archivo no se cuenta como pulso.
+
+Ese umbral es una alarma de regresión, no una certificación de sincronía labial ni
+una meta de calidad. No incluye captación física, WebRTC, WiFi o Facebook. Ejecutar
+este ensayo separado del de 900 s para no competir por el mismo encoder.
+
+Resultados locales del 23/09/2026:
+
+- 30 s: 900 cuadros, 6/6 pulsos, audio posterior al video entre 64 y 98 ms.
+- 60 s: 1800 cuadros, 12/12 pulsos, desfases en ms:
+  `42, 109, 76, 109, 76, 110, 76, 109, 76, 110, 78, 110`.
+- Ambas pasadas sin avisos de timestamps; encoder y decodificador terminaron con
+  código 0. No se observa crecimiento continuo en esos intervalos, pero hay un
+  desfase residual. No se aplica compensación fija a dispositivos reales basándose
+  únicamente en esta señal sintética.
+- 121 pruebas de regresión aprobadas. Reparaciones aún sin nuevo instalador.
+
+Siguiente validación: comparar palmada visible en recepción del celular, grabación
+local y emisión de prueba de Facebook; conservar hora, diagnóstico y logs sin claves.
+Separar inicialmente red local estable del recorrido entre pisos. No cambiar IP ni
+controladores como método de prueba.
