@@ -27,7 +27,7 @@ import { limitarAnchoBiblioteca, limitarPosMonitor } from "@/lib/controlLayout"
 import { esParteCoro, construirSecuenciaCoro as crearSecuenciaCoro, resincronizarPosicion } from "@/lib/secuenciaCoro"
 import { normalizarTiempos, duracionParte } from "@/lib/tiemposAuto"
 import { exportarListaTexto, nombreArchivoLista, nombreArchivoListaWord } from "@/lib/exportarListaTexto"
-import { cargarConfiguracionNube, guardarConfiguracionNube, permiteConfiguracionNube } from "@/lib/configuracionNube"
+import { cargarConfiguracionNube, guardarConfiguracionNube, permiteConfiguracionNube, type ConfiguracionControlNube } from "@/lib/configuracionNube"
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 interface Cancion {
@@ -1385,22 +1385,23 @@ const _cargarAcordes = async () => {
 
   if (permiteConfiguracionNube(plan)) {
     setEstadoConfigControlNube("cargando")
-    const config = await cargarConfiguracionNube<any>(iglesiaId, "control")
+    const config = await cargarConfiguracionNube<ConfiguracionControlNube>(iglesiaId, "control")
     if (config === undefined) {
       setEstadoConfigControlNube("error")
     } else if (config) {
       ignorarSiguienteGuardadoControlRef.current = true
       if (typeof config.modoLimpio === "boolean") { setModoLimpio(config.modoLimpio); localStorage.setItem("proyector-modo-limpio", config.modoLimpio ? "1" : "0") }
       if (typeof config.familiaFuente === "string" && /^[a-z]{3,12}$/.test(config.familiaFuente)) { setFamiliaFuenteCtrl(config.familiaFuente); localStorage.setItem("proyector-font-family", config.familiaFuente) }
-      if (/^#[0-9a-f]{6}$/i.test(config.colorLetra || "")) { setColorLetraCtrl(config.colorLetra); localStorage.setItem("proyector-color-letra", config.colorLetra) }
+      if (typeof config.colorLetra === "string" && /^#[0-9a-f]{6}$/i.test(config.colorLetra)) { setColorLetraCtrl(config.colorLetra); localStorage.setItem("proyector-color-letra", config.colorLetra) }
       const modos = ["ninguno", "preset", "estatico", "movimiento", "video"]
-      if (modos.includes(config.fondo?.modo)) setFondoCancionModo(config.fondo.modo)
-      if (typeof config.fondo?.preset === "string") setFondoCancionPreset(config.fondo.preset)
-      if (Number.isFinite(config.fondo?.oscuridad)) setFondoCancionOscuridad(Math.min(90, Math.max(0, config.fondo.oscuridad)))
-      if (config.fondo?.ajuste === "cover" || config.fondo?.ajuste === "contain") setFondoCancionAjuste(config.fondo.ajuste)
-      if (typeof config.fondo?.url === "string" && /^https:\/\//i.test(config.fondo.url)) {
-        setFondoCancionUrl(config.fondo.url)
-        setFondoCancionNombre(typeof config.fondo.nombre === "string" ? config.fondo.nombre : "Fondo compartido")
+      const fondoNube = config.fondo
+      if (fondoNube?.modo && modos.includes(fondoNube.modo)) setFondoCancionModo(fondoNube.modo)
+      if (typeof fondoNube?.preset === "string") setFondoCancionPreset(fondoNube.preset)
+      if (typeof fondoNube?.oscuridad === "number" && Number.isFinite(fondoNube.oscuridad)) setFondoCancionOscuridad(Math.min(90, Math.max(0, fondoNube.oscuridad)))
+      if (fondoNube?.ajuste === "cover" || fondoNube?.ajuste === "contain") setFondoCancionAjuste(fondoNube.ajuste)
+      if (typeof fondoNube?.url === "string" && /^https:\/\//i.test(fondoNube.url)) {
+        setFondoCancionUrl(fondoNube.url)
+        setFondoCancionNombre(typeof fondoNube.nombre === "string" ? fondoNube.nombre : "Fondo compartido")
       }
       window.dispatchEvent(new Event("storage"))
     }

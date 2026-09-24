@@ -27,7 +27,7 @@ import { VigenciaVideo } from "@/lib/vigenciaVideo"
 import { claveCamara, EnlacesCamara } from "@/lib/identidadCamara"
 import { dibujarCamaraCompleta } from "@/lib/encuadreCamara"
 import { ColaTransmision } from "@/lib/colaTransmision"
-import { cargarConfiguracionNube, guardarConfiguracionNube, permiteConfiguracionNube } from "@/lib/configuracionNube"
+import { cargarConfiguracionNube, guardarConfiguracionNube, permiteConfiguracionNube, type ConfiguracionTransmisionNube } from "@/lib/configuracionNube"
 
 type Escena = "camara" | "camara-letra" | "letra" | "espera"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
@@ -500,26 +500,26 @@ export default function EnVivoPage() {
     configNubeListaRef.current = false
     if (!iglesiaId || !permiteConfiguracionNube(plan)) { setEstadoConfigNube("local"); return }
     setEstadoConfigNube("cargando")
-    cargarConfiguracionNube<any>(iglesiaId, "transmision").then(config => {
+    cargarConfiguracionNube<ConfiguracionTransmisionNube>(iglesiaId, "transmision").then(config => {
       if (cancelado) return
       if (config === undefined) { setEstadoConfigNube("error"); return }
       if (config) {
         ignorarSiguienteGuardadoNubeRef.current = true
-        if (/^#[0-9a-f]{6}$/i.test(config.colorLetra || "")) setColorLetra(config.colorLetra)
-        if (/^#[0-9a-f]{6}$/i.test(config.acento || "")) setAcento(config.acento)
+        if (typeof config.colorLetra === "string" && /^#[0-9a-f]{6}$/i.test(config.colorLetra)) setColorLetra(config.colorLetra)
+        if (typeof config.acento === "string" && /^#[0-9a-f]{6}$/i.test(config.acento)) setAcento(config.acento)
         if (config.diseno && ES_DISENO(config.diseno)) setDiseno(config.diseno)
         if (config.logoPos && Number.isFinite(config.logoPos.x) && Number.isFinite(config.logoPos.y)) setLogoPos(config.logoPos)
-        if (Number.isFinite(config.logoTam)) setLogoTam(Math.min(380, Math.max(70, config.logoTam)))
+        if (typeof config.logoTam === "number" && Number.isFinite(config.logoTam)) setLogoTam(Math.min(380, Math.max(70, config.logoTam)))
         if (config.pipPos && Number.isFinite(config.pipPos.x) && Number.isFinite(config.pipPos.y)) setPipPos(config.pipPos)
-        if (Number.isFinite(config.pipTam)) setPipTam(Math.min(700, Math.max(180, config.pipTam)))
+        if (typeof config.pipTam === "number" && Number.isFinite(config.pipTam)) setPipTam(Math.min(700, Math.max(180, config.pipTam)))
         if (config.nombrePos && Number.isFinite(config.nombrePos.x) && Number.isFinite(config.nombrePos.y)) setNombrePos(config.nombrePos)
-        if (Number.isFinite(config.nombreTam)) setNombreTam(Math.min(72, Math.max(14, config.nombreTam)))
+        if (typeof config.nombreTam === "number" && Number.isFinite(config.nombreTam)) setNombreTam(Math.min(72, Math.max(14, config.nombreTam)))
         if (config.letraPos && Number.isFinite(config.letraPos.x) && Number.isFinite(config.letraPos.y)) setLetraPos(config.letraPos)
-        if (Number.isFinite(config.letraTam)) setLetraTam(Math.min(ANCHO, Math.max(280, config.letraTam)))
+        if (typeof config.letraTam === "number" && Number.isFinite(config.letraTam)) setLetraTam(Math.min(ANCHO, Math.max(280, config.letraTam)))
         if (config.mensajePos === "arriba" || config.mensajePos === "abajo") setMensajePos(config.mensajePos)
         if (typeof config.mensajeVivo === "string") setMensajeVivo(config.mensajeVivo.slice(0, 240))
         if (typeof config.esperaTexto === "string") setEsperaTexto(config.esperaTexto.slice(0, 60))
-        if (["camara", "camara-letra", "letra", "nada"].includes(config.esperaAccion)) setEsperaAccion(config.esperaAccion)
+        if (config.esperaAccion && ["camara", "camara-letra", "letra", "nada"].includes(config.esperaAccion)) setEsperaAccion(config.esperaAccion)
         if (typeof config.transiciones === "boolean") setTransiciones(config.transiciones)
       }
       configNubeListaRef.current = true

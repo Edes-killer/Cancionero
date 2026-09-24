@@ -2,6 +2,44 @@ import { supabase } from "@/lib/supabase"
 
 export type AmbitoConfiguracionNube = "control" | "transmision"
 
+export interface PosicionConfiguracionNube {
+  x: number
+  y: number
+}
+
+export interface ConfiguracionControlNube {
+  modoLimpio?: boolean
+  familiaFuente?: string
+  colorLetra?: string
+  fondo?: {
+    modo?: "ninguno" | "preset" | "estatico" | "movimiento" | "video"
+    preset?: string
+    oscuridad?: number
+    ajuste?: "cover" | "contain"
+    url?: string
+    nombre?: string
+  }
+}
+
+export interface ConfiguracionTransmisionNube {
+  colorLetra?: string
+  acento?: string
+  diseno?: string
+  logoPos?: PosicionConfiguracionNube
+  logoTam?: number
+  pipPos?: PosicionConfiguracionNube
+  pipTam?: number
+  nombrePos?: PosicionConfiguracionNube
+  nombreTam?: number
+  letraPos?: PosicionConfiguracionNube
+  letraTam?: number
+  mensajePos?: "arriba" | "abajo"
+  mensajeVivo?: string
+  esperaTexto?: string
+  esperaAccion?: "camara" | "camara-letra" | "letra" | "nada"
+  transiciones?: boolean
+}
+
 export function permiteConfiguracionNube(plan?: string | null): boolean {
   return plan === "pro" || plan === "premium"
 }

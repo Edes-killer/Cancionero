@@ -1,20 +1,20 @@
 # Selah Live — Documento de Diseño (SDD) y Contexto de Desarrollo
 
-> Versión del documento: 2026-09-24 · Próxima candidata: **v0.5.37** · Prepublicación de terreno: v0.5.36 · Estable publicada: v0.5.33.
+> Versión del documento: 2026-09-24 · Estable publicada: **v0.5.37** · Próxima línea de trabajo: v0.5.38.
 
-Prueba y reparaciones actuales: `docs/RELEASE-0.5.36.md`. Pendientes generales:
-`docs/RELEASE-0.5.34.md`. La sincronización de apariencia en nube para Pro/Premium
-está implementada en la rama `codex/release-0.5.37`, pero requiere aplicar la migración
-`20260924_configuraciones_iglesia.sql` antes de anunciarla como disponible. No sincroniza
-claves RTMP ni dispositivos. No promover Latest hasta validar en terreno.
+La versión 0.5.37 está publicada como Latest con instalador de Windows, APK firmado y
+paquete OTA. La migración `20260924_configuraciones_iglesia.sql` fue aplicada sin errores:
+la apariencia de Control y Transmisión se sincroniza en nube para Pro/Premium. No se
+sincronizan claves RTMP, cámaras, micrófonos, niveles ni retardos porque dependen del equipo.
 
 **Estado posterior al ensayo del 22/09:** la candidata 0.5.35 falló en terreno.
 El timeout fijo de escritura de 5 s introdujo reinicios; se reemplazó en código por
 vigilancia de progreso y se bloqueó la reconexión automática por atasco local. Un
 ensayo MediaRecorder reprodujo regresiones DTS de audio; se corrigió el síntoma de
-arranque con numeración por muestras después del remuestreo. La candidata local 0.5.36
-incorpora estas reparaciones; no está publicada. Evidencia, límites y próximos ensayos en
-`docs/QA-DIAGNOSTICO-TRANSMISION.md`; no declarar resuelto Facebook ni el desfase físico.
+arranque con numeración por muestras después del remuestreo. La 0.5.36 incorporó estas
+reparaciones y la 0.5.37 las conserva. Evidencia, límites y próximos ensayos en
+`docs/QA-DIAGNOSTICO-TRANSMISION.md`; publicar el software no reemplaza la validación
+física de Facebook, WiFi, cámaras y sincronía labial en la iglesia.
 
 ---
 
@@ -371,12 +371,12 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - Emisión directa en la red local protegida por código, con enlace y QR para espectadores.
 - Mejoras de accesibilidad en paneles guiados y comprobaciones automatizadas contra regresiones.
 
-### Preparado para v0.5.37
+### Entregado en v0.5.37
 
 - La APK distingue “sin PC local” de “sin nube” y permite preparar y guardar cultos desde cualquier red.
 - Apariencia de Control y diseño visual de Transmisión sincronizables entre equipos en planes Pro/Premium.
 - Cámara, micrófono, volumen, retardo y claves RTMP permanecen locales por seguridad y compatibilidad.
-- La migración `20260924_configuraciones_iglesia.sql` crea almacenamiento JSON limitado, RLS multiiglesia y escritura exclusiva de admin/líder.
+- La migración `20260924_configuraciones_iglesia.sql`, ya aplicada, crea almacenamiento JSON limitado, RLS multiiglesia y escritura exclusiva de admin/líder.
 
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).
