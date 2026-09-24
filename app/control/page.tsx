@@ -1128,6 +1128,11 @@ useEffect(() => {
 }, [socket, fondoCancionUrl])
 
 const [isMobile, setIsMobile] = useState(false)
+const [esCapacitorCtx, setEsCapacitorCtx] = useState(false)
+useEffect(() => { setEsCapacitorCtx(!!(window as any).Capacitor) }, [])
+// La nube y el servidor local cumplen funciones distintas: sin el PC de la
+// iglesia todavía se puede buscar, ordenar y guardar el culto desde la APK.
+const modoPreparacionRemota = esCapacitorCtx && socketConectado !== true && !sinConexion
 const [anchoBiblioteca, setAnchoBiblioteca] = useState(() => {
   try { return Math.min(70, Math.max(30, Number(localStorage.getItem("selah-control-ancho-biblioteca")) || 56.5)) }
   catch { return 56.5 }
@@ -1633,6 +1638,10 @@ const activarMediaSession = (titulo: string, partesList: any[], idx: number) => 
 
 const verificarServidor = (): boolean => {
   if (socketConectado === true) return true
+  if (modoPreparacionRemota) {
+    flashCtrl("☁️ Estás preparando el culto en la nube. Para proyectar, conecta la APK con el PC de la iglesia.")
+    return false
+  }
   setModalServidor(true)
   return false
 }
@@ -2384,7 +2393,7 @@ const guardarCulto = async () => {
     }
 
     setNombreCulto(nombre)
-    flashCtrl("✅ Lista de culto actualizada correctamente")
+    flashCtrl(modoPreparacionRemota ? "☁️ Culto actualizado en la nube. Estará disponible en el PC de la iglesia." : "✅ Lista de culto actualizada correctamente")
   } else {
     // CREAR CULTO NUEVO
     const iglesiaId = await getIglesiaIdCached()
@@ -2421,7 +2430,7 @@ const guardarCulto = async () => {
 
     setListaIdActual(nuevaId)
     setNombreCulto(nombre)
-    flashCtrl("✅ Nueva lista de culto guardada correctamente")
+    flashCtrl(modoPreparacionRemota ? "☁️ Culto guardado en la nube. Estará disponible en el PC de la iglesia." : "✅ Nueva lista de culto guardada correctamente")
   }
   setNombreCulto(nombre)
   await cargarCultos()
@@ -5152,8 +5161,11 @@ return (
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: isMobile ? 13 : 18, fontWeight: 800, lineHeight: 1.2, display: "flex", alignItems: "center", gap: 5 }}>
           🎛️ Control
-          {isMobile && (socketConectado === false || (socketConectado === null && !!(window as any).Capacitor)) && (
-            <EstadoOperativo compacto nivel="error" etiqueta="SIN CONEXIÓN" detalle="Toca para buscar el servidor" onClick={() => setModalServidor(true)} />
+          {isMobile && modoPreparacionRemota && (
+            <EstadoOperativo compacto nivel="ok" icono="☁️" etiqueta="PREPARANDO" detalle="Culto conectado a la nube; proyectar requiere el PC" />
+          )}
+          {isMobile && !modoPreparacionRemota && (socketConectado === false || (socketConectado === null && esCapacitorCtx)) && (
+            <EstadoOperativo compacto nivel="error" etiqueta="SIN CONEXIÓN" detalle={sinConexion ? "Sin conexión a la nube ni al PC" : "Toca para buscar el servidor"} onClick={() => setModalServidor(true)} />
           )}
           {isMobile && socketConectado === true && !proyectorConectado && (
             <EstadoOperativo compacto nivel="warning" icono="🖥️" etiqueta="SIN PROYECTOR" detalle="El PC está conectado, pero la salida de proyección aún no está abierta" />
@@ -5175,6 +5187,7 @@ return (
           </div>
         )}
       </div>
+
       <button type="button" onClick={() => setCentroComandosAbierto(true)} title="Buscar canciones y ejecutar acciones rápidas (Ctrl+K)" style={{
         height:isMobile ? 40 : 38, padding:isMobile ? "0 10px" : "0 12px", borderRadius:10,
         border:"1px solid rgba(148,163,184,.2)", background:"rgba(255,255,255,.055)", color:"#dbeafe",
@@ -5212,6 +5225,12 @@ return (
         }}>⚫</button>
       )}
     </div>
+
+    {isMobile && modoPreparacionRemota && (
+      <div style={{ marginTop:7, padding:"7px 9px", borderRadius:9, background:"rgba(37,99,235,.1)", border:"1px solid rgba(96,165,250,.18)", color:"#bfdbfe", fontSize:10.5, lineHeight:1.35 }}>
+        ☁️ Modo preparación remota: busca, ordena y guarda el culto desde cualquier red. La proyección se habilitará al conectar el PC de la iglesia.
+      </div>
+    )}
 
     {/* Fila 2 — solo mobile: botones secundarios compactos */}
     {isMobile && (mostrarControlesExtraMobile || autoAvanceActivo) && (

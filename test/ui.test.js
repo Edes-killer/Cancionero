@@ -280,3 +280,16 @@ test("cualquier contenido nuevo detiene el carrusel antes de proyectarse", () =>
   }
   assert.match(control, /Al cambiar de item se corta cualquier carrusel[\s\S]{0,120}detenerCarruselTimer\(\)/)
 })
+
+test("la APK permite preparar y guardar un culto fuera de la red de la iglesia", () => {
+  const inicio = fs.readFileSync("app/page.tsx", "utf8")
+  const control = fs.readFileSync("app/control/page.tsx", "utf8")
+  assert.match(inicio, /modoPreparacionRemota = esApp && !conexionLista && !sinConexion/)
+  assert.match(inicio, /Preparación remota disponible/)
+  assert.match(inicio, /Preparar y guardar desde cualquier lugar/)
+  assert.match(control, /modoPreparacionRemota = esCapacitorCtx && socketConectado !== true && !sinConexion/)
+  assert.match(control, /Modo preparación remota: busca, ordena y guarda el culto desde cualquier red/)
+  assert.match(control, /Culto guardado en la nube\. Estará disponible en el PC de la iglesia/)
+  const guardar = control.slice(control.indexOf("const guardarCulto ="), control.indexOf("const descargarListaTexto ="))
+  assert.doesNotMatch(guardar, /socketConectado/)
+})

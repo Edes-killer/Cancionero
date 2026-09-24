@@ -28,7 +28,7 @@ const Divider = () => <div style={{ height:1, background:"rgba(255,255,255,0.04)
 
 export default function InicioPage() {
   const router = useRouter()
-  const { pinSala, plan } = useApp()
+  const { pinSala, plan, sinConexion } = useApp()
 
   const [cargando,        setCargando]        = useState(true)
   const [sinIglesia,      setSinIglesia]      = useState(false)
@@ -212,13 +212,16 @@ export default function InicioPage() {
 
   const canalActual = canalConectado === true && canalIp === servidorIp
   const conexionLista = servidorActivo === true && (!esApp || (canalActual && pcConectado))
+  const modoPreparacionRemota = esApp && !conexionLista && !sinConexion
   const tituloConexion = buscandoServidor ? "Buscando el computador…"
+    : modoPreparacionRemota ? "Preparación remota disponible"
     : !servidorActivo ? "Sin conexión con el computador"
     : esApp && !canalActual ? "Computador detectado · sincronizando"
     : esApp && !pcConectado ? "Servidor conectado · escritorio no disponible"
     : esApp && proyectorConectado ? "Proyector conectado"
     : esApp ? "Computador listo · sin proyector" : "Conectado con el computador"
   const detalleConexion = buscandoServidor ? "Selah está revisando automáticamente la red local"
+    : modoPreparacionRemota ? "Puedes armar y guardar cultos en la nube; el PC solo es necesario para proyectar"
     : !servidorActivo ? "Revisa la IP o abre Selah Live en el computador"
     : esApp && !canalActual ? "El servidor responde, pero falta confirmar la sala y el PIN"
     : esApp && !pcConectado ? "El servidor responde, pero no hay ventana de escritorio disponible"
@@ -431,7 +434,7 @@ export default function InicioPage() {
             <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:10 }}>
               <button data-ayuda="Abre el Control de Culto para buscar contenido, organizar la lista y manejar la proyección." onClick={abrirControl} style={{ padding:"17px", borderRadius:15, border:"1px solid rgba(59,130,246,.34)", background:"linear-gradient(135deg,rgba(37,99,235,.2),rgba(30,64,175,.08))", color:"white", cursor:"pointer", display:"flex", alignItems:"center", gap:13, textAlign:"left" }}>
                 <span style={{ width:44, height:44, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", background:"rgba(37,99,235,.24)", fontSize:21, flexShrink:0 }}>🎛️</span>
-                <span style={{ flex:1 }}><span style={{ display:"block", fontWeight:850, fontSize:15.5 }}>Control de Culto</span><span style={{ display:"block", marginTop:3, color:"rgba(255,255,255,.48)", fontSize:11.5, lineHeight:1.35 }}>Buscar, ordenar y proyectar contenido</span></span>
+                <span style={{ flex:1 }}><span style={{ display:"block", fontWeight:850, fontSize:15.5 }}>Control de Culto</span><span style={{ display:"block", marginTop:3, color:"rgba(255,255,255,.48)", fontSize:11.5, lineHeight:1.35 }}>{modoPreparacionRemota ? "Preparar y guardar desde cualquier lugar" : "Buscar, ordenar y proyectar contenido"}</span></span>
                 <span style={{ opacity:.35, fontSize:19 }}>→</span>
               </button>
             </div>
@@ -464,10 +467,10 @@ export default function InicioPage() {
 
           {/* ══ ESTADO DEL SERVIDOR ════════════════════════════════════════ */}
           {(servidorActivo !== null || buscandoServidor) && (
-            <div data-tour="inicio-conexion" style={{ padding:"12px 16px", borderRadius:12, display:"flex", alignItems:"center", gap:10, background: conexionLista?"rgba(34,197,94,0.06)":servidorActivo?"rgba(245,158,11,0.06)":"rgba(239,68,68,0.06)", border:`1px solid ${conexionLista?"rgba(34,197,94,0.15)":servidorActivo?"rgba(245,158,11,0.2)":"rgba(239,68,68,0.15)"}` }}>
-              <div style={{ width:8, height:8, borderRadius:"50%", background: conexionLista?"#22c55e":servidorActivo?"#f59e0b":"#ef4444", flexShrink:0 }} />
+            <div data-tour="inicio-conexion" style={{ padding:"12px 16px", borderRadius:12, display:"flex", alignItems:"center", gap:10, background: conexionLista?"rgba(34,197,94,0.06)":modoPreparacionRemota?"rgba(37,99,235,.08)":servidorActivo?"rgba(245,158,11,0.06)":"rgba(239,68,68,0.06)", border:`1px solid ${conexionLista?"rgba(34,197,94,0.15)":modoPreparacionRemota?"rgba(96,165,250,.2)":servidorActivo?"rgba(245,158,11,0.2)":"rgba(239,68,68,0.15)"}` }}>
+              <div style={{ width:8, height:8, borderRadius:"50%", background: conexionLista?"#22c55e":modoPreparacionRemota?"#60a5fa":servidorActivo?"#f59e0b":"#ef4444", flexShrink:0 }} />
               <div style={{ flex:1 }}>
-                <div style={{ fontSize:13, fontWeight:700, color: conexionLista?"#4ade80":servidorActivo?"#fbbf24":"#fca5a5" }}>
+                <div style={{ fontSize:13, fontWeight:700, color: conexionLista?"#4ade80":modoPreparacionRemota?"#93c5fd":servidorActivo?"#fbbf24":"#fca5a5" }}>
                   {tituloConexion}
                 </div>
                 <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:1 }}>
