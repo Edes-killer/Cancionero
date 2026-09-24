@@ -65,7 +65,7 @@ export async function cargarConfiguracionNube<T>(
   return valor && typeof valor === "object" && !Array.isArray(valor) ? valor as T : null
 }
 
-export async function guardarConfiguracionNube<T extends Record<string, unknown>>(
+export async function guardarConfiguracionNube<T extends object>(
   iglesiaId: string,
   ambito: AmbitoConfiguracionNube,
   configuracion: T,

@@ -473,7 +473,37 @@ export default function ControlPage() {
   const [fondoCancionConfigLista, setFondoCancionConfigLista] = useState(false)
   const [estadoConfigControlNube, setEstadoConfigControlNube] = useState<"local" | "cargando" | "guardando" | "sincronizado" | "error">("local")
   const configControlNubeListaRef = useRef(false)
-  const ignorarSiguienteGuardadoControlRef = useRef(false)
+  const ultimaConfigControlNubeRef = useRef("")
+
+  const aplicarConfiguracionControlNube = useCallback((config: ConfiguracionControlNube) => {
+    ultimaConfigControlNubeRef.current = JSON.stringify(config)
+    if (typeof config.modoLimpio === "boolean") { setModoLimpio(config.modoLimpio); localStorage.setItem("proyector-modo-limpio", config.modoLimpio ? "1" : "0") }
+    if (typeof config.familiaFuente === "string" && /^[a-z]{3,12}$/.test(config.familiaFuente)) { setFamiliaFuenteCtrl(config.familiaFuente); localStorage.setItem("proyector-font-family", config.familiaFuente) }
+    if (typeof config.colorLetra === "string" && /^#[0-9a-f]{6}$/i.test(config.colorLetra)) { setColorLetraCtrl(config.colorLetra); localStorage.setItem("proyector-color-letra", config.colorLetra) }
+    const modos = ["ninguno", "preset", "estatico", "movimiento", "video"]
+    const fondoNube = config.fondo
+    if (fondoNube?.modo && modos.includes(fondoNube.modo)) setFondoCancionModo(fondoNube.modo)
+    if (typeof fondoNube?.preset === "string") setFondoCancionPreset(fondoNube.preset)
+    if (typeof fondoNube?.oscuridad === "number" && Number.isFinite(fondoNube.oscuridad)) setFondoCancionOscuridad(Math.min(90, Math.max(0, fondoNube.oscuridad)))
+    if (fondoNube?.ajuste === "cover" || fondoNube?.ajuste === "contain") setFondoCancionAjuste(fondoNube.ajuste)
+    if (typeof fondoNube?.url === "string" && /^https:\/\//i.test(fondoNube.url)) {
+      setFondoCancionUrl(fondoNube.url)
+      setFondoCancionNombre(typeof fondoNube.nombre === "string" ? fondoNube.nombre : "Fondo compartido")
+    }
+    window.dispatchEvent(new Event("storage"))
+  }, [])
+
+  const recargarConfiguracionControlNube = useCallback(async (iglesiaId: string, mostrarCarga = false) => {
+    if (mostrarCarga) setEstadoConfigControlNube("cargando")
+    const config = await cargarConfiguracionNube<ConfiguracionControlNube>(iglesiaId, "control")
+    if (config === undefined) { setEstadoConfigControlNube("error"); return }
+    if (config) {
+      const firma = JSON.stringify(config)
+      if (firma !== ultimaConfigControlNubeRef.current) aplicarConfiguracionControlNube(config)
+    }
+    configControlNubeListaRef.current = true
+    setEstadoConfigControlNube("sincronizado")
+  }, [aplicarConfiguracionControlNube])
 
   // ✅ Emitir fondo al proyector en tiempo real cuando cambia
   useEffect(() => {
@@ -1384,31 +1414,7 @@ const _cargarAcordes = async () => {
   } catch (e) { /* ignorar */ }
 
   if (permiteConfiguracionNube(plan)) {
-    setEstadoConfigControlNube("cargando")
-    const config = await cargarConfiguracionNube<ConfiguracionControlNube>(iglesiaId, "control")
-    if (config === undefined) {
-      setEstadoConfigControlNube("error")
-    } else if (config) {
-      ignorarSiguienteGuardadoControlRef.current = true
-      if (typeof config.modoLimpio === "boolean") { setModoLimpio(config.modoLimpio); localStorage.setItem("proyector-modo-limpio", config.modoLimpio ? "1" : "0") }
-      if (typeof config.familiaFuente === "string" && /^[a-z]{3,12}$/.test(config.familiaFuente)) { setFamiliaFuenteCtrl(config.familiaFuente); localStorage.setItem("proyector-font-family", config.familiaFuente) }
-      if (typeof config.colorLetra === "string" && /^#[0-9a-f]{6}$/i.test(config.colorLetra)) { setColorLetraCtrl(config.colorLetra); localStorage.setItem("proyector-color-letra", config.colorLetra) }
-      const modos = ["ninguno", "preset", "estatico", "movimiento", "video"]
-      const fondoNube = config.fondo
-      if (fondoNube?.modo && modos.includes(fondoNube.modo)) setFondoCancionModo(fondoNube.modo)
-      if (typeof fondoNube?.preset === "string") setFondoCancionPreset(fondoNube.preset)
-      if (typeof fondoNube?.oscuridad === "number" && Number.isFinite(fondoNube.oscuridad)) setFondoCancionOscuridad(Math.min(90, Math.max(0, fondoNube.oscuridad)))
-      if (fondoNube?.ajuste === "cover" || fondoNube?.ajuste === "contain") setFondoCancionAjuste(fondoNube.ajuste)
-      if (typeof fondoNube?.url === "string" && /^https:\/\//i.test(fondoNube.url)) {
-        setFondoCancionUrl(fondoNube.url)
-        setFondoCancionNombre(typeof fondoNube.nombre === "string" ? fondoNube.nombre : "Fondo compartido")
-      }
-      window.dispatchEvent(new Event("storage"))
-    }
-    if (config !== undefined) {
-      configControlNubeListaRef.current = true
-      setEstadoConfigControlNube("sincronizado")
-    }
+    await recargarConfiguracionControlNube(iglesiaId, true)
   } else {
     setEstadoConfigControlNube("local")
   }
@@ -4280,12 +4286,10 @@ useEffect(() => {
 
 useEffect(() => {
   if (!iglesiaIdActual || !permiteConfiguracionNube(plan) || !fondoCancionConfigLista || !configControlNubeListaRef.current) return
-  if (ignorarSiguienteGuardadoControlRef.current) { ignorarSiguienteGuardadoControlRef.current = false; return }
   const timer = setTimeout(async () => {
-    setEstadoConfigControlNube("guardando")
     const fondoCompartible = /^https:\/\//i.test(fondoCancionUrl)
     const modoCompartible = ["estatico", "movimiento", "video"].includes(fondoCancionModo) && !fondoCompartible ? "preset" : fondoCancionModo
-    const ok = await guardarConfiguracionNube(iglesiaIdActual, "control", {
+    const configuracion: ConfiguracionControlNube = {
       modoLimpio,
       familiaFuente: familiaFuenteCtrl,
       colorLetra: colorLetraCtrl,
@@ -4297,11 +4301,34 @@ useEffect(() => {
         url: fondoCompartible ? fondoCancionUrl : "",
         nombre: fondoCompartible ? fondoCancionNombre : "",
       },
-    })
+    }
+    const firma = JSON.stringify(configuracion)
+    if (firma === ultimaConfigControlNubeRef.current) return
+    setEstadoConfigControlNube("guardando")
+    const ok = await guardarConfiguracionNube(iglesiaIdActual, "control", configuracion)
+    if (ok) ultimaConfigControlNubeRef.current = firma
     setEstadoConfigControlNube(ok ? "sincronizado" : "error")
   }, 900)
   return () => clearTimeout(timer)
 }, [iglesiaIdActual, plan, fondoCancionConfigLista, modoLimpio, familiaFuenteCtrl, colorLetraCtrl, fondoCancionUrl, fondoCancionNombre, fondoCancionModo, fondoCancionPreset, fondoCancionOscuridad, fondoCancionAjuste])
+
+useEffect(() => {
+  if (!iglesiaIdActual || !permiteConfiguracionNube(plan)) return
+  let ultimaRevision = 0
+  const revisar = () => {
+    if (document.visibilityState !== "visible" || Date.now() - ultimaRevision < 5000) return
+    ultimaRevision = Date.now()
+    void recargarConfiguracionControlNube(iglesiaIdActual)
+  }
+  window.addEventListener("focus", revisar)
+  document.addEventListener("visibilitychange", revisar)
+  const timer = window.setInterval(revisar, 30000)
+  return () => {
+    window.removeEventListener("focus", revisar)
+    document.removeEventListener("visibilitychange", revisar)
+    window.clearInterval(timer)
+  }
+}, [iglesiaIdActual, plan, recargarConfiguracionControlNube])
 
 const etiquetaBoton = (texto: string) => {
   return isMobile ? "" : ` ${texto}`

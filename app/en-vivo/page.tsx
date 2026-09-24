@@ -6,7 +6,7 @@
 // la vista previa de "lo que saldría al aire". El botón "Salir en vivo" (empujar
 // a Facebook/YouTube por RTMP con ffmpeg) llega en el siguiente incremento.
 
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { io, Socket } from "socket.io-client"
 import { navegarSPA } from "@/lib/navegar"
@@ -491,7 +491,39 @@ export default function EnVivoPage() {
   const flash = (m: string) => { setAviso(m); if (avisoTimerRef.current) clearTimeout(avisoTimerRef.current); avisoTimerRef.current = setTimeout(() => setAviso(""), 2200) }
   const [estadoConfigNube, setEstadoConfigNube] = useState<"local" | "cargando" | "guardando" | "sincronizado" | "error">("local")
   const configNubeListaRef = useRef(false)
-  const ignorarSiguienteGuardadoNubeRef = useRef(false)
+  const ultimaConfigNubeRef = useRef("")
+
+  const aplicarConfiguracionTransmisionNube = useCallback((config: ConfiguracionTransmisionNube) => {
+    ultimaConfigNubeRef.current = JSON.stringify(config)
+    if (typeof config.colorLetra === "string" && /^#[0-9a-f]{6}$/i.test(config.colorLetra)) setColorLetra(config.colorLetra)
+    if (typeof config.acento === "string" && /^#[0-9a-f]{6}$/i.test(config.acento)) setAcento(config.acento)
+    if (config.diseno && ES_DISENO(config.diseno)) setDiseno(config.diseno)
+    if (config.logoPos && Number.isFinite(config.logoPos.x) && Number.isFinite(config.logoPos.y)) setLogoPos(config.logoPos)
+    if (typeof config.logoTam === "number" && Number.isFinite(config.logoTam)) setLogoTam(Math.min(380, Math.max(70, config.logoTam)))
+    if (config.pipPos && Number.isFinite(config.pipPos.x) && Number.isFinite(config.pipPos.y)) setPipPos(config.pipPos)
+    if (typeof config.pipTam === "number" && Number.isFinite(config.pipTam)) setPipTam(Math.min(700, Math.max(180, config.pipTam)))
+    if (config.nombrePos && Number.isFinite(config.nombrePos.x) && Number.isFinite(config.nombrePos.y)) setNombrePos(config.nombrePos)
+    if (typeof config.nombreTam === "number" && Number.isFinite(config.nombreTam)) setNombreTam(Math.min(72, Math.max(14, config.nombreTam)))
+    if (config.letraPos && Number.isFinite(config.letraPos.x) && Number.isFinite(config.letraPos.y)) setLetraPos(config.letraPos)
+    if (typeof config.letraTam === "number" && Number.isFinite(config.letraTam)) setLetraTam(Math.min(ANCHO, Math.max(280, config.letraTam)))
+    if (config.mensajePos === "arriba" || config.mensajePos === "abajo") setMensajePos(config.mensajePos)
+    if (typeof config.mensajeVivo === "string") setMensajeVivo(config.mensajeVivo.slice(0, 240))
+    if (typeof config.esperaTexto === "string") setEsperaTexto(config.esperaTexto.slice(0, 60))
+    if (config.esperaAccion && ["camara", "camara-letra", "letra", "nada"].includes(config.esperaAccion)) setEsperaAccion(config.esperaAccion)
+    if (typeof config.transiciones === "boolean") setTransiciones(config.transiciones)
+  }, [])
+
+  const recargarConfiguracionTransmisionNube = useCallback(async (iglesia: string, mostrarCarga = false) => {
+    if (mostrarCarga) setEstadoConfigNube("cargando")
+    const config = await cargarConfiguracionNube<ConfiguracionTransmisionNube>(iglesia, "transmision")
+    if (config === undefined) { setEstadoConfigNube("error"); return }
+    if (config) {
+      const firma = JSON.stringify(config)
+      if (firma !== ultimaConfigNubeRef.current) aplicarConfiguracionTransmisionNube(config)
+    }
+    configNubeListaRef.current = true
+    setEstadoConfigNube("sincronizado")
+  }, [aplicarConfiguracionTransmisionNube])
 
   // La identidad visual sí pertenece a la iglesia y puede viajar entre equipos.
   // Dispositivos, niveles de audio y claves RTMP permanecen locales por seguridad.
@@ -499,50 +531,48 @@ export default function EnVivoPage() {
     let cancelado = false
     configNubeListaRef.current = false
     if (!iglesiaId || !permiteConfiguracionNube(plan)) { setEstadoConfigNube("local"); return }
-    setEstadoConfigNube("cargando")
-    cargarConfiguracionNube<ConfiguracionTransmisionNube>(iglesiaId, "transmision").then(config => {
-      if (cancelado) return
-      if (config === undefined) { setEstadoConfigNube("error"); return }
-      if (config) {
-        ignorarSiguienteGuardadoNubeRef.current = true
-        if (typeof config.colorLetra === "string" && /^#[0-9a-f]{6}$/i.test(config.colorLetra)) setColorLetra(config.colorLetra)
-        if (typeof config.acento === "string" && /^#[0-9a-f]{6}$/i.test(config.acento)) setAcento(config.acento)
-        if (config.diseno && ES_DISENO(config.diseno)) setDiseno(config.diseno)
-        if (config.logoPos && Number.isFinite(config.logoPos.x) && Number.isFinite(config.logoPos.y)) setLogoPos(config.logoPos)
-        if (typeof config.logoTam === "number" && Number.isFinite(config.logoTam)) setLogoTam(Math.min(380, Math.max(70, config.logoTam)))
-        if (config.pipPos && Number.isFinite(config.pipPos.x) && Number.isFinite(config.pipPos.y)) setPipPos(config.pipPos)
-        if (typeof config.pipTam === "number" && Number.isFinite(config.pipTam)) setPipTam(Math.min(700, Math.max(180, config.pipTam)))
-        if (config.nombrePos && Number.isFinite(config.nombrePos.x) && Number.isFinite(config.nombrePos.y)) setNombrePos(config.nombrePos)
-        if (typeof config.nombreTam === "number" && Number.isFinite(config.nombreTam)) setNombreTam(Math.min(72, Math.max(14, config.nombreTam)))
-        if (config.letraPos && Number.isFinite(config.letraPos.x) && Number.isFinite(config.letraPos.y)) setLetraPos(config.letraPos)
-        if (typeof config.letraTam === "number" && Number.isFinite(config.letraTam)) setLetraTam(Math.min(ANCHO, Math.max(280, config.letraTam)))
-        if (config.mensajePos === "arriba" || config.mensajePos === "abajo") setMensajePos(config.mensajePos)
-        if (typeof config.mensajeVivo === "string") setMensajeVivo(config.mensajeVivo.slice(0, 240))
-        if (typeof config.esperaTexto === "string") setEsperaTexto(config.esperaTexto.slice(0, 60))
-        if (config.esperaAccion && ["camara", "camara-letra", "letra", "nada"].includes(config.esperaAccion)) setEsperaAccion(config.esperaAccion)
-        if (typeof config.transiciones === "boolean") setTransiciones(config.transiciones)
-      }
-      configNubeListaRef.current = true
-      setEstadoConfigNube("sincronizado")
-    }).catch(() => { if (!cancelado) { configNubeListaRef.current = true; setEstadoConfigNube("error") } })
+    recargarConfiguracionTransmisionNube(iglesiaId, true).catch(() => {
+      if (!cancelado) { configNubeListaRef.current = true; setEstadoConfigNube("error") }
+    })
     return () => { cancelado = true }
-  }, [iglesiaId, plan])
+  }, [iglesiaId, plan, recargarConfiguracionTransmisionNube])
 
   useEffect(() => {
     if (!iglesiaId || !permiteConfiguracionNube(plan) || !configNubeListaRef.current) return
-    if (ignorarSiguienteGuardadoNubeRef.current) { ignorarSiguienteGuardadoNubeRef.current = false; return }
     const timer = setTimeout(async () => {
-      setEstadoConfigNube("guardando")
-      const ok = await guardarConfiguracionNube(iglesiaId, "transmision", {
+      const configuracion: ConfiguracionTransmisionNube = {
         colorLetra, acento, diseno, logoPos, logoTam, pipPos, pipTam,
         nombrePos, nombreTam, letraPos, letraTam, mensajePos,
         mensajeVivo: mensajeVivo.slice(0, 240), esperaTexto: esperaTexto.slice(0, 60),
-        esperaAccion, transiciones,
-      })
+        esperaAccion: esperaAccion === "espera" ? "nada" : esperaAccion, transiciones,
+      }
+      const firma = JSON.stringify(configuracion)
+      if (firma === ultimaConfigNubeRef.current) return
+      setEstadoConfigNube("guardando")
+      const ok = await guardarConfiguracionNube(iglesiaId, "transmision", configuracion)
+      if (ok) ultimaConfigNubeRef.current = firma
       setEstadoConfigNube(ok ? "sincronizado" : "error")
     }, 900)
     return () => clearTimeout(timer)
   }, [iglesiaId, plan, colorLetra, acento, diseno, logoPos, logoTam, pipPos, pipTam, nombrePos, nombreTam, letraPos, letraTam, mensajePos, mensajeVivo, esperaTexto, esperaAccion, transiciones])
+
+  useEffect(() => {
+    if (!iglesiaId || !permiteConfiguracionNube(plan)) return
+    let ultimaRevision = 0
+    const revisar = () => {
+      if (document.visibilityState !== "visible" || Date.now() - ultimaRevision < 5000) return
+      ultimaRevision = Date.now()
+      void recargarConfiguracionTransmisionNube(iglesiaId)
+    }
+    window.addEventListener("focus", revisar)
+    document.addEventListener("visibilitychange", revisar)
+    const timer = window.setInterval(revisar, 30000)
+    return () => {
+      window.removeEventListener("focus", revisar)
+      document.removeEventListener("visibilitychange", revisar)
+      window.clearInterval(timer)
+    }
+  }, [iglesiaId, plan, recargarConfiguracionTransmisionNube])
   const grabBytesRef = useRef(0)
   const grabActivaRef = useRef(false)
   // Confirmación dirigida a cada celular: recepción REAL y escritura local,

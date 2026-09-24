@@ -378,6 +378,12 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - Cámara, micrófono, volumen, retardo y claves RTMP permanecen locales por seguridad y compatibilidad.
 - La migración `20260924_configuraciones_iglesia.sql`, ya aplicada, crea almacenamiento JSON limitado, RLS multiiglesia y escritura exclusiva de admin/líder.
 
+### Preparado para v0.5.38
+
+- Control y Transmisión vuelven a consultar la apariencia compartida al recuperar el foco y cada 30 segundos mientras la ventana está visible.
+- Las lecturas remotas se comparan con la última configuración conocida para no generar escrituras repetidas ni sobrescribir cambios con un rebote local.
+- Los documentos parciales o antiguos se validan campo por campo antes de modificar la interfaz.
+
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).
 - [x] Galería con carpetas y metadatos sincronizados por iglesia.
