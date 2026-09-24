@@ -1014,7 +1014,7 @@ export default function EnVivoPage() {
 
         if (cont.escena === "espera") {
           // Pantalla de espera: fondo brandeado + logo + nombre + titular + contador.
-          dibujarPantallaEspera(ctx, cont.esperaTexto, cont.esperaHasta, cont.nombre, logo, cont.acento)
+          dibujarPantallaEspera(ctx, cont.esperaTexto, cont.esperaHasta, cont.nombre, logo, cont.acento, cont.color)
         } else if (esLetra) {
           // Escena "Proyección": diapositiva con fondo, SIN cámara.
           dibujarFondoBrandeado(ctx)
@@ -1030,7 +1030,7 @@ export default function EnVivoPage() {
           } else {
             dibujarEspera(ctx, cont.nombre, logo)
           }
-          if (!cont.estadoEsp) dibujarCabecera(ctx, cont.nombre, tituloContenido, tonoContenido, logo, cont.acento)
+          if (!cont.estadoEsp) dibujarCabecera(ctx, cont.nombre, tituloContenido, tonoContenido, logo, cont.acento, cont.color)
         } else {
           // Escenas con cámara ("camara" y "camara-letra") o pantalla compartida.
           // v ya resuelve a la cámara al aire (local o celular).
@@ -1060,7 +1060,7 @@ export default function EnVivoPage() {
             redondear(ctx, x, y, pw, ph, 12); ctx.stroke()
           }
           // Nombre de la iglesia (objeto movible)
-          dibujarNombreCentrado(ctx, cont.nombre, cont.nombrePos, cont.nombreTam, cont.acento, cont.diseno)
+          dibujarNombreCentrado(ctx, cont.nombre, cont.nombrePos, cont.nombreTam, cont.acento, cont.diseno, cont.color)
           // Letra en caja movible solo en "camara-letra" (letra o versículo)
           if (cont.escena === "camara-letra" && textoContenido.trim()) {
             dibujarLetraCaja(ctx, textoContenido, tituloContenido, tonoContenido, cont.letraPos.x, cont.letraPos.y, cont.letraTam, cont.color, cont.acento, cont.diseno)
@@ -1081,7 +1081,7 @@ export default function EnVivoPage() {
 
         // Mensaje en vivo: banner sobre todas las escenas (arriba o abajo).
         // El mensaje va sobre todas las escenas MENOS la de espera (ahí molesta).
-        if (hayMensaje && cont.escena !== "espera") dibujarMensaje(ctx, cont.mensaje, cont.mensajePos, cont.acento, cont.diseno)
+        if (hayMensaje && cont.escena !== "espera") dibujarMensaje(ctx, cont.mensaje, cont.mensajePos, cont.acento, cont.diseno, cont.color)
 
         // Fundido de la transición: el fotograma anterior se desvanece encima.
         const tr = transRef.current
@@ -2095,9 +2095,9 @@ export default function EnVivoPage() {
         {/* Apariencia (personalización) */}
         <Seccion titulo="Apariencia" sub="Diseño · color · logo" dataTour="tx-apariencia">
 
-            {/* Color de la letra */}
+            {/* Color tipográfico de la transmisión */}
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-              <span style={{ fontSize: 12.5, color: C.tenue, minWidth: 90 }}>Color de letra</span>
+              <span style={{ fontSize: 12.5, color: C.tenue, minWidth: 90 }}>Color del texto</span>
               {[["#ffffff", "Blanco"], ["#fde68a", "Cálido"], ["#fbbf24", "Amarillo"], ["#67e8f9", "Cian"], ["#86efac", "Verde"]].map(([col, nom]) => (
                 <button key={col} onClick={() => guardarColor(col)} title={nom}
                   style={{ width: 30, height: 30, borderRadius: 8, cursor: "pointer", background: col,
@@ -2141,7 +2141,7 @@ export default function EnVivoPage() {
               </label>
             </div>
             <div style={{ fontSize: 11.5, color: C.tenue, marginBottom: 16 }}>
-              El tema tiñe las líneas, barras, el nombre y la letra del mensaje — así cada iglesia se ve distinta.
+              El color del texto se aplica a letras, nombre de la iglesia y mensajes. El tema de color personaliza líneas, barras y marcos.
             </div>
 
             {/* Tamaño del logo */}
@@ -2716,7 +2716,7 @@ function dibujarFondoBrandeado(ctx: CanvasRenderingContext2D) {
 
 // Pantalla de espera: fondo brandeado + logo + titular + cuenta regresiva +
 // nombre de la iglesia. Se muestra al aire mientras la gente llega.
-function dibujarPantallaEspera(ctx: CanvasRenderingContext2D, texto: string, hasta: number | null, nombre: string, logo: HTMLImageElement | null, acento = "#f59e0b") {
+function dibujarPantallaEspera(ctx: CanvasRenderingContext2D, texto: string, hasta: number | null, nombre: string, logo: HTMLImageElement | null, acento = "#f59e0b", colorTexto = "#ffffff") {
   dibujarFondoBrandeado(ctx)
   const cx = ANCHO / 2
   ctx.save()
@@ -2735,7 +2735,7 @@ function dibujarPantallaEspera(ctx: CanvasRenderingContext2D, texto: string, has
   ctx.fillStyle = acento; redondear(ctx, cx - 42, y, 84, 4, 2); ctx.fill(); y += 44
 
   // Titular ("El culto comienza pronto")
-  ctx.fillStyle = "rgba(255,255,255,0.95)"
+  ctx.fillStyle = colorTexto
   ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 8
   ctx.font = "700 42px 'Segoe UI', system-ui, sans-serif"
   ctx.fillText((texto || "").slice(0, 60), cx, y); ctx.shadowBlur = 0; y += 24
@@ -2757,9 +2757,11 @@ function dibujarPantallaEspera(ctx: CanvasRenderingContext2D, texto: string, has
   // Nombre de la iglesia abajo
   if (nombre) {
     ctx.font = "700 24px 'Segoe UI', system-ui, sans-serif"
-    ctx.fillStyle = "rgba(255,255,255,0.6)"
+    ctx.fillStyle = colorTexto
+    ctx.globalAlpha = 0.72
     try { (ctx as any).letterSpacing = "2px" } catch {}
     ctx.fillText(nombre.toUpperCase(), cx, ALTO - 58)
+    ctx.globalAlpha = 1
     try { (ctx as any).letterSpacing = "0px" } catch {}
   }
   ctx.restore()
@@ -2882,7 +2884,7 @@ function dibujarEstadoEspecial(ctx: CanvasRenderingContext2D, esp: any, img: HTM
 
 // Cabecera (esquinas) para la escena "Letra": logo + nombre a la izquierda,
 // título · tono a la derecha. Con sombra para leerse sobre cualquier fondo.
-function dibujarCabecera(ctx: CanvasRenderingContext2D, nombre: string, titulo: string, tono: string, logo: HTMLImageElement | null, acento = "#f59e0b") {
+function dibujarCabecera(ctx: CanvasRenderingContext2D, nombre: string, titulo: string, tono: string, logo: HTMLImageElement | null, acento = "#f59e0b", colorTexto = "#ffffff") {
   ctx.save()
   ctx.shadowColor = "rgba(0,0,0,0.55)"; ctx.shadowBlur = 8
   ctx.textBaseline = "middle"
@@ -2897,7 +2899,7 @@ function dibujarCabecera(ctx: CanvasRenderingContext2D, nombre: string, titulo: 
   }
   if (nombre) {
     ctx.textAlign = "left"
-    ctx.fillStyle = "rgba(255,255,255,0.92)"
+    ctx.fillStyle = colorTexto
     ctx.font = "700 26px 'Segoe UI', system-ui, sans-serif"
     ctx.fillText(nombre.toUpperCase(), x, yc)
   }
@@ -2923,7 +2925,7 @@ function cajaNombre(nombre: string, tam: number) {
 
 // Nombre de la iglesia (objeto movible): centrado dentro de su caja, con línea
 // de acento ámbar debajo.
-function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, pos: { x: number; y: number }, tam: number, acento = "#f59e0b", diseno: Diseno = "vidrio") {
+function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, pos: { x: number; y: number }, tam: number, acento = "#f59e0b", diseno: Diseno = "vidrio", colorTexto = "#ffffff") {
   if (!nombre) return
   const { w, h } = cajaNombre(nombre, tam)
   const cx = pos.x + w / 2, cy = pos.y + h / 2
@@ -2936,7 +2938,7 @@ function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, po
     ctx.textAlign = "center"; ctx.textBaseline = "middle"
     ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif`
     try { (ctx as any).letterSpacing = `${Math.round(tam / 12)}px` } catch {}
-    ctx.fillStyle = "rgba(255,255,255,0.97)"
+    ctx.fillStyle = colorTexto
     ctx.fillText(nombre.toUpperCase(), cx, cy + 1)
     try { (ctx as any).letterSpacing = "0px" } catch {}
     ctx.restore()
@@ -2949,7 +2951,8 @@ function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, po
     ctx.textAlign = "center"; ctx.textBaseline = "middle"
     ctx.font = `800 ${tam}px 'Segoe UI', system-ui, sans-serif`
     try { (ctx as any).letterSpacing = `${Math.round(tam / 14)}px` } catch {}
-    ctx.fillStyle = textoSobreAcento(acento)
+    ctx.shadowColor = "rgba(0,0,0,0.55)"; ctx.shadowBlur = 5
+    ctx.fillStyle = colorTexto
     ctx.fillText(nombre.toUpperCase(), cx, cy + 1)
     try { (ctx as any).letterSpacing = "0px" } catch {}
     ctx.restore()
@@ -2962,7 +2965,7 @@ function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, po
     ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif`
     try { (ctx as any).letterSpacing = `${Math.round(tam / 10)}px` } catch {}
     ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = 10
-    ctx.fillStyle = "rgba(255,255,255,0.96)"
+    ctx.fillStyle = colorTexto
     ctx.fillText(nombre.toUpperCase(), cx, cy)
     try { (ctx as any).letterSpacing = "0px" } catch {}
     ctx.shadowBlur = 0
@@ -2979,7 +2982,7 @@ function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, po
   ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif`
   try { (ctx as any).letterSpacing = `${Math.round(tam / 10)}px` } catch {}
   ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = 10
-  ctx.fillStyle = "rgba(255,255,255,0.96)"
+  ctx.fillStyle = colorTexto
   ctx.fillText(nombre.toUpperCase(), cx, cy - tam * 0.18)
   try { (ctx as any).letterSpacing = "0px" } catch {}
   ctx.shadowBlur = 0
@@ -2993,7 +2996,7 @@ function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, po
 }
 
 // Mensaje en vivo: banner sobre todas las escenas (abajo o arriba).
-function dibujarMensaje(ctx: CanvasRenderingContext2D, texto: string, posicion: "abajo" | "arriba" = "abajo", acento = "#f59e0b", diseno: Diseno = "vidrio") {
+function dibujarMensaje(ctx: CanvasRenderingContext2D, texto: string, posicion: "abajo" | "arriba" = "abajo", acento = "#f59e0b", diseno: Diseno = "vidrio", colorTexto = "#ffffff") {
   ctx.save()
 
   if (diseno === "tarjeta") {
@@ -3012,7 +3015,7 @@ function dibujarMensaje(ctx: CanvasRenderingContext2D, texto: string, posicion: 
     ctx.textAlign = "center"; ctx.textBaseline = "middle"
     ctx.fillStyle = acento
     ctx.beginPath(); ctx.arc(x + 30, cy, 5, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = legibleSobreOscuro(acento)
+    ctx.fillStyle = colorTexto
     ctx.fillText(texto, x + 30 + (w - 30) / 2, cy + 1)
     ctx.restore()
     return
@@ -3028,7 +3031,8 @@ function dibujarMensaje(ctx: CanvasRenderingContext2D, texto: string, posicion: 
     ctx.font = `800 ${tam}px 'Segoe UI', system-ui, sans-serif`
     const maxW = ANCHO - 120
     while (ctx.measureText(texto).width > maxW && tam > 18) { tam -= 2; ctx.font = `800 ${tam}px 'Segoe UI', system-ui, sans-serif` }
-    ctx.fillStyle = textoSobreAcento(acento)
+    ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 5
+    ctx.fillStyle = colorTexto
     ctx.fillText(texto, ANCHO / 2, cy + 1)
     ctx.restore()
     return
@@ -3044,7 +3048,7 @@ function dibujarMensaje(ctx: CanvasRenderingContext2D, texto: string, posicion: 
     while (ctx.measureText(texto).width > maxW && tam > 18) { tam -= 2; ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif` }
     const tw = ctx.measureText(texto).width
     ctx.shadowColor = "rgba(0,0,0,0.85)"; ctx.shadowBlur = 10
-    ctx.fillStyle = legibleSobreOscuro(acento)
+    ctx.fillStyle = colorTexto
     ctx.fillText(texto, ANCHO / 2, y)
     ctx.shadowBlur = 0
     ctx.fillStyle = acento
@@ -3073,8 +3077,8 @@ function dibujarMensaje(ctx: CanvasRenderingContext2D, texto: string, posicion: 
   ctx.fillStyle = acento
   ctx.beginPath(); ctx.arc(ANCHO / 2 - anchoTexto / 2 - 22, cy, 5, 0, Math.PI * 2); ctx.fill()
   ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 6
-  // La letra del mensaje toma el color del tema (aclarado para que siempre se lea).
-  ctx.fillStyle = legibleSobreOscuro(acento)
+  // El mensaje comparte el color tipográfico elegido para toda la transmisión.
+  ctx.fillStyle = colorTexto
   ctx.fillText(texto, ANCHO / 2, cy + 1)
   ctx.restore()
 }

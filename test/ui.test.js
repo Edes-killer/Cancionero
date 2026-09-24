@@ -77,6 +77,15 @@ test("Transmisión tiene un recorrido seguro y repetible", () => {
   assert.doesNotMatch(tours.slice(tours.indexOf("export const TOUR_TRANSMISION")), /\.click\(\)/)
 })
 
+test("Transmisión aplica el color tipográfico a toda la identidad textual", () => {
+  const enVivo = fs.readFileSync("app/en-vivo/page.tsx", "utf8")
+  assert.match(enVivo, /dibujarPantallaEspera\([^\n]+cont\.acento, cont\.color\)/)
+  assert.match(enVivo, /dibujarCabecera\([^\n]+cont\.acento, cont\.color\)/)
+  assert.match(enVivo, /dibujarNombreCentrado\([^\n]+cont\.diseno, cont\.color\)/)
+  assert.match(enVivo, /dibujarMensaje\([^\n]+cont\.diseno, cont\.color\)/)
+  assert.match(enVivo, />Color del texto<\/span>/)
+})
+
 test("Músicos explica su flujo sin activar audio durante el tour", () => {
   const tours = fs.readFileSync("lib/tours.ts", "utf8")
   const musicos = fs.readFileSync("app/musicos/page.tsx", "utf8")
