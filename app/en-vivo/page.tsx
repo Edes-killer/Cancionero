@@ -27,6 +27,7 @@ import { VigenciaVideo } from "@/lib/vigenciaVideo"
 import { claveCamara, EnlacesCamara } from "@/lib/identidadCamara"
 import { dibujarCamaraCompleta } from "@/lib/encuadreCamara"
 import { ColaTransmision } from "@/lib/colaTransmision"
+import { cargarConfiguracionNube, guardarConfiguracionNube, permiteConfiguracionNube } from "@/lib/configuracionNube"
 
 type Escena = "camara" | "camara-letra" | "letra" | "espera"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
@@ -257,7 +258,7 @@ export default function EnVivoPage() {
 
   // Datos de la iglesia (logo + nombre) desde la configuración, no del socket:
   // así el logo nuevo que subes en Config se refleja al tiro.
-  const { logoUrl: logoIglesia, nombreIglesia } = useApp()
+  const { logoUrl: logoIglesia, nombreIglesia, iglesiaId, plan } = useApp()
 
   // Contenido que se está proyectando (espejo por socket)
   const [titulo, setTitulo] = useState("")
@@ -488,6 +489,60 @@ export default function EnVivoPage() {
   const [aviso, setAviso] = useState("") // toast breve (resetear/guardar armado)
   const avisoTimerRef = useRef<any>(null)
   const flash = (m: string) => { setAviso(m); if (avisoTimerRef.current) clearTimeout(avisoTimerRef.current); avisoTimerRef.current = setTimeout(() => setAviso(""), 2200) }
+  const [estadoConfigNube, setEstadoConfigNube] = useState<"local" | "cargando" | "guardando" | "sincronizado" | "error">("local")
+  const configNubeListaRef = useRef(false)
+  const ignorarSiguienteGuardadoNubeRef = useRef(false)
+
+  // La identidad visual sí pertenece a la iglesia y puede viajar entre equipos.
+  // Dispositivos, niveles de audio y claves RTMP permanecen locales por seguridad.
+  useEffect(() => {
+    let cancelado = false
+    configNubeListaRef.current = false
+    if (!iglesiaId || !permiteConfiguracionNube(plan)) { setEstadoConfigNube("local"); return }
+    setEstadoConfigNube("cargando")
+    cargarConfiguracionNube<any>(iglesiaId, "transmision").then(config => {
+      if (cancelado) return
+      if (config === undefined) { setEstadoConfigNube("error"); return }
+      if (config) {
+        ignorarSiguienteGuardadoNubeRef.current = true
+        if (/^#[0-9a-f]{6}$/i.test(config.colorLetra || "")) setColorLetra(config.colorLetra)
+        if (/^#[0-9a-f]{6}$/i.test(config.acento || "")) setAcento(config.acento)
+        if (config.diseno && ES_DISENO(config.diseno)) setDiseno(config.diseno)
+        if (config.logoPos && Number.isFinite(config.logoPos.x) && Number.isFinite(config.logoPos.y)) setLogoPos(config.logoPos)
+        if (Number.isFinite(config.logoTam)) setLogoTam(Math.min(380, Math.max(70, config.logoTam)))
+        if (config.pipPos && Number.isFinite(config.pipPos.x) && Number.isFinite(config.pipPos.y)) setPipPos(config.pipPos)
+        if (Number.isFinite(config.pipTam)) setPipTam(Math.min(700, Math.max(180, config.pipTam)))
+        if (config.nombrePos && Number.isFinite(config.nombrePos.x) && Number.isFinite(config.nombrePos.y)) setNombrePos(config.nombrePos)
+        if (Number.isFinite(config.nombreTam)) setNombreTam(Math.min(72, Math.max(14, config.nombreTam)))
+        if (config.letraPos && Number.isFinite(config.letraPos.x) && Number.isFinite(config.letraPos.y)) setLetraPos(config.letraPos)
+        if (Number.isFinite(config.letraTam)) setLetraTam(Math.min(ANCHO, Math.max(280, config.letraTam)))
+        if (config.mensajePos === "arriba" || config.mensajePos === "abajo") setMensajePos(config.mensajePos)
+        if (typeof config.mensajeVivo === "string") setMensajeVivo(config.mensajeVivo.slice(0, 240))
+        if (typeof config.esperaTexto === "string") setEsperaTexto(config.esperaTexto.slice(0, 60))
+        if (["camara", "camara-letra", "letra", "nada"].includes(config.esperaAccion)) setEsperaAccion(config.esperaAccion)
+        if (typeof config.transiciones === "boolean") setTransiciones(config.transiciones)
+      }
+      configNubeListaRef.current = true
+      setEstadoConfigNube("sincronizado")
+    }).catch(() => { if (!cancelado) { configNubeListaRef.current = true; setEstadoConfigNube("error") } })
+    return () => { cancelado = true }
+  }, [iglesiaId, plan])
+
+  useEffect(() => {
+    if (!iglesiaId || !permiteConfiguracionNube(plan) || !configNubeListaRef.current) return
+    if (ignorarSiguienteGuardadoNubeRef.current) { ignorarSiguienteGuardadoNubeRef.current = false; return }
+    const timer = setTimeout(async () => {
+      setEstadoConfigNube("guardando")
+      const ok = await guardarConfiguracionNube(iglesiaId, "transmision", {
+        colorLetra, acento, diseno, logoPos, logoTam, pipPos, pipTam,
+        nombrePos, nombreTam, letraPos, letraTam, mensajePos,
+        mensajeVivo: mensajeVivo.slice(0, 240), esperaTexto: esperaTexto.slice(0, 60),
+        esperaAccion, transiciones,
+      })
+      setEstadoConfigNube(ok ? "sincronizado" : "error")
+    }, 900)
+    return () => clearTimeout(timer)
+  }, [iglesiaId, plan, colorLetra, acento, diseno, logoPos, logoTam, pipPos, pipTam, nombrePos, nombreTam, letraPos, letraTam, mensajePos, mensajeVivo, esperaTexto, esperaAccion, transiciones])
   const grabBytesRef = useRef(0)
   const grabActivaRef = useRef(false)
   // Confirmación dirigida a cada celular: recepción REAL y escritura local,
@@ -2094,6 +2149,15 @@ export default function EnVivoPage() {
 
         {/* Apariencia (personalización) */}
         <Seccion titulo="Apariencia" sub="Diseño · color · logo" dataTour="tx-apariencia">
+
+            <div style={{ marginBottom:14, padding:"9px 11px", borderRadius:10, background:permiteConfiguracionNube(plan) ? "rgba(37,99,235,.08)" : "rgba(255,255,255,.035)", border:`1px solid ${permiteConfiguracionNube(plan) ? "rgba(96,165,250,.2)" : "rgba(255,255,255,.08)"}`, color:permiteConfiguracionNube(plan) ? "#bfdbfe" : C.tenue, fontSize:11.5, lineHeight:1.4 }}>
+              {permiteConfiguracionNube(plan)
+                ? estadoConfigNube === "cargando" ? "☁️ Cargando el diseño de esta iglesia…"
+                : estadoConfigNube === "guardando" ? "☁️ Guardando diseño en la nube…"
+                : estadoConfigNube === "error" ? "⚠️ No se pudo sincronizar; el diseño sigue guardado en este PC."
+                : "☁️ Diseño sincronizado entre los equipos de la iglesia."
+                : "💻 Diseño guardado en este equipo. La sincronización entre equipos está disponible en Pro y Premium."}
+            </div>
 
             {/* Color tipográfico de la transmisión */}
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>

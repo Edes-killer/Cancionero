@@ -27,6 +27,7 @@ import { limitarAnchoBiblioteca, limitarPosMonitor } from "@/lib/controlLayout"
 import { esParteCoro, construirSecuenciaCoro as crearSecuenciaCoro, resincronizarPosicion } from "@/lib/secuenciaCoro"
 import { normalizarTiempos, duracionParte } from "@/lib/tiemposAuto"
 import { exportarListaTexto, nombreArchivoLista, nombreArchivoListaWord } from "@/lib/exportarListaTexto"
+import { cargarConfiguracionNube, guardarConfiguracionNube, permiteConfiguracionNube } from "@/lib/configuracionNube"
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 interface Cancion {
@@ -470,6 +471,9 @@ export default function ControlPage() {
   const [fondoCancionAjuste, setFondoCancionAjuste] = useState<"cover" | "contain">("cover")
   const [iglesiaIdActual, setIglesiaIdActual] = useState<string | null>(null)
   const [fondoCancionConfigLista, setFondoCancionConfigLista] = useState(false)
+  const [estadoConfigControlNube, setEstadoConfigControlNube] = useState<"local" | "cargando" | "guardando" | "sincronizado" | "error">("local")
+  const configControlNubeListaRef = useRef(false)
+  const ignorarSiguienteGuardadoControlRef = useRef(false)
 
   // ✅ Emitir fondo al proyector en tiempo real cuando cambia
   useEffect(() => {
@@ -1378,7 +1382,36 @@ const _cargarAcordes = async () => {
       setFondoCancionAjuste(config.ajuste || "cover")
     }
   } catch (e) { /* ignorar */ }
-  finally { setFondoCancionConfigLista(true) }
+
+  if (permiteConfiguracionNube(plan)) {
+    setEstadoConfigControlNube("cargando")
+    const config = await cargarConfiguracionNube<any>(iglesiaId, "control")
+    if (config === undefined) {
+      setEstadoConfigControlNube("error")
+    } else if (config) {
+      ignorarSiguienteGuardadoControlRef.current = true
+      if (typeof config.modoLimpio === "boolean") { setModoLimpio(config.modoLimpio); localStorage.setItem("proyector-modo-limpio", config.modoLimpio ? "1" : "0") }
+      if (typeof config.familiaFuente === "string" && /^[a-z]{3,12}$/.test(config.familiaFuente)) { setFamiliaFuenteCtrl(config.familiaFuente); localStorage.setItem("proyector-font-family", config.familiaFuente) }
+      if (/^#[0-9a-f]{6}$/i.test(config.colorLetra || "")) { setColorLetraCtrl(config.colorLetra); localStorage.setItem("proyector-color-letra", config.colorLetra) }
+      const modos = ["ninguno", "preset", "estatico", "movimiento", "video"]
+      if (modos.includes(config.fondo?.modo)) setFondoCancionModo(config.fondo.modo)
+      if (typeof config.fondo?.preset === "string") setFondoCancionPreset(config.fondo.preset)
+      if (Number.isFinite(config.fondo?.oscuridad)) setFondoCancionOscuridad(Math.min(90, Math.max(0, config.fondo.oscuridad)))
+      if (config.fondo?.ajuste === "cover" || config.fondo?.ajuste === "contain") setFondoCancionAjuste(config.fondo.ajuste)
+      if (typeof config.fondo?.url === "string" && /^https:\/\//i.test(config.fondo.url)) {
+        setFondoCancionUrl(config.fondo.url)
+        setFondoCancionNombre(typeof config.fondo.nombre === "string" ? config.fondo.nombre : "Fondo compartido")
+      }
+      window.dispatchEvent(new Event("storage"))
+    }
+    if (config !== undefined) {
+      configControlNubeListaRef.current = true
+      setEstadoConfigControlNube("sincronizado")
+    }
+  } else {
+    setEstadoConfigControlNube("local")
+  }
+  setFondoCancionConfigLista(true)
 
   // ── 1. Mostrar desde localStorage inmediatamente (sin esperar a Supabase) ─
   const igCacheKey = `selah-iglesia-${iglesiaId}`
@@ -4244,6 +4277,31 @@ useEffect(() => {
   fondoCancionAjuste
 ])
 
+useEffect(() => {
+  if (!iglesiaIdActual || !permiteConfiguracionNube(plan) || !fondoCancionConfigLista || !configControlNubeListaRef.current) return
+  if (ignorarSiguienteGuardadoControlRef.current) { ignorarSiguienteGuardadoControlRef.current = false; return }
+  const timer = setTimeout(async () => {
+    setEstadoConfigControlNube("guardando")
+    const fondoCompartible = /^https:\/\//i.test(fondoCancionUrl)
+    const modoCompartible = ["estatico", "movimiento", "video"].includes(fondoCancionModo) && !fondoCompartible ? "preset" : fondoCancionModo
+    const ok = await guardarConfiguracionNube(iglesiaIdActual, "control", {
+      modoLimpio,
+      familiaFuente: familiaFuenteCtrl,
+      colorLetra: colorLetraCtrl,
+      fondo: {
+        modo: modoCompartible,
+        preset: fondoCancionPreset,
+        oscuridad: fondoCancionOscuridad,
+        ajuste: fondoCancionAjuste,
+        url: fondoCompartible ? fondoCancionUrl : "",
+        nombre: fondoCompartible ? fondoCancionNombre : "",
+      },
+    })
+    setEstadoConfigControlNube(ok ? "sincronizado" : "error")
+  }, 900)
+  return () => clearTimeout(timer)
+}, [iglesiaIdActual, plan, fondoCancionConfigLista, modoLimpio, familiaFuenteCtrl, colorLetraCtrl, fondoCancionUrl, fondoCancionNombre, fondoCancionModo, fondoCancionPreset, fondoCancionOscuridad, fondoCancionAjuste])
+
 const etiquetaBoton = (texto: string) => {
   return isMobile ? "" : ` ${texto}`
 }
@@ -6334,6 +6392,15 @@ return (
             <details style={{ order:20, padding:"9px 10px", borderRadius:10, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.025)" }}>
               <summary style={{ cursor:"pointer", fontSize:11, fontWeight:800, opacity:.68, letterSpacing:".06em", textTransform:"uppercase" }}>🎨 Apariencia del proyector</summary>
               <div style={{ marginTop:10 }}>
+
+              <div style={{ marginBottom:10, padding:"8px 10px", borderRadius:9, background:permiteConfiguracionNube(plan) ? "rgba(37,99,235,.08)" : "rgba(255,255,255,.03)", border:`1px solid ${permiteConfiguracionNube(plan) ? "rgba(96,165,250,.18)" : "rgba(255,255,255,.07)"}`, color:permiteConfiguracionNube(plan) ? "#bfdbfe" : "rgba(255,255,255,.45)", fontSize:10.5, lineHeight:1.4 }}>
+                {permiteConfiguracionNube(plan)
+                  ? estadoConfigControlNube === "cargando" ? "☁️ Cargando apariencia de la iglesia…"
+                  : estadoConfigControlNube === "guardando" ? "☁️ Guardando apariencia en la nube…"
+                  : estadoConfigControlNube === "error" ? "⚠️ No se pudo sincronizar; los cambios siguen guardados en este equipo."
+                  : "☁️ Apariencia sincronizada entre los equipos de la iglesia."
+                  : "💻 Apariencia guardada en este equipo. La sincronización está disponible en Pro y Premium."}
+              </div>
 
               {/* Modo limpio toggle */}
               <div

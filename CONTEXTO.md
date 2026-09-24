@@ -1,11 +1,12 @@
 # Selah Live — Documento de Diseño (SDD) y Contexto de Desarrollo
 
-> Versión del documento: 2026-09-23 · Candidata local: **v0.5.36** · Estable publicada: v0.5.33.
+> Versión del documento: 2026-09-24 · Próxima candidata: **v0.5.37** · Prepublicación de terreno: v0.5.36 · Estable publicada: v0.5.33.
 
 Prueba y reparaciones actuales: `docs/RELEASE-0.5.36.md`. Pendientes generales:
-`docs/RELEASE-0.5.34.md`. No anunciar sincronización de ajustes en nube ni cobro/gating
-completo de planes: están acordados, no implementados. La candidata vive en
-`codex/release-0.5.36`; no fusionar a main ni promover Latest hasta validar en terreno.
+`docs/RELEASE-0.5.34.md`. La sincronización de apariencia en nube para Pro/Premium
+está implementada en la rama `codex/release-0.5.37`, pero requiere aplicar la migración
+`20260924_configuraciones_iglesia.sql` antes de anunciarla como disponible. No sincroniza
+claves RTMP ni dispositivos. No promover Latest hasta validar en terreno.
 
 **Estado posterior al ensayo del 22/09:** la candidata 0.5.35 falló en terreno.
 El timeout fijo de escritura de 5 s introdujo reinicios; se reemplazó en código por
@@ -123,6 +124,7 @@ estado_culto      (iglesia_id, tipo, partes, index, titulo, tono, actualizado_en
 errores_log       (iglesia_id, user_id, tipo, mensaje, pagina, plataforma, version, detalle)
 invitaciones      (iglesia_id, rol, codigo, usos_max, usos_actuales, activa, expira_at, creado_por)
 media_biblioteca  (iglesia_id, url, nombre, carpeta, actualizado_en)
+configuraciones_iglesia (iglesia_id, control jsonb, transmision jsonb, actualizado_en, actualizado_por)
 ```
 
 **Storage:** bucket `imagenes-culto`, carpeta por iglesia (`{iglesiaId}/...`). Las políticas de escritura
@@ -368,6 +370,13 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - Los tutoriales se pueden repetir sin recargar la APK y no ejecutan acciones delicadas durante la explicación.
 - Emisión directa en la red local protegida por código, con enlace y QR para espectadores.
 - Mejoras de accesibilidad en paneles guiados y comprobaciones automatizadas contra regresiones.
+
+### Preparado para v0.5.37
+
+- La APK distingue “sin PC local” de “sin nube” y permite preparar y guardar cultos desde cualquier red.
+- Apariencia de Control y diseño visual de Transmisión sincronizables entre equipos en planes Pro/Premium.
+- Cámara, micrófono, volumen, retardo y claves RTMP permanecen locales por seguridad y compatibilidad.
+- La migración `20260924_configuraciones_iglesia.sql` crea almacenamiento JSON limitado, RLS multiiglesia y escritura exclusiva de admin/líder.
 
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).

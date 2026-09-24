@@ -293,3 +293,26 @@ test("la APK permite preparar y guardar un culto fuera de la red de la iglesia",
   const guardar = control.slice(control.indexOf("const guardarCulto ="), control.indexOf("const descargarListaTexto ="))
   assert.doesNotMatch(guardar, /socketConectado/)
 })
+
+test("Transmisión sincroniza diseño sin subir cámaras, micrófonos ni claves", () => {
+  const enVivo = fs.readFileSync("app/en-vivo/page.tsx", "utf8")
+  const migracion = fs.readFileSync("supabase/migrations/20260924_configuraciones_iglesia.sql", "utf8")
+  assert.match(enVivo, /guardarConfiguracionNube\(iglesiaId, "transmision", \{/)
+  const inicio = enVivo.indexOf('guardarConfiguracionNube(iglesiaId, "transmision", {')
+  const payload = enVivo.slice(inicio, inicio + 600)
+  assert.match(payload, /colorLetra, acento, diseno/)
+  assert.match(payload, /mensajeVivo:/)
+  assert.doesNotMatch(payload, /destinos|camaraId|microId|clave/)
+  assert.match(enVivo, /permiteConfiguracionNube\(plan\)/)
+  assert.match(migracion, /alter table public\.configuraciones_iglesia enable row level security/)
+  assert.match(migracion, /rol_usuario_en_iglesia\(iglesia_id\) in \('admin', 'lider'\)/)
+})
+
+test("Control comparte apariencia segura y evita publicar rutas locales", () => {
+  const control = fs.readFileSync("app/control/page.tsx", "utf8")
+  assert.match(control, /guardarConfiguracionNube\(iglesiaIdActual, "control", \{/)
+  assert.match(control, /modoLimpio,[\s\S]{0,120}familiaFuente: familiaFuenteCtrl,[\s\S]{0,120}colorLetra: colorLetraCtrl/)
+  assert.match(control, /fondoCompartible = \/\^https:/)
+  assert.match(control, /url: fondoCompartible \? fondoCancionUrl : ""/)
+  assert.match(control, /Apariencia sincronizada entre los equipos de la iglesia/)
+})
