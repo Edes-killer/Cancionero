@@ -302,6 +302,9 @@ test("los cultos guardados en otro equipo se refrescan sin pisar trabajo local",
   assert.match(control, /hayCambiosCulto \|\| indiceLista !== null \|\| !!activaId/)
   assert.match(control, /Culto actualizado automáticamente desde la nube/)
   assert.match(control, /cambió en otro equipo\. Guarda o termina lo que estás haciendo/)
+  assert.match(control, /notificarCambioCultoNube\(c\.id, c\.nombre, "eliminado"\)/)
+  assert.match(control, /setListaIdActual\(null\)/)
+  assert.match(control, /Conservamos tu contenido para que puedas guardarlo como una lista nueva/)
 })
 
 test("Transmisión sincroniza diseño sin subir cámaras, micrófonos ni claves", () => {

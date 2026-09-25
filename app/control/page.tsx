@@ -413,7 +413,14 @@ export default function ControlPage() {
   const anteriorRef = useRef<() => Promise<void>>(async () => {})
   const guardarCultoRef = useRef<() => void>(() => {})
   const canalNubeControlRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
-  const [cultoRemotoPendiente, setCultoRemotoPendiente] = useState<{ listaId: string; nombre?: string } | null>(null)
+  const [cultoRemotoPendiente, setCultoRemotoPendiente] = useState<{ listaId: string; nombre?: string; accion: "guardado" | "eliminado" } | null>(null)
+  const notificarCambioCultoNube = (listaId: string, nombre?: string, accion: "guardado" | "eliminado" = "guardado") => {
+    void canalNubeControlRef.current?.send({
+      type: "broadcast",
+      event: "culto-guardado",
+      payload: { listaId, nombre, accion },
+    })
+  }
   const audioSilenciosoRef = useRef<HTMLAudioElement | null>(null)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [mensajeRapido, setMensajeRapido] = useState("Oremos")
@@ -772,6 +779,7 @@ useEffect(() => {
         setCultoRemotoPendiente({
           listaId: payload.listaId,
           nombre: typeof payload.nombre === "string" ? payload.nombre : undefined,
+          accion: payload.accion === "eliminado" ? "eliminado" : "guardado",
         })
       }
     })
@@ -2490,11 +2498,7 @@ const guardarCulto = async () => {
 
   if (listaIdFinal) {
     await cargarListaDesdeBD(listaIdFinal)
-    void canalNubeControlRef.current?.send({
-      type: "broadcast",
-      event: "culto-guardado",
-      payload: { listaId: listaIdFinal, nombre },
-    })
+    notificarCambioCultoNube(listaIdFinal, nombre)
   }
   } finally {
     setGuardandoCulto(false)
@@ -2594,6 +2598,7 @@ const guardarCultoComoCopia = async () => {
   setListaIdActual(nuevaId)
   setNombreCulto(nombre.trim())
   await cargarCultos()
+  notificarCambioCultoNube(nuevaId, nombre.trim())
   flashCtrl("✅ Copia creada")
 }
 
@@ -2619,6 +2624,7 @@ const renombrarCulto = async (culto: any) => {
   }
 
   await cargarCultos()
+  notificarCambioCultoNube(culto.id, nuevoNombre.trim())
   flashCtrl("✅ Culto renombrado")
 }
 
@@ -2684,6 +2690,7 @@ const duplicarCulto = async (culto: any) => {
   }
 
   await cargarCultos()
+  notificarCambioCultoNube(nuevoCulto.id, nuevoNombre.trim())
   flashCtrl("✅ Culto duplicado")
 }
 
@@ -2876,6 +2883,20 @@ useEffect(() => {
   const actualizar = async () => {
     await cargarCultos()
     if (cancelado) return
+
+    if (cultoRemotoPendiente.accion === "eliminado") {
+      if (cultoRemotoPendiente.listaId === listaIdActual) {
+        // El contenido queda en pantalla como borrador recuperable. Al perder el
+        // id remoto, el próximo Guardar crea un culto nuevo en vez de fallar por FK.
+        setListaIdActual(null)
+        setFirmaCultoGuardado(firmaCultoEditable([], ""))
+        flashCtrl("☁️ Este culto fue eliminado en otro equipo. Conservamos tu contenido para que puedas guardarlo como una lista nueva.")
+      } else {
+        flashCtrl(`☁️ ${cultoRemotoPendiente.nombre || "Un culto"} fue eliminado desde otro equipo.`)
+      }
+      setCultoRemotoPendiente(null)
+      return
+    }
 
     if (cultoRemotoPendiente.listaId !== listaIdActual) {
       flashCtrl(`☁️ ${cultoRemotoPendiente.nombre || "Un culto"} se actualizó desde otro equipo.`)
@@ -7002,9 +7023,13 @@ return (
                       onClick={async () => {
                         if (!(await confirmar("¿Eliminar este culto completo?", { textoOk: "Eliminar", peligro: true }))) return
                         setMenuCultoAbierto(null)
-                        await supabase.from("items_lista").delete().eq("lista_id", c.id)
-                        await supabase.from("listas_culto").delete().eq("id", c.id)
-                        cargarCultos()
+                        const { error: errorItems } = await supabase.from("items_lista").delete().eq("lista_id", c.id)
+                        if (errorItems) { flashCtrl("No se pudieron eliminar los elementos del culto"); return }
+                        const { error: errorCulto } = await supabase.from("listas_culto").delete().eq("id", c.id)
+                        if (errorCulto) { flashCtrl("No se pudo eliminar el culto"); return }
+                        await cargarCultos()
+                        notificarCambioCultoNube(c.id, c.nombre, "eliminado")
+                        flashCtrl("✅ Culto eliminado")
                       }}
                       style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.15)", color: "#fca5a5", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
                       🗑️ Eliminar
