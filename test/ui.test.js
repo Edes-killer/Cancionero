@@ -305,6 +305,9 @@ test("los cultos guardados en otro equipo se refrescan sin pisar trabajo local",
   assert.match(control, /notificarCambioCultoNube\(c\.id, c\.nombre, "eliminado"\)/)
   assert.match(control, /setListaIdActual\(null\)/)
   assert.match(control, /Conservamos tu contenido para que puedas guardarlo como una lista nueva/)
+  assert.match(control, /firmaActualBD !== firmaItemsBDRef\.current/)
+  assert.match(control, /Este culto fue modificado desde otro equipo después de que lo abriste/)
+  assert.match(control, /Guardar como copia/)
 })
 
 test("Transmisión sincroniza diseño sin subir cámaras, micrófonos ni claves", () => {
