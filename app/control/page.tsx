@@ -412,6 +412,8 @@ export default function ControlPage() {
   const siguienteRef = useRef<() => Promise<void>>(async () => {})
   const anteriorRef = useRef<() => Promise<void>>(async () => {})
   const guardarCultoRef = useRef<() => void>(() => {})
+  const canalNubeControlRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+  const [cultoRemotoPendiente, setCultoRemotoPendiente] = useState<{ listaId: string; nombre?: string } | null>(null)
   const audioSilenciosoRef = useRef<HTMLAudioElement | null>(null)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [mensajeRapido, setMensajeRapido] = useState("Oremos")
@@ -763,7 +765,17 @@ useEffect(() => {
     logError(m, { tipo: "socket", pagina: "/control" })
   }
   const salaNube = (typeof window !== "undefined" && localStorage.getItem("cancionero_iglesia_activa_id")) || "global"
-  const canalNube = supabase.channel(`sala:${salaNube}`, { config: { broadcast: { self: false } } })
+  const canalNube = supabase
+    .channel(`sala:${salaNube}`, { config: { broadcast: { self: false } } })
+    .on("broadcast", { event: "culto-guardado" }, ({ payload }) => {
+      if (payload && typeof payload.listaId === "string") {
+        setCultoRemotoPendiente({
+          listaId: payload.listaId,
+          nombre: typeof payload.nombre === "string" ? payload.nombre : undefined,
+        })
+      }
+    })
+  canalNubeControlRef.current = canalNube
   let nubeLista = false
   canalNube.subscribe((estado) => {
     nubeLista = estado === "SUBSCRIBED"
@@ -996,6 +1008,7 @@ useEffect(() => {
     s.off("solicitar-abrir-proyector")
     s.off("abrir-proyector-no-disponible")
     s.disconnect()
+    if (canalNubeControlRef.current === canalNube) canalNubeControlRef.current = null
     try { supabase.removeChannel(canalNube) } catch {}
   }
 }, [])
@@ -2477,6 +2490,11 @@ const guardarCulto = async () => {
 
   if (listaIdFinal) {
     await cargarListaDesdeBD(listaIdFinal)
+    void canalNubeControlRef.current?.send({
+      type: "broadcast",
+      event: "culto-guardado",
+      payload: { listaId: listaIdFinal, nombre },
+    })
   }
   } finally {
     setGuardandoCulto(false)
@@ -2849,6 +2867,37 @@ const cargarListaDesdeBD = async (id: string) => {
   sincronizarListaSala(listaOrdenada, null, id, culto?.nombre || "")
   if (typeof window !== "undefined") localStorage.removeItem(STORAGE_KEY)
 }
+
+// Un culto preparado desde otro equipo se refleja sin recargar la aplicación.
+// Nunca reemplaza trabajo local pendiente ni interrumpe una proyección en curso.
+useEffect(() => {
+  if (!cultoRemotoPendiente) return
+  let cancelado = false
+  const actualizar = async () => {
+    await cargarCultos()
+    if (cancelado) return
+
+    if (cultoRemotoPendiente.listaId !== listaIdActual) {
+      flashCtrl(`☁️ ${cultoRemotoPendiente.nombre || "Un culto"} se actualizó desde otro equipo.`)
+      setCultoRemotoPendiente(null)
+      return
+    }
+
+    if (hayCambiosCulto || indiceLista !== null || !!activaId) {
+      flashCtrl("☁️ Este culto cambió en otro equipo. Guarda o termina lo que estás haciendo antes de recargarlo.")
+      setCultoRemotoPendiente(null)
+      return
+    }
+
+    await cargarListaDesdeBD(cultoRemotoPendiente.listaId)
+    if (!cancelado) {
+      flashCtrl("☁️ Culto actualizado automáticamente desde la nube.")
+      setCultoRemotoPendiente(null)
+    }
+  }
+  void actualizar()
+  return () => { cancelado = true }
+}, [cultoRemotoPendiente])
 
 const abrirCultoGuardado = async (id: string) => {
   if (id === listaIdActual) return true

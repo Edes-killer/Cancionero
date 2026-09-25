@@ -294,6 +294,16 @@ test("la APK permite preparar y guardar un culto fuera de la red de la iglesia",
   assert.doesNotMatch(guardar, /socketConectado/)
 })
 
+test("los cultos guardados en otro equipo se refrescan sin pisar trabajo local", () => {
+  const control = fs.readFileSync("app/control/page.tsx", "utf8")
+  assert.match(control, /event: "culto-guardado"/)
+  assert.match(control, /setCultoRemotoPendiente/)
+  assert.match(control, /await cargarCultos\(\)/)
+  assert.match(control, /hayCambiosCulto \|\| indiceLista !== null \|\| !!activaId/)
+  assert.match(control, /Culto actualizado automáticamente desde la nube/)
+  assert.match(control, /cambió en otro equipo\. Guarda o termina lo que estás haciendo/)
+})
+
 test("Transmisión sincroniza diseño sin subir cámaras, micrófonos ni claves", () => {
   const enVivo = fs.readFileSync("app/en-vivo/page.tsx", "utf8")
   const migracion = fs.readFileSync("supabase/migrations/20260924_configuraciones_iglesia.sql", "utf8")

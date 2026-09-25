@@ -384,6 +384,12 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - Las lecturas remotas se comparan con la última configuración conocida para no generar escrituras repetidas ni sobrescribir cambios con un rebote local.
 - Los documentos parciales o antiguos se validan campo por campo antes de modificar la interfaz.
 
+### En desarrollo para v0.5.39
+
+- Al guardar un culto, los demás equipos conectados reciben una notificación por el canal seguro de la iglesia.
+- El catálogo se actualiza sin recargar la aplicación y el culto abierto se recarga automáticamente solo si está inactivo y no contiene cambios locales.
+- Una edición remota nunca reemplaza trabajo pendiente ni interrumpe una proyección en curso; en esos casos Control muestra una advertencia.
+
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).
 - [x] Galería con carpetas y metadatos sincronizados por iglesia.
