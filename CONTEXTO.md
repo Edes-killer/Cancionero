@@ -389,6 +389,9 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - Al guardar un culto, los demás equipos conectados reciben una notificación por el canal seguro de la iglesia.
 - El catálogo se actualiza sin recargar la aplicación y el culto abierto se recarga automáticamente solo si está inactivo y no contiene cambios locales.
 - Una edición remota nunca reemplaza trabajo pendiente ni interrumpe una proyección en curso; en esos casos Control muestra una advertencia.
+- Antes de sobrescribir un culto existente se compara su versión persistida con la base que abrió el operador. Si otro equipo lo modificó, Control bloquea la sobrescritura y permite guardarlo como copia.
+- Si otro equipo elimina el culto abierto, su contenido se conserva localmente como borrador recuperable.
+- `lib/conflictoCulto.ts` concentra estas decisiones en funciones puras y `test/conflictoCulto.test.js` valida sus escenarios críticos por comportamiento.
 
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).

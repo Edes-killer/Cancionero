@@ -28,6 +28,7 @@ import { esParteCoro, construirSecuenciaCoro as crearSecuenciaCoro, resincroniza
 import { normalizarTiempos, duracionParte } from "@/lib/tiemposAuto"
 import { exportarListaTexto, nombreArchivoLista, nombreArchivoListaWord } from "@/lib/exportarListaTexto"
 import { cargarConfiguracionNube, guardarConfiguracionNube, permiteConfiguracionNube, type ConfiguracionControlNube } from "@/lib/configuracionNube"
+import { firmaItemsPersistidos, hayConflictoCultoPersistido, resolverCambioCultoRemoto, type AccionCultoRemota } from "@/lib/conflictoCulto"
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 interface Cancion {
@@ -102,18 +103,6 @@ interface FondoConfig {
 }
 
 const firmaCultoEditable = (items: ItemLista[], nombre: string) => JSON.stringify({ items, nombre: nombre || "" })
-const firmaItemsPersistidos = (items: Record<string, unknown>[]) => JSON.stringify(items.map(item => ({
-  orden: item.orden ?? null,
-  cancion_id: item.cancion_id ?? null,
-  tipo: item.tipo ?? null,
-  imagen_url: item.imagen_url ?? null,
-  referencia_biblica: item.referencia_biblica ?? null,
-  texto_biblico: item.texto_biblico ?? null,
-  estado_modo: item.estado_modo ?? null,
-  estado_titulo: item.estado_titulo ?? null,
-  estado_subtitulo: item.estado_subtitulo ?? null,
-  estado_url: item.estado_url ?? null,
-})))
 
 export default function ControlPage() {
   const { confirmar, ConfirmUI } = useConfirm()
@@ -427,8 +416,8 @@ export default function ControlPage() {
   const guardarCultoRef = useRef<() => void>(() => {})
   const guardarCultoComoCopiaRef = useRef<() => Promise<void>>(async () => {})
   const canalNubeControlRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
-  const [cultoRemotoPendiente, setCultoRemotoPendiente] = useState<{ listaId: string; nombre?: string; accion: "guardado" | "eliminado" } | null>(null)
-  const notificarCambioCultoNube = (listaId: string, nombre?: string, accion: "guardado" | "eliminado" = "guardado") => {
+  const [cultoRemotoPendiente, setCultoRemotoPendiente] = useState<{ listaId: string; nombre?: string; accion: AccionCultoRemota } | null>(null)
+  const notificarCambioCultoNube = (listaId: string, nombre?: string, accion: AccionCultoRemota = "guardado") => {
     void canalNubeControlRef.current?.send({
       type: "broadcast",
       event: "culto-guardado",
@@ -2438,7 +2427,7 @@ const guardarCulto = async () => {
     }
 
     const firmaActualBD = firmaItemsPersistidos(respaldoItems || [])
-    if (firmaItemsBDRef.current && firmaActualBD !== firmaItemsBDRef.current) {
+    if (hayConflictoCultoPersistido(firmaItemsBDRef.current, firmaActualBD)) {
       const crearCopia = await confirmar(
         "Este culto fue modificado desde otro equipo después de que lo abriste. Para no borrar esos cambios, puedes guardar tu versión como una copia nueva.",
         { textoOk:"Guardar como copia", peligro:false }
@@ -2913,28 +2902,31 @@ useEffect(() => {
     await cargarCultos()
     if (cancelado) return
 
-    if (cultoRemotoPendiente.accion === "eliminado") {
-      if (cultoRemotoPendiente.listaId === listaIdActual) {
-        // El contenido queda en pantalla como borrador recuperable. Al perder el
-        // id remoto, el próximo Guardar crea un culto nuevo en vez de fallar por FK.
-        setListaIdActual(null)
-        setFirmaCultoGuardado(firmaCultoEditable([], ""))
-        firmaItemsBDRef.current = ""
-        flashCtrl("☁️ Este culto fue eliminado en otro equipo. Conservamos tu contenido para que puedas guardarlo como una lista nueva.")
-      } else {
-        flashCtrl(`☁️ ${cultoRemotoPendiente.nombre || "Un culto"} fue eliminado desde otro equipo.`)
-      }
+    const resolucion = resolverCambioCultoRemoto({
+      accion: cultoRemotoPendiente.accion,
+      mismaLista: cultoRemotoPendiente.listaId === listaIdActual,
+      hayCambiosLocales: hayCambiosCulto,
+      enProyeccion: indiceLista !== null || !!activaId,
+    })
+
+    if (resolucion === "conservar_borrador") {
+      // El contenido queda en pantalla como borrador recuperable. Al perder el
+      // id remoto, el próximo Guardar crea un culto nuevo en vez de fallar por FK.
+      setListaIdActual(null)
+      setFirmaCultoGuardado(firmaCultoEditable([], ""))
+      firmaItemsBDRef.current = ""
+      flashCtrl("☁️ Este culto fue eliminado en otro equipo. Conservamos tu contenido para que puedas guardarlo como una lista nueva.")
       setCultoRemotoPendiente(null)
       return
     }
 
-    if (cultoRemotoPendiente.listaId !== listaIdActual) {
-      flashCtrl(`☁️ ${cultoRemotoPendiente.nombre || "Un culto"} se actualizó desde otro equipo.`)
+    if (resolucion === "solo_catalogo") {
+      flashCtrl(`☁️ ${cultoRemotoPendiente.nombre || "Un culto"} ${cultoRemotoPendiente.accion === "eliminado" ? "fue eliminado" : "se actualizó"} desde otro equipo.`)
       setCultoRemotoPendiente(null)
       return
     }
 
-    if (hayCambiosCulto || indiceLista !== null || !!activaId) {
+    if (resolucion === "avisar") {
       flashCtrl("☁️ Este culto cambió en otro equipo. Guarda o termina lo que estás haciendo antes de recargarlo.")
       setCultoRemotoPendiente(null)
       return
