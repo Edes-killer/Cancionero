@@ -8,7 +8,7 @@ import EstadoOperativo from "@/components/ui/EstadoOperativo"
 import CentroComandos from "@/components/control/CentroComandos"
 import { TOUR_CONTROL, TOUR_CONTROL_MOBILE } from "@/lib/tours"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { logCatch } from "@/lib/Errorlogger"
 import { buscarServidorEnRed, getSocketUrl } from "@/lib/servidor"
@@ -37,6 +37,7 @@ type ModoFondoCancion = "ninguno" | "preset" | "estatico" | "movimiento" | "vide
 type IglesiaResumen = { nombre?: string | null; logo_url?: string | null; logo_nombre?: string | null }
 type ImagenPowerPoint = { dataUrl: string; nombre: string }
 type RespuestaBiblia = { referencia: string; texto: string; paginas?: string[]; error?: string }
+type CultoRemotoPendiente = { listaId: string; nombre?: string; accion: AccionCultoRemota }
 type ItemListaBD = ItemLista & {
   texto_biblico?: string | null
   estado_modo?: string | null
@@ -52,6 +53,7 @@ type VentanaControl = Window & {
 }
 
 const mensajeDeError = (error: unknown) => error instanceof Error ? error.message : String(error)
+const limiteSuperiorPreview = () => 56
 
 export default function ControlPage() {
   const { confirmar, ConfirmUI } = useConfirm()
@@ -228,12 +230,12 @@ export default function ControlPage() {
   // ✅ FIX: iglesiaId cacheado en ref para evitar múltiples llamadas
   // concurrentes a supabase.auth.getUser() que causan lock conflicts
   const iglesiaIdRef = useRef<string | null | undefined>(undefined)
-  const getIglesiaIdCached = async (): Promise<string | null> => {
+  const getIglesiaIdCached = useCallback(async (): Promise<string | null> => {
     if (iglesiaIdRef.current !== undefined) return iglesiaIdRef.current
     const id = iglesiaIdCtx || await getIglesiaId()
     iglesiaIdRef.current = id
     return id
-  }
+  }, [iglesiaIdCtx])
 
   // ✅ El pin_sala en localStorage lo escribe AppContext en segundo plano
   // (fetch async sin esperar). Si el socket conecta antes de que ese fetch
@@ -287,6 +289,7 @@ export default function ControlPage() {
   }, [iglesiaIdCtx, partes, index, tituloActual, activaId, canciones])
 
   // ✅ Autoload de culto cuando viene desde el dashboard
+  const cargarListaAutoload = useEffectEvent((id: string) => { void cargarListaDesdeBD(id) })
   useEffect(() => {
     const listaAutoload = localStorage.getItem("selah_autoload_lista")
     if (listaAutoload) {
@@ -296,7 +299,7 @@ export default function ControlPage() {
         setTimeout(() => {
           const lista = document.querySelector(`[data-lista-id="${listaAutoload}"]`)
           if (lista || intentos > 10) {
-            cargarListaDesdeBD(listaAutoload)
+            cargarListaAutoload(listaAutoload)
           } else {
             intentar(intentos + 1)
           }
@@ -318,33 +321,28 @@ export default function ControlPage() {
   // escucha cancionesCtx disparen fetches duplicados si ambos corren
   // cerca uno del otro (carga fría con AppContext aún resolviendo sesión)
   const fetchEnCursoRef = useRef(false)
+  const refrescarCancionesContexto = useEffectEvent(async () => {
+    const igId = await getIglesiaIdCached()
+    const cacheKey = `selah-canciones-v3-${igId}`
+    let cacheReciente = false
+    try {
+      const raw = localStorage.getItem(cacheKey)
+      if (raw) {
+        const { ts } = JSON.parse(raw)
+        cacheReciente = typeof ts === "number" && (Date.now() - ts) < 2 * 60 * 1000
+      }
+    } catch { /* ignorar */ }
+    if (cacheReciente) return
+    fetchEnCursoRef.current = true
+    void _fetchCanciones(igId, cacheKey).finally(() => { fetchEnCursoRef.current = false })
+  })
 
   useEffect(() => {
     if (cancionesCtx.length > 0 && canciones.length === 0 && !fetchEnCursoRef.current) {
       setCanciones(cancionesCtx)
-      const CACHE_TTL_MS = 2 * 60 * 1000  // 2 minutos — igual que en cargarCanciones()
-      getIglesiaIdCached().then(igId => {
-        const cacheKey = `selah-canciones-v3-${igId}`
-        let cacheReciente = false
-        try {
-          const raw = localStorage.getItem(cacheKey)
-          if (raw) {
-            const { ts } = JSON.parse(raw)
-            cacheReciente = typeof ts === "number" && (Date.now() - ts) < CACHE_TTL_MS
-          }
-        } catch { /* ignorar */ }
-        if (cacheReciente) {
-          console.log(`📋 Contexto tiene ${cancionesCtx.length} canciones — caché reciente, sin refetch`)
-          return
-        }
-        console.log(`📋 Contexto tiene ${cancionesCtx.length} canciones — mostrando y refrescando`)
-        fetchEnCursoRef.current = true
-        _fetchCanciones(igId, cacheKey)
-          .catch(() => {})
-          .finally(() => { fetchEnCursoRef.current = false })
-      })
+      void refrescarCancionesContexto()
     }
-  }, [cancionesCtx])
+  }, [cancionesCtx, canciones.length])
 
   // ✅ Cache de partes: Map<cancion_id, partes[]>
   // Evita fetch a Supabase cada vez que se proyecta una canción
@@ -365,7 +363,7 @@ export default function ControlPage() {
   const guardarCultoRef = useRef<() => void>(() => {})
   const guardarCultoComoCopiaRef = useRef<() => Promise<void>>(async () => {})
   const canalNubeControlRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
-  const [cultoRemotoPendiente, setCultoRemotoPendiente] = useState<{ listaId: string; nombre?: string; accion: AccionCultoRemota } | null>(null)
+  const [cultoRemotoPendiente, setCultoRemotoPendiente] = useState<CultoRemotoPendiente | null>(null)
   const notificarCambioCultoNube = (listaId: string, nombre?: string, accion: AccionCultoRemota = "guardado") => {
     void canalNubeControlRef.current?.send({
       type: "broadcast",
@@ -467,10 +465,12 @@ export default function ControlPage() {
   }, [aplicarConfiguracionControlNube])
 
   // ✅ Emitir fondo al proyector en tiempo real cuando cambia
-  useEffect(() => {
+  const emitirFondoActual = useEffectEvent(() => {
     if (!socket || !fondoCancionConfigLista) return
-    const fondo = fondoCancionActual()
-    socket.emit("cambiar-fondo", fondo)
+    socket.emit("cambiar-fondo", fondoCancionActual())
+  })
+  useEffect(() => {
+    emitirFondoActual()
   }, [fondoCancionUrl, fondoCancionPreset, fondoCancionModo, fondoCancionOscuridad, fondoCancionAjuste])
 // ── Preview panel ─────────────────────────────────────────────────
 const [previewCancion, setPreviewCancion] = useState<Cancion | null>(null)
@@ -522,12 +522,11 @@ useEffect(() => {
 // quede escondida detrás de ella (un tope fijo de 60 px no era suficiente).
 // El monitor se monta en document.body: así no lo recorta el contenedor
 // desplazable del Control y puede subir hasta debajo de la navegación global.
-const limiteSuperiorPreview = () => 56
-const limitarPosPreview = (p: { x: number; y: number }, ancho = previewAnchoRef.current) => {
+const limitarPosPreview = useCallback((p: { x: number; y: number }, ancho = previewAnchoRef.current) => {
   const tope = limiteSuperiorPreview()
   const alto = previewPanelRef.current?.offsetHeight || 120
   return limitarPosMonitor(p, { ancho: window.innerWidth, alto: window.innerHeight }, { ancho, alto }, tope)
-}
+}, [])
 
 // Posición inicial en la zona superior derecha; se conserva la preferencia del
 // usuario, pero siempre se corrige contra la barra y los bordes visibles.
@@ -541,7 +540,7 @@ useEffect(() => {
   p = limitarPosPreview(p)
   previewPosRef.current = p
   setPreviewPos(p)
-}, [])
+}, [limitarPosPreview])
 
 const moverPreview = (e: MouseEvent) => {
   const a = arrastrePreviewRef.current
@@ -570,7 +569,7 @@ useEffect(() => {
   const observador = typeof ResizeObserver !== "undefined" ? new ResizeObserver(corregir) : null
   if (previewPanelRef.current) observador?.observe(previewPanelRef.current)
   return () => { cancelAnimationFrame(id); window.removeEventListener("resize", corregir); observador?.disconnect() }
-}, [previewHabilitado, previewAncho, previewMinimizado])
+}, [previewHabilitado, previewAncho, previewMinimizado, limitarPosPreview])
 const devolverPreviewArriba = () => {
   const p = limitarPosPreview({ x: window.innerWidth - previewAnchoRef.current - 16, y: 68 })
   previewPosRef.current = p
@@ -672,7 +671,7 @@ const fondosCancionPreset = [
 useEffect(() => {
   document.body.style.overflow = "hidden"
   return () => { document.body.style.overflow = "" }
-}, [])
+}, [getIglesiaIdCached])
 
   // ✅ visualViewport: adaptar altura cuando abre el teclado
   useEffect(() => {
@@ -967,12 +966,13 @@ useEffect(() => {
     if (canalNubeControlRef.current === canalNube) canalNubeControlRef.current = null
     try { supabase.removeChannel(canalNube) } catch {}
   }
-}, [])
+}, [getIglesiaIdCached])
 
 
+ const cargarListaSeleccionada = useEffectEvent((id: string) => { void cargarListaDesdeBD(id) })
  useEffect(() => {
   if (listaIdActual) {
-    cargarLista()
+    cargarListaSeleccionada(listaIdActual)
   }
 }, [listaIdActual])
 
@@ -1040,10 +1040,7 @@ const agregarCarruselALista = () => {
 // Detener el carrusel al desmontar
 useEffect(() => () => detenerCarruselTimer(), [])
 
-useEffect(() => {
-  let activo = true
-
-  const cargarInicial = async () => {
+const cargarControlInicial = useEffectEvent(async (sigueActivo: () => boolean) => {
     try {
       setCargandoControl(true)
       setMensajeCargaControl("Cargando canciones y cultos...")
@@ -1064,25 +1061,27 @@ useEffect(() => {
         cargarNombreIglesia()
       ])
 
-      if (!activo) return
+      if (!sigueActivo()) return
 
       setMensajeCargaControl("Control listo")
     } catch (error) {
       console.error("Error cargando control:", error)
 
-      if (activo) {
+      if (sigueActivo()) {
         setMensajeCargaControl("Hubo un problema cargando el control")
       }
     } finally {
-      if (activo) {
+      if (sigueActivo()) {
         setTimeout(() => {
           setCargandoControl(false)
         }, 350)
       }
     }
-  }
+})
 
-  cargarInicial()
+useEffect(() => {
+  let activo = true
+  void cargarControlInicial(() => activo)
 
   return () => {
     activo = false
@@ -1104,9 +1103,10 @@ useEffect(() => {
   }
 }, [])
 
+const precargarImagenesLista = useEffectEvent((items: ItemLista[]) => enviarPrecargaImagenes(items))
 useEffect(() => {
   if (!socket || lista.length === 0) return
-  enviarPrecargaImagenes(lista)
+  precargarImagenesLista(lista)
 }, [socket, lista])
 
 
@@ -1225,11 +1225,6 @@ useEffect(() => {
   const t = setInterval(() => setTickPreview(Date.now()), 1000) // refresca la cuenta regresiva
   return () => clearInterval(t)
 }, [estadoEspecialActivo])
-const cargarLista = async () => {
-  if (!listaIdActual) return
-  await cargarListaDesdeBD(listaIdActual)
-}
-
 // ✅ TTL para no repetir el fetch completo de canciones en cada montaje/
 // navegación — antes decía "SIEMPRE refrescar" y lo hacía literalmente en
 // cada visita a Control, sintiéndose como una recarga constante. El TTL
@@ -2110,9 +2105,11 @@ const anterior = async () => {
 useEffect(() => {
   siguienteRef.current = siguiente
   anteriorRef.current = anterior
+})
 
-  // ✅ Persistir estado en localStorage para recuperar tras bloqueo (salvo que el
-  // usuario haya desactivado "Recordar la última alabanza" en Configuración).
+// ✅ Persistir estado en localStorage para recuperar tras bloqueo (salvo que el
+// usuario haya desactivado "Recordar la última alabanza" en Configuración).
+useEffect(() => {
   if (typeof window !== "undefined") {
     const recordar = localStorage.getItem("selah-recordar-ultima") !== "0"
     if (recordar && partes.length > 0) {
@@ -2125,7 +2122,7 @@ useEffect(() => {
   }
 
   // Media Session se actualiza desde activarMediaSession() llamado en cada acción
-}, [siguiente, anterior])
+}, [partes, index, tituloActual, activaId])
 
 // La lista del culto es trabajo preparado y se conserva aunque el usuario
 // navegue a Canciones, Configuración u otro módulo. Es independiente de la
@@ -2712,12 +2709,12 @@ const nombreImagenAmigable = (url?: string, fallback = "Imagen") => {
   return limpio || fallback
 }
 
-const sincronizarListaSala = (items: ItemLista[], indice: number|null, listaId = listaIdActual, nombre = nombreCulto) => {
+const sincronizarListaSala = useCallback((items: ItemLista[], indice: number|null, listaId: string | null, nombre: string) => {
   const firma = JSON.stringify({ items, indice, listaId:listaId || null, nombre:nombre || "" })
   if (firma === ultimaFirmaListaEnviadaRef.current) return
   ultimaFirmaListaEnviadaRef.current = firma
   socketRef2.current?.emit("sincronizar-lista", { items, indice, listaId, nombre })
-}
+}, [])
 
 // Cualquier edición del orden del culto se replica al resto de los controles.
 // El breve debounce agrupa cambios encadenados y la firma evita ecos remotos.
@@ -2744,7 +2741,7 @@ useEffect(() => {
   return () => {
     if (timerSincronizacionListaRef.current) clearTimeout(timerSincronizacionListaRef.current)
   }
-}, [lista, indiceLista, listaIdActual, nombreCulto])
+}, [lista, indiceLista, listaIdActual, nombreCulto, sincronizarListaSala])
 
 const cargarListaDesdeBD = async (id: string) => {
   setListaIdActual(id)
@@ -2846,16 +2843,13 @@ const cargarListaDesdeBD = async (id: string) => {
 
 // Un culto preparado desde otro equipo se refleja sin recargar la aplicación.
 // Nunca reemplaza trabajo local pendiente ni interrumpe una proyección en curso.
-useEffect(() => {
-  if (!cultoRemotoPendiente) return
-  let cancelado = false
-  const actualizar = async () => {
+const procesarCultoRemoto = useEffectEvent(async (pendiente: CultoRemotoPendiente, sigueActivo: () => boolean) => {
     await cargarCultos()
-    if (cancelado) return
+    if (!sigueActivo()) return
 
     const resolucion = resolverCambioCultoRemoto({
-      accion: cultoRemotoPendiente.accion,
-      mismaLista: cultoRemotoPendiente.listaId === listaIdActual,
+      accion: pendiente.accion,
+      mismaLista: pendiente.listaId === listaIdActual,
       hayCambiosLocales: hayCambiosCulto,
       enProyeccion: indiceLista !== null || !!activaId,
     })
@@ -2872,7 +2866,7 @@ useEffect(() => {
     }
 
     if (resolucion === "solo_catalogo") {
-      flashCtrl(`☁️ ${cultoRemotoPendiente.nombre || "Un culto"} ${cultoRemotoPendiente.accion === "eliminado" ? "fue eliminado" : "se actualizó"} desde otro equipo.`)
+      flashCtrl(`☁️ ${pendiente.nombre || "Un culto"} ${pendiente.accion === "eliminado" ? "fue eliminado" : "se actualizó"} desde otro equipo.`)
       setCultoRemotoPendiente(null)
       return
     }
@@ -2883,14 +2877,18 @@ useEffect(() => {
       return
     }
 
-    await cargarListaDesdeBD(cultoRemotoPendiente.listaId)
-    if (!cancelado) {
+    await cargarListaDesdeBD(pendiente.listaId)
+    if (sigueActivo()) {
       flashCtrl("☁️ Culto actualizado automáticamente desde la nube.")
       setCultoRemotoPendiente(null)
     }
-  }
-  void actualizar()
-  return () => { cancelado = true }
+})
+
+useEffect(() => {
+  if (!cultoRemotoPendiente) return
+  let activo = true
+  void procesarCultoRemoto(cultoRemotoPendiente, () => activo)
+  return () => { activo = false }
 }, [cultoRemotoPendiente])
 
 const abrirCultoGuardado = async (id: string) => {
@@ -2919,7 +2917,7 @@ const irAItemLista = async (i: number, alFinal = false) => {
 
   setIndiceLista(i)
   setIndiceActivoLista(i)
-  sincronizarListaSala(lista, i)
+  sincronizarListaSala(lista, i, listaIdActual, nombreCulto)
 
   // Al cambiar de item se corta cualquier carrusel que estuviera corriendo.
   detenerCarruselTimer()
@@ -3168,7 +3166,7 @@ useEffect(() => {
   if (!autoPlay) return
 
   const intervalo = setInterval(() => {
-    siguiente()
+    siguienteRef.current()
   }, 5000) // cada 5 segundos
 
   return () => clearInterval(intervalo)
@@ -3948,7 +3946,7 @@ const finVirtualCanciones = Math.min(
 useEffect(() => {
   const ids = cancionesFiltradas.slice(0, 100).map(c => c.id)
   precargarPartesBatch(ids)
-}, [cancionesFiltradas.length])
+}, [cancionesFiltradas])
 
 useEffect(() => {
   if (isMobile) return
@@ -3988,9 +3986,9 @@ useEffect(() => {
       behavior: "smooth"
     })
   })
-}, [isMobile, activaId, cancionesFiltradas.length])
+}, [isMobile, activaId, cancionesFiltradas])
 
-const centrarCancionEnLista = (id: string) => {
+const centrarCancionEnLista = useCallback((id: string) => {
   if (isMobile) return
 
   const contenedor = scrollCancionesRef.current
@@ -4025,7 +4023,7 @@ const centrarCancionEnLista = (id: string) => {
     top,
     behavior: "smooth"
   })
-}
+}, [isMobile, cancionesFiltradas])
 
 useEffect(() => {
   if (isMobile) return
@@ -4036,13 +4034,13 @@ useEffect(() => {
       centrarCancionEnLista(activaId)
     })
   })
-}, [isMobile, activaId, cancionesFiltradas.length])
+}, [isMobile, activaId, cancionesFiltradas, centrarCancionEnLista])
 
 // ✅ Auto-scroll al cargar el control si ya había una canción activa
 useEffect(() => {
   if (cargandoControl || !activaId || isMobile) return
   setTimeout(() => centrarCancionEnLista(activaId), 500)
-}, [cargandoControl])
+}, [cargandoControl, activaId, isMobile, centrarCancionEnLista])
 
 const agregarItemAListaConFeedback = (item: ItemLista, mensaje: string) => {
   setLista(prev => {
@@ -4236,14 +4234,17 @@ const alternarGaleriaPrincipal = () => {
 // El centro de comandos también consulta la caché de Galería. Si aún no se
 // abrió el módulo durante esta sesión, carga los recursos en segundo plano sin
 // bloquear la escritura ni cambiar el panel visible del operador.
+const cargarGaleriaCentro = useEffectEvent(() => {
+  void cargarGaleriaImagenes().then(setGaleriaImagenes).catch(() => {})
+})
 useEffect(() => {
   if (!centroComandosAbierto || galeriaImagenes.length > 0 || !iglesiaIdActual) return
   try {
     const cache = JSON.parse(localStorage.getItem(`selah-galeria-cache-${iglesiaIdActual}`) || "[]")
     if (Array.isArray(cache) && cache.length) setGaleriaImagenes(cache)
   } catch {}
-  void cargarGaleriaImagenes().then(setGaleriaImagenes).catch(() => {})
-}, [centroComandosAbierto, iglesiaIdActual])
+  cargarGaleriaCentro()
+}, [centroComandosAbierto, iglesiaIdActual, galeriaImagenes.length])
 
 const procesarArchivoGaleria = async (input: HTMLInputElement) => {
   const file = input.files?.[0]
