@@ -12,8 +12,8 @@ no certifica todavía el funcionamiento físico en la iglesia.
 - Certificado esperado: `CN=Selah Live, OU=Selah Live, O=Selah Live, L=Chile, ST=Chile, C=CL`.
 - SHA-256 del certificado: `e2f870e235bbdf4bee71ed91b8d82c21cad9543839b1518068a65f3a7b5dab55`.
 - Artefacto local: `selah-live.apk` (no se versiona en Git).
-- Tamaño: 7.630.923 bytes.
-- SHA-256 de esta compilación: `A8E4FB5A385D6035BB18DEF8A4659F7A9D3F2BF0D97C57906D211238E33C6BEC`.
+- Tamaño: 7.631.115 bytes.
+- SHA-256 de esta compilación: `751BD62D607851E710CA7780A7AE3EC9EAA57BA52D8D9112524D3670A8FBAD3F`.
 
 La firma v2 es válida para la instalación y actualización directa de esta APK. No cambiar el
 keystore: Android rechazará una actualización firmada con otro certificado.
@@ -23,8 +23,8 @@ keystore: Android rechazará una actualización firmada con otro certificado.
 - `electron-builder --win --publish never`: empaquetado NSIS aprobado.
 - Electron `42.11.0`, arquitectura x64, instalador one-click por usuario.
 - Artefacto local: `dist-electron/Selah Live Setup 0.5.40.exe`.
-- Tamaño: 213.126.114 bytes.
-- SHA-256 de esta compilación: `17205AAE48AAD2D21B7C206B46E632C4F75F582A079F9DEA293AE175603351D1`.
+- Tamaño: 213.129.177 bytes.
+- SHA-256 de esta compilación: `37DD8EA56CD0FEE009A00D389D57993E7AA59526DEE2135CA7E501CF437FB73E`.
 - Estado Authenticode comprobado con PowerShell: `NotSigned`.
 
 El instalador sirve para la prueba interna y conserva el actualizador NSIS, pero Windows puede
