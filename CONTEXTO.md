@@ -409,6 +409,7 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - Canciones quedó incorporado al lint crítico: se tiparon importación PowerPoint, cachés, filtros y respuestas de Supabase, retirando 47 hallazgos sin cambiar su flujo funcional.
 - Músicos también forma parte del gate crítico: repertorio, partes, estado en vivo, Socket.IO y Supabase Realtime quedaron tipados y sin hallazgos de lint.
 - Proyectar quedó incluido en el mismo gate: eventos, fondos, Biblia, precarga y sockets tienen tipos explícitos; la cuenta regresiva dejó de calcular tiempo impuro durante render y se actualiza mediante estado.
+- Login, autorización, Navbar y aviso APK se sumaron al gate: se tiparon puentes de Electron/Capacitor, respuesta de versiones y cambios de sesión, manteniendo las restricciones por rol.
 
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).

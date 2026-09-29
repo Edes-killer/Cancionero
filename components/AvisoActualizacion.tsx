@@ -7,6 +7,8 @@
 
 import { useEffect, useState } from "react"
 
+interface VersionPublicada { version?: string; minApk?: string; apkUrl?: string }
+
 // Se lee de GitHub (raw) en vez de la web/Vercel: se actualiza al instante con cada
 // push y no depende de que Vercel despliegue. Es el mismo public/version.json del repo.
 const URL_VERSION = process.env.NEXT_PUBLIC_UPDATE_URL
@@ -28,11 +30,11 @@ export default function AvisoActualizacion() {
   const [apkUrl, setApkUrl] = useState("")
 
   useEffect(() => {
-    if (typeof window === "undefined" || !(window as any).Capacitor) return  // solo APK
+    if (typeof window === "undefined" || !(window as Window & { Capacitor?: object }).Capacitor) return  // solo APK
     const actual = process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"
     fetch(`${URL_VERSION}?t=${Date.now()}`, { cache: "no-store" })
       .then(r => r.json())
-      .then((d: any) => {
+      .then((d: VersionPublicada) => {
         // Dispara según minApk (versión mínima que exige un cambio NATIVO). Los
         // cambios solo-web NO cuentan acá: esos se actualizan solos por OTA.
         const requerida = d?.minApk || d?.version

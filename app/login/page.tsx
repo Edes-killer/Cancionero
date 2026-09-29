@@ -6,6 +6,15 @@ import { conTimeout } from "@/lib/timeout"
 import { establecerSesionDesdeUrl } from "@/lib/authCallback"
 import { logError } from "@/lib/Errorlogger"
 
+type VentanaSelah = Window & {
+  Capacitor?: object
+  oauthElectron?: {
+    abrirGoogle?: (url: string) => Promise<{ ok?: boolean; error?: string }>
+  }
+}
+
+const esCapacitor = () => Boolean((window as VentanaSelah).Capacitor)
+
 function LoginContent() {
   const [email, setEmail] = useState("")
   const [enviado, setEnviado] = useState(false)
@@ -14,7 +23,7 @@ function LoginContent() {
   const [isApk, setIsApk] = useState(false)
 
   useEffect(() => {
-    setIsApk(!!(window as any).Capacitor)
+    setIsApk(esCapacitor())
     // ✅ useSearchParams() de next/navigation obliga a envolver la página en
     // <Suspense> porque en export estático Next.js no puede conocer los
     // parámetros de la URL al compilar -- hornea solo el spinner de fallback
@@ -31,7 +40,7 @@ function LoginContent() {
 
   // ── Diagnóstico + manejo de callback en Capacitor ─────────────────────────
   useEffect(() => {
-    if (!(window as any).Capacitor) return
+    if (!esCapacitor()) return
     console.log('[Login] ✅ Capacitor detectado')
     import('@capacitor/app').then(({ App }) => {
 
@@ -69,14 +78,14 @@ function LoginContent() {
 
   const getRedirectUrl = (modo?: "google") => {
     if (typeof window === "undefined") return "/auth/callback"
-    if (!!(window as any).Capacitor) return "com.tuiglesia.cancionero://auth/callback"
+    if (esCapacitor()) return "com.tuiglesia.cancionero://auth/callback"
     if (modo === "google" && navigator.userAgent.includes("Electron")) return "selahlive://auth/callback"
     return `${window.location.origin}/auth/callback`
   }
 
   const loginGoogle = async () => {
     setError(""); setCargando(true)
-    const isCapacitor = !!(window as any).Capacitor
+    const isCapacitor = esCapacitor()
     const isElectron  = navigator.userAgent.includes("Electron")
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({
@@ -107,7 +116,7 @@ function LoginContent() {
         await Browser.open({ url: data.url })
         setCargando(false)
       } else if (isElectron) {
-        const puente = (window as any).oauthElectron
+        const puente = (window as VentanaSelah).oauthElectron
         if (!puente?.abrirGoogle) throw new Error("Este instalador no admite el acceso con Google. Actualiza Selah Live.")
         const resultado = await puente.abrirGoogle(data.url)
         if (!resultado?.ok) throw new Error(resultado?.error || "No se pudo abrir Google.")
@@ -116,8 +125,8 @@ function LoginContent() {
         // Web: ídem
         window.location.href = data.url
       }
-    } catch (e: any) {
-      setError(e?.message || "Error al iniciar sesión")
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : "Error al iniciar sesión")
       setCargando(false)
     }
   }
