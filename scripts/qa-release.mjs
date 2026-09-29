@@ -63,6 +63,11 @@ const comprobaciones = [
     comando: process.execPath,
     args: ["--check", "scripts/qa-eficiencia.cjs"],
   },
+  {
+    nombre: "Sintaxis del verificador de artefactos",
+    comando: process.execPath,
+    args: ["--check", "scripts/qa-artefactos.cjs"],
+  },
 ]
 
 const resultados = []
