@@ -13,7 +13,7 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 
 ## Evidencia automática
 
-- `npm run qa:release`: 11/11 comprobaciones aprobadas.
+- `npm run qa:release`: 12/12 comprobaciones aprobadas.
 - 138/138 pruebas automatizadas aprobadas.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
