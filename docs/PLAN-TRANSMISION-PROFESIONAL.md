@@ -72,10 +72,14 @@ Referencias oficiales: [Preview y ciclo de vida](https://developer.android.com/m
 [análisis de cuadros](https://developer.android.com/media/camera/camerax/analyze),
 [versiones CameraX](https://developer.android.com/jetpack/androidx/releases/camera).
 
-## 4. Continuidad del culto — recuperación local implementada; pruebas físicas pendientes
+## 4. Continuidad del culto — recuperación local y por destino implementadas; pruebas físicas pendientes
 
-Recuperación por destino y alternativa cuando se pierde una cámara siguen pendientes. Probar
-cortes provocados de red y fuentes.
+La alternativa visual cuando se pierde una cámara ya está implementada. La salida usa una sola
+codificación y `tee + fifo` de FFmpeg: cada destino tiene cola acotada, descarta durante una caída
+antes que frenar a los demás, reintenta cada cinco segundos y vuelve desde un keyframe. Después de
+12 intentos consecutivos abandona solo esa salida; si era la única, el mecanismo general recrea la
+sesión. La prueba `npm.cmd run qa:destinos` corta y restablece un receptor TCP real mientras otro
+continúa recibiendo. Pendiente confirmar la misma recuperación contra RTMPS de plataformas reales.
 
 La recuperación de grabación local ya detecta segmentos MKV abandonados después de un cierre
 inesperado y permite reconstruirlos como MP4 desde Transmisión. La operación excluye la sesión

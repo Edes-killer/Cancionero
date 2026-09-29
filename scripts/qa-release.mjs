@@ -64,6 +64,11 @@ const comprobaciones = [
     args: ["--check", "scripts/qa-eficiencia.cjs"],
   },
   {
+    nombre: "Recuperación independiente de destinos",
+    comando: process.execPath,
+    args: ["scripts/qa-recuperacion-destinos.cjs"],
+  },
+  {
     nombre: "Sintaxis del verificador de artefactos",
     comando: process.execPath,
     args: ["--check", "scripts/qa-artefactos.cjs"],

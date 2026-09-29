@@ -8,12 +8,13 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 - Preflight de grabación con espacio real: advertencia bajo 8 GB y bloqueo bajo 1 GB.
 - Informe final de transmisión sin claves ni direcciones RTMP.
 - Recuperación a MP4 de segmentos MKV dejados por un cierre inesperado.
+- Recuperación independiente por destino: una plataforma caída ya no detiene las demás y se reintenta sin recodificar.
 - Tipos y validaciones reforzados en Transmisión, Cámara, OBS opcional y conexión.
 - Dependencias transitivas actualizadas sin cambios mayores de API.
 
 ## Evidencia automática
 
-- `npm run qa:release`: 12/12 comprobaciones aprobadas.
+- `npm run qa:release`: 13 comprobaciones obligatorias, incluida la recuperación real de un destino local.
 - 138/138 pruebas automatizadas aprobadas.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
@@ -65,8 +66,8 @@ en la grabación local.
 
 ## Límites conocidos
 
-- La recuperación individual de un destino caído todavía requiere separar codificación y
-  distribución; el `tee` actual conserva los otros destinos, pero no puede reinsertar uno.
+- La recuperación individual usa `tee + fifo` y está validada contra receptores TCP locales;
+  falta confirmar el comportamiento frente a RTMPS/Facebook real durante la prueba física.
 - CameraX continúa como laboratorio debug y no reemplaza aún la cámara web de producción.
 - El lint global y el gate estricto están limpios; Control también forma parte del gate obligatorio.
 - La prueba prolongada de dos horas y la medición comparativa de eficiencia siguen pendientes.

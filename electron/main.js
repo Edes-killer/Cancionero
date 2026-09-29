@@ -129,8 +129,9 @@ async function elegirEncoder() {
 }
 
 // Argumentos de ffmpeg según el encoder. En todos: keyframe cada ~2s y AAC.
-// rtmpUrls: 1 destino → -f flv; varios → muxer "tee" (codifica una vez y empuja
-// a todas las plataformas a la vez). onfail=ignore: si una cae, las otras siguen.
+// Todos los destinos usan tee + fifo: se codifica una sola vez y cada salida
+// tiene su propia cola/reconexión. Una plataforma lenta o caída no bloquea las
+// demás ni obliga a recrear el MediaRecorder del renderer.
 function construirArgsFFmpeg(encoder, rtmpUrls, bitrateKbps) {
   const kbps = Math.max(600, Math.min(8000, Number(bitrateKbps) || 2500))
   const vb = `${kbps}k`, buf = `${kbps * 2}k`
@@ -160,11 +161,12 @@ function construirArgsFFmpeg(encoder, rtmpUrls, bitrateKbps) {
   const sincronizacion = ["-vf", "fps=30", "-fps_mode", "cfr", "-af", "aresample=async=1000:first_pts=0,asetpts=N/SR/TB"]
   const audio = ["-c:a", "aac", "-b:a", "160k", "-ar", "48000"]
   const comun = [...base, ...sincronizacion, ...video, ...audio, "-max_muxing_queue_size", "1024"]
-  if (rtmpUrls.length === 1) return [...comun, "-f", "flv", rtmpUrls[0]]
-  // Varios destinos: un solo encode → muxer tee a todas las plataformas.
-  // -flags +global_header es necesario para que el tee escriba la cabecera.
+  // FIFO reintenta cada salida por separado. La cola acotada descarta cuadros
+  // durante una caída antes que atrasar toda la emisión; al recuperar espera un
+  // keyframe. Tras 12 fallos consecutivos tee abandona solo esa salida.
+  const fifo = "attempt_recovery=1:recover_any_error=1:recovery_wait_time=5:restart_with_keyframe=1:drop_pkts_on_overflow=1:queue_size=300:max_recovery_attempts=12"
   const spec = rtmpUrls.map(u => `[f=flv:onfail=ignore]${u}`).join("|")
-  return [...comun, "-flags", "+global_header", "-map", "0:v", "-map", "0:a", "-f", "tee", spec]
+  return [...comun, "-flags", "+global_header", "-map", "0:v", "-map", "0:a", "-use_fifo", "1", "-fifo_options", fifo, "-f", "tee", spec]
 }
 
 function rutaLogTransmision() {

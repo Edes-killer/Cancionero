@@ -15,6 +15,7 @@
     "qa:video": "node scripts/qa-video.cjs",
     "qa:captura": "node scripts/qa-captura-envio.cjs",
     "qa:eficiencia": "node scripts/qa-eficiencia.cjs",
+    "qa:destinos": "node scripts/qa-recuperacion-destinos.cjs",
     "qa:artefactos": "node scripts/qa-artefactos.cjs",
     "qa:candidata": "npm run qa:release && npm run qa:artefactos",
     "qa:publicar": "npm run qa:release && node scripts/qa-artefactos.cjs --publicar",
