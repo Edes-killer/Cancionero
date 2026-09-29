@@ -142,6 +142,13 @@ function legibleSobreOscuro(hex: string): string {
 }
 
 interface Disp { id: string; label: string }
+interface EspacioGrabacion {
+  nivel: "ok" | "advertencia" | "bloqueado" | "desconocido"
+  puedeGrabar: boolean
+  libresBytes: number | null
+  detalle: string
+  carpeta?: string
+}
 
 export default function EnVivoPage() {
   const router = useRouter()
@@ -298,6 +305,7 @@ export default function EnVivoPage() {
   const [logsTx, setLogsTx] = useState<string[]>([])
   const [diagTx, setDiagTx] = useState<any>(null)
   const [diagDisponible, setDiagDisponible] = useState(false)
+  const [espacioGrabacion, setEspacioGrabacion] = useState<EspacioGrabacion | null>(null)
   useEffect(() => {
     let activo = true, ocupado = false
     const timer = setInterval(async () => {
@@ -310,6 +318,19 @@ export default function EnVivoPage() {
     }, 2000)
     return () => { activo = false; clearInterval(timer) }
   }, [])
+  useEffect(() => {
+    if (!esEscritorio) return
+    let activo = true
+    const revisar = async () => {
+      try {
+        const estado = await (window as any).transmision?.espacioGrabacion?.()
+        if (activo && estado?.nivel) setEspacioGrabacion(estado)
+      } catch { /* La grabación vuelve a comprobarlo al iniciar. */ }
+    }
+    void revisar()
+    const timer = window.setInterval(revisar, 30000)
+    return () => { activo = false; window.clearInterval(timer) }
+  }, [esEscritorio])
   const recRef = useRef<MediaRecorder | null>(null)
   const txEstadoRef = useRef(txEstado)
   useEffect(() => { txEstadoRef.current = txEstado }, [txEstado])
@@ -1435,6 +1456,7 @@ export default function EnVivoPage() {
       { nombre: "Destino", ok: urls.length > 0, critico: true, detalle: urls.length ? `${urls.length} destino${urls.length > 1 ? "s" : ""} configurado${urls.length > 1 ? "s" : ""}` : "Activa una plataforma y pega su clave o URL" },
       { nombre: "Conexión a internet", ok: navigator.onLine, critico: true, detalle: navigator.onLine ? "El equipo informa conexión" : "Windows informa que estás sin conexión" },
       { nombre: "Grabación de respaldo", ok: grabar, critico: false, detalle: grabar ? "Se guardará una copia local" : "Recomendado si cae internet" },
+      { nombre: "Espacio para grabar", ok: !grabar || espacioGrabacion?.puedeGrabar !== false, critico: grabar && espacioGrabacion?.nivel === "bloqueado", detalle: !grabar ? "Grabación desactivada" : espacioGrabacion?.detalle || "Se comprobará nuevamente al comenzar" },
     ]
   }
 

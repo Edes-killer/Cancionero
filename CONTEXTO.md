@@ -398,6 +398,7 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - Modelos compartidos de canción, partes, fondos e ítems de culto extraídos a `lib/modelosCulto.ts` para reducir duplicación y reemplazar `any` progresivamente.
 - Actualizador OTA, tema visual, recorridos, afinador, metrónomo, caché, registro de errores y cliente Supabase pasan lint estricto sin desactivar reglas.
 - La limpieza conserva el comportamiento: build de producción y suite automatizada aprobados después de la refactorización.
+- El preflight de Transmisión mide el espacio real de la carpeta de grabaciones cada 30 segundos. Bloquea nuevas grabaciones bajo 1 GB y advierte bajo 8 GB, volviendo a comprobar justo antes de abrir el archivo.
 
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).

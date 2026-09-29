@@ -18,6 +18,7 @@ const { spawn } = require("child_process")
 const SELAH_VERSION = require("../package.json").version
 const { DiagnosticoTransmision, ocultarDestinos } = require("./diagnostico-transmision")
 const { escribirFragmento } = require("./escritura-transmision")
+const { evaluarEspacioGrabacion } = require("./espacio-grabacion")
 
 // ── Transmisión en vivo (Incremento 2): canvas+audio (webm) → ffmpeg → RTMP ──
 // ffmpeg va empaquetado (ffmpeg-static). En la app empaquetada el binario se
@@ -49,6 +50,17 @@ function carpetaGrabaciones() {
   const dir = path.join(base, "Selah Live")
   try { fs.mkdirSync(dir, { recursive: true }) } catch {}
   return dir
+}
+
+function estadoEspacioGrabacion() {
+  const carpeta = carpetaGrabaciones()
+  try {
+    const info = fs.statfsSync(carpeta)
+    const libresBytes = Number(info.bavail) * Number(info.bsize)
+    return { ok: true, carpeta, ...evaluarEspacioGrabacion(libresBytes) }
+  } catch (e) {
+    return { ok: false, carpeta, ...evaluarEspacioGrabacion(Number.NaN), error: e.message || String(e) }
+  }
 }
 
 // Parsea la línea de estadísticas de ffmpeg (-stats) para el panel de salud.
@@ -252,6 +264,7 @@ function registrarIPCTransmision() {
 
   // ── Grabación local (respaldo) ────────────────────────────────────────────
   let grabUltimosBytes = 0, grabUltimoAvance = 0
+  ipcMain.handle("grabacion:espacio", () => estadoEspacioGrabacion())
   ipcMain.handle("grabacion:estado", () => {
     if (!grabStream) return { estado: "detenida" }
     if (grabStream.errored || grabStream.destroyed) return { estado: "error" }
@@ -270,6 +283,8 @@ function registrarIPCTransmision() {
   // Abre el archivo del culto y empieza a recibir trozos (los mismos del stream).
   ipcMain.handle("grabacion:iniciar", async (_e, { nombre } = {}) => {
     try {
+      const espacio = estadoEspacioGrabacion()
+      if (!espacio.puedeGrabar) return { ok: false, error: espacio.detalle, espacio }
       if (grabStream) { try { grabStream.end() } catch {} grabStream = null }
       grabSegs = []
       const limpio = String(nombre || "Culto").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 40) || "Culto"

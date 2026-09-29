@@ -74,8 +74,12 @@ Referencias oficiales: [Preview y ciclo de vida](https://developer.android.com/m
 
 ## 4. Continuidad del culto — pendiente de ampliación y pruebas
 
-Recuperación por destino, alternativa cuando se pierde una cámara, grabación local recuperable
-tras cierre inesperado y detección de poco espacio. Probar cortes provocados de red y fuentes.
+Recuperación por destino, alternativa cuando se pierde una cámara y grabación local recuperable
+tras cierre inesperado. Probar cortes provocados de red y fuentes.
+
+Detección de poco espacio implementada: el escritorio consulta el volumen real de la carpeta
+de grabaciones, muestra el resultado en el preflight, advierte bajo 8 GB y bloquea el inicio
+bajo 1 GB. La comprobación se repite al abrir el archivo para evitar depender de un dato antiguo.
 
 Primera entrega: compositor vigila cada cámara local/remota por pista y contador de cuadros.
 Pista no disponible se oculta inmediatamente; tres segundos sin nuevos cuadros activan fondo

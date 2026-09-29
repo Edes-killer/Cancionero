@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld("transmision", {
   abortarAtasco: (sesionId, motivo) => ipcRenderer.invoke("transmision:abortar-atasco", sesionId, motivo),
   // Grabación local (respaldo del culto)
   iniciarGrabacion: (opts) => ipcRenderer.invoke("grabacion:iniciar", opts),
+  espacioGrabacion: () => ipcRenderer.invoke("grabacion:espacio"),
   estadoGrabacion: () => ipcRenderer.invoke("grabacion:estado"),
   detenerGrabacion: () => ipcRenderer.invoke("grabacion:detener"),
   nuevoSegmentoGrabacion: () => ipcRenderer.invoke("grabacion:nuevoSegmento"),
