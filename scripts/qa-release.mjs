@@ -24,9 +24,19 @@ const comprobaciones = [
     args: [npmCli, "run", "build"],
   },
   {
+    nombre: "Lint de transmisión, cámara y conexiones críticas",
+    comando: process.execPath,
+    args: [npmCli, "run", "lint:critico"],
+  },
+  {
     nombre: "Dependencias de producción",
     comando: process.execPath,
-    args: [npmCli, "audit", "--omit=dev", "--audit-level=high"],
+    args: [npmCli, "audit", "--omit=dev", "--audit-level=moderate"],
+  },
+  {
+    nombre: "Herramientas de compilación sin vulnerabilidades altas",
+    comando: process.execPath,
+    args: [npmCli, "audit", "--audit-level=high"],
   },
   {
     nombre: "Sintaxis del proceso principal Electron",
@@ -42,6 +52,11 @@ const comprobaciones = [
     nombre: "Sintaxis de seguridad Electron",
     comando: process.execPath,
     args: ["--check", "electron/security.js"],
+  },
+  {
+    nombre: "Sintaxis de recuperación de grabaciones",
+    comando: process.execPath,
+    args: ["--check", "electron/grabaciones-pendientes.js"],
   },
 ]
 
