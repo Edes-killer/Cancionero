@@ -1,7 +1,9 @@
 import { supabase } from "@/lib/supabase"
 import { conTimeout } from "@/lib/timeout"
+import type { AuthError, Session } from "@supabase/supabase-js"
 
 const KEY_IGLESIA_ACTIVA = "cancionero_iglesia_activa_id"
+interface RelacionIglesia { iglesia_id: string }
 
 // ── Guardar iglesia activa en localStorage ────────────────────────────────────
 export const setIglesiaActivaId = (iglesiaId: string) => {
@@ -64,7 +66,7 @@ export const getIglesiaId = async (): Promise<string | null> => {
       // aca para siempre (bloquearia control/canciones/proyectar enteros).
       // "timedOut" marca el caso ambiguo (no sabemos si hay sesion o no)
       // para distinguirlo de un "no hay sesion" confirmado de verdad.
-      const resultado = await Promise.race<{ session: any; error: any; timedOut: boolean }>([
+      const resultado = await Promise.race<{ session: Session | null; error: AuthError | null; timedOut: boolean }>([
         supabase.auth.getSession().then(r => ({ session: r.data.session, error: r.error, timedOut: false })),
         new Promise(resolve =>
           setTimeout(() => resolve({ session: null, error: null, timedOut: true }), 4000)
@@ -142,7 +144,7 @@ const _fetchIglesiaDesdeAuth = async (): Promise<string | null> => {
     return null
   }
 
-  const relaciones = data || []
+  const relaciones = (data || []) as RelacionIglesia[]
 
   if (relaciones.length === 0) {
     console.warn("⚠️ getIglesiaId: el usuario no tiene iglesias asociadas")
@@ -150,7 +152,7 @@ const _fetchIglesiaDesdeAuth = async (): Promise<string | null> => {
   }
 
   const idsPermitidos: string[] = relaciones
-    .map((r: any) => r.iglesia_id)
+    .map(r => r.iglesia_id)
     .filter(Boolean)
 
   const guardada = typeof window !== "undefined"
