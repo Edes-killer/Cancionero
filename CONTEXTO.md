@@ -411,6 +411,7 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - Proyectar quedó incluido en el mismo gate: eventos, fondos, Biblia, precarga y sockets tienen tipos explícitos; la cuenta regresiva dejó de calcular tiempo impuro durante render y se actualiza mediante estado.
 - Login, autorización, Navbar y aviso APK se sumaron al gate: se tiparon puentes de Electron/Capacitor, respuesta de versiones y cambios de sesión, manteniendo las restricciones por rol.
 - El contexto global usa ahora los modelos compartidos de canción y el tipo real de sesión de Supabase; caché, paginación y registro global de errores quedaron sin `any`.
+- Inicio quedó tipado de extremo a extremo: selector de iglesias, estadísticas, accesos por rol y detección de APK forman parte del lint crítico y compilan sin excepciones silenciosas.
 
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).

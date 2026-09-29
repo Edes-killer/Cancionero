@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
@@ -26,6 +26,18 @@ const f: React.CSSProperties = { fontFamily: "'Segoe UI', system-ui, sans-serif"
 
 const Divider = () => <div style={{ height:1, background:"rgba(255,255,255,0.04)", margin:"0 -16px" }} />
 
+type VentanaApp = Window & { Capacitor?: object; electron?: object }
+interface IglesiaUsuario { iglesia_id: string; nombre: string }
+interface CultoReciente { id: string; nombre?: string; fecha?: string }
+interface CancionResumen { id: string; titulo: string; tono?: string; categoria?: string; fecha_creacion?: string }
+interface CancionTop { titulo: string; tono: string; total: number }
+interface FilaIglesia { id: string; nombre: string }
+interface FilaRelacion { iglesia_id: string | null }
+interface FilaAcorde { cancion_id: string | null }
+interface FilaHistorial { cancion_id?: string | null; titulo?: string | null; tono?: string | null }
+interface FilaCategoria { categoria?: string | null }
+interface AccesoRapido { icon: string; label: string; sub: string; border: string; bg: string; ibg: string; action: () => void; soloLider?: boolean; soloAdmin?: boolean; soloApp?: boolean }
+
 export default function InicioPage() {
   const router = useRouter()
   const { pinSala, plan, sinConexion } = useApp()
@@ -36,18 +48,18 @@ export default function InicioPage() {
   const [localidad,       setLocalidad]       = useState("")
   const [logoUrl,         setLogoUrl]         = useState("")
   const [iglesiaActivaId, setIglesiaActivaIdState] = useState("")
-  const [iglesiasUsuario, setIglesiasUsuario] = useState<any[]>([])
+  const [iglesiasUsuario, setIglesiasUsuario] = useState<IglesiaUsuario[]>([])
 
   const [totalCanciones,       setTotalCanciones]       = useState(0)
   const [totalConAcordes,      setTotalConAcordes]      = useState(0)
   const [totalListas,          setTotalListas]          = useState(0)
   const [totalSinTono,         setTotalSinTono]         = useState(0)
 
-  const [cultosRecientes,      setCultosRecientes]      = useState<any[]>([])
-  const [topCancionesMes,      setTopCancionesMes]      = useState<any[]>([])
+  const [cultosRecientes,      setCultosRecientes]      = useState<CultoReciente[]>([])
+  const [topCancionesMes,      setTopCancionesMes]      = useState<CancionTop[]>([])
   const [totalProyeccionesMes, setTotalProyeccionesMes] = useState(0)
 
-  const [cancionesRecientes,   setCancionesRecientes]   = useState<any[]>([])
+  const [cancionesRecientes,   setCancionesRecientes]   = useState<CancionResumen[]>([])
   const [categorias,           setCategorias]           = useState<{nombre:string,total:number}[]>([])
 
   const [servidorActivo, setServidorActivo] = useState<boolean | null>(null)
@@ -64,7 +76,10 @@ export default function InicioPage() {
   // celular manda su video al PC. En Electron/web no va. Estado por efecto para
   // no romper la hidratación (server y primer render cliente = false).
   const [esApp, setEsApp] = useState(false)
-  useEffect(() => { setEsApp(typeof window !== "undefined" && !!(window as any).Capacitor) }, [])
+  useEffect(() => {
+    const id = setTimeout(() => setEsApp(Boolean((window as VentanaApp).Capacitor)), 0)
+    return () => clearTimeout(id)
+  }, [])
 
   // ✅ El sitio se compila UNA sola vez (npm run build) y esa fecha queda
   // congelada en el HTML estático desde ese momento. Calcular new Date()
@@ -95,10 +110,9 @@ export default function InicioPage() {
   useEffect(() => {
     let cancelado = false
     let enCurso = false
-    let fallos = 0
     let descubriendo = false
     let ultimoDescubrimiento = 0
-    const esApk = !!(window as any).Capacitor
+    const esApk = Boolean((window as VentanaApp).Capacitor)
     const descubrir = async () => {
       if (cancelado || descubriendo) return false
       descubriendo = true
@@ -110,7 +124,6 @@ export default function InicioPage() {
           localStorage.setItem("servidor_ip", encontrada)
           setServidorIp(encontrada)
           setServidorActivo(true)
-          fallos = 0
           return true
         }
         return false
@@ -128,14 +141,12 @@ export default function InicioPage() {
         const r = await fetch(`http://${ip}:4000/ping`, { signal: AbortSignal.timeout(2500), cache: "no-store" })
         const d = await r.json()
         if (r.ok && d?.ok === true && d?.app === "selah-live") {
-          fallos = 0
           if (!cancelado) { setServidorIp(ip); setServidorActivo(true) }
           return
         }
         throw new Error("ping sin ok")
       } catch {
         if (!cancelado) setServidorActivo(false)
-        fallos++
         if (!esApk || descubriendo || Date.now() - ultimoDescubrimiento < 60000) return
         await descubrir()
       } finally {
@@ -243,7 +254,7 @@ export default function InicioPage() {
           // En la web pública, un visitante sin sesión ve la landing de
           // marketing; en la app (Electron/APK) va directo al login.
           const esApp = typeof window !== "undefined" &&
-            (!!(window as any).Capacitor || !!(window as any).electron)
+            (Boolean((window as VentanaApp).Capacitor) || Boolean((window as VentanaApp).electron))
           navegarSPA(router, esApp ? "/login" : "/bienvenido", { replace: true })
           return
         }
@@ -266,7 +277,7 @@ export default function InicioPage() {
         // ✅ .limit(1) evita PGRST116
         supabase.from("iglesias").select("nombre, logo_url, localidad").eq("id", iglesiaId).limit(1)
           .then(({ data: rows }) => {
-            const d = (rows as any[])?.[0]
+            const d = (rows as Array<{ nombre?: string; logo_url?: string; localidad?: string }>)?.[0]
             if (d) { setNombreIglesia(d.nombre || "Mi Iglesia"); setLogoUrl(d.logo_url || ""); setLocalidad(d.localidad || "") }
           })
 
@@ -291,7 +302,9 @@ export default function InicioPage() {
           console.warn("⚠️ Inicio: las estadísticas no respondieron a tiempo -- se muestra el dashboard sin ellas")
           return
         }
-        const idsRel = (resultadoRelaciones.data || []).filter((r:any) => r.iglesia_id).map((r:any) => r.iglesia_id)
+        const idsRel = ((resultadoRelaciones.data || []) as FilaRelacion[])
+          .map(r => r.iglesia_id)
+          .filter((id): id is string => Boolean(id))
 
         const resultadoStats = await conTimeout(
           Promise.all([
@@ -328,28 +341,29 @@ export default function InicioPage() {
           iglesiasnombresRes,
         ] = resultadoStats
 
-        const nombresMap = new Map((iglesiasnombresRes.data || []).map((ig:any) => [ig.id, ig.nombre]))
+        const nombresMap = new Map(((iglesiasnombresRes.data || []) as FilaIglesia[]).map(ig => [ig.id, ig.nombre]))
         setIglesiasUsuario(Array.from(new Set(idsRel)).map(id => ({ iglesia_id:id, nombre: nombresMap.get(id) || id })))
 
         setTotalCanciones(cancionesCountRes.count || 0)
         setTotalSinTono(sinTonoRes.count || 0)
         setTotalListas(listasRes.count || 0)
-        setTotalConAcordes(Array.from(new Set((acordesRes.data || []).map((p:any) => p.cancion_id).filter(Boolean))).length)
-        setCultosRecientes(cultosRes.data || [])
+        setTotalConAcordes(new Set(((acordesRes.data || []) as FilaAcorde[]).map(p => p.cancion_id).filter(Boolean)).size)
+        setCultosRecientes((cultosRes.data || []) as CultoReciente[])
         setTotalProyeccionesMes(historialRes.data?.length || 0)
 
-        const conteo = new Map<string,any>()
-        ;(historialRes.data || []).forEach((item:any) => {
+        const conteo = new Map<string, CancionTop>()
+        ;((historialRes.data || []) as FilaHistorial[]).forEach(item => {
           const key = item.cancion_id || item.titulo
+          if (!key) return
           if (!conteo.has(key)) conteo.set(key, { titulo: item.titulo || "Sin título", tono: item.tono || "", total:0 })
-          conteo.get(key).total += 1
+          conteo.get(key)!.total += 1
         })
         setTopCancionesMes(Array.from(conteo.values()).sort((a,b) => b.total - a.total).slice(0,5))
 
-        setCancionesRecientes(cancionesRecientesRes.data || [])
+        setCancionesRecientes((cancionesRecientesRes.data || []) as CancionResumen[])
 
         const catConteo = new Map<string,number>()
-        ;(categoriasRes.data || []).forEach((r:any) => {
+        ;((categoriasRes.data || []) as FilaCategoria[]).forEach(r => {
           if (!r.categoria) return
           catConteo.set(r.categoria, (catConteo.get(r.categoria) || 0) + 1)
         })
@@ -401,7 +415,11 @@ export default function InicioPage() {
 
           <div style={{ display:"flex", alignItems:"center", gap:16, position:"relative" }}>
             <div style={{ width:72, height:72, borderRadius:20, flexShrink:0, background: logoUrl?"transparent":"linear-gradient(135deg,rgba(37,99,235,0.3),rgba(99,102,241,0.2))", border:"1px solid rgba(255,255,255,0.1)", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", boxShadow:"0 8px 32px rgba(0,0,0,0.3)" }}>
-              {logoUrl ? <img src={logoUrl} alt="Logo iglesia" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <span style={{ fontSize:32 }}>⛪</span>}
+              {logoUrl ? (
+                // La URL del logo proviene de Supabase y se conoce únicamente en tiempo de ejecución.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoUrl} alt="Logo iglesia" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+              ) : <span style={{ fontSize:32 }}>⛪</span>}
             </div>
             <div style={{ flex:1, minWidth:0 }}>
               {esDomingo && <div style={{ fontSize:11, color:"#fbbf24", fontWeight:700, letterSpacing:"0.06em", marginBottom:4 }}>☀️ HOY ES DOMINGO</div>}
@@ -412,7 +430,7 @@ export default function InicioPage() {
               {iglesiasUsuario.length > 1 && (
                 <select value={iglesiaActivaId} onChange={e => { setIglesiaActivaId(e.target.value); setIglesiaActivaIdState(e.target.value); window.location.reload() }}
                   style={{ marginTop:8, padding:"5px 10px", borderRadius:8, border:"1px solid rgba(255,255,255,0.15)", background:"#1e293b", color:"white", fontSize:12, outline:"none", cursor:"pointer" }}>
-                  {iglesiasUsuario.map((rel:any) => (
+                  {iglesiasUsuario.map(rel => (
                     <option key={rel.iglesia_id} value={rel.iglesia_id} style={{ background:"#1e293b", color:"white" }}>{rel.nombre}</option>
                   ))}
                 </select>
@@ -421,7 +439,7 @@ export default function InicioPage() {
           </div>
 
           <div style={{ marginTop:20, padding:"14px 16px", background:"rgba(255,255,255,0.03)", borderRadius:12, borderLeft:"3px solid rgba(99,102,241,0.5)" }}>
-            <div style={{ fontSize:13, lineHeight:1.6, color:"rgba(255,255,255,0.65)", fontStyle:"italic" }}>"{versiculo.texto}"</div>
+            <div style={{ fontSize:13, lineHeight:1.6, color:"rgba(255,255,255,0.65)", fontStyle:"italic" }}>&ldquo;{versiculo.texto}&rdquo;</div>
             <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", marginTop:6, fontWeight:600 }}>{versiculo.cita}</div>
           </div>
         </div>
@@ -442,11 +460,11 @@ export default function InicioPage() {
 
           {/* ══ ACCESOS RÁPIDOS ════════════════════════════════════════════ */}
           <div data-tour="inicio-modulos" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-            {[
+            {([
               { icon:"🎵", label:"Canciones",       sub:"Gestionar repertorio",           border:"rgba(124,58,237,0.3)",  bg:"rgba(124,58,237,0.1)",  ibg:"rgba(124,58,237,0.25)",  action:() => navegarSPA(router, "/canciones") },
               { icon:"🖥️", label:"Proyector",       sub:"Abrir pantalla de proyección",   border:"rgba(14,116,144,0.3)", bg:"rgba(14,116,144,0.1)",  ibg:"rgba(14,116,144,0.25)",  action:() => window.open(`${window.location.origin}/proyectar`, "_blank") },
               { icon:"🎸", label:"Vista Músicos",   sub:"Letras y acordes en tiempo real", border:"rgba(21,128,61,0.3)",  bg:"rgba(21,128,61,0.1)",   ibg:"rgba(21,128,61,0.25)",   action:() => {
-                const esCapacitor = !!(window as any).Capacitor
+                const esCapacitor = Boolean((window as VentanaApp).Capacitor)
                 if (esCapacitor) navegarSPA(router, "/musicos")
                 else window.open(`${window.location.origin}/musicos`, "_blank")
               }},
@@ -454,7 +472,7 @@ export default function InicioPage() {
               { icon:"🎥", label:"Transmitir",       sub:plan === "premium" ? "Consola de transmisión en vivo" : "Transmisión en vivo · Premium", border:"rgba(245,158,11,0.3)", bg:"rgba(245,158,11,0.08)", ibg:"rgba(245,158,11,0.2)", action:() => { if (esApp) navegarSPA(router, "/en-vivo"); else window.open(`${window.location.origin}/en-vivo`, "selah-transmision") }, soloLider:true },
               { icon:"📷", label:"Cámara",           sub:"Este celular como cámara",       border:"rgba(37,99,235,0.3)", bg:"rgba(37,99,235,0.08)", ibg:"rgba(37,99,235,0.2)",  action:() => navegarSPA(router, "/camara"), soloLider:true, soloApp:true },
               { icon:"⚙️", label:"Configuración",  sub:"Iglesia, servidor y ajustes",    border:"rgba(255,255,255,0.08)", bg:"rgba(255,255,255,0.04)", ibg:"rgba(255,255,255,0.07)", action:() => navegarSPA(router, "/configuracion"), soloAdmin:true },
-            ].filter(t => (!(t as any).soloAdmin || rol === null || rol === "admin") && (!(t as any).soloLider || rol === null || rol === "admin" || rol === "lider") && (!(t as any).soloApp || esApp)).map(({ icon, label, sub, border, bg, ibg, action }) => (
+            ] satisfies AccesoRapido[]).filter(t => (!t.soloAdmin || rol === null || rol === "admin") && (!t.soloLider || rol === null || rol === "admin" || rol === "lider") && (!t.soloApp || esApp)).map(({ icon, label, sub, border, bg, ibg, action }) => (
               <button key={label} onClick={action} style={{ padding:"16px 14px", borderRadius:14, border:`1px solid ${border}`, background:bg, color:"white", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"flex-start", gap:8 }}>
                 <div style={{ width:40, height:40, borderRadius:11, background:ibg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>{icon}</div>
                 <div>
