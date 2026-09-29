@@ -34,8 +34,8 @@ electron-builder que dice “signing with signtool.exe” no demuestra por sí s
 
 - `npm.cmd run qa:release`: 12/12.
 - `npm.cmd run lint`: cero hallazgos.
-- `npm.cmd run qa:eficiencia -- 10`: ambos codificadores completaron 300/300 cuadros, sin cola
-  ni avisos de tiempo; `h264_mf` quedó como opción recomendada en Windows.
+- `npm.cmd run qa:eficiencia -- 30`: ambos codificadores completaron 900/900 cuadros a 31 fps,
+  velocidad 1.03x, sin cola ni avisos de tiempo; `h264_mf` quedó recomendado en Windows.
 - `npm.cmd run qa:artefactos`: comprueba versión, OTA, firma/certificado de APK, hashes,
   `latest.yml` y estado Authenticode.
 - `npm.cmd run qa:candidata`: ejecuta el gate completo del código y después verifica los artefactos.
