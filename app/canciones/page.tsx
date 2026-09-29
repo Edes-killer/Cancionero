@@ -3,10 +3,9 @@ import OnboardingTour from "@/components/OnboardingTour"
 import { getTourCanciones } from "@/lib/tours"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
 import { io } from "socket.io-client"
 import { supabase } from "../../lib/supabase"
-import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "../../lib/cache"
+import { marcarSupabaseCaido, marcarSupabaseOk } from "../../lib/cache"
 import { getIglesiaId, getRolEnIglesia } from "../../lib/getIglesia"
 import { getSocketUrl } from "@/lib/servidor"
 import { useApp, ocultarGlobalesConCopia } from "@/context/AppContext"
@@ -34,7 +33,33 @@ interface Cancion {
   numero?: number
   iglesia_id?: string
   fecha_creacion?: string
+  texto_busqueda?: string
 }
+
+type OrdenCanciones = "numero" | "az" | "za" | "reciente" | "antigua"
+
+interface FilaCancionId { cancion_id: string | null }
+
+interface PartePpt {
+  tipo: string
+  texto: string
+}
+
+interface CancionPpt {
+  titulo: string
+  partes: PartePpt[]
+  archivo: string
+  formatoDetectado: "con-titulo" | "sin-titulo"
+  _slides: string[]
+  tono: string
+  categoria: string
+  seleccionado: boolean
+  duplicado: boolean
+  expandido: boolean
+}
+
+const mensajeDeError = (error: unknown) =>
+  error instanceof Error ? error.message : "error inesperado"
 
 // ─── CONSTANTES ──────────────────────────────────────────────────────────────
 
@@ -115,12 +140,6 @@ const VistaPrevia = ({ texto, formato }: { texto: string; formato: string }) => 
     return (
       <div style={{ fontFamily: "'Courier New', monospace", fontSize: "14px", lineHeight: 1.9 }}>
         {lineas.map((linea, li) => {
-          const partes: React.ReactNode[] = []
-          const regex = /\[([^\]]+)\]([^\[]*)/g
-          let match
-          let lastIndex = 0
-          let hayAcordes = false
-
           const textoSinAcordes = linea.replace(/\[([^\]]+)\]/g, "")
           const soloAcordes: string[] = []
           let m2
@@ -211,7 +230,6 @@ const VistaPrevia = ({ texto, formato }: { texto: string; formato: string }) => 
 export default function CancionesPage() {
   const { iglesiaId: iglesiaIdCtx, canciones: cancionesCtx, plan,
         actualizarCancion: actualizarCtx, eliminarCancionDelCache, sinConexion } = useApp()
-  const [socket, setSocket] = useState<any>(null)
   const [socketConectado, setSocketConectado] = useState<boolean | null>(null)
   const [canciones, setCanciones] = useState<Cancion[]>([])
   const [idsConAcordes, setIdsConAcordes] = useState<string[]>([])
@@ -294,10 +312,10 @@ export default function CancionesPage() {
   // Lista
   const [busqueda, setBusqueda] = useState("")
   const [busquedaDebounced, setBusquedaDebounced] = useState("")
-  const busqTimerRef = useRef<any>(null)
+  const busqTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const handleBusqueda = (v: string) => {
     setBusqueda(v)
-    clearTimeout(busqTimerRef.current)
+    if (busqTimerRef.current) clearTimeout(busqTimerRef.current)
     if (!v) {
       setBusquedaDebounced("")
     } else {
@@ -307,10 +325,13 @@ export default function CancionesPage() {
   const [filtroTono, setFiltroTono] = useState("")
   const [filtroCategoria, setFiltroCategoria] = useState("")
   const [filtroConAcordes, setFiltroConAcordes] = useState(false)
-  const [ordenar, setOrdenar] = useState<"numero" | "az" | "za" | "reciente" | "antigua">(() =>
-    (typeof window !== "undefined" ? localStorage.getItem("canciones-orden") || "numero" : "numero") as any
-  )
-  const cambiarOrden = (v: "numero" | "az" | "za" | "reciente" | "antigua") => {
+  const [ordenar, setOrdenar] = useState<OrdenCanciones>(() => {
+    const guardado = typeof window !== "undefined" ? localStorage.getItem("canciones-orden") : null
+    return guardado && ["numero", "az", "za", "reciente", "antigua"].includes(guardado)
+      ? guardado as OrdenCanciones
+      : "numero"
+  })
+  const cambiarOrden = (v: OrdenCanciones) => {
     setOrdenar(v); localStorage.setItem("canciones-orden", v)
   }
   const [filtroSinTono,    setFiltroSinTono]    = useState(false)
@@ -332,7 +353,7 @@ export default function CancionesPage() {
   // ✅ Selección múltiple dentro de la papelera
   const [papeleraSel, setPapeleraSel] = useState<Set<string>>(new Set())
   // ── Importador PPT ───────────────────────────────────────────────────────
-  const [pptParsed, setPptParsed] = useState<any[]>([])
+  const [pptParsed, setPptParsed] = useState<CancionPpt[]>([])
   const [convirtiendoPpt, setConvirtiendoPpt] = useState<string | null>(null)  // nombre del archivo que se está convirtiendo
   const [importando, setImportando] = useState(false)
   const [importProgreso, setImportProgreso] = useState(0)
@@ -342,7 +363,7 @@ export default function CancionesPage() {
 
   const editorRef = useRef<HTMLDivElement>(null)
   // ✅ Cache local de partes para no repetir queries al editor
-  const partesCacheRef = useRef<Map<string, any[]>>(new Map())
+  const partesCacheRef = useRef<Map<string, Parte[]>>(new Map())
   // ✅ Una vez que la lista local se pobló (por contexto o por fetch), NO
   // volver a sembrarla desde el contexto en cada cambio de cancionesCtx.length.
   // Antes el efecto de init re-sembraba desde el contexto cada vez que este
@@ -395,10 +416,9 @@ export default function CancionesPage() {
       setSocketConectado(false)
       flash("🔒 " + (data?.mensaje || "PIN de sala incorrecto. Verifícalo en Configuración."))
     })
-    s.on("cancion-activa", (data: any) => setActivaId(data.id))
-    setSocket(s)
+    s.on("cancion-activa", (data: { id?: string | null }) => setActivaId(data.id || null))
     return () => { s.disconnect() }
-  }, [])
+  }, [iglesiaIdCtx])
 
   // ── Carga inicial ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -423,7 +443,11 @@ export default function CancionesPage() {
         const acordesPromise = supabase.from("partes_cancion").select("cancion_id").eq("tiene_acordes", true)
           .then(({ data }) => {
             if (!activo) return
-            const ids = Array.from(new Set((data || []).map((p: any) => p.cancion_id).filter(Boolean)))
+            const ids = Array.from(new Set(
+              ((data || []) as FilaCancionId[])
+                .map(p => p.cancion_id)
+                .filter((id): id is string => Boolean(id))
+            ))
             setIdsConAcordes(ids)
           })
         if (filtroConAcordes) await acordesPromise
@@ -436,7 +460,11 @@ export default function CancionesPage() {
     }
     init()
     return () => { activo = false }
-  }, [iglesiaIdCtx, cancionesCtx.length])
+  // La lista se siembra una sola vez y después queda como fuente local autoritativa.
+  // Depender del arreglo completo o de cargarCanciones reiniciaría esta carga en cada
+  // mutación y podría reponer una canción recién eliminada (ver listaPobladaRef).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [iglesiaIdCtx, cancionesCtx.length, filtroConAcordes])
 
   const cargarCanciones = async (id?: string | null) => {
     const igId = id ?? iglesiaId
@@ -448,7 +476,7 @@ export default function CancionesPage() {
     // hacen AppContext.cargarCanciones y control/page.tsx._fetchCanciones,
     // si no la lista queda incompleta (se ve como "Canciones (1000)" fijo).
     const PAGINA = 1000
-    let todas: any[] = []
+    let todas: Cancion[] = []
     let desde = 0
     let continuar = true
     while (continuar) {
@@ -460,7 +488,7 @@ export default function CancionesPage() {
         .range(desde, desde + PAGINA - 1)
       if (error) { console.error("❌ Error fetch canciones:", error.message); marcarSupabaseCaido(); break }
       if (!data || data.length === 0) break
-      todas = todas.concat(data)
+      todas = todas.concat(data as Cancion[])
       continuar = data.length === PAGINA
       desde += PAGINA
     }
@@ -479,7 +507,11 @@ export default function CancionesPage() {
       .eq("tiene_acordes", true)
 
     const ids = Array.from(
-      new Set((conAcordes || []).map((p: any) => p.cancion_id).filter(Boolean))
+      new Set(
+        ((conAcordes || []) as FilaCancionId[])
+          .map(p => p.cancion_id)
+          .filter((id): id is string => Boolean(id))
+      )
     )
     setIdsConAcordes(ids)
   }
@@ -512,7 +544,7 @@ export default function CancionesPage() {
   }
 
   // ── Parsear PPTX ────────────────────────────────────────────────────────
-  const parsearPPTX = async (file: File): Promise<any | null> => {
+  const parsearPPTX = async (file: File): Promise<Omit<CancionPpt, "tono" | "categoria" | "seleccionado" | "duplicado" | "expandido"> | null> => {
     try {
       // ✅ Detectar formato .ppt antiguo (binario, no ZIP)
       const header = await file.slice(0, 8).arrayBuffer()
@@ -646,7 +678,7 @@ export default function CancionesPage() {
   }
 
   const procesarArchivos = async (files: FileList, agregar = false) => {
-    const resultados: any[] = []
+    const resultados: CancionPpt[] = []
     for (const file of Array.from(files)) {
       if (!file.name.match(/\.pptx?$/i)) continue
       const cancion = await parsearPPTX(file)
@@ -781,7 +813,7 @@ export default function CancionesPage() {
         // ✅ texto_letra faltaba acá (sí está en el guardado manual); si la
         // columna es NOT NULL, el insert de partes fallaba y la canción quedaba
         // sin letra.
-        const partesInsert = c.partes.map((p: any, idx: number) => ({
+        const partesInsert = c.partes.map((p, idx) => ({
           cancion_id: data.id, tipo: p.tipo, texto: p.texto, texto_letra: p.texto,
           texto_acordes: null, tiene_acordes: false, orden: idx
         }))
@@ -789,8 +821,8 @@ export default function CancionesPage() {
         if (errorPartes) { if (!primerError) primerError = errorPartes.message; continue }
         ok++
         if (siguienteNumero != null) siguienteNumero++  // ✅ siguiente canción toma el número siguiente
-      } catch (e: any) {
-        if (!primerError) primerError = e?.message || "error inesperado"
+      } catch (error: unknown) {
+        if (!primerError) primerError = mensajeDeError(error)
       }
     }
     setImportProgreso(100)
@@ -880,7 +912,7 @@ export default function CancionesPage() {
   const actualizarParte = (i: number, campo: keyof Parte, valor: string) => {
     setPartes(prev => {
       const nuevas = [...prev]
-      ;(nuevas[i] as any)[campo] = valor
+      nuevas[i] = { ...nuevas[i], [campo]: valor } as Parte
       return nuevas
     })
   }
@@ -991,20 +1023,20 @@ export default function CancionesPage() {
 
   const editarCancion = async (c: Cancion) => {
     // ✅ Usar cache si existe
-    let data: any[]
+    let data: Parte[]
     if (partesCacheRef.current.has(c.id)) {
       data = partesCacheRef.current.get(c.id)!
     } else {
       const { data: fetched } = await supabase
         .from("partes_cancion").select("*").eq("cancion_id", c.id).order("orden")
-      data = fetched || []
+      data = (fetched || []) as Parte[]
       partesCacheRef.current.set(c.id, data)
     }
 
     setEditandoId(c.id)
     setEditandoEsGlobal(!c.iglesia_id)  // ✅ null/undefined = himno global
     setTitulo(c.titulo || "")
-    setAutor((c as any).autor || "")
+    setAutor(c.autor || "")
     setTono(c.tono || "")
     setNumero(c.numero ? String(c.numero) : "")
 
@@ -1018,7 +1050,7 @@ export default function CancionesPage() {
     }
 
     setPartes(
-      (data || []).map((p: any) => ({
+      (data || []).map(p => ({
         ...p,
         formato: inferirFormato(p.texto || "")
       }))
@@ -1047,7 +1079,7 @@ export default function CancionesPage() {
   // global puede estar oculto justamente por esta copia y no estar en la lista.
   const tieneGlobalDetras = async (id: string): Promise<boolean> => {
     const c = canciones.find(x => x.id === id)
-    if (!c || !(c as any).iglesia_id || c.numero == null) return false
+    if (!c || !c.iglesia_id || c.numero == null) return false
     const { data } = await supabase
       .from("canciones")
       .select("id")
@@ -1174,7 +1206,12 @@ export default function CancionesPage() {
 
   // ── Papelera: acciones múltiples ──────────────────────────────────────────
   const togglePapeleraSel = (id: string) => {
-    setPapeleraSel(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+    setPapeleraSel(prev => {
+      const seleccion = new Set(prev)
+      if (seleccion.has(id)) seleccion.delete(id)
+      else seleccion.add(id)
+      return seleccion
+    })
   }
   const restaurarSeleccionadas = async () => {
     const ids = Array.from(papeleraSel)
@@ -1243,9 +1280,9 @@ export default function CancionesPage() {
   // de la iglesia (con sus acordes).
   const cancionesDedup = useMemo(() => {
     const propios = new Set(
-      canciones.filter(c => (c as any).iglesia_id && c.numero != null).map(c => c.numero)
+      canciones.filter(c => c.iglesia_id && c.numero != null).map(c => c.numero)
     )
-    return canciones.filter(c => !(!(c as any).iglesia_id && c.numero != null && propios.has(c.numero)))
+    return canciones.filter(c => !(!c.iglesia_id && c.numero != null && propios.has(c.numero)))
   }, [canciones])
 
   const cancionesFiltradas = useMemo(() => {
@@ -1281,7 +1318,7 @@ export default function CancionesPage() {
       if (categoria.includes(q))  return { c, score: 30,  pass: true }
       // ✅ Buscar también en la letra (texto_busqueda) — antes no se buscaba
       // en el contenido, solo en título/número/categoría.
-      if (norm((c as any).texto_busqueda || "").includes(q)) return { c, score: 20, pass: true }
+      if (norm(c.texto_busqueda || "").includes(q)) return { c, score: 20, pass: true }
       return { c, score: 0, pass: false }
     })
     .filter(x => x.pass)
@@ -1289,7 +1326,7 @@ export default function CancionesPage() {
     .filter(x => !filtroCategoria || x.c.categoria === filtroCategoria)
     .filter(x => !filtroConAcordes || idsConAcordes.includes(x.c.id))
     .filter(x => !filtroSinTono   || !x.c.tono)
-    .filter(x => !filtroPropias   || !!(x.c as any).iglesia_id)
+    .filter(x => !filtroPropias   || !!x.c.iglesia_id)
 
     if (q) {
       return scored
@@ -1321,7 +1358,7 @@ export default function CancionesPage() {
     const q = busquedaDebounced.trim().toLowerCase()
     if (q.length < 2) return null
     if ((c.titulo || "").toLowerCase().includes(q)) return null // el match ya se ve en el título
-    const texto = (c as any).texto_busqueda || ""
+    const texto = c.texto_busqueda || ""
     const idx = texto.toLowerCase().indexOf(q)
     if (idx === -1) return null
     const ini = Math.max(0, idx - 30)
@@ -1403,13 +1440,6 @@ export default function CancionesPage() {
     background: "rgba(239,68,68,0.12)",
     color: "#fca5a5",
     border: "1px solid rgba(239,68,68,0.25)"
-  }
-
-  const btnSuccess: React.CSSProperties = {
-    ...btnBase,
-    background: "rgba(34,197,94,0.15)",
-    color: "#86efac",
-    border: "1px solid rgba(34,197,94,0.3)"
   }
 
   const labelStyle: React.CSSProperties = {
@@ -1498,7 +1528,7 @@ export default function CancionesPage() {
             <div>
               <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.2, display: "flex", alignItems: "center", gap: 6 }}>
                 Cancionero
-                {(socketConectado === false || (socketConectado === null && !!(window as any).Capacitor)) && (
+                {(socketConectado === false || (socketConectado === null && !!(window as Window & { Capacitor?: object }).Capacitor)) && (
                   <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 5,
                     background: "rgba(239,68,68,0.15)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.25)"
                   }}>● SIN CONEXIÓN</span>
@@ -1705,7 +1735,7 @@ export default function CancionesPage() {
               }}>
                 <span style={{ fontSize:18 }}>⏳</span>
                 <div style={{ fontSize:13, fontWeight:600 }}>
-                  Convirtiendo "{convirtiendoPpt}" con PowerPoint... esto puede tardar unos segundos
+                  Convirtiendo &ldquo;{convirtiendoPpt}&rdquo; con PowerPoint... esto puede tardar unos segundos
                 </div>
               </div>
             )}
@@ -1830,7 +1860,7 @@ export default function CancionesPage() {
                     {/* Partes — modo chips o edición expandida */}
                     {!c.expandido ? (
                       <div style={{ padding: "10px 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {c.partes.map((p: any, pi: number) => (
+                        {c.partes.map((p, pi) => (
                           <div key={pi} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: "6px 10px", fontSize: 12 }}>
                             <div style={{ fontWeight: 700, color: "#93c5fd", marginBottom: 2 }}>{p.tipo}</div>
                             <div style={{ color: colors.textMuted, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.texto.split("\n")[0]}</div>
@@ -1839,21 +1869,21 @@ export default function CancionesPage() {
                       </div>
                     ) : (
                       <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-                        {c.partes.map((p: any, pi: number) => (
+                        {c.partes.map((p, pi) => (
                           <div key={pi} style={{ background: "rgba(255,255,255,0.03)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.07)", padding: "10px 12px" }}>
                             <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
                               <select value={p.tipo}
-                                onChange={e => setPptParsed(prev => prev.map((x,i) => i===ci ? {...x, partes: x.partes.map((pp: any, pj: number) => pj===pi ? {...pp, tipo: e.target.value} : pp)} : x))}
+                                onChange={e => setPptParsed(prev => prev.map((x,i) => i===ci ? {...x, partes: x.partes.map((pp, pj) => pj===pi ? {...pp, tipo: e.target.value} : pp)} : x))}
                                 style={{ ...selectStyle, width: 130, fontSize: 12 }}>
                                 {["Verso 1","Verso 2","Verso 3","Verso 4","Coro","Puente","Estribillo","Intro","Final","Observación"].map(t => <option key={t} value={t}>{t}</option>)}
                               </select>
-                              <button onClick={() => setPptParsed(prev => prev.map((x,i) => i===ci ? {...x, partes: x.partes.filter((_: any, pj: number) => pj !== pi)} : x))}
+                              <button onClick={() => setPptParsed(prev => prev.map((x,i) => i===ci ? {...x, partes: x.partes.filter((_, pj) => pj !== pi)} : x))}
                                 style={{ marginLeft: "auto", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: "#fca5a5", borderRadius: 6, padding: "3px 8px", fontSize: 11, cursor: "pointer" }}>
                                 Eliminar
                               </button>
                             </div>
                             <textarea value={p.texto} rows={4}
-                              onChange={e => setPptParsed(prev => prev.map((x,i) => i===ci ? {...x, partes: x.partes.map((pp: any, pj: number) => pj===pi ? {...pp, texto: e.target.value} : pp)} : x))}
+                              onChange={e => setPptParsed(prev => prev.map((x,i) => i===ci ? {...x, partes: x.partes.map((pp, pj) => pj===pi ? {...pp, texto: e.target.value} : pp)} : x))}
                               style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "8px 10px", color: "white", fontSize: 13, fontFamily: "monospace", resize: "vertical", boxSizing: "border-box" }} />
                           </div>
                         ))}
@@ -2530,9 +2560,9 @@ export default function CancionesPage() {
                             🎸 Acordes
                           </span>
                         )}
-                        {(c as any).autor && (
+                        {c.autor && (
                           <span style={{ color: colors.textMuted, fontSize: 11 }}>
-                            {(c as any).autor}
+                            {c.autor}
                           </span>
                         )}
                       </div>
