@@ -1,16 +1,75 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import { io } from "socket.io-client"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { io, type Socket } from "socket.io-client"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId } from "../../lib/getIglesia"
 import { getSocketUrl } from "@/lib/servidor"
+
+const FUENTES: Record<string, string> = {
+  system: "system-ui, -apple-system, sans-serif",
+  arial: "Arial, Helvetica, sans-serif",
+  serif: "Georgia, 'Times New Roman', serif",
+  rounded: "'Trebuchet MS', Arial, sans-serif",
+  mono: "'Courier New', monospace",
+  cinzel: "'Cinzel', serif",
+  playfair: "'Playfair Display', serif",
+  raleway: "'Raleway', sans-serif",
+  lato: "'Lato', sans-serif",
+  oswald: "'Oswald', sans-serif",
+  merriw: "'Merriweather', serif",
+  ptserif: "'PT Serif', serif",
+  ubuntu: "'Ubuntu', sans-serif",
+}
+
+interface EstrellaSimple { x: number; y: number; r: number; phase: number }
+interface EstrellaGalaxia extends EstrellaSimple { vx: number; vy: number; speed: number }
+interface ParticulaPaz { x: number; y: number; vx: number; vy: number; size: number; alfa: number; phase: number; color: string }
+interface ParticulaLluvia extends Omit<ParticulaPaz, "color"> { color: number[]; tail: number }
+interface DatosCanvas { init?: boolean; stars?: unknown[]; particles?: unknown[] }
+
+interface ParteProyeccion { tipo?: string; texto?: string; texto_letra?: string }
+interface FondoProyeccion {
+  tipo?: string
+  url?: string
+  fondoCss?: string
+  oscuridad?: number
+  ajuste?: "cover" | "contain" | string
+  animacion?: string
+}
+interface BibliaProyeccion {
+  texto?: string
+  paginas?: string[]
+  referencia?: string
+  pagina?: number
+  iglesia?: string
+  logo_marca_url?: string
+  fondo?: FondoProyeccion | null
+}
+interface EstadoEspecial extends BibliaProyeccion {
+  tipo?: string
+  titulo?: string
+  subtitulo?: string
+  mensaje?: string
+  hasta?: string
+  url?: string
+}
+interface DatosProyeccion extends BibliaProyeccion {
+  url?: string
+  partes?: ParteProyeccion[]
+  index?: number
+  titulo?: string
+  tono?: string
+  video?: boolean
+}
+interface EstadoActual { tipo?: string; data?: DatosProyeccion & EstadoEspecial }
+interface EventoPuente { evento?: string; data?: unknown }
 
 // ── Componente fondos animados con Canvas ────────────────────────────────────
 function CanvasFondo({ animacion, oscuridad }: { animacion: string; oscuridad: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rafRef    = useRef<number>(0)
-  const dataRef   = useRef<any>({})
+  const dataRef   = useRef<DatosCanvas>({})
 
   useEffect(() => {
     dataRef.current = {}   // ← limpiar datos de la animación anterior
@@ -72,7 +131,7 @@ function CanvasFondo({ animacion, oscuridad }: { animacion: string; oscuridad: n
         })
         // Estrellas
         if (!d.stars) d.stars = Array.from({length:180}, () => ({ x:Math.random()*canvas.width, y:Math.random()*canvas.height, r:Math.random()*1.3, phase:Math.random()*Math.PI*2 }))
-        d.stars.forEach((s:any) => {
+        ;(d.stars as EstrellaSimple[]).forEach(s => {
           ctx.globalAlpha = (0.25 + 0.25 * Math.sin(t * 0.8 + s.phase))
           ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.fill()
         })
@@ -106,7 +165,7 @@ function CanvasFondo({ animacion, oscuridad }: { animacion: string; oscuridad: n
           vx: (Math.random()-0.5)*0.08, vy: (Math.random()-0.5)*0.06,
           phase: Math.random()*Math.PI*2, speed: Math.random()*0.5+0.2
         }))
-        d.stars.forEach((s:any) => {
+        ;(d.stars as EstrellaGalaxia[]).forEach(s => {
           s.x += s.vx; s.y += s.vy
           if (s.x < 0) s.x = W; if (s.x > W) s.x = 0
           if (s.y < 0) s.y = H; if (s.y > H) s.y = 0
@@ -156,7 +215,7 @@ function CanvasFondo({ animacion, oscuridad }: { animacion: string; oscuridad: n
 
         // Estrellas que se apagan con el amanecer
         if (!d.stars) d.stars = Array.from({length:100}, () => ({ x:Math.random()*W, y:Math.random()*H*0.5, r:Math.random()*0.9, phase:Math.random()*Math.PI*2 }))
-        d.stars.forEach((s:any) => {
+        ;(d.stars as EstrellaSimple[]).forEach(s => {
           ctx.globalAlpha = (0.3-0.1*pulso) * (0.5+0.5*Math.sin(t*0.3+s.phase))
           ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill()
         }); ctx.globalAlpha=1
@@ -224,7 +283,7 @@ function CanvasFondo({ animacion, oscuridad }: { animacion: string; oscuridad: n
           phase: Math.random()*Math.PI*2,
           color: Math.random() > 0.4 ? "220,210,255" : "255,250,230"
         }))
-        d.particles.forEach((p:any) => {
+        ;(d.particles as ParticulaPaz[]).forEach(p => {
           p.y += p.vy; p.x += p.vx + Math.sin(t*0.15+p.phase)*0.6
           if (p.y < -20) {
             p.y = H + 20; p.x = W*0.1 + Math.random()*W*0.8
@@ -263,7 +322,7 @@ function CanvasFondo({ animacion, oscuridad }: { animacion: string; oscuridad: n
           color: Math.random() > 0.5 ? [255,210,60] : [180,150,255],
           tail: Math.random()*8 + 4
         }))
-        d.particles.forEach((p:any) => {
+        ;(d.particles as ParticulaLluvia[]).forEach(p => {
           p.y += p.vy; p.x += p.vx + Math.sin(t*0.05+p.phase)*0.4
           if (p.y > H + 10) { p.y = -10; p.x = Math.random()*W }
 
@@ -307,7 +366,7 @@ function CanvasFondo({ animacion, oscuridad }: { animacion: string; oscuridad: n
 
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function ProyectarPage() {
-  const [socket, setSocket] = useState<any>(null)
+  const socketRef = useRef<Socket | null>(null)
   const [escalaFuente, setEscalaFuente] = useState<number>(() => {
     if (typeof window === "undefined") return 100
     return Number(localStorage.getItem("proyector-escala-fuente") || "100")
@@ -343,22 +402,6 @@ export default function ProyectarPage() {
     window.addEventListener("resize", onResize)
     return () => window.removeEventListener("resize", onResize)
   }, [])
-
-  const FUENTES: Record<string, string> = {
-    "system":    "system-ui, -apple-system, sans-serif",
-    "arial":     "Arial, Helvetica, sans-serif",
-    "serif":     "Georgia, 'Times New Roman', serif",
-    "rounded":   "'Trebuchet MS', Arial, sans-serif",
-    "mono":      "'Courier New', monospace",
-    "cinzel":    "'Cinzel', serif",
-    "playfair":  "'Playfair Display', serif",
-    "raleway":   "'Raleway', sans-serif",
-    "lato":      "'Lato', sans-serif",
-    "oswald":    "'Oswald', sans-serif",
-    "merriw":    "'Merriweather', serif",
-    "ptserif":   "'PT Serif', serif",
-    "ubuntu":    "'Ubuntu', sans-serif",
-  }
 
   // Cargar Google Fonts dinámicamente
   useEffect(() => {
@@ -415,7 +458,7 @@ export default function ProyectarPage() {
       } catch {}
     }
     medir()
-    ;(document as any).fonts?.ready?.then(medir)
+    document.fonts?.ready?.then(medir)
     return () => { vivo = false }
   }, [familiaFuente])
 
@@ -426,10 +469,10 @@ export default function ProyectarPage() {
     return () => window.removeEventListener("storage", handle)
   }, [])
 
-  const [partes, setPartes] = useState<any[]>([])
+  const [partes, setPartes] = useState<ParteProyeccion[]>([])
   const [index, setIndex] = useState(0)
   const [titulo, setTitulo] = useState("")
-  const [biblia, setBiblia] = useState<any>(null)
+  const [biblia, setBiblia] = useState<BibliaProyeccion | null>(null)
   const [imagen, setImagen] = useState<string | null>(null)
   // ✅ Cuando el "ítem imagen" es en realidad un video (transición/descanso), se
   // renderiza <video> en loop mudo en vez de <img>. El flag viaja dentro del
@@ -438,18 +481,25 @@ export default function ProyectarPage() {
   const [tono, setTono] = useState("")
   const [paginaBiblia, setPaginaBiblia] = useState(0)
   const [iglesia, setIglesia] = useState("")
-  const [estadoEspecial, setEstadoEspecial] = useState<any>(null)
+  const [estadoEspecial, setEstadoEspecial] = useState<EstadoEspecial | null>(null)
   const [logoMarcaUrl, setLogoMarcaUrl] = useState("")
   // ✅ Tick de la cuenta regresiva -- el tiempo restante se recalcula solo
   // (segundo a segundo) contra estadoEspecial.hasta, no llega nada nuevo
   // por socket cada segundo. Este estado solo existe para forzar el
   // re-render cada 1s mientras esa pantalla está activa.
-  const [tickCuentaRegresiva, setTickCuentaRegresiva] = useState(0)
+  const [restanteCuentaRegresiva, setRestanteCuentaRegresiva] = useState<number | null>(null)
   useEffect(() => {
-    if (estadoEspecial?.tipo !== "cuenta-regresiva") return
-    const id = setInterval(() => setTickCuentaRegresiva(t => t + 1), 1000)
-    return () => clearInterval(id)
-  }, [estadoEspecial?.tipo])
+    if (estadoEspecial?.tipo !== "cuenta-regresiva" || !estadoEspecial.hasta) {
+      const limpiar = setTimeout(() => setRestanteCuentaRegresiva(null), 0)
+      return () => clearTimeout(limpiar)
+    }
+    const actualizar = () => setRestanteCuentaRegresiva(
+      Math.max(0, Math.floor((new Date(estadoEspecial.hasta!).getTime() - Date.now()) / 1000))
+    )
+    const inicio = setTimeout(actualizar, 0)
+    const id = setInterval(actualizar, 1000)
+    return () => { clearTimeout(inicio); clearInterval(id) }
+  }, [estadoEspecial?.tipo, estadoEspecial?.hasta])
   // ✅ Banner de urgencia: independiente de estadoEspecial/partes/biblia —
   // se dibuja encima de lo que sea que esté en pantalla, sin reemplazarlo.
   const [bannerUrgente, setBannerUrgente] = useState<string | null>(null)
@@ -457,22 +507,22 @@ export default function ProyectarPage() {
   // ✅ Fondo per-iglesia: la key incluye el iglesiaId una vez que se conoce.
   // Evita que distintas iglesias en el mismo dispositivo compartan el fondo.
   const fondoKeyRef = useRef("proyector-fondo-activo")
-  const [fondoCancion, setFondoCancion] = useState<any>(() => {
+  const [fondoCancion, setFondoCancion] = useState<FondoProyeccion | null>(() => {
     if (typeof window === "undefined") return null
     try {
       const saved = localStorage.getItem("proyector-fondo-activo")
-      return saved ? JSON.parse(saved) : null
+      return saved ? JSON.parse(saved) as FondoProyeccion : null
     } catch { return null }
   })
 
   const [cargandoProyector, setCargandoProyector] = useState(true)
-  const timeoutCargaProyectorRef = useRef<any>(null)
+  const timeoutCargaProyectorRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [estadoInicialRevisado, setEstadoInicialRevisado] = useState(false)
   const parteActual = partes[index]
-  const [imagenesPrecargadas, setImagenesPrecargadas] = useState<string[]>([])
+  const imagenesPrecargadasRef = useRef<Set<string>>(new Set())
   const [overlayVisible, setOverlayVisible] = useState(false)
   const [overlayFadingOut, setOverlayFadingOut] = useState(false)
-  const overlayTimeoutRef = useRef<any>(null)
+  const overlayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const salaRef = useRef<string | null>(null)
 
   // ✅ Estado de reconexión degradada
@@ -484,6 +534,22 @@ export default function ProyectarPage() {
       try { localStorage.setItem(fondoKeyRef.current, JSON.stringify(fondoCancion)) } catch {}
     }
   }, [fondoCancion])
+
+  const limpiarPantalla = useCallback((mantenerFondo = false) => {
+    setEstadoEspecial(null); setBiblia(null); setImagen(null)
+    if (!mantenerFondo) setFondoCancion(null)
+    setPartes([]); setTitulo(""); setTono(""); setIglesia("")
+    setIndex(0); setPaginaBiblia(0)
+  }, [])
+
+  const precargarImagen = useCallback((url: string) => {
+    const cargadas = imagenesPrecargadasRef.current
+    if (!url || cargadas.has(url) || cargadas.size >= 50) return
+    cargadas.add(url)
+    const img = new Image()
+    img.src = url
+    img.onerror = () => cargadas.delete(url)
+  }, [])
 
   useEffect(() => {
     const entrarFullscreen = () => {
@@ -537,11 +603,11 @@ export default function ProyectarPage() {
         case "ArrowRight":
         case "ArrowDown":
         case "PageDown":
-          e.preventDefault(); socket?.emit("control-siguiente"); break
+          e.preventDefault(); socketRef.current?.emit("control-siguiente"); break
         case "ArrowLeft":
         case "ArrowUp":
         case "PageUp":
-          e.preventDefault(); socket?.emit("control-anterior"); break
+          e.preventDefault(); socketRef.current?.emit("control-anterior"); break
         case "+": case "=": cambiarEscalaFuente(escalaFuente + 5); socketRef.current?.emit("zoom-info", { actual: Math.min(280, escalaFuente + 5) }); break
         case "-":            cambiarEscalaFuente(escalaFuente - 5); socketRef.current?.emit("zoom-info", { actual: Math.max(40,  escalaFuente - 5) }); break
         case "0":            cambiarEscalaFuente(100);               socketRef.current?.emit("zoom-info", { actual: 100 }); break
@@ -549,11 +615,11 @@ export default function ProyectarPage() {
     }
     window.addEventListener("keydown", handleKey)
     return () => window.removeEventListener("keydown", handleKey)
-  }, [socket, escalaFuente])
+  }, [escalaFuente])
 
   useEffect(() => {
     let activo = true
-    let canalNube: any = null   // puente Supabase Realtime → servidor local
+    let canalNube: ReturnType<typeof supabase.channel> | null = null   // puente Supabase Realtime → servidor local
     const dev = process.env.NODE_ENV === "development"
 
     // ✅ Socket se crea inmediatamente — sin esperar getSession
@@ -583,7 +649,7 @@ export default function ProyectarPage() {
         // sala como cualquier evento (sin tocar los handlers de abajo).
         if (!canalNube) {
           canalNube = supabase.channel(`sala:${sala}`, { config: { broadcast: { self: false } } })
-          canalNube.on("broadcast", { event: "ev" }, ({ payload }: any) => {
+          canalNube.on("broadcast", { event: "ev" }, ({ payload }: { payload: EventoPuente }) => {
             if (payload?.evento && activo) s.emit("bridge-nube", { evento: payload.evento, data: payload.data })
           })
           canalNube.subscribe()
@@ -600,7 +666,7 @@ export default function ProyectarPage() {
       }
     })
 
-    s.on("estado-actual", (estado: any) => {
+    s.on("estado-actual", (estado: EstadoActual) => {
       setEstadoInicialRevisado(true)
       setCargandoProyector(false)
       if (timeoutCargaProyectorRef.current) clearTimeout(timeoutCargaProyectorRef.current)
@@ -620,7 +686,7 @@ export default function ProyectarPage() {
         limpiarPantalla(true) // preservar fondo
         setImagenEsVideo(!!d.video)
         if (d?.url && !d.video) precargarImagen(d.url)
-        setImagen(d.url); setIglesia(d.iglesia || ""); return
+        setImagen(d.url || null); setIglesia(d.iglesia || ""); return
       }
       if (estado.tipo === "biblia") {
         const d = estado.data || {}
@@ -638,7 +704,7 @@ export default function ProyectarPage() {
       }
     })
 
-    s.on("cargar-cancion", (data: any) => {
+    s.on("cargar-cancion", (data: DatosProyeccion) => {
       setEstadoInicialRevisado(true)
       setCargandoProyector(false)
       ejecutarConTransicion(() => {
@@ -652,7 +718,7 @@ export default function ProyectarPage() {
       })
     })
 
-    s.on("mostrar-imagen", (data: any) => {
+    s.on("mostrar-imagen", (data: DatosProyeccion) => {
       setEstadoInicialRevisado(true)
       setCargandoProyector(false)
       ejecutarConTransicion(() => {
@@ -661,11 +727,11 @@ export default function ProyectarPage() {
         setPartes([]); setTitulo(""); setTono(""); setIndex(0); setPaginaBiblia(0)
         setImagenEsVideo(!!data?.video)
         if (data?.url && !data?.video) precargarImagen(data.url)
-        setImagen(data.url); setIglesia(data.iglesia || "")
+        setImagen(data.url || null); setIglesia(data.iglesia || "")
       })
     })
 
-    s.on("mostrar-biblia", (data: any) => {
+    s.on("mostrar-biblia", (data: BibliaProyeccion) => {
       setEstadoInicialRevisado(true)
       setCargandoProyector(false)
       ejecutarConTransicion(() => {
@@ -699,7 +765,7 @@ export default function ProyectarPage() {
     })
 
     // ✅ Fondo en tiempo real — sin necesidad de reproyectar la canción
-    s.on("cambiar-fondo", (fondo: any) => {
+    s.on("cambiar-fondo", (fondo: FondoProyeccion | null) => {
       if (activo) setFondoCancion(fondo || null)
     })
 
@@ -719,7 +785,7 @@ export default function ProyectarPage() {
     // en dispositivos distintos (antes solo dependía de localStorage local).
     s.on("modo-limpio", (activo: boolean) => setModoLimpio(!!activo))
 
-    s.on("mostrar-estado", (data: any) => {
+    s.on("mostrar-estado", (data: EstadoEspecial) => {
       setEstadoInicialRevisado(true)
       setCargandoProyector(false)
       ejecutarConTransicion(() => {
@@ -738,23 +804,16 @@ export default function ProyectarPage() {
       })
     })
 
-    setSocket(s)
     socketRef.current = s
 
     return () => {
       activo = false
       if (timeoutCargaProyectorRef.current) clearTimeout(timeoutCargaProyectorRef.current)
       s.disconnect()
+      if (socketRef.current === s) socketRef.current = null
       try { if (canalNube) supabase.removeChannel(canalNube) } catch {}
     }
-  }, [])
-
-  const limpiarPantalla = (mantenerFondo = false) => {
-    setEstadoEspecial(null); setBiblia(null); setImagen(null)
-    if (!mantenerFondo) setFondoCancion(null)
-    setPartes([]); setTitulo(""); setTono(""); setIglesia("")
-    setIndex(0); setPaginaBiblia(0)
-  }
+  }, [limpiarPantalla, precargarImagen])
 
   const esAcordeProyeccion = (token: string) =>
     /^(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B)(#|b)?(m|maj|min|sus|dim|aug)?\d*(\/(Do|Re|Mi|Fa|Sol|La|Si|C|D|E|F|G|A|B)(#|b)?)?$/i.test(token.trim())
@@ -850,27 +909,6 @@ export default function ProyectarPage() {
     else hi = mid
   }
   const fsCancion = `${lo}px`
-
-  const zoomMaxParte = lineasVis >= 16 ? 60 : lineasVis >= 12 ? 80 : lineasVis >= 8 ? 100 : lineasVis >= 6 ? 130 : lineasVis >= 4 ? 160 : 200
-  const socketRef = useRef<any>(null)
-
-  const etiquetaParte = (() => {
-    if (!parteActual?.tipo) return ""
-    // ✅ El coro no cuenta en la numeración: "Parte 1, Coro, Parte 2".
-    if (/coro|estribillo|chorus/i.test(parteActual.tipo)) return "Coro"
-    let n = 0
-    for (let i = 0; i <= index; i++) if (!/coro|estribillo|chorus/i.test(partes[i]?.tipo || "")) n++
-    return `Parte ${n}`
-  })()
-
-  const precargarImagen = (url: string) => {
-    if (!url || imagenesPrecargadas.includes(url)) return
-    if (imagenesPrecargadas.length >= 50) return  // ✅ evita crecimiento ilimitado
-    const img = new Image(); img.src = url
-    img.onload = () => setImagenesPrecargadas(p =>
-      p.includes(url) ? p : p.length >= 50 ? p : [...p, url]
-    )
-  }
 
   const hayContenido = !!estadoEspecial || !!imagen || !!biblia || partes.length > 0 || !!titulo
 
@@ -982,6 +1020,7 @@ export default function ProyectarPage() {
         {renderFondoEspecial("#000")}
         {estadoEspecial.logo_marca_url && (
           <div style={{ position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",zIndex:2,flexDirection:"column",gap:24 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={estadoEspecial.logo_marca_url} alt="" style={{ maxWidth:"30vw",maxHeight:"30vh",objectFit:"contain",opacity:.7 }} />
             {estadoEspecial.iglesia && <div style={{ fontSize:"clamp(16px,2vw,28px)",opacity:.4,fontWeight:600 }}>{estadoEspecial.iglesia}</div>}
           </div>
@@ -1006,6 +1045,7 @@ export default function ProyectarPage() {
             <video key={imagen} src={imagen} autoPlay loop muted playsInline
               style={{ width:"100vw",height:"100vh",objectFit:"contain",display:"block" }} />
           ) : (
+            // eslint-disable-next-line @next/next/no-img-element
             <img src={imagen} alt="" style={{ width:"100vw",height:"100vh",objectFit:"contain",display:"block" }} />
           )}
         </div>
@@ -1133,6 +1173,7 @@ export default function ProyectarPage() {
       {estadoEspecial?.tipo === "logo" && (<>
         {renderFondoEspecial("radial-gradient(circle at 50% 35%,rgba(255,255,255,.08),transparent 36%),linear-gradient(180deg,#020617 0%,#000 100%)")}
         <div style={{ width:"100vw",height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"5vh 6vw",boxSizing:"border-box",gap:28,position:"relative",zIndex:2 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={estadoEspecial.url} alt="" style={{ 
             maxWidth:"45vw", maxHeight:"45vh",
             objectFit:"contain",
@@ -1148,8 +1189,7 @@ export default function ProyectarPage() {
         {renderFondoEspecial("radial-gradient(circle at 50% 30%,rgba(99,102,241,.22),transparent 38%),linear-gradient(180deg,#020617 0%,#000 100%)")}
         <div style={{ width:"100vw",height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center",padding:"5vh 6vw",boxSizing:"border-box",gap:20,position:"relative",zIndex:2 }}>
           {(() => {
-            const restanteMs = Math.max(0, new Date(estadoEspecial.hasta).getTime() - Date.now())
-            const totalSeg = Math.floor(restanteMs / 1000)
+            const totalSeg = restanteCuentaRegresiva ?? 0
             const h = Math.floor(totalSeg / 3600)
             const m = Math.floor((totalSeg % 3600) / 60)
             const s = totalSeg % 60
@@ -1167,7 +1207,7 @@ export default function ProyectarPage() {
           })()}
           {/* ✅ Al llegar a cero se oculta el mensaje del usuario y solo queda
               "¡Comenzamos!" -- antes seguía mostrándose el mensaje del conteo. */}
-          {!!estadoEspecial.mensaje && new Date(estadoEspecial.hasta).getTime() > Date.now() && (
+          {!!estadoEspecial.mensaje && (restanteCuentaRegresiva ?? 0) > 0 && (
             <div style={{ fontSize:"clamp(20px,2.4vw,38px)",opacity:.75,fontWeight:600,maxWidth:"85vw" }}>{estadoEspecial.mensaje}</div>
           )}
         </div>
@@ -1176,6 +1216,7 @@ export default function ProyectarPage() {
       {/* ── Logo marca agua ───────────────────────────────────── */}
       {logoMarcaUrl && !estadoEspecial && !imagen && !modoLimpio && (
         <div style={{ position:"fixed",bottom:22,right:22,width:"clamp(90px,7vw,130px)",height:"clamp(90px,7vw,130px)",borderRadius:999,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",zIndex:30 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={logoMarcaUrl} alt="" style={{ width:"100%",height:"100%",objectFit:"cover",borderRadius:999 }} />
         </div>
       )}

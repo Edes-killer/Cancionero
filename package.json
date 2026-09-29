@@ -15,7 +15,7 @@
     "qa:video": "node scripts/qa-video.cjs",
     "qa:captura": "node scripts/qa-captura-envio.cjs",
     "qa:release": "node scripts/qa-release.mjs",
-    "lint:critico": "eslint app/en-vivo/page.tsx app/camara/page.tsx app/transmision/page.tsx app/canciones/page.tsx app/musicos/page.tsx components/transmision lib/obs.ts lib/getIglesia.ts lib/webrtc.ts --max-warnings=0",
+    "lint:critico": "eslint app/en-vivo/page.tsx app/camara/page.tsx app/transmision/page.tsx app/canciones/page.tsx app/musicos/page.tsx app/proyectar/page.tsx components/transmision lib/obs.ts lib/getIglesia.ts lib/webrtc.ts --max-warnings=0",
     "lint": "eslint app components context lib --max-warnings=0",
     "start": "next start -H 0.0.0.0 -p 3000",
     "electron:dev": "npm run build && electron electron/main.js",
