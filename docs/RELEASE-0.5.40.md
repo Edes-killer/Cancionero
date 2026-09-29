@@ -23,6 +23,10 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 
 Esto no certifica cámaras, micrófonos, WiFi, sincronía labial ni Facebook reales.
 
+El APK release y el instalador NSIS fueron generados localmente. La APK tiene firma v2 válida;
+el instalador Windows todavía no tiene firma Authenticode y puede activar SmartScreen. Evidencia:
+[EMPAQUETADO-0.5.40.md](EMPAQUETADO-0.5.40.md).
+
 ## Prueba corta en iglesia
 
 Duración estimada: 15–20 minutos. Conservar la versión estable y las grabaciones anteriores.
