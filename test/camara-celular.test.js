@@ -10,7 +10,7 @@ const servidor = readFileSync("lib/servidor.ts", "utf8")
 
 test("Electron abre la sala de cámara en su servidor local y confirma el registro", () => {
   assert.match(transmision, /io\("http:\/\/127\.0\.0\.1:4000"/)
-  assert.match(transmision, /socket\.emit\("camara:host", \{ codigo \}, \(resp: any\) =>/)
+  assert.match(transmision, /socket\.emit\("camara:host", \{ codigo \}, \(resp:/)
   assert.match(electron, /socket\.on\("camara:host", \(\{ codigo \} = \{\}, cb\) =>/)
   assert.match(electron, /cb\(\{ ok: true, codigo: codigoFinal \}\)/)
   assert.match(transmision, /Abriendo sala segura…/)
@@ -134,7 +134,8 @@ test("la reconexión RTMPS espera a que Facebook libere la sesión anterior", ()
 test("los fragmentos de transmisión mantienen orden y la ventana separada recibe eventos", () => {
   assert.match(transmision, /new ColaTransmision/)
   assert.match(transmision, /colaChunks\.agregar\(blob.size, async \(\) =>/)
-  assert.match(transmision, /await tx\.enviarChunkConfirmado\(res.sesionId, buf\)/)
+  assert.match(transmision, /const sesionId = res\.sesionId/)
+  assert.match(transmision, /await tx\.enviarChunkConfirmado\(sesionId, buf\)/)
   assert.match(electron, /sesion.id !== sesionId/)
   assert.match(electron, /BrowserWindow\.getAllWindows\(\)/)
   assert.match(electron, /webContents\.getURL\(\)\.includes\("\/en-vivo"\)/)

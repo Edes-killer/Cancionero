@@ -29,6 +29,7 @@ import { dibujarCamaraCompleta } from "@/lib/encuadreCamara"
 import { ColaTransmision } from "@/lib/colaTransmision"
 import { cargarConfiguracionNube, guardarConfiguracionNube, permiteConfiguracionNube, type ConfiguracionTransmisionNube } from "@/lib/configuracionNube"
 import { crearInformeTransmision } from "@/lib/informeTransmision"
+import type { Parte } from "@/lib/modelosCulto"
 
 type Escena = "camara" | "camara-letra" | "letra" | "espera"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
@@ -126,22 +127,6 @@ function textoSobreAcento(hex: string): string {
   return lum > 0.6 ? "#1a1205" : "#ffffff"
 }
 
-// Aclara un color hasta que sea legible sobre el vidrio oscuro del mensaje
-// (mezcla con blanco si su luminancia es baja). Así cualquier tema, incluso los
-// oscuros como rojo o índigo, deja el texto del mensaje nítido y con la marca.
-function legibleSobreOscuro(hex: string): string {
-  const m = /^#?([\da-f]{6})$/i.exec(hex.trim())
-  if (!m) return "#ffffff"
-  const n = parseInt(m[1], 16)
-  let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-  if (lum < 0.62) {
-    const t = (0.62 - lum) / 0.62 // cuánto mezclar hacia el blanco
-    r = Math.round(r + (255 - r) * t); g = Math.round(g + (255 - g) * t); b = Math.round(b + (255 - b) * t)
-  }
-  return `rgb(${r},${g},${b})`
-}
-
 interface Disp { id: string; label: string }
 interface EspacioGrabacion {
   nivel: "ok" | "advertencia" | "bloqueado" | "desconocido"
@@ -157,6 +142,91 @@ interface GrabacionPendiente {
   bytes: number
   modificadoEn: number
 }
+interface ContenidoProyectado {
+  tipo?: string
+  titulo?: string
+  tono?: string
+  partes?: Parte[]
+  index?: number
+  logo_marca_url?: string
+  video?: boolean
+  url?: string
+  paginas?: string[]
+  texto?: string
+  referencia?: string
+  pagina?: number
+  hasta?: string | number | Date
+  mensaje?: string
+  iglesia?: string
+  subtitulo?: string
+}
+interface DiagnosticoElectron extends Record<string, unknown> {
+  diagnostico?: string
+  activo?: boolean
+  entradaMs?: number | null
+  colaBytes?: number
+  avanceMs?: number | null
+  cuadros?: number
+  avisosTiempo?: number
+}
+interface SenalWebRTC {
+  tipo?: "offer" | "answer" | "ice"
+  sdp?: RTCSessionDescriptionInit
+  candidate?: RTCIceCandidateInit
+}
+interface EventoSenal { data?: SenalWebRTC; de?: string; dispositivoId?: string }
+const mensajeDeError = (error: unknown): string => error instanceof Error ? error.message : String(error || "")
+interface EventoTransmision {
+  estado?: "error" | "terminado" | string
+  error?: string
+  code?: number
+  inesperado?: boolean
+}
+interface EstadisticasTransmision {
+  bitrate?: number | null
+  fps?: number | null
+  speed?: number | null
+  drop?: number | null
+}
+interface ResultadoElectron {
+  ok?: boolean
+  error?: string
+  sesionId?: string
+  carpeta?: string
+  ruta?: string
+  nivel?: EspacioGrabacion["nivel"]
+  puedeGrabar?: boolean
+  libresBytes?: number | null
+  detalle?: string
+  fuentes?: { id: string; nombre: string; thumb: string; esPantalla: boolean }[]
+  ip?: string
+  web?: number
+}
+interface TransmisionElectron {
+  iniciar: (opciones: { rtmpUrls: string[]; bitrateKbps: number }) => Promise<ResultadoElectron>
+  detener: () => Promise<ResultadoElectron>
+  abrirLog: () => Promise<ResultadoElectron>
+  diagnostico: () => Promise<DiagnosticoElectron | null>
+  enviarChunkConfirmado: (sesionId: string, chunk: Uint8Array) => Promise<ResultadoElectron>
+  abortarAtasco: (sesionId: string, motivo: string) => Promise<ResultadoElectron>
+  iniciarGrabacion?: (opciones: { nombre: string }) => Promise<ResultadoElectron>
+  espacioGrabacion?: () => Promise<EspacioGrabacion>
+  grabacionesPendientes?: () => Promise<GrabacionPendiente[]>
+  recuperarGrabacion?: (id: string) => Promise<ResultadoElectron>
+  estadoGrabacion?: () => Promise<{ estado?: string }>
+  detenerGrabacion?: () => Promise<ResultadoElectron>
+  nuevoSegmentoGrabacion?: () => Promise<ResultadoElectron>
+  enviarChunkGrabacion?: (chunk: Uint8Array) => void
+  abrirCarpetaGrabaciones?: () => Promise<ResultadoElectron>
+  listarPantallas?: () => Promise<ResultadoElectron>
+  infoRedCamara?: () => Promise<ResultadoElectron>
+  onEstado: (cb: (evento: EventoTransmision) => void) => () => void
+  onLog: (cb: (mensaje: string) => void) => () => void
+  onStats?: (cb: (datos: EstadisticasTransmision) => void) => () => void
+  onGrabacionListo?: (cb: (datos: ResultadoElectron) => void) => () => void
+}
+const transmisionElectron = (): TransmisionElectron | undefined =>
+  (window as Window & { transmision?: TransmisionElectron }).transmision
 
 export default function EnVivoPage() {
   const router = useRouter()
@@ -278,13 +348,13 @@ export default function EnVivoPage() {
   // Contenido que se está proyectando (espejo por socket)
   const [titulo, setTitulo] = useState("")
   const [tono, setTono] = useState("")
-  const [partes, setPartes] = useState<any[]>([]) // cada parte es un objeto { texto_letra|texto, tipo }
+  const [partes, setPartes] = useState<Parte[]>([]) // cada parte es un objeto { texto_letra|texto, tipo }
   const [index, setIndex] = useState(0)
   const [imagenUrl, setImagenUrl] = useState<string | null>(null) // imagen proyectada
   const [videoUrl, setVideoUrl] = useState<string | null>(null)   // animación corta muda proyectada
-  const [biblia, setBiblia] = useState<any>(null)                 // versículo proyectado
+  const [biblia, setBiblia] = useState<ContenidoProyectado | null>(null) // versículo proyectado
   const [paginaBiblia, setPaginaBiblia] = useState(0)
-  const [estadoEsp, setEstadoEsp] = useState<any>(null)           // pantalla especial (cuenta regresiva, mensaje, descanso…)
+  const [estadoEsp, setEstadoEsp] = useState<ContenidoProyectado | null>(null) // pantalla especial
   const [logoSocket, setLogoSocket] = useState("")
   const [conectadoSala, setConectadoSala] = useState(false)
 
@@ -311,7 +381,7 @@ export default function EnVivoPage() {
   const [errorTx, setErrorTx] = useState<string | null>(null)
   const [segundos, setSegundos] = useState(0)
   const [logsTx, setLogsTx] = useState<string[]>([])
-  const [diagTx, setDiagTx] = useState<any>(null)
+  const [diagTx, setDiagTx] = useState<DiagnosticoElectron | null>(null)
   const [diagDisponible, setDiagDisponible] = useState(false)
   const [espacioGrabacion, setEspacioGrabacion] = useState<EspacioGrabacion | null>(null)
   const [grabacionesPendientes, setGrabacionesPendientes] = useState<GrabacionPendiente[]>([])
@@ -319,7 +389,7 @@ export default function EnVivoPage() {
   useEffect(() => {
     let activo = true, ocupado = false
     const timer = setInterval(async () => {
-      const tx = (window as any).transmision
+      const tx = transmisionElectron()
       if (!tx?.diagnostico || ocupado) return
       ocupado = true
       try { const d = await tx.diagnostico(); if (activo) { setDiagTx(d); setDiagDisponible(true) } }
@@ -333,7 +403,7 @@ export default function EnVivoPage() {
     let activo = true
     const revisar = async () => {
       try {
-        const tx = (window as any).transmision
+        const tx = transmisionElectron()
         const [estado, pendientes] = await Promise.all([
           tx?.espacioGrabacion?.(),
           tx?.grabacionesPendientes?.(),
@@ -530,7 +600,7 @@ export default function EnVivoPage() {
 
   const [mostrarAtajos, setMostrarAtajos] = useState(false) // leyenda de atajos de teclado
   const [aviso, setAviso] = useState("") // toast breve (resetear/guardar armado)
-  const avisoTimerRef = useRef<any>(null)
+  const avisoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const flash = (m: string) => { setAviso(m); if (avisoTimerRef.current) clearTimeout(avisoTimerRef.current); avisoTimerRef.current = setTimeout(() => setAviso(""), 2200) }
   const [estadoConfigNube, setEstadoConfigNube] = useState<"local" | "cargando" | "guardando" | "sincronizado" | "error">("local")
   const configNubeListaRef = useRef(false)
@@ -628,7 +698,7 @@ export default function EnVivoPage() {
       if (!socket?.connected || ocupado) return
       ocupado = true
       try {
-        const grabacion = await (window as any).transmision?.estadoGrabacion?.().catch(() => null)
+        const grabacion = await transmisionElectron()?.estadoGrabacion?.().catch(() => null)
         for (const [clave, pc] of pcHostsRef.current) {
           let video: boolean | null = null
           try {
@@ -659,7 +729,7 @@ export default function EnVivoPage() {
   const urlsTxRef = useRef<string[]>([])
   const bitrateRef = useRef<number>(4500) // kbps elegido para la sesión
   const detenidoRef = useRef(false) // el usuario pidió terminar → no reconectar
-  const reconTimerRef = useRef<any>(null)
+  const reconTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconectarRef = useRef<() => void>(() => {})
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -675,7 +745,7 @@ export default function EnVivoPage() {
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as any[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as any, hayVideo: false, nombrePos: { x: 0, y: 0 }, nombreTam: 30, mensajePos: "abajo" as "abajo" | "arriba", letraPos: { x: 0, y: 0 }, letraTam: 940, graficos: [] as { id: string; pos: { x: number; y: number }; w: number; aspecto: number }[], acento: "#f59e0b", diseno: "vidrio" as Diseno, pantallaOn: false, camaraEnPip: true, transiciones: true, esperaTexto: "", esperaHasta: null as number | null, celularOn: false, cam1Fuente: "", cam2Fuente: "" })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as Parte[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as ContenidoProyectado | null, hayVideo: false, nombrePos: { x: 0, y: 0 }, nombreTam: 30, mensajePos: "abajo" as "abajo" | "arriba", letraPos: { x: 0, y: 0 }, letraTam: 940, graficos: [] as { id: string; pos: { x: number; y: number }; w: number; aspecto: number }[], acento: "#f59e0b", diseno: "vidrio" as Diseno, pantallaOn: false, camaraEnPip: true, transiciones: true, esperaTexto: "", esperaHasta: null as number | null, celularOn: false, cam1Fuente: "", cam2Fuente: "" })
   useEffect(() => {
     const bibliaTexto = biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : ""
     contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos, acento, diseno, pantallaOn, camaraEnPip, transiciones, esperaTexto, esperaHasta, celularOn, cam1Fuente: esFuenteCelular(camaraId) ? idFuenteCelular(camaraId) : "", cam2Fuente: esFuenteCelular(camara2Id) ? idFuenteCelular(camara2Id) : "" }
@@ -780,10 +850,10 @@ export default function EnVivoPage() {
         if (vTrack && !camaraId) { const s = vTrack.getSettings(); if (s.deviceId) setCamaraId(s.deviceId) }
         const aTrack = stream.getAudioTracks()[0]
         if (aTrack && !microId) { const s = aTrack.getSettings(); if (s.deviceId) setMicroId(s.deviceId) }
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (cancelado) return
         console.error("getUserMedia:", e)
-        const nombre = e?.name || ""
+        const nombre = e instanceof DOMException || e instanceof Error ? e.name : ""
         if (nombre === "NotAllowedError" || nombre === "SecurityError") {
           setPermiso("denegado")
           setErrorCam("No diste permiso a la cámara/micrófono. Actívalo y vuelve a intentar.")
@@ -795,14 +865,13 @@ export default function EnVivoPage() {
           setErrorCam("No se encontró la cámara seleccionada. Conecta una cámara y reintenta.")
         } else {
           setPermiso("denegado")
-          setErrorCam("No se pudo abrir la cámara. " + (nombre ? nombre + ": " : "") + (e?.message || ""))
+          setErrorCam("No se pudo abrir la cámara. " + (nombre ? nombre + ": " : "") + mensajeDeError(e))
         }
       }
     }
 
     iniciar()
     return () => { cancelado = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camaraId, microId, reintento])
 
   // Aplicar la limpieza de audio al track EN VIVO (sin reiniciar la cámara).
@@ -861,7 +930,6 @@ export default function EnVivoPage() {
     escenaRef.current = escena
     volMicRef.current = volMic
     aplicarVolumenSalida()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [escena, volMic])
 
   // Aviso de "sin audio": el micro lleva >4s en silencio mientras hay cámara.
@@ -945,23 +1013,23 @@ export default function EnVivoPage() {
     let activo = true
     const s = io(getSocketUrl(), { reconnection: true, reconnectionAttempts: 10, reconnectionDelay: 1000 })
 
-    const aplicarCancion = (d: any) => {
+    const aplicarCancion = (d: ContenidoProyectado) => {
       setImagenUrl(null); setVideoUrl(null); setBiblia(null); setEstadoEsp(null)
       setPartes(d.partes || []); setIndex(d.index || 0)
       setTitulo(d.titulo || ""); setTono(d.tono || "")
       if (d.logo_marca_url) setLogoSocket(d.logo_marca_url)
     }
-    const aplicarImagen = (d: any) => {
+    const aplicarImagen = (d: ContenidoProyectado) => {
       setPartes([]); setTitulo(""); setTono(""); setIndex(0); setBiblia(null); setEstadoEsp(null)
       if (d?.video) { setVideoUrl(d?.url || null); setImagenUrl(null) }
       else { setImagenUrl(d?.url || null); setVideoUrl(null) }
     }
-    const aplicarBiblia = (d: any) => {
+    const aplicarBiblia = (d: ContenidoProyectado) => {
       setPartes([]); setTitulo(""); setTono(""); setIndex(0); setImagenUrl(null); setVideoUrl(null); setEstadoEsp(null)
       setBiblia(d || null); setPaginaBiblia(d?.pagina || 0)
       if (d?.logo_marca_url) setLogoSocket(d.logo_marca_url)
     }
-    const aplicarEstado = (d: any) => {
+    const aplicarEstado = (d: ContenidoProyectado) => {
       setPartes([]); setTitulo(""); setTono(""); setIndex(0); setImagenUrl(null); setVideoUrl(null); setBiblia(null)
       setEstadoEsp(d || null)
       if (d?.logo_marca_url) setLogoSocket(d.logo_marca_url)
@@ -977,7 +1045,7 @@ export default function EnVivoPage() {
     })
     s.on("disconnect", () => { if (activo) setConectadoSala(false) })
 
-    s.on("estado-actual", (estado: any) => {
+    s.on("estado-actual", (estado: { tipo?: string; data?: ContenidoProyectado }) => {
       if (!activo) return
       if (estado.tipo === "cancion") aplicarCancion(estado.data || {})
       else if (estado.tipo === "imagen") aplicarImagen(estado.data || {})
@@ -985,26 +1053,26 @@ export default function EnVivoPage() {
       else if (estado.tipo === "estado") aplicarEstado(estado.data || {})
       else limpiar()
     })
-    s.on("cargar-cancion", (d: any) => { if (activo) aplicarCancion(d || {}) })
+    s.on("cargar-cancion", (d: ContenidoProyectado) => { if (activo) aplicarCancion(d || {}) })
     s.on("cambiar-parte", (i: number) => { if (activo) setIndex(i) })
-    s.on("mostrar-imagen", (d: any) => { if (activo) aplicarImagen(d || {}) })
-    s.on("mostrar-biblia", (d: any) => { if (activo) aplicarBiblia(d || {}) })
+    s.on("mostrar-imagen", (d: ContenidoProyectado) => { if (activo) aplicarImagen(d || {}) })
+    s.on("mostrar-biblia", (d: ContenidoProyectado) => { if (activo) aplicarBiblia(d || {}) })
     s.on("cambiar-pagina-biblia", (p: number) => { if (activo) setPaginaBiblia(p) })
-    s.on("mostrar-estado", (d: any) => { if (activo) aplicarEstado(d || {}) })
+    s.on("mostrar-estado", (d: ContenidoProyectado) => { if (activo) aplicarEstado(d || {}) })
 
     return () => { activo = false; s.disconnect() }
   }, [])
 
   // ── Transmisión: detectar escritorio + escuchar estado/logs de ffmpeg ───────
   useEffect(() => {
-    const tx = (window as any).transmision
+    const tx = transmisionElectron()
     setEsEscritorio(!!tx)
     if (!tx) return
     const agregarLog = (linea: string) => {
       const l = (linea || "").trim()
       if (l) setLogsTx(prev => [...prev, ...l.split("\n").map(x => x.trim()).filter(Boolean)].slice(-60))
     }
-    const offEstado = tx.onEstado((d: any) => {
+    const offEstado = tx.onEstado((d) => {
       agregarLog(d?.estado === "error" ? `⛔ error de proceso: ${d?.error || ""}` : `■ ffmpeg terminó (código ${d?.code})`)
       if (d?.estado !== "error" && d?.estado !== "terminado") return
       if (detenidoRef.current) return // parada intencional del usuario
@@ -1024,12 +1092,12 @@ export default function EnVivoPage() {
       const linea = (m || "").trim()
       if (linea) setErrorTx(prev => (txEstadoRef.current === "conectando" ? linea : prev))
     })
-    const offStats = tx.onStats?.((d: any) => {
+    const offStats = tx.onStats?.((d) => {
       setSalud({ bitrate: d?.bitrate ?? null, fps: d?.fps ?? null, speed: d?.speed ?? null, drop: d?.drop ?? null })
       if (typeof d?.drop === "number") maxCuadrosCaidosRef.current = Math.max(maxCuadrosCaidosRef.current || 0, d.drop)
       if (txEstadoRef.current === "vivo") intentoRef.current = 0 // estable → resetear reintentos
     })
-    const offGrab = tx.onGrabacionListo?.((d: any) => {
+    const offGrab = tx.onGrabacionListo?.((d) => {
       setGrabInfo(gi => ({ ...(gi || {}), carpeta: d?.carpeta, ruta: d?.ruta, listo: true }))
     })
     return () => { offEstado?.(); offLog?.(); offStats?.(); offGrab?.() }
@@ -1047,7 +1115,7 @@ export default function EnVivoPage() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || (t as any).isContentEditable)) return
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || (t instanceof HTMLElement && t.isContentEditable))) return
       if (e.ctrlKey || e.metaKey || e.altKey) return
       switch (e.key) {
         case "1": setEscena("camara"); break
@@ -1267,7 +1335,7 @@ export default function EnVivoPage() {
   // al cambiar de micro; emisión, grabación y pruebas usan el mismo procesamiento.
   const asegurarAudioSalida = (): AudioContext | null => {
     if (!salidaCtxRef.current) {
-      const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext
+      const Ctx = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
       if (!Ctx) return null
       // 48 kHz: la tasa nativa del códec opus → sin remuestreos que degraden.
       let ctx: AudioContext
@@ -1345,11 +1413,12 @@ export default function EnVivoPage() {
   // reconexión (el grabador se recrea para que ffmpeg reciba una cabecera limpia).
   // Un solo encode: cada trozo va a ffmpeg y, si se está grabando, también a disco.
   const arrancarStreamRecorder = async (): Promise<boolean> => {
-    const tx = (window as any).transmision
+    const tx = transmisionElectron()
     if (!tx) return false
     if (!tx.enviarChunkConfirmado) { setErrorTx("Actualiza el escritorio para usar el envío protegido."); return false }
     const res = await tx.iniciar({ rtmpUrls: urlsTxRef.current, bitrateKbps: bitrateRef.current })
-    if (!res?.ok) { setErrorTx(res?.error || "No se pudo iniciar la transmisión."); logError(`Transmisión no inició: ${res?.error || "?"}`, { tipo: "socket", pagina: "/en-vivo" }); return false }
+    if (!res?.ok || !res.sesionId) { setErrorTx(res?.error || "No se pudo iniciar la transmisión."); logError(`Transmisión no inició: ${res?.error || "?"}`, { tipo: "socket", pagina: "/en-vivo" }); return false }
+    const sesionId = res.sesionId
     try {
       const salida = streamSalida(); if (!salida) return false
       const rec = new MediaRecorder(salida, { mimeType: mimeRef.current, videoBitsPerSecond: bitrateCaptura(bitrateRef.current) * 1000, audioBitsPerSecond: 256_000 })
@@ -1359,7 +1428,7 @@ export default function EnVivoPage() {
       const colaChunks = new ColaTransmision(mensaje => {
         if (recRef.current !== rec) return // un fallo tardío no altera el intento nuevo
         setErrorTx(mensaje); logError(mensaje, { tipo: "audio", pagina: "/en-vivo" })
-        void tx.abortarAtasco(res.sesionId, mensaje.startsWith("Se acumuló") ? "cola" : "entrega").catch(() => {})
+        void tx.abortarAtasco(sesionId, mensaje.startsWith("Se acumuló") ? "cola" : "entrega").catch(() => {})
       })
       rec.ondataavailable = ev => {
         if (!ev.data || !ev.data.size) return
@@ -1372,20 +1441,20 @@ export default function EnVivoPage() {
             tx.enviarChunkGrabacion?.(buf)
             grabBytesRef.current += buf.byteLength; setGrabMB(Math.round(grabBytesRef.current / 1048576))
           }
-          const confirmacion = await tx.enviarChunkConfirmado(res.sesionId, buf)
+          const confirmacion = await tx.enviarChunkConfirmado(sesionId, buf)
           if (!confirmacion?.ok) throw Error(confirmacion?.error || "El motor no confirmó la entrada de video.")
         })
       }
       rec.start(250)
       recRef.current = rec
       return true
-    } catch (e: any) { setErrorTx("No se pudo capturar el video: " + (e?.message || "")); return false }
+    } catch (e: unknown) { setErrorTx("No se pudo capturar el video: " + mensajeDeError(e)); return false }
   }
 
   // Abre el archivo de grabación (respaldo). Los trozos los reparte el grabador
   // de stream (no hay un segundo encode). En reconexión rodamos a un segmento.
   const arrancarGrabacion = async () => {
-    const tx = (window as any).transmision
+    const tx = transmisionElectron()
     if (!tx || !grabar) return
     const r = await tx.iniciarGrabacion?.({ nombre: nombreIglesia || "Culto" })
     if (!r?.ok) { setLogsTx(p => [...p, `⚠ no se pudo grabar: ${r?.error || ""}`]); return }
@@ -1394,7 +1463,7 @@ export default function EnVivoPage() {
   }
 
   const detenerGrabacion = async () => {
-    const tx = (window as any).transmision
+    const tx = transmisionElectron()
     if (grabActivaRef.current) { grabActivaRef.current = false; try { await tx?.detenerGrabacion?.() } catch {} }
   }
 
@@ -1418,7 +1487,7 @@ export default function EnVivoPage() {
       if (detenidoRef.current) return
       // Rodar la grabación a un segmento nuevo: el grabador se recrea con
       // cabecera nueva, que no puede mezclarse en el mismo archivo mkv.
-      if (grabActivaRef.current) { try { await (window as any).transmision?.nuevoSegmentoGrabacion?.() } catch {} }
+      if (grabActivaRef.current) { try { await transmisionElectron()?.nuevoSegmentoGrabacion?.() } catch {} }
       const ok = await arrancarStreamRecorder()
       if (ok) setTxEstado("vivo")
       else reconectar()
@@ -1429,7 +1498,7 @@ export default function EnVivoPage() {
   const salirEnVivo = async () => {
     setPreflightAbierto(false)
     setErrorTx(null)
-    const tx = (window as any).transmision
+    const tx = transmisionElectron()
     if (!tx) { setErrorTx("Esto solo funciona en la app de escritorio de Selah Live."); return }
     const rtmpUrls = construirUrls()
     if (rtmpUrls.length === 0) { setErrorTx("Activa al menos una plataforma y pega su clave / URL."); return }
@@ -1450,7 +1519,7 @@ export default function EnVivoPage() {
       "video/webm;codecs=h264,opus",
       "video/webm;codecs=vp8,opus",
       "video/webm",
-    ].find(m => (window as any).MediaRecorder?.isTypeSupported?.(m)) || "video/webm"
+    ].find(m => MediaRecorder.isTypeSupported(m)) || "video/webm"
     mimeRef.current = mime
     urlsTxRef.current = rtmpUrls
     bitrateRef.current = CALIDAD_KBPS[calidad]
@@ -1491,7 +1560,7 @@ export default function EnVivoPage() {
     if (reconTimerRef.current) { clearTimeout(reconTimerRef.current); reconTimerRef.current = null }
     try { recRef.current?.stop() } catch {}
     recRef.current = null
-    const tx = (window as any).transmision
+    const tx = transmisionElectron()
     let diagnosticoFinal: unknown = null
     try { diagnosticoFinal = await tx?.diagnostico?.() } catch {}
     const informe = crearInformeTransmision({
@@ -1518,7 +1587,7 @@ export default function EnVivoPage() {
 
   // ── Compartir pantalla ──────────────────────────────────────────────────────
   const abrirPickerPantalla = async () => {
-    const tx = (window as any).transmision
+    const tx = transmisionElectron()
     if (!tx?.listarPantallas) { setErrorTx("Compartir pantalla funciona solo en la app de escritorio."); return }
     const r = await tx.listarPantallas()
     if (!r?.ok) { setErrorTx(r?.error || "No se pudieron listar las pantallas."); return }
@@ -1527,9 +1596,9 @@ export default function EnVivoPage() {
 
   const elegirPantalla = async (id: string) => {
     try {
-      const stream = await (navigator.mediaDevices as any).getUserMedia({
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: { mandatory: { chromeMediaSource: "desktop", chromeMediaSourceId: id, maxWidth: 1920, maxHeight: 1080, maxFrameRate: 30 } },
+        video: { mandatory: { chromeMediaSource: "desktop", chromeMediaSourceId: id, maxWidth: 1920, maxHeight: 1080, maxFrameRate: 30 } } as MediaTrackConstraints,
       })
       screenStreamRef.current?.getTracks().forEach(t => t.stop())
       screenStreamRef.current = stream
@@ -1537,7 +1606,7 @@ export default function EnVivoPage() {
       // Si el usuario detiene la compartición desde el aviso del sistema.
       stream.getVideoTracks()[0]?.addEventListener("ended", () => dejarPantalla())
       setPantallaOn(true); setPickerPantalla(false)
-    } catch (e: any) { setErrorTx("No se pudo compartir la pantalla: " + (e?.message || "")) }
+    } catch (e: unknown) { setErrorTx("No se pudo compartir la pantalla: " + mensajeDeError(e)) }
   }
 
   const dejarPantalla = () => {
@@ -1563,7 +1632,7 @@ export default function EnVivoPage() {
   }
 
   const abrirCamaraCelular = async () => {
-    const tx = (window as any).transmision
+    const tx = transmisionElectron()
     if (!tx?.infoRedCamara) { setErrorTx("Usar el celular como cámara funciona solo en la app de escritorio."); return }
     setCamError(""); setCamEstado("abriendo")
     // Código estable por instalación: el APK puede recordarlo y reconectarse
@@ -1582,13 +1651,13 @@ export default function EnVivoPage() {
     // APK: puede pertenecer a una interfaz anterior o a un repetidor.
     const socket = io("http://127.0.0.1:4000", { transports: ["websocket", "polling"], forceNew: true, timeout: 5000 })
     camSocketRef.current = socket
-    socket.on("connect", () => socket.emit("camara:host", { codigo }, (resp: any) => {
+    socket.on("connect", () => socket.emit("camara:host", { codigo }, (resp: { ok?: boolean; error?: string }) => {
       if (resp?.ok) { setCamEstado("esperando"); return }
       setCamEstado("error")
       setCamError("El PC no pudo abrir la sala de cámara.")
       logError(`Cámara celular: host rechazado (${resp?.error || "sin respuesta"})`, { tipo: "socket", pagina: "/en-vivo" })
     }))
-    socket.on("camara:senal", async ({ data, de: peerId, dispositivoId }: any) => {
+    socket.on("camara:senal", async ({ data, de: peerId, dispositivoId }: EventoSenal) => {
       if (!data || typeof peerId !== "string" || socket !== camSocketRef.current) return
       const de = claveCamara(peerId, dispositivoId)
       try {
@@ -1633,6 +1702,7 @@ export default function EnVivoPage() {
             }
             else if (pc.connectionState === "failed") { setCamError("Se desconectó una cámara celular; Selah sigue esperando su regreso."); logError(`Cámara celular ${de}: enlace WebRTC falló`, { tipo: "socket", pagina: "/en-vivo" }) }
           }
+          if (!data.sdp) throw new Error("La oferta WebRTC no contiene SDP.")
           await pc.setRemoteDescription(data.sdp)
           if (pcHostsRef.current.get(de) !== pc) return
           const pendientes = camIcePendienteRef.current.get(peerId)?.splice(0) || []
@@ -1651,16 +1721,16 @@ export default function EnVivoPage() {
             }
           }
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         setCamEstado("error")
         setCamError("Falló el intercambio WebRTC con el celular.")
-        logError(`Cámara celular: señal ${data?.tipo || "desconocida"} falló: ${e?.message || e}`, { tipo: "socket", pagina: "/en-vivo" })
+        logError(`Cámara celular: señal ${data?.tipo || "desconocida"} falló: ${mensajeDeError(e)}`, { tipo: "socket", pagina: "/en-vivo" })
       }
     })
     // El celular se cayó (2º plano, red…). NO cerramos: el PC sigue esperando en la
     // sala para que el celular se reconecte con el mismo código. El compositor oculta
     // cuadros congelados y la identidad estable conserva los selectores y perfiles de audio.
-    socket.on("camara:par-fin", ({ de: peerId, dispositivoId }: any = {}) => {
+    socket.on("camara:par-fin", ({ de: peerId, dispositivoId }: Omit<EventoSenal, "data"> = {}) => {
       if (typeof peerId !== "string" || socket !== camSocketRef.current) return
       const de = claveCamara(peerId, dispositivoId)
       camIcePendienteRef.current.delete(peerId)
@@ -1675,7 +1745,7 @@ export default function EnVivoPage() {
       }
       setCamEstado(pcHostsRef.current.size ? "conectado" : "esperando")
     })
-    socket.on("connect_error", (e: any) => { setCamEstado("error"); setCamError("No se pudo abrir la señalización."); logError(`Cámara celular: señalización connect_error: ${e?.message || e}`, { tipo: "socket", pagina: "/en-vivo" }) })
+    socket.on("connect_error", (e: Error) => { setCamEstado("error"); setCamError("No se pudo abrir la señalización."); logError(`Cámara celular: señalización connect_error: ${mensajeDeError(e)}`, { tipo: "socket", pagina: "/en-vivo" }) })
   }
 
   // ── Emisión directa ─────────────────────────────────────────────────────────
@@ -1683,7 +1753,7 @@ export default function EnVivoPage() {
   // salida (lienzo + audio). Sirve para la congregación en la red local; para
   // muchísimos espectadores por internet convendría una plataforma (Facebook/YT).
   const iniciarEmision = async () => {
-    const tx = (window as any).transmision
+    const tx = transmisionElectron()
     if (!tx?.infoRedCamara) { setErrorTx("La emisión directa funciona solo en la app de escritorio."); return }
     if (!canvasRef.current) { setErrorTx("La vista aún no está lista."); return }
     setErrorTx(null)
@@ -1728,11 +1798,11 @@ export default function EnVivoPage() {
     })
 
     // Respuesta/ICE de un espectador (dirigida por su socket.id en `de`).
-    socket.on("emision:senal", async ({ data, de }: { data?: any; de?: string }) => {
+    socket.on("emision:senal", async ({ data, de }: EventoSenal) => {
       const pc = de ? emiPeersRef.current.get(de) : null
       if (!pc || !data) return
       try {
-        if (data.tipo === "answer") await pc.setRemoteDescription(data.sdp)
+        if (data.tipo === "answer" && data.sdp) await pc.setRemoteDescription(data.sdp)
         else if (data.tipo === "ice" && data.candidate) await pc.addIceCandidate(data.candidate)
       } catch {}
     })
@@ -1767,7 +1837,7 @@ export default function EnVivoPage() {
     "video/webm;codecs=h264,opus",
     "video/webm;codecs=vp8,opus",
     "video/webm",
-  ].find(m => (window as any).MediaRecorder?.isTypeSupported?.(m)) || "video/webm"
+  ].find(m => MediaRecorder.isTypeSupported(m)) || "video/webm"
 
   // ── Pantalla de espera + cuenta regresiva ───────────────────────────────────
   const guardarEsperaTexto = (t: string) => { setEsperaTexto(t); try { localStorage.setItem("en-vivo-espera-texto", t) } catch {} }
@@ -1788,7 +1858,7 @@ export default function EnVivoPage() {
 
   // ── Grabar sin transmitir (solo a disco) ────────────────────────────────────
   const grabarSolo = async () => {
-    const tx = (window as any).transmision
+    const tx = transmisionElectron()
     if (!tx?.iniciarGrabacion) { setErrorTx("Grabar funciona solo en la app de escritorio."); return }
     if (!haySalidaVisual()) { setErrorTx("La escena elegida necesita una cámara. Conecta una, comparte pantalla o usa Proyección/Espera para grabar sin cámara."); return }
     setErrorTx(null)
@@ -1806,7 +1876,7 @@ export default function EnVivoPage() {
       }
       rec.start(1000); recSoloRef.current = rec
       setSegundos(0); setGrabandoSolo(true)
-    } catch (e: any) { setErrorTx("No se pudo capturar: " + (e?.message || "")); grabActivaRef.current = false; try { await tx.detenerGrabacion?.() } catch {} }
+    } catch (e: unknown) { setErrorTx("No se pudo capturar: " + mensajeDeError(e)); grabActivaRef.current = false; try { await tx.detenerGrabacion?.() } catch {} }
   }
   const detenerGrabarSolo = async () => {
     try { recSoloRef.current?.stop() } catch {}
@@ -2111,7 +2181,7 @@ export default function EnVivoPage() {
         <Seccion titulo="Escena al aire" defaultOpen dataTour="tx-escenas">
             <div style={{ fontSize: 12, color: C.tenue, marginBottom: 12 }}>
                 {conectadoSala
-                  ? (estadoEsp ? `Proyectando: ${nombreEstado(estadoEsp.tipo)}`
+                  ? (estadoEsp ? `Proyectando: ${nombreEstado(estadoEsp.tipo || "")}`
                     : biblia?.referencia ? `Proyectando: ${biblia.referencia}`
                     : titulo ? `Proyectando: ${titulo}${tono ? ` · ${tono}` : ""}`
                     : videoUrl ? "Proyectando una animación"
@@ -2359,6 +2429,8 @@ export default function EnVivoPage() {
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
                   {graficos.map((g, i) => (
                     <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 8, background: C.panel2, border: `1px solid ${C.borde}`, borderRadius: 10, padding: "6px 8px 6px 6px" }}>
+                      {/* URL local o data URL seleccionada por el operador; no pasa por el optimizador web. */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={g.url} alt="" style={{ width: 34, height: 34, objectFit: "contain", borderRadius: 6, background: "rgba(0,0,0,.3)" }} />
                       <span style={{ fontSize: 12, color: C.suave }}>Gráfico {i + 1}</span>
                       <button onClick={() => quitarGrafico(g.id)} data-ayuda="Quita este gráfico del diseño de transmisión."
@@ -2376,8 +2448,8 @@ export default function EnVivoPage() {
             <strong>Diagnóstico rápido</strong>
             <div style={{ marginTop: 6 }}>{diagDisponible ? diagTx.diagnostico : "Diagnóstico no disponible; no usar los últimos valores como estado actual."}</div>
             {diagDisponible && <div style={{ fontSize: 12, marginTop: 6, color: C.suave }}>
-              Captura recibida: {diagTx.entradaMs == null ? "sin datos" : `hace ${(diagTx.entradaMs / 1000).toFixed(0)} s`} · Cola: {(diagTx.colaBytes / 1048576).toFixed(1)} MB<br />
-              Avance FFmpeg: {diagTx.avanceMs == null ? "sin confirmar" : `hace ${(diagTx.avanceMs / 1000).toFixed(0)} s`} · Cuadros: {diagTx.cuadros} · Avisos de tiempos: {diagTx.avisosTiempo}
+              Captura recibida: {diagTx.entradaMs == null ? "sin datos" : `hace ${(diagTx.entradaMs / 1000).toFixed(0)} s`} · Cola: {((diagTx.colaBytes || 0) / 1048576).toFixed(1)} MB<br />
+              Avance FFmpeg: {diagTx.avanceMs == null ? "sin confirmar" : `hace ${(diagTx.avanceMs / 1000).toFixed(0)} s`} · Cuadros: {diagTx.cuadros ?? 0} · Avisos de tiempos: {diagTx.avisosTiempo ?? 0}
             </div>}
             <button style={{ ...botonBase({}), marginTop: 8 }} onClick={async () => {
               const informe = `Diagnóstico Selah · ${new Date().toISOString()}\n${JSON.stringify({ disponible: diagDisponible, ...diagTx }, null, 2)}\nNo confirma publicación ni recepción por cada plataforma.`
@@ -2471,7 +2543,7 @@ export default function EnVivoPage() {
                     <button disabled={!!recuperandoGrabacion} style={botonBase({ padding: "7px 10px", opacity: recuperandoGrabacion ? .55 : 1 })} onClick={async () => {
                       setRecuperandoGrabacion(pendiente.id)
                       try {
-                        const resultado = await (window as any).transmision?.recuperarGrabacion?.(pendiente.id)
+                        const resultado = await transmisionElectron()?.recuperarGrabacion?.(pendiente.id)
                         if (!resultado?.ok) { flash(resultado?.error || "No se pudo recuperar la grabación"); return }
                         setGrabacionesPendientes(lista => lista.filter(item => item.id !== pendiente.id))
                         setGrabInfo({ ruta: resultado.ruta, carpeta: resultado.carpeta, listo: true })
@@ -2482,7 +2554,7 @@ export default function EnVivoPage() {
                     }}>{recuperandoGrabacion === pendiente.id ? "Recuperando…" : "Recuperar MP4"}</button>
                   </div>)}
                 </div>
-                <button style={{ ...botonBase({ padding: "7px 10px" }), marginTop: 9 }} onClick={() => (window as any).transmision?.abrirCarpetaGrabaciones?.()}>Abrir carpeta sin modificar archivos</button>
+                <button style={{ ...botonBase({ padding: "7px 10px" }), marginTop: 9 }} onClick={() => transmisionElectron()?.abrirCarpetaGrabaciones?.()}>Abrir carpeta sin modificar archivos</button>
               </div>}
               <div style={{ fontSize: 12, color: C.tenue, marginBottom: 12 }}>Activa una o varias plataformas — se transmite a todas a la vez (necesitas buena subida de internet).</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
@@ -2573,7 +2645,7 @@ export default function EnVivoPage() {
               {grabInfo?.listo && (
                 <div style={{ marginTop: 12, background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.28)", borderRadius: 10, padding: "10px 14px", fontSize: 12.5, color: "#bbf7d0", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                   <span>✅ Grabación guardada{grabInfo.ruta ? `: ${grabInfo.ruta.split(/[\\/]/).pop()}` : ""}.</span>
-                  <button onClick={() => (window as any).transmision?.abrirCarpetaGrabaciones?.()} style={botonBase({ background: "rgba(255,255,255,0.08)", color: C.texto, padding: "6px 11px", fontSize: 12 })}>📂 Abrir carpeta</button>
+                  <button onClick={() => transmisionElectron()?.abrirCarpetaGrabaciones?.()} style={botonBase({ background: "rgba(255,255,255,0.08)", color: C.texto, padding: "6px 11px", fontSize: 12 })}>📂 Abrir carpeta</button>
                 </div>
               )}
             </>
@@ -2597,7 +2669,7 @@ export default function EnVivoPage() {
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                 <button onClick={async () => { const ok = await copiarTexto(logsTx.join("\n")); flash(ok ? "Registro copiado" : "No se pudo copiar el registro") }}
                   style={botonBase({ background: "rgba(255,255,255,0.06)", color: C.texto, padding: "7px 12px", fontSize: 12.5 })}>📋 Copiar</button>
-                <button onClick={() => (window as any).transmision?.abrirLog?.()}
+                <button onClick={() => transmisionElectron()?.abrirLog?.()}
                   style={botonBase({ background: "rgba(255,255,255,0.06)", color: C.texto, padding: "7px 12px", fontSize: 12.5 })}>📂 Abrir registro completo</button>
               </div>
             </details>
@@ -2621,6 +2693,8 @@ export default function EnVivoPage() {
                 </div>
                 <div style={{ fontSize: 11.5, color: C.tenue, marginBottom: 6 }}>Comparte este link (o dícelo en voz alta):</div>
                 <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:10, padding:10, borderRadius:10, background:"rgba(255,255,255,.04)", border:`1px solid ${C.borde}` }}>
+                  {/* QR generado por el servidor local de Electron. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={`http://localhost:4000/qr?data=${encodeURIComponent(verUrl)}`} alt="QR de la emisión directa" style={{ width:92, height:92, borderRadius:8, background:"white" }} />
                   <div>
                     <div style={{ fontSize:11, color:C.tenue, marginBottom:4 }}>Código de acceso</div>
@@ -2703,7 +2777,9 @@ export default function EnVivoPage() {
                   {fuentesPantalla.map(f => (
                     <button key={f.id} onClick={() => elegirPantalla(f.id)} style={{ background: C.panel2, border: `1px solid ${C.borde}`, borderRadius: 12, padding: 8, cursor: "pointer", textAlign: "left" }}>
                       {f.thumb
-                        ? <img src={f.thumb} alt="" style={{ width: "100%", borderRadius: 8, background: "#000", aspectRatio: "16 / 9", objectFit: "contain", display: "block" }} />
+                        ? <>{/* Miniatura data URL entregada por desktopCapturer. */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={f.thumb} alt="" style={{ width: "100%", borderRadius: 8, background: "#000", aspectRatio: "16 / 9", objectFit: "contain", display: "block" }} /></>
                         : <div style={{ aspectRatio: "16 / 9", background: "#000", borderRadius: 8 }} />}
                       <div style={{ fontSize: 12, color: C.texto, marginTop: 6, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
                         <span>{f.esPantalla ? "🖥️" : "🪟"}</span>
@@ -2722,7 +2798,7 @@ export default function EnVivoPage() {
 
 // Extrae la letra de una parte (que es un objeto) y la limpia: quita HTML,
 // acordes entre corchetes y normaliza saltos/espacios. Prefiere texto_letra.
-function limpiarLetra(p: any): string {
+function limpiarLetra(p?: Pick<Parte, "texto" | "texto_letra"> | null): string {
   const raw = p?.texto_letra || p?.texto || ""
   if (typeof raw !== "string") return ""
   return raw
@@ -2753,7 +2829,7 @@ const LETRA_PADX = 38, LETRA_PADBOT = 22, LETRA_TITULO_H = 46
 
 function envolverLineas(ctx: CanvasRenderingContext2D, texto: string, maxW: number, font: number): string[] {
   ctx.font = `700 ${font}px 'Segoe UI', system-ui, sans-serif`
-  try { (ctx as any).letterSpacing = "0px" } catch {}
+  try { ctx.letterSpacing = "0px" } catch {}
   const out: string[] = []
   for (const b of (texto || "").split("\n")) { const l = b.trim(); if (l) out.push(...ajustarLinea(ctx, l, maxW)) }
   return out
@@ -2804,10 +2880,10 @@ function dibujarLetraCaja(ctx: CanvasRenderingContext2D, texto: string, titulo: 
     if (et) {
       ctx.textAlign = "left"; ctx.textBaseline = "middle"
       ctx.font = "800 21px 'Segoe UI', system-ui, sans-serif"
-      try { (ctx as any).letterSpacing = "1px" } catch {}
+      try { ctx.letterSpacing = "1px" } catch {}
       ctx.fillStyle = textoSobreAcento(acento)
       ctx.fillText(et, x + LETRA_PADX, y + LETRA_TITULO_H / 2 + 1, w - LETRA_PADX * 2)
-      try { (ctx as any).letterSpacing = "0px" } catch {}
+      try { ctx.letterSpacing = "0px" } catch {}
     }
     ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"
     ctx.fillStyle = color
@@ -2826,13 +2902,13 @@ function dibujarLetraCaja(ctx: CanvasRenderingContext2D, texto: string, titulo: 
     redondear(ctx, x + 1, y + 1, w - 2, h - 2, 11); ctx.stroke()
     if (et) {
       ctx.font = "800 19px 'Segoe UI', system-ui, sans-serif"
-      try { (ctx as any).letterSpacing = "1px" } catch {}
+      try { ctx.letterSpacing = "1px" } catch {}
       const tw = Math.min(ctx.measureText(et).width + 30, w - 40)
       const px = x + 26, ph = 34, py = y - ph / 2
       ctx.fillStyle = acento; redondear(ctx, px, py, tw, ph, 8); ctx.fill()
       ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillStyle = textoSobreAcento(acento)
       ctx.fillText(et, px + 15, py + ph / 2 + 1, tw - 24)
-      try { (ctx as any).letterSpacing = "0px" } catch {}
+      try { ctx.letterSpacing = "0px" } catch {}
     }
   } else if (diseno === "minimal") {
     // ── Minimal: sin caja. Título con línea corta de acento; la letra (abajo)
@@ -2842,9 +2918,9 @@ function dibujarLetraCaja(ctx: CanvasRenderingContext2D, texto: string, titulo: 
       ctx.shadowColor = "rgba(0,0,0,0.7)"; ctx.shadowBlur = 8
       ctx.fillStyle = "rgba(255,255,255,0.9)"
       ctx.font = "700 19px 'Segoe UI', system-ui, sans-serif"
-      try { (ctx as any).letterSpacing = "2px" } catch {}
+      try { ctx.letterSpacing = "2px" } catch {}
       ctx.fillText(et, x + w / 2, y + 24)
-      try { (ctx as any).letterSpacing = "0px" } catch {}
+      try { ctx.letterSpacing = "0px" } catch {}
       ctx.shadowBlur = 0
       ctx.fillStyle = acento; redondear(ctx, x + w / 2 - 26, y + 34, 52, 3.5, 1.75); ctx.fill()
     }
@@ -2858,9 +2934,9 @@ function dibujarLetraCaja(ctx: CanvasRenderingContext2D, texto: string, titulo: 
       ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"
       ctx.fillStyle = "rgba(255,255,255,0.82)"
       ctx.font = "700 19px 'Segoe UI', system-ui, sans-serif"
-      try { (ctx as any).letterSpacing = "1.5px" } catch {}
+      try { ctx.letterSpacing = "1.5px" } catch {}
       ctx.fillText(et, x + LETRA_PADX, y + 30)
-      try { (ctx as any).letterSpacing = "0px" } catch {}
+      try { ctx.letterSpacing = "0px" } catch {}
       ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fillRect(x + LETRA_PADX, y + 40, w - LETRA_PADX * 2, 1.5)
     }
   }
@@ -2959,18 +3035,18 @@ function dibujarPantallaEspera(ctx: CanvasRenderingContext2D, texto: string, has
     ctx.font = "700 24px 'Segoe UI', system-ui, sans-serif"
     ctx.fillStyle = colorTexto
     ctx.globalAlpha = 0.72
-    try { (ctx as any).letterSpacing = "2px" } catch {}
+    try { ctx.letterSpacing = "2px" } catch {}
     ctx.fillText(nombre.toUpperCase(), cx, ALTO - 58)
     ctx.globalAlpha = 1
-    try { (ctx as any).letterSpacing = "0px" } catch {}
+    try { ctx.letterSpacing = "0px" } catch {}
   }
   ctx.restore()
 }
 
 // Imagen o video "contain" centrado (letterbox) sobre el fondo.
 function dibujarImagenContenida(ctx: CanvasRenderingContext2D, el: HTMLImageElement | HTMLVideoElement) {
-  const iw = (el as any).videoWidth || (el as any).naturalWidth || el.width
-  const ih = (el as any).videoHeight || (el as any).naturalHeight || el.height
+  const iw = el instanceof HTMLVideoElement ? el.videoWidth : el.naturalWidth
+  const ih = el instanceof HTMLVideoElement ? el.videoHeight : el.naturalHeight
   if (!iw || !ih) return
   const escala = Math.min(ANCHO / iw, ALTO / ih)
   const w = iw * escala, h = ih * escala
@@ -3024,12 +3100,12 @@ function dibujarEspera(ctx: CanvasRenderingContext2D, nombre: string, logo: HTML
 
 // Pantalla especial (cuenta regresiva, mensaje, logo, descanso, espera) en la
 // escena Proyección. Se dibuja sobre el fondo brandeado.
-function dibujarEstadoEspecial(ctx: CanvasRenderingContext2D, esp: any, img: HTMLImageElement | null, nombre: string, color: string) {
+function dibujarEstadoEspecial(ctx: CanvasRenderingContext2D, esp: ContenidoProyectado, img: HTMLImageElement | null, nombre: string, color: string) {
   const t = esp?.tipo
   ctx.textAlign = "center"; ctx.textBaseline = "middle"
 
   if (t === "cuenta-regresiva") {
-    const seg = Math.max(0, Math.floor((new Date(esp.hasta).getTime() - Date.now()) / 1000))
+    const seg = Math.max(0, Math.floor((new Date(esp.hasta ?? Date.now()).getTime() - Date.now()) / 1000))
     const pad = (n: number) => String(n).padStart(2, "0")
     const h = Math.floor(seg / 3600), m = Math.floor((seg % 3600) / 60), s = seg % 60
     const texto = seg > 0 ? (h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`) : "¡Comenzamos!"
@@ -3137,10 +3213,10 @@ function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, po
     ctx.strokeStyle = acento; ctx.lineWidth = 2; redondear(ctx, pos.x + 3, pos.y + 3, w - 6, h - 6, 8); ctx.stroke()
     ctx.textAlign = "center"; ctx.textBaseline = "middle"
     ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif`
-    try { (ctx as any).letterSpacing = `${Math.round(tam / 12)}px` } catch {}
+    try { ctx.letterSpacing = `${Math.round(tam / 12)}px` } catch {}
     ctx.fillStyle = colorTexto
     ctx.fillText(nombre.toUpperCase(), cx, cy + 1)
-    try { (ctx as any).letterSpacing = "0px" } catch {}
+    try { ctx.letterSpacing = "0px" } catch {}
     ctx.restore()
     return
   }
@@ -3150,11 +3226,11 @@ function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, po
     ctx.fillStyle = acento; ctx.fillRect(pos.x, pos.y, w, h)
     ctx.textAlign = "center"; ctx.textBaseline = "middle"
     ctx.font = `800 ${tam}px 'Segoe UI', system-ui, sans-serif`
-    try { (ctx as any).letterSpacing = `${Math.round(tam / 14)}px` } catch {}
+    try { ctx.letterSpacing = `${Math.round(tam / 14)}px` } catch {}
     ctx.shadowColor = "rgba(0,0,0,0.55)"; ctx.shadowBlur = 5
     ctx.fillStyle = colorTexto
     ctx.fillText(nombre.toUpperCase(), cx, cy + 1)
-    try { (ctx as any).letterSpacing = "0px" } catch {}
+    try { ctx.letterSpacing = "0px" } catch {}
     ctx.restore()
     return
   }
@@ -3163,11 +3239,11 @@ function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, po
     // Sin caja: nombre centrado con sombra y un puntito de acento a cada lado.
     ctx.textAlign = "center"; ctx.textBaseline = "middle"
     ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif`
-    try { (ctx as any).letterSpacing = `${Math.round(tam / 10)}px` } catch {}
+    try { ctx.letterSpacing = `${Math.round(tam / 10)}px` } catch {}
     ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = 10
     ctx.fillStyle = colorTexto
     ctx.fillText(nombre.toUpperCase(), cx, cy)
-    try { (ctx as any).letterSpacing = "0px" } catch {}
+    try { ctx.letterSpacing = "0px" } catch {}
     ctx.shadowBlur = 0
     const tw = Math.min(ctx.measureText(nombre.toUpperCase()).width, w)
     ctx.fillStyle = acento
@@ -3180,11 +3256,11 @@ function dibujarNombreCentrado(ctx: CanvasRenderingContext2D, nombre: string, po
   // Vidrio (actual): nombre + línea de acento con un puntito a cada lado.
   ctx.textAlign = "center"; ctx.textBaseline = "middle"
   ctx.font = `700 ${tam}px 'Segoe UI', system-ui, sans-serif`
-  try { (ctx as any).letterSpacing = `${Math.round(tam / 10)}px` } catch {}
+  try { ctx.letterSpacing = `${Math.round(tam / 10)}px` } catch {}
   ctx.shadowColor = "rgba(0,0,0,0.6)"; ctx.shadowBlur = 10
   ctx.fillStyle = colorTexto
   ctx.fillText(nombre.toUpperCase(), cx, cy - tam * 0.18)
-  try { (ctx as any).letterSpacing = "0px" } catch {}
+  try { ctx.letterSpacing = "0px" } catch {}
   ctx.shadowBlur = 0
   const lineaW = Math.min(w * 0.42, tam * 3.6)
   const ly = cy + tam * 0.64

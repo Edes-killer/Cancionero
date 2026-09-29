@@ -328,6 +328,7 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 ### Deuda técnica verificada
 
 - Al iniciar v0.5.40, `npm run lint` reportaba 546 hallazgos heredados (407 errores y 139 advertencias). La primera tanda dejó 524 (386 errores y 138 advertencias), concentrados todavía en Control, Transmisión, Canciones y Proyectar. Deben corregirse por módulos y con pruebas, nunca mediante un reemplazo masivo antes de un culto.
+- Transmisión ya no tiene errores de lint: se tiparon el puente Electron, eventos FFmpeg, contenido proyectado, WebRTC y resultados de grabación. El total global bajó a 442 hallazgos (310 errores y 132 advertencias); la deuda restante sigue en otros módulos y no se considera resuelta.
 - Dividir `app/control/page.tsx` y `app/en-vivo/page.tsx` en componentes y hooks más pequeños después de estabilizar la rama 0.5.x.
 
 ### Entregado en v0.5.27
