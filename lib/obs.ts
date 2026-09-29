@@ -8,6 +8,19 @@
 
 import OBSWebSocket from "obs-websocket-js"
 
+const campo = (objeto: unknown, clave: string): unknown =>
+  objeto && typeof objeto === "object" ? (objeto as Record<string, unknown>)[clave] : undefined
+const texto = (objeto: unknown, clave: string): string => {
+  const valor = campo(objeto, clave)
+  return typeof valor === "string" ? valor : ""
+}
+const numero = (objeto: unknown, clave: string): number => {
+  const valor = campo(objeto, clave)
+  return typeof valor === "number" && Number.isFinite(valor) ? valor : 0
+}
+const booleano = (objeto: unknown, clave: string): boolean => campo(objeto, clave) === true
+const mensajeError = (error: unknown): string => error instanceof Error ? error.message : String(error || "")
+
 export interface ConfigOBS {
   host: string      // normalmente "localhost"
   puerto: number    // por defecto 4455
@@ -76,30 +89,30 @@ export class GestorOBS {
 
   private registrarEventos() {
     // OBS avisa cuando cambian cosas → reflejarlo sin tener que preguntar.
-    this.obs.on("CurrentProgramSceneChanged", (d: any) => {
+    this.obs.on("CurrentProgramSceneChanged", d => {
       this.estado.escenaActual = d.sceneName; this.emitir()
       // La escena al aire cambió → sus fuentes son otras.
       this.refrescarFuentes().catch(() => {})
     })
-    this.obs.on("SceneListChanged", (d: any) => {
-      this.estado.escenas = (d.scenes || []).map((s: any) => s.sceneName).reverse()
+    this.obs.on("SceneListChanged", d => {
+      this.estado.escenas = (d.scenes || []).map(s => texto(s, "sceneName")).filter(Boolean).reverse()
       this.emitir()
     })
     // Una fuente se mostró/ocultó (desde OBS o desde aquí) → reflejarlo.
-    this.obs.on("SceneItemEnableStateChanged", (d: any) => {
+    this.obs.on("SceneItemEnableStateChanged", d => {
       if (d.sceneName !== this.estado.escenaActual) return
       const f = this.estado.fuentes.find(x => x.id === d.sceneItemId)
       if (f) { f.visible = !!d.sceneItemEnabled; this.emitir() }
     })
     // Un audio se silenció/activó → reflejarlo.
-    this.obs.on("InputMuteStateChanged", (d: any) => {
+    this.obs.on("InputMuteStateChanged", d => {
       const a = this.estado.audios.find(x => x.nombre === d.inputName)
       if (a) { a.silenciado = !!d.inputMuted; this.emitir() }
     })
-    this.obs.on("StreamStateChanged", (d: any) => {
+    this.obs.on("StreamStateChanged", d => {
       this.estado.transmitiendo = !!d.outputActive; this.emitir()
     })
-    this.obs.on("RecordStateChanged", (d: any) => {
+    this.obs.on("RecordStateChanged", d => {
       this.estado.grabando = !!d.outputActive; this.emitir()
     })
     this.obs.on("ConnectionClosed", () => {
@@ -118,7 +131,7 @@ export class GestorOBS {
       await this.refrescarTodo()
       this.emitir()
       return true
-    } catch (e: any) {
+    } catch (e: unknown) {
       this.estado.conectado = false
       this.estado.error = this.mensajeError(e)
       this.emitir()
@@ -126,13 +139,14 @@ export class GestorOBS {
     }
   }
 
-  private mensajeError(e: any): string {
-    const msg = (e?.message || String(e)).toLowerCase()
+  private mensajeError(e: unknown): string {
+    const original = mensajeError(e)
+    const msg = original.toLowerCase()
     if (msg.includes("authentication") || msg.includes("auth"))
       return "Contraseña incorrecta. Revisa la contraseña de obs-websocket en OBS."
     if (msg.includes("econnrefused") || msg.includes("failed to connect") || msg.includes("closed before"))
       return "No se pudo conectar. ¿Está OBS abierto y el servidor de obs-websocket activado?"
-    return e?.message || "No se pudo conectar con OBS."
+    return original || "No se pudo conectar con OBS."
   }
 
   async desconectar() {
@@ -143,15 +157,15 @@ export class GestorOBS {
 
   private async refrescarTodo() {
     const escenas = await this.obs.call("GetSceneList")
-    this.estado.escenas = (escenas.scenes || []).map((s: any) => s.sceneName).reverse()
-    this.estado.escenaActual = (escenas as any).currentProgramSceneName || ""
+    this.estado.escenas = (escenas.scenes || []).map(s => texto(s, "sceneName")).filter(Boolean).reverse()
+    this.estado.escenaActual = escenas.currentProgramSceneName || ""
     try {
       const stream = await this.obs.call("GetStreamStatus")
-      this.estado.transmitiendo = !!(stream as any).outputActive
+      this.estado.transmitiendo = !!stream.outputActive
     } catch {}
     try {
       const rec = await this.obs.call("GetRecordStatus")
-      this.estado.grabando = !!(rec as any).outputActive
+      this.estado.grabando = !!rec.outputActive
     } catch {}
     await this.refrescarFuentes()
     await this.refrescarAudio()
@@ -165,15 +179,15 @@ export class GestorOBS {
   async refrescarFuentes() {
     if (!this.estado.escenaActual) { this.estado.fuentes = []; this.emitir(); return }
     try {
-      const r: any = await this.obs.call("GetSceneItemList", { sceneName: this.estado.escenaActual })
+      const r = await this.obs.call("GetSceneItemList", { sceneName: this.estado.escenaActual })
       // OBS los entrega de abajo hacia arriba; invertimos para que el orden
       // coincida con lo que el usuario ve en la lista de fuentes de OBS.
       this.estado.fuentes = (r.sceneItems || [])
-        .map((it: any) => ({
-          id: it.sceneItemId,
-          nombre: it.sourceName,
-          visible: !!it.sceneItemEnabled,
-          tipo: it.inputKind || (it.isGroup ? "group" : ""),
+        .map(it => ({
+          id: numero(it, "sceneItemId"),
+          nombre: texto(it, "sourceName"),
+          visible: booleano(it, "sceneItemEnabled"),
+          tipo: texto(it, "inputKind") || (booleano(it, "isGroup") ? "group" : ""),
         }))
         .reverse()
       this.emitir()
@@ -191,16 +205,18 @@ export class GestorOBS {
   // ── Audio ────────────────────────────────────────────────────────────────
   async refrescarAudio() {
     try {
-      const r: any = await this.obs.call("GetInputList")
+      const r = await this.obs.call("GetInputList")
       const audios: FuenteAudio[] = []
       for (const inp of (r.inputs || [])) {
         // Una fuente es "de audio" si responde a GetInputMute; así no
         // dependemos de una lista fija de tipos por sistema operativo.
         try {
-          const m: any = await this.obs.call("GetInputMute", { inputName: inp.inputName })
+          const inputName = texto(inp, "inputName")
+          if (!inputName) continue
+          const m = await this.obs.call("GetInputMute", { inputName })
           let db = 0
-          try { const v: any = await this.obs.call("GetInputVolume", { inputName: inp.inputName }); db = v.inputVolumeDb } catch {}
-          audios.push({ nombre: inp.inputName, silenciado: !!m.inputMuted, db })
+          try { const v = await this.obs.call("GetInputVolume", { inputName }); db = v.inputVolumeDb } catch {}
+          audios.push({ nombre: inputName, silenciado: !!m.inputMuted, db })
         } catch { /* no es fuente de audio */ }
       }
       this.estado.audios = audios
@@ -218,7 +234,7 @@ export class GestorOBS {
   async capturarEscena(anchoPx = 480): Promise<string | null> {
     if (!this.estado.escenaActual) return null
     try {
-      const r: any = await this.obs.call("GetSourceScreenshot", {
+      const r = await this.obs.call("GetSourceScreenshot", {
         sourceName: this.estado.escenaActual,
         imageFormat: "jpg",
         imageWidth: anchoPx,
