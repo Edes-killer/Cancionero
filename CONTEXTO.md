@@ -406,6 +406,7 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - Si Selah o el PC se cierran durante una grabación, Transmisión detecta los segmentos MKV restantes y permite reconstruir un MP4. Los originales solo se eliminan después de verificar una salida no vacía; las grabaciones activas o en conversión nunca se ofrecen como pendientes.
 - El gate `npm run qa:release` ejecuta 10 comprobaciones obligatorias: diff, 138 pruebas automatizadas, build web/TypeScript, lint estricto de transmisión/cámara/conexiones, auditoría de dependencias de producción, auditoría de herramientas de compilación y sintaxis de los cuatro módulos críticos de Electron. La tanda actual aprobó 10/10 y ambas auditorías quedaron en 0 vulnerabilidades conocidas.
 - El lint global heredado todavía no está completamente limpio. La publicación se protege con el gate crítico mientras se corrigen los módulos restantes por tandas pequeñas y verificables.
+- Canciones quedó incorporado al lint crítico: se tiparon importación PowerPoint, cachés, filtros y respuestas de Supabase, retirando 47 hallazgos sin cambiar su flujo funcional.
 
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).
