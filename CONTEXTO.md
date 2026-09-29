@@ -413,6 +413,7 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - El contexto global usa ahora los modelos compartidos de canción y el tipo real de sesión de Supabase; caché, paginación y registro global de errores quedaron sin `any`.
 - Inicio quedó tipado de extremo a extremo: selector de iglesias, estadísticas, accesos por rol y detección de APK forman parte del lint crítico y compilan sin excepciones silenciosas.
 - Configuración también forma parte del gate: miembros, invitaciones, log, QR, firewall y diagnóstico de red usan contratos explícitos; se corrigieron dependencias de carga y la detección de plataforma posterior a la hidratación.
+- Historial quedó tipado para cultos, proyecciones y estadísticas; su carga inicial evita efectos sin dependencias y también está protegida por el lint crítico.
 
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).

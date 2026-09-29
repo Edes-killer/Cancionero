@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
@@ -10,21 +10,39 @@ import { TOUR_HISTORIAL } from "@/lib/tours"
 
 const f: React.CSSProperties = { fontFamily: "'Segoe UI', system-ui, sans-serif" }
 
+interface CultoBase { id: string; nombre: string | null; fecha: string | null }
+interface CultoHistorial extends CultoBase { proyecciones: number }
+interface ProyeccionHistorial {
+  cancion_id: string | null
+  titulo: string | null
+  proyectado_en: string
+  lista_id: string | null
+}
+interface CancionProyectada {
+  titulo: string | null
+  tono: string | null
+  categoria: string | null
+  proyectado_en: string
+}
+interface CancionTop { titulo: string; total: number }
+
+function Card({ children, style = {} }: { children: ReactNode; style?: CSSProperties }) {
+  return <div style={{ borderRadius: 14, padding: "14px 16px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", ...style }}>{children}</div>
+}
+
 export default function HistorialPage() {
   const router = useRouter()
   const [cargando,    setCargando]    = useState(true)
-  const [cultos,      setCultos]      = useState<any[]>([])
-  const [seleccionado, setSeleccionado] = useState<any>(null)
-  const [canciones,   setCanciones]   = useState<any[]>([])
+  const [cultos,      setCultos]      = useState<CultoHistorial[]>([])
+  const [seleccionado, setSeleccionado] = useState<CultoHistorial | null>(null)
+  const [canciones,   setCanciones]   = useState<CancionProyectada[]>([])
   const [stats,       setStats]       = useState({ totalCultos:0, totalProyecciones:0, topCancion:"" })
   const [topList,     setTopList]     = useState<{titulo:string,total:number}[]>([])
   const [mes,         setMes]         = useState("")
   const [pag,         setPag]         = useState(0)
   const POR_PAG = 12
 
-  useEffect(() => { cargar() }, [])
-
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     const igId = await getIglesiaId()
     if (!igId) { navegarSPA(router, "/login", { replace: true }); return }
 
@@ -41,26 +59,27 @@ export default function HistorialPage() {
         .limit(2000)
     ])
 
-    const listasCulto = cultosRes.data || []
-    const hist        = histRes.data   || []
+    const listasCulto = (cultosRes.data || []) as CultoBase[]
+    const hist = (histRes.data || []) as ProyeccionHistorial[]
 
     // ── Enriquecer cultos con cantidad de proyecciones ──────────────────────
     const conteoXLista = new Map<string, number>()
-    hist.forEach((h: any) => {
+    hist.forEach(h => {
       if (h.lista_id) conteoXLista.set(h.lista_id, (conteoXLista.get(h.lista_id) || 0) + 1)
     })
-    const cultosEnriquecidos = listasCulto.map((c: any) => ({
+    const cultosEnriquecidos = listasCulto.map(c => ({
       ...c, proyecciones: conteoXLista.get(c.id) || 0
     }))
     setCultos(cultosEnriquecidos)
 
     // ── Top canciones ────────────────────────────────────────────────────────
-    const conteoCancion = new Map<string, any>()
-    hist.forEach((h: any) => {
+    const conteoCancion = new Map<string, CancionTop>()
+    hist.forEach(h => {
       const k = h.cancion_id || h.titulo
       if (!k) return
       if (!conteoCancion.has(k)) conteoCancion.set(k, { titulo: h.titulo || "Sin título", total: 0 })
-      conteoCancion.get(k).total++
+      const conteo = conteoCancion.get(k)
+      if (conteo) conteo.total++
     })
     const top = Array.from(conteoCancion.values()).sort((a, b) => b.total - a.total).slice(0, 10)
     setTopList(top)
@@ -71,9 +90,14 @@ export default function HistorialPage() {
       topCancion: top[0]?.titulo || "—"
     })
     setCargando(false)
-  }
+  }, [router])
 
-  const abrirCulto = async (culto: any) => {
+  useEffect(() => {
+    const id = setTimeout(() => void cargar(), 0)
+    return () => clearTimeout(id)
+  }, [cargar])
+
+  const abrirCulto = async (culto: CultoHistorial) => {
     setSeleccionado(culto)
     const { data } = await supabase
       .from("historial_proyecciones")
@@ -81,7 +105,7 @@ export default function HistorialPage() {
       .eq("lista_id", culto.id)
       .eq("tipo", "cancion")
       .order("proyectado_en")
-    setCanciones(data || [])
+    setCanciones((data || []) as CancionProyectada[])
   }
 
   // ── Filtrar por mes ────────────────────────────────────────────────────────
@@ -90,15 +114,11 @@ export default function HistorialPage() {
     return c.fecha?.startsWith(mes)
   })
   const mesesDisponibles = Array.from(new Set(
-    cultos.map(c => c.fecha?.slice(0, 7)).filter(Boolean)
+    cultos.map(c => c.fecha?.slice(0, 7)).filter((valor): valor is string => Boolean(valor))
   )).sort().reverse()
 
   const pagActual = cultosFiltrados.slice(pag * POR_PAG, (pag + 1) * POR_PAG)
   const totalPags = Math.ceil(cultosFiltrados.length / POR_PAG)
-
-  const Card = ({ children, style = {} }: any) => (
-    <div style={{ borderRadius: 14, padding: "14px 16px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", ...style }}>{children}</div>
-  )
 
   if (cargando) return (
     <div style={{ ...f, minHeight:"100dvh", background:"#060d1a", display:"flex", alignItems:"center", justifyContent:"center", color:"white" }}>
