@@ -29,80 +29,7 @@ import { normalizarTiempos, duracionParte } from "@/lib/tiemposAuto"
 import { exportarListaTexto, nombreArchivoLista, nombreArchivoListaWord } from "@/lib/exportarListaTexto"
 import { cargarConfiguracionNube, guardarConfiguracionNube, permiteConfiguracionNube, type ConfiguracionControlNube } from "@/lib/configuracionNube"
 import { firmaItemsPersistidos, hayConflictoCultoPersistido, resolverCambioCultoRemoto, type AccionCultoRemota } from "@/lib/conflictoCulto"
-
-// ── Tipos ─────────────────────────────────────────────────────────────────────
-interface Cancion {
-  id: string
-  titulo: string
-  tono?: string
-  categoria?: string
-  iglesia_id?: string | null
-  numero?: number
-  texto_busqueda?: string
-  fecha_creacion?: string
-}
-
-interface Parte {
-  id?: string
-  tipo: string
-  texto: string          // campo legacy
-  texto_letra?: string   // nombre real en BD
-  texto_acordes?: string | null
-  tiene_acordes?: boolean
-  orden?: number
-}
-
-interface ItemLista {
-  id?: string
-  tipo?: "cancion" | "biblia" | "imagen" | "mensaje" | "espera" | string
-  cancion_id?: string
-  lista_id?: string
-  titulo?: string
-  subtitulo?: string
-  tono?: string
-  categoria?: string
-  partes?: Parte[]
-  orden?: number
-  url?: string
-  texto?: string
-  modo?: string
-  estado_subtitulo?: string
-  fondo?: FondoConfig | null
-  referencia?: string
-  referencia_biblica?: string
-  paginas?: string[]
-  urls?: string[]   // carrusel: imágenes/videos en secuencia
-  seg?: number      // carrusel: segundos por imagen
-}
-
-interface CultoData {
-  id: string
-  nombre?: string
-  fecha?: string
-  iglesia_id?: string
-}
-
-interface DatosCargaCancion {
-  id?: string
-  titulo: string
-  tono?: string
-  partes: Parte[]
-  fondo?: FondoConfig | null
-  index?: number
-  iglesia?: string
-  album?: string
-}
-
-interface FondoConfig {
-  tipo: "url" | "preset" | "color"
-  url?: string
-  preset?: string
-  color?: string
-  oscuridad?: number
-  ajuste?: string
-}
-
-const firmaCultoEditable = (items: ItemLista[], nombre: string) => JSON.stringify({ items, nombre: nombre || "" })
+import { firmaCultoEditable, type Cancion, type CultoData, type DatosCargaCancion, type FondoConfig, type ItemLista, type MediaGaleria, type Parte } from "@/lib/modelosCulto"
 
 export default function ControlPage() {
   const { confirmar, ConfirmUI } = useConfirm()
@@ -140,7 +67,7 @@ export default function ControlPage() {
   const [colorLetraCtrl, setColorLetraCtrl] = useState(() =>
     typeof window !== "undefined" ? localStorage.getItem("proyector-color-letra") || "#ffffff" : "#ffffff"
   )
-  const [galeriaImagenes, setGaleriaImagenes] = useState<{url:string,nombre:string,local:boolean,carpeta:string}[]>([])
+  const [galeriaImagenes, setGaleriaImagenes] = useState<MediaGaleria[]>([])
   const [galeriaAbierta, setGaleriaAbierta] = useState(false)
   const [mostrarGaleriaPanel, setMostrarGaleriaPanel] = useState(false)
   const [subiendoGaleria, setSubiendoGaleria] = useState(false)

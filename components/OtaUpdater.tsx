@@ -12,6 +12,8 @@
 // necesitando un APK nuevo (lo avisa AvisoActualizacion con el campo minApk).
 
 import { useEffect, useState } from "react"
+import { Capacitor } from "@capacitor/core"
+import type { BundleInfo, CapacitorUpdaterPlugin } from "@capgo/capacitor-updater"
 import { logCatch } from "@/lib/Errorlogger"
 
 const MANIFEST = process.env.NEXT_PUBLIC_OTA_MANIFEST
@@ -28,16 +30,30 @@ const esMayor = (a: string, b: string): boolean => {
   return false
 }
 
+interface ManifiestoOta {
+  version: string
+  url: string
+  minApk?: string
+}
+
+const esManifiestoOta = (valor: unknown): valor is ManifiestoOta => {
+  if (!valor || typeof valor !== "object") return false
+  const candidato = valor as Record<string, unknown>
+  return typeof candidato.version === "string"
+    && typeof candidato.url === "string"
+    && (candidato.minApk === undefined || typeof candidato.minApk === "string")
+}
+
 export default function OtaUpdater() {
-  const [bundleListo, setBundleListo] = useState<any>(null)   // bundle descargado, listo para aplicar
+  const [bundleListo, setBundleListo] = useState<BundleInfo | null>(null)
   const [version, setVersion] = useState("")
-  const [updater, setUpdater] = useState<any>(null)
+  const [updater, setUpdater] = useState<CapacitorUpdaterPlugin | null>(null)
 
   useEffect(() => {
-    if (typeof window === "undefined" || !(window as any).Capacitor) return
+    if (typeof window === "undefined" || !Capacitor.isNativePlatform()) return
     let cancelado = false
     ;(async () => {
-      let Updater: any
+      let Updater: CapacitorUpdaterPlugin
       try { ({ CapacitorUpdater: Updater } = await import("@capgo/capacitor-updater")) } catch { return }
       setUpdater(Updater)
       // 1) Confirmar que esta versión arrancó bien (evita el rollback de Capgo).
@@ -46,8 +62,8 @@ export default function OtaUpdater() {
       try {
         const r = await fetch(`${MANIFEST}?t=${Date.now()}`, { cache: "no-store" })
         if (!r.ok) throw new Error(`Manifiesto OTA respondió HTTP ${r.status}`)
-        const man = await r.json()
-        if (cancelado || !man?.version || !man?.url) return
+        const man: unknown = await r.json()
+        if (cancelado || !esManifiestoOta(man)) return
         // No aplicar código web que dependa de cambios nativos ausentes. La
         // versión de App.getInfo() es la APK realmente instalada y no cambia
         // cuando se aplica un bundle OTA.
@@ -59,11 +75,13 @@ export default function OtaUpdater() {
         // Versión efectiva actual: la del bundle OTA si es válida; si no, la del APK.
         const actual = await Updater.current().catch(() => null)
         const otaV = actual?.bundle?.version
-        const base = esSemver(otaV) ? otaV : (process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0")
+        const base = typeof otaV === "string" && esSemver(otaV)
+          ? otaV
+          : (process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0")
         if (!esMayor(man.version, base)) return
         // 3) ¿Ya lo bajamos antes? (para no re-descargar en cada apertura).
         const lista = await Updater.list().catch(() => null)
-        const yaBajado = lista?.bundles?.find((b: any) => b.version === man.version)
+        const yaBajado = lista?.bundles?.find(bundle => bundle.version === man.version)
         if (yaBajado) { if (!cancelado) { setBundleListo(yaBajado); setVersion(man.version) } return }
         // Si no, descargar en segundo plano.
         const bundle = await Updater.download({ url: man.url, version: man.version })

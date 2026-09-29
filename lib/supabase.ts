@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js"
+import { Capacitor } from "@capacitor/core"
 
 // ✅ Variables de entorno — nunca hardcodear credenciales
 // En .env.local (desarrollo):
@@ -17,6 +18,12 @@ if (!supabaseUrl || !supabaseKey) {
   )
 }
 
+const lockCapacitor = async <T,>(
+  _name: string,
+  _acquireTimeout: number,
+  fn: () => Promise<T>,
+): Promise<T> => fn()
+
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     flowType: "implicit",
@@ -31,8 +38,8 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     // sin establecerse. El WebView es de una sola ventana, así que no necesita
     // ese candado multi-pestaña. En web/Electron conservamos el lock oficial:
     // allí quitarlo puede provocar carreras durante refresh/login.
-    ...(typeof window !== "undefined" && !!(window as any).Capacitor
-      ? { lock: async (_name: string, _acquireTimeout: number, fn: () => Promise<any>) => fn() }
+    ...(typeof window !== "undefined" && Capacitor.isNativePlatform()
+      ? { lock: lockCapacitor }
       : {}),
   },
 })

@@ -327,7 +327,7 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 
 ### Deuda técnica verificada
 
-- `npm run lint` todavía reporta 516 hallazgos heredados (393 errores y 123 advertencias), concentrados en tipos `any`, dependencias de hooks y reglas estrictas de React 19. No impiden `next build`, pero deben corregirse por módulos y con pruebas, nunca mediante un reemplazo masivo antes de un culto.
+- Al iniciar v0.5.40, `npm run lint` reportaba 546 hallazgos heredados (407 errores y 139 advertencias). La primera tanda dejó 524 (386 errores y 138 advertencias), concentrados todavía en Control, Transmisión, Canciones y Proyectar. Deben corregirse por módulos y con pruebas, nunca mediante un reemplazo masivo antes de un culto.
 - Dividir `app/control/page.tsx` y `app/en-vivo/page.tsx` en componentes y hooks más pequeños después de estabilizar la rama 0.5.x.
 
 ### Entregado en v0.5.27
@@ -392,6 +392,12 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - Antes de sobrescribir un culto existente se compara su versión persistida con la base que abrió el operador. Si otro equipo lo modificó, Control bloquea la sobrescritura y permite guardarlo como copia.
 - Si otro equipo elimina el culto abierto, su contenido se conserva localmente como borrador recuperable.
 - `lib/conflictoCulto.ts` concentra estas decisiones en funciones puras y `test/conflictoCulto.test.js` valida sus escenarios críticos por comportamiento.
+
+### En desarrollo para v0.5.40
+
+- Modelos compartidos de canción, partes, fondos e ítems de culto extraídos a `lib/modelosCulto.ts` para reducir duplicación y reemplazar `any` progresivamente.
+- Actualizador OTA, tema visual, recorridos, afinador, metrónomo, caché, registro de errores y cliente Supabase pasan lint estricto sin desactivar reglas.
+- La limpieza conserva el comportamiento: build de producción y suite automatizada aprobados después de la refactorización.
 
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).

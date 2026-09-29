@@ -12,7 +12,9 @@ export function useMetronomo() {
   const ctxRef = useRef<AudioContext | null>(null)
   const getCtx = (): AudioContext => {
     if (!ctxRef.current) {
-      const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext
+      const Ctx = window.AudioContext
+        || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+      if (!Ctx) throw new Error("Web Audio no está disponible en este dispositivo")
       ctxRef.current = new Ctx()
     }
     try { ctxRef.current!.resume?.() } catch {}
@@ -24,7 +26,8 @@ export function useMetronomo() {
   const [compas, setCompas] = useState(4)
   const [beatVis, setBeatVis] = useState(-1)
   const bpmRef = useRef(90), compasRef = useRef(4), sonandoRef = useRef(false)
-  const nextRef = useRef(0), beatRef = useRef(0), timerRef = useRef<any>(0)
+  const nextRef = useRef(0), beatRef = useRef(0)
+  const timerRef = useRef<number | null>(null)
   useEffect(() => { bpmRef.current = bpm }, [bpm])
   useEffect(() => { compasRef.current = compas }, [compas])
 
@@ -60,7 +63,7 @@ export function useMetronomo() {
     scheduler()
   }
   const detener = () => {
-    window.clearTimeout(timerRef.current)
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current)
     sonandoRef.current = false; setSonando(false); setBeatVis(-1)
   }
   const toggle = () => (sonandoRef.current ? detener() : arrancar())
@@ -79,7 +82,10 @@ export function useMetronomo() {
     }
   }
 
-  useEffect(() => () => { window.clearTimeout(timerRef.current); try { ctxRef.current?.close() } catch {} }, [])
+  useEffect(() => () => {
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current)
+    try { ctxRef.current?.close() } catch {}
+  }, [])
 
   return { sonando, bpm, setBpm, compas, setCompas, beatVis, toggle, tap }
 }

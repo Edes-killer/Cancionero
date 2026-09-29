@@ -1,14 +1,15 @@
 import { supabase } from "@/lib/supabase"
+import { Capacitor } from "@capacitor/core"
 import { supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "@/lib/cache"
 
 export type TipoError = "socket"|"supabase"|"proyeccion"|"biblia"|"imagen"|"galeria"|"ppt"|"audio"|"autenticacion"|"general"
 
-interface OpcionesLog { pagina?: string; tipo?: TipoError; detalle?: Record<string, any> }
+interface OpcionesLog { pagina?: string; tipo?: TipoError; detalle?: Record<string, unknown> }
 
 const detectarPlataforma = () => {
   if (typeof navigator === "undefined") return "servidor"
   if (navigator.userAgent.includes("Electron")) return "electron"
-  if ((window as any).Capacitor) return "apk"
+  if (Capacitor.isNativePlatform()) return "apk"
   return "web"
 }
 
@@ -33,7 +34,7 @@ const getIds = async () => {
 const LOCAL_KEY = "selah-log-local"
 const LOCAL_MAX = 200
 
-export interface EntradaLog { ts: number; tipo: string; pagina: string; mensaje: string; plataforma: string; detalle?: any }
+export interface EntradaLog { ts: number; tipo: string; pagina: string; mensaje: string; plataforma: string; detalle?: unknown }
 
 export const getLocalLog = (): EntradaLog[] => {
   try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || "[]") } catch { return [] }
