@@ -108,7 +108,7 @@ async function validarProcedencia() {
   }
   if (exigirArchivo(appAsar)) {
     try {
-      const datos = JSON.parse(asar.extractFile(appAsar, 'public/build-info.json').toString('utf8'))
+      const datos = JSON.parse(asar.extractFile(appAsar, 'out/build-info.json').toString('utf8'))
       const build = validarBuildInfo(datos, 'El paquete Windows')
       if (windowsInfo) windowsInfo.build = build
     } catch (e) { errores.push(`No se pudo leer la trazabilidad de Windows: ${e.message}`) }
