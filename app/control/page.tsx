@@ -1,13 +1,14 @@
 
 
 "use client"
+/* eslint-disable @next/next/no-img-element -- La vista usa URLs dinámicas locales, blob y Supabase que next/image no puede optimizar. */
 import BibleAutocomplete from "@/components/BibleAutocomplete"
 import OnboardingTour from "@/components/OnboardingTour"
 import EstadoOperativo from "@/components/ui/EstadoOperativo"
 import CentroComandos from "@/components/control/CentroComandos"
 import { TOUR_CONTROL, TOUR_CONTROL_MOBILE } from "@/lib/tours"
 
-import { CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { logCatch } from "@/lib/Errorlogger"
 import { buscarServidorEnRed, getSocketUrl } from "@/lib/servidor"
@@ -15,7 +16,7 @@ import { conTimeout } from "@/lib/timeout"
 import { logError } from "@/lib/Errorlogger"
 import { limitesDe } from "@/lib/planes"
 import { supabase } from "@/lib/supabase"
-import { io } from "socket.io-client"
+import { io, type Socket } from "socket.io-client"
 import { getIglesiaId } from "../../lib/getIglesia"
 import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
@@ -29,7 +30,28 @@ import { normalizarTiempos, duracionParte } from "@/lib/tiemposAuto"
 import { exportarListaTexto, nombreArchivoLista, nombreArchivoListaWord } from "@/lib/exportarListaTexto"
 import { cargarConfiguracionNube, guardarConfiguracionNube, permiteConfiguracionNube, type ConfiguracionControlNube } from "@/lib/configuracionNube"
 import { firmaItemsPersistidos, hayConflictoCultoPersistido, resolverCambioCultoRemoto, type AccionCultoRemota } from "@/lib/conflictoCulto"
-import { firmaCultoEditable, type Cancion, type CultoData, type DatosCargaCancion, type FondoConfig, type ItemLista, type MediaGaleria, type Parte } from "@/lib/modelosCulto"
+import { firmaCultoEditable, type Cancion, type CultoData, type DatosCargaCancion, type ItemLista, type MediaGaleria, type Parte } from "@/lib/modelosCulto"
+
+type OrdenCanciones = "numero" | "az" | "za" | "reciente" | "antigua"
+type ModoFondoCancion = "ninguno" | "preset" | "estatico" | "movimiento" | "video"
+type IglesiaResumen = { nombre?: string | null; logo_url?: string | null; logo_nombre?: string | null }
+type ImagenPowerPoint = { dataUrl: string; nombre: string }
+type RespuestaBiblia = { referencia: string; texto: string; paginas?: string[]; error?: string }
+type ItemListaBD = ItemLista & {
+  texto_biblico?: string | null
+  estado_modo?: string | null
+  estado_titulo?: string | null
+}
+type VentanaControl = Window & {
+  Capacitor?: object
+  powerpoint?: {
+    elegir(): Promise<{ ok?: boolean; ruta?: string; cancelado?: boolean; error?: string }>
+    imagenes(path: string): Promise<{ ok?: boolean; imagenes?: ImagenPowerPoint[]; error?: string }>
+    diapositivas(path: string): Promise<{ ok?: boolean; imagenes?: ImagenPowerPoint[]; error?: string }>
+  }
+}
+
+const mensajeDeError = (error: unknown) => error instanceof Error ? error.message : String(error)
 
 export default function ControlPage() {
   const { confirmar, ConfirmUI } = useConfirm()
@@ -42,13 +64,13 @@ export default function ControlPage() {
     window.setTimeout(() => setAvisoCtrl(""), esError ? 6000 : 3000)
   }
   const { iglesiaId: iglesiaIdCtx, nombreIglesia: nombreIglesiaCtx,
-          logoUrl: logoUrlCtx, canciones: cancionesCtx, pinSala, sinConexion, plan } = useApp()
-  const [socket, setSocket] = useState<any>(null)
+          logoUrl: logoUrlCtx, canciones: cancionesCtx, sinConexion, plan } = useApp()
+  const [socket, setSocket] = useState<Socket | null>(null)
   const [zoomActual, setZoomActual] = useState(() =>
     typeof window !== "undefined" ? Number(localStorage.getItem("proyector-escala-fuente") || "100") : 100
   )
   const zoomActualRef = useRef(typeof window !== "undefined" ? Number(localStorage.getItem("proyector-escala-fuente") || "100") : 100)
-  const socketRef2    = useRef<any>(null)
+  const socketRef2    = useRef<Socket | null>(null)
   const revisionListaSalaRef = useRef(0)
   const firmaListaRemotaRef = useRef("")
   const ultimaFirmaListaEnviadaRef = useRef("")
@@ -89,7 +111,7 @@ export default function ControlPage() {
   const [carruselSeg, setCarruselSeg] = useState(6)                // segundos por imagen
   const [carruselActivo, setCarruselActivo] = useState(false)      // hay un carrusel proyectándose
   const [carruselUrlActual, setCarruselUrlActual] = useState<string>("") // imagen/video actual del carrusel
-  const carruselTimerRef = useRef<any>(null)
+  const carruselTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [cargandoGaleria, setCargandoGaleria] = useState(false)
   const isElectronCtx = typeof navigator !== "undefined" && navigator.userAgent.includes("Electron")
   const [modoGuardado, setModoGuardado] = useState<"local" | "nube">(() =>
@@ -98,14 +120,14 @@ export default function ControlPage() {
       : "nube"
   )
   const [alturaVP, setAlturaVP] = useState<number | null>(null)
-  const [sesionExpirando, setSesionExpirando] = useState(false)
+  const [, setSesionExpirando] = useState(false)
   const [canciones, setCanciones] = useState<Cancion[]>([])
   const STORAGE_KEY = "selah_control_estado"
   // El usuario puede desactivar en Configuración que se recuerde la última
   // alabanza (selah-recordar-ultima="0"): entonces el Control siempre abre limpio.
   const recordarUltima = typeof window !== "undefined" ? localStorage.getItem("selah-recordar-ultima") !== "0" : true
   const estadoGuardado = (typeof window !== "undefined" && recordarUltima) ? (() => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") } catch (e) { return null }
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") } catch { return null }
   })() : null
   const listaGuardada = typeof window !== "undefined" ? (() => {
     try {
@@ -129,13 +151,13 @@ export default function ControlPage() {
   const [filtroCategoria, setFiltroCategoria] = useState("")
   const [busqueda, setBusqueda] = useState("")
   const [busquedaDebounced, setBusquedaDebounced] = useState("")
-  const busquedaTimerRef = useRef<any>(null)
-  const scrollThrottleRef = useRef<any>(null)
+  const busquedaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scrollThrottleRef = useRef<number | null>(null)
 
   // Debounce búsqueda 200ms
   const handleBusqueda = useCallback((v: string) => {
     setBusqueda(v)
-    clearTimeout(busquedaTimerRef.current)
+    if (busquedaTimerRef.current !== null) clearTimeout(busquedaTimerRef.current)
     if (!v) {
       setBusquedaDebounced("")   // ← vacío inmediato, sin esperar 200ms
     } else {
@@ -146,13 +168,13 @@ export default function ControlPage() {
   // ✅ requestAnimationFrame: siempre usa la posición ACTUAL del scroll (nunca stale)
   const handleScrollCanciones = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.target as HTMLDivElement
-    cancelAnimationFrame(scrollThrottleRef.current as any)
+    if (scrollThrottleRef.current !== null) cancelAnimationFrame(scrollThrottleRef.current)
     scrollThrottleRef.current = requestAnimationFrame(() => {
       setScrollTopCanciones(el.scrollTop)
-    }) as any
+    })
   }, [])
-  const [ordenar, setOrdenar] = useState<"numero" | "az" | "za" | "reciente" | "antigua">(() =>
-    (typeof window !== "undefined" ? localStorage.getItem("canciones-orden") || "numero" : "numero") as any
+  const [ordenar, setOrdenar] = useState<OrdenCanciones>(() =>
+    (typeof window !== "undefined" ? localStorage.getItem("canciones-orden") || "numero" : "numero") as OrdenCanciones
   )
   const cambiarOrden = (v: "numero" | "az" | "za" | "reciente" | "antigua") => {
     setOrdenar(v); localStorage.setItem("canciones-orden", v)
@@ -173,9 +195,9 @@ export default function ControlPage() {
   const tiemposRegistrados = useRef<number[]>([])
   const intervaloAutoRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [indiceLista, setIndiceLista] = useState<number | null>(null)
-  const [autoPlay, setAutoPlay] = useState(false)
+  const [autoPlay] = useState(false)
   const esCoro = partes[index]?.tipo === "Coro"
-  const [loopCoro, setLoopCoro] = useState(false)
+  const [loopCoro] = useState(false)
   // ✅ "Repetir coro entre versos": al avanzar, intercala el coro después de cada
   // verso automáticamente (V1 → Coro → V2 → Coro...), así el operador solo aprieta
   // "siguiente" en vez de ir saltando coro/verso a mano. Solo afecta canciones
@@ -200,7 +222,7 @@ export default function ControlPage() {
       if (!igId) return ""
       const cached = localStorage.getItem(`selah-iglesia-${igId}`)
       if (cached) return JSON.parse(cached).nombre || ""
-    } catch (e) {}
+    } catch {}
     return ""
   })
   // ✅ FIX: iglesiaId cacheado en ref para evitar múltiples llamadas
@@ -326,7 +348,7 @@ export default function ControlPage() {
 
   // ✅ Cache de partes: Map<cancion_id, partes[]>
   // Evita fetch a Supabase cada vez que se proyecta una canción
-  const partesCacheRef = useRef<Map<string, any[]>>(new Map())
+  const partesCacheRef = useRef<Map<string, Parte[]>>(new Map())
 
   const nombreIglesiaRef = useRef("")
   const logoEsperaUrlRef = useRef("")
@@ -394,7 +416,7 @@ export default function ControlPage() {
     setMensajeFlash("↩️ Cambio deshecho")
     setTimeout(() => setMensajeFlash(""), 1600)
   }
-  const [flashListaCulto, setFlashListaCulto] = useState(false)
+  const [, setFlashListaCulto] = useState(false)
   const [idsCancionesConAcordes, setIdsCancionesConAcordes] = useState<string[]>([])
   const [cargandoControl, setCargandoControl] = useState(true)
   const [mensajeCargaControl, setMensajeCargaControl] = useState("Preparando control...")
@@ -404,7 +426,7 @@ export default function ControlPage() {
   const cancionRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [fondoCancionUrl, setFondoCancionUrl] = useState("")
   const [fondoCancionNombre, setFondoCancionNombre] = useState("")
-  const [fondoCancionModo, setFondoCancionModo] = useState<"ninguno" | "preset" | "estatico" | "movimiento" | "video">("preset")
+  const [fondoCancionModo, setFondoCancionModo] = useState<ModoFondoCancion>("preset")
   const [fondoCancionPreset, setFondoCancionPreset] = useState("cielo-dorado")
   const [fondoCancionOscuridad, setFondoCancionOscuridad] = useState(55)
   const [fondoCancionAjuste, setFondoCancionAjuste] = useState<"cover" | "contain">("cover")
@@ -451,8 +473,8 @@ export default function ControlPage() {
     socket.emit("cambiar-fondo", fondo)
   }, [fondoCancionUrl, fondoCancionPreset, fondoCancionModo, fondoCancionOscuridad, fondoCancionAjuste])
 // ── Preview panel ─────────────────────────────────────────────────
-const [previewCancion, setPreviewCancion] = useState<any>(null)
-const [previewPartes, setPreviewPartes] = useState<any[]>([])
+const [previewCancion, setPreviewCancion] = useState<Cancion | null>(null)
+const [previewPartes, setPreviewPartes] = useState<Parte[]>([])
 const [previewIndex, setPreviewIndex] = useState(0)
 const previewSolicitudRef = useRef("")
 const [previewModoMusico, setPreviewModoMusico] = useState(false)
@@ -599,7 +621,7 @@ const iniciarArrastrePreview = (e: React.MouseEvent) => {
 }
 // ── Visor Mobile Fullscreen ──────────────────────────────────────────
 const [visorAbierto, setVisorAbierto] = useState(false)
-const [visorPartes, setVisorPartes] = useState<any[]>([])
+const [visorPartes, setVisorPartes] = useState<Parte[]>([])
 const [visorIndex, setVisorIndex] = useState(0)
 const [visorModoMusico, setVisorModoMusico] = useState(false)
 const [visorTitulo, setVisorTitulo] = useState("")
@@ -671,17 +693,12 @@ useEffect(() => {
     return () => subscription.unsubscribe()
   }, [router])
 
-// Audio silencioso para activar Media Session en Android
-const audioRef = useRef<HTMLAudioElement | null>(null)
 // No pedir permisos durante el render. Las notificaciones aún no se usan en
 // Control y Android/navegadores solo deben solicitarlas tras una acción clara
 // del usuario; pedirlas aquí producía avisos inesperados y repetidos.
 
 useEffect(() => {
   // ✅ Sin servidor igual carga el control — solo avisa al intentar proyectar
-  const ip = localStorage.getItem("servidor_ip")
-  const esCapacitor = (window as any).Capacitor
-
   // Aunque todavía no exista una IP guardada, crear el socket contra el host
   // local provisional permite que el sondeo inferior active el descubrimiento
   // automático cuando aparezca el PC.
@@ -723,8 +740,9 @@ useEffect(() => {
   })
   const _emitLocal = s.emit.bind(s)
   let unidoASala = false
-  ;(s as any).emit = (evento: string, ...args: any[]) => {
-    if (s.connected) return _emitLocal(evento, ...args)
+  const emitirLocal = _emitLocal as (evento: string, ...args: unknown[]) => Socket
+  s.emit = ((evento: string, ...args: unknown[]) => {
+    if (s.connected) return emitirLocal(evento, ...args)
     if (!nubeLista) {
       logConex(`Sin conexión local y el respaldo por nube aún no está listo (${evento})`)
       return s
@@ -733,7 +751,7 @@ useEffect(() => {
       .then(estado => { if (estado !== "ok") logConex(`Falló el envío por nube (${evento}): ${estado}`) })
       .catch(e => logConex(`Falló el envío por nube (${evento}): ${e?.message || e}`))
     return s
-  }
+  }) as typeof s.emit
   s.on("connect", async () => {
     try {
       unidoASala = false
@@ -806,7 +824,7 @@ useEffect(() => {
     flashCtrl("🔒 " + (data?.mensaje || "PIN incorrecto. Verifica en configuración."))
   })
 
-  s.on("connect_error", (e: any) => {
+  s.on("connect_error", (e: Error) => {
     // ❌ ANTES: borrábamos servidor_ip aquí. Eso rompía TODO: al primer error de
     // conexión (firewall, PC no listo, bajón de WiFi) el celular olvidaba la IP,
     // getSocketUrl caía a localhost y ya no reconectaba nunca (había que re-escribir
@@ -820,7 +838,7 @@ useEffect(() => {
 
   s.on("cargar-cancion", (data: DatosCargaCancion) => {
     if (!data?.partes?.length) return
-    const cancionId = (data.partes[0] as any)?.cancion_id
+    const cancionId = data.partes[0]?.cancion_id
     setPartes(data.partes)
     setIndex(data.index || 0)
     setTituloActual(data.titulo || "")
@@ -832,7 +850,7 @@ useEffect(() => {
       setPartes(data.partes)
       setIndex(data.index || 0)
       setTituloActual(data.titulo || "")
-      const cancionId = (data.partes[0] as any)?.cancion_id
+      const cancionId = data.partes[0]?.cancion_id
       if (cancionId) setActivaId(cancionId)
       if (process.env.NODE_ENV === "development") console.log("♻️ Estado restaurado:", data.titulo)
     }
@@ -901,7 +919,7 @@ useEffect(() => {
       }
     } catch {
       fallosSondeo++
-      if (fallosSondeo >= 3 && !descubrimientoIntentado && (window as any).Capacitor) {
+      if (fallosSondeo >= 3 && !descubrimientoIntentado && (window as VentanaControl).Capacitor) {
         descubrimientoIntentado = true
         const encontrada = await buscarServidorEnRed().catch(() => null)
         const actual = localStorage.getItem("servidor_ip") || ""
@@ -921,7 +939,7 @@ useEffect(() => {
   let capacitorListener: { remove: () => void } | null = null
   let desmontado = false
   const setupCapacitorReconexion = async () => {
-    if (!(window as any).Capacitor) return
+    if (!(window as VentanaControl).Capacitor) return
     try {
       const { App } = await import("@capacitor/app")
       const handle = await App.addListener("appStateChange", ({ isActive }) => {
@@ -929,7 +947,7 @@ useEffect(() => {
       })
       if (desmontado) { handle.remove(); return }
       capacitorListener = handle
-    } catch (e) {}
+    } catch {}
   }
   setupCapacitorReconexion()
 
@@ -1114,7 +1132,10 @@ useEffect(() => {
 
 const [isMobile, setIsMobile] = useState(false)
 const [esCapacitorCtx, setEsCapacitorCtx] = useState(false)
-useEffect(() => { setEsCapacitorCtx(!!(window as any).Capacitor) }, [])
+useEffect(() => {
+  const id = setTimeout(() => setEsCapacitorCtx(Boolean((window as VentanaControl).Capacitor)), 0)
+  return () => clearTimeout(id)
+}, [])
 // La nube y el servidor local cumplen funciones distintas: sin el PC de la
 // iglesia todavía se puede buscar, ordenar y guardar el culto desde la APK.
 const modoPreparacionRemota = esCapacitorCtx && socketConectado !== true && !sinConexion
@@ -1197,11 +1218,11 @@ const irACancionesMobile = () => {
 }
 const [estadoEspecialActivo, setEstadoEspecialActivo] = useState("")
 // Datos de la pantalla especial en curso (para mostrar el detalle en la vista previa)
-const [estadoEspData, setEstadoEspData] = useState<any>(null)
-const [tickPreview, setTickPreview] = useState(0)
+const [estadoEspData, setEstadoEspData] = useState<ItemLista | null>(null)
+const [tickPreview, setTickPreview] = useState(() => Date.now())
 useEffect(() => {
   if (!estadoEspecialActivo) return
-  const t = setInterval(() => setTickPreview(x => x + 1), 1000) // refresca la cuenta regresiva
+  const t = setInterval(() => setTickPreview(Date.now()), 1000) // refresca la cuenta regresiva
   return () => clearInterval(t)
 }, [estadoEspecialActivo])
 const cargarLista = async () => {
@@ -1271,7 +1292,7 @@ const cargarCanciones = async () => {
         return
       }
     }
-  } catch (e) { /* ignorar */ }
+  } catch { /* ignorar */ }
 
   // ── 3. Sin cache → fetch normal (primera carga) ─────────────────────────────
   await _fetchCanciones(igId, CACHE_KEY)
@@ -1284,7 +1305,7 @@ const _fetchCanciones = async (igId: string | null, cacheKey: string, intento = 
     : `iglesia_id.is.null`
 
   const PAGINA = 1000
-  let todas: any[] = []
+  let todas: Cancion[] = []
   let desde = 0
   let continuar = true
 
@@ -1310,7 +1331,7 @@ const _fetchCanciones = async (igId: string | null, cacheKey: string, intento = 
       return
     }
     if (!data || data.length === 0) break
-    todas = todas.concat(data)
+    todas = todas.concat(data as Cancion[])
     continuar = data.length === PAGINA
     desde += PAGINA
   }
@@ -1321,7 +1342,7 @@ const _fetchCanciones = async (igId: string | null, cacheKey: string, intento = 
     // ✅ Ocultar el himno global cuando la iglesia tiene su propia versión
     // (copy-on-edit), igual que en AppContext -- si no, Control lo muestra doble.
     setCanciones(ocultarGlobalesConCopia(todas))
-    try { localStorage.setItem(cacheKey, JSON.stringify({ data: todas, ts: Date.now() })) } catch (e) {}
+    try { localStorage.setItem(cacheKey, JSON.stringify({ data: todas, ts: Date.now() })) } catch {}
   }
 }
 
@@ -1337,7 +1358,7 @@ const _cargarAcordes = async () => {
   if (errorAcordes) { marcarSupabaseCaido(); setIdsCancionesConAcordes([]); return }
   marcarSupabaseOk()
   const idsUnicos = Array.from(
-    new Set((partesConAcordes || []).map((p: any) => p.cancion_id).filter(Boolean))
+    new Set((partesConAcordes || []).map(p => p.cancion_id).filter((id): id is string => typeof id === "string"))
   )
   setIdsCancionesConAcordes(idsUnicos)
 }
@@ -1362,7 +1383,7 @@ const _cargarAcordes = async () => {
       setFondoCancionOscuridad(config.oscuridad ?? 55)
       setFondoCancionAjuste(config.ajuste || "cover")
     }
-  } catch (e) { /* ignorar */ }
+  } catch { /* ignorar */ }
 
   if (permiteConfiguracionNube(plan)) {
     await recargarConfiguracionControlNube(iglesiaId, true)
@@ -1389,7 +1410,7 @@ const _cargarAcordes = async () => {
         if (nombreIglesiaCtx) return
       }
     }
-  } catch (e) { /* ignorar */ }
+  } catch { /* ignorar */ }
 
   // ✅ Ya se mostró algo (caché) y Supabase falló hace poco — no insistir
   // con la query de abajo, que es justo la que generaba el "Error cargando
@@ -1406,7 +1427,7 @@ const _cargarAcordes = async () => {
     if (!supabaseProbablementeCaido()) {
       supabase.from("iglesias").select("logo_nombre").eq("id", iglesiaId).limit(1)
         .then(({ data: rows }) => {
-          const d = (rows as any[])?.[0]
+          const d = (rows as IglesiaResumen[] | null)?.[0]
           if (d) setLogoEsperaNombre(d.logo_nombre || "")
         })
     }
@@ -1425,7 +1446,7 @@ const _cargarAcordes = async () => {
     const { data: rows, error } = await Promise.race([
       queryPromise,
       timeoutPromise.then(() => ({ data: null, error: new Error("timeout") }))
-    ]) as any
+    ])
 
     if (error) {
       console.warn("Iglesia timeout/error — usando caché localStorage")
@@ -1434,7 +1455,7 @@ const _cargarAcordes = async () => {
     }
     marcarSupabaseOk()
 
-    const data = (rows as any[])?.[0] ?? null
+    const data = (rows as IglesiaResumen[] | null)?.[0] ?? null
     if (!data) return
 
     setNombreIglesia(data.nombre || "")
@@ -1444,7 +1465,7 @@ const _cargarAcordes = async () => {
     logoEsperaUrlRef.current = data.logo_url || ""
 
     // Guardar en cache para la próxima carga (acceso instantáneo)
-    try { localStorage.setItem(igCacheKey, JSON.stringify({ nombre: data.nombre, logo_url: data.logo_url, logo_nombre: data.logo_nombre })) } catch (e) { /* ignorar */ }
+    try { localStorage.setItem(igCacheKey, JSON.stringify({ nombre: data.nombre, logo_url: data.logo_url, logo_nombre: data.logo_nombre })) } catch { /* ignorar */ }
   } catch (e) {
     console.warn("Error cargando iglesia:", e)
   }
@@ -1485,7 +1506,7 @@ const fondoCancionActual = () => {
   }
 }
 
-const registrarProyeccionCancion = async (cancion: any) => {
+const registrarProyeccionCancion = async (cancion: Cancion) => {
   if (!cancion?.id) return
 
   try {
@@ -1506,7 +1527,7 @@ const registrarProyeccionCancion = async (cancion: any) => {
 }
 
 // ✅ Helper: obtiene partes desde cache (memoria → IndexedDB → Supabase)
-const getPartesCancion = async (cancionId: string): Promise<any[]> => {
+const getPartesCancion = async (cancionId: string): Promise<Parte[]> => {
   if (partesCacheRef.current.has(cancionId)) {
     return partesCacheRef.current.get(cancionId)!
   }
@@ -1528,7 +1549,7 @@ const getPartesCancion = async (cancionId: string): Promise<any[]> => {
   if (error) { console.error(error); marcarSupabaseCaido(); return [] }
   marcarSupabaseOk()
   // ✅ Normalizar texto_letra → texto
-  const partes = (data || []).map(p => ({ ...p, texto: p.texto_letra || (p as any).texto || "" }))
+  const partes: Parte[] = (data || []).map(p => ({ ...p, texto: p.texto_letra || p.texto || "" }))
   console.log("🎵 Partes cargadas:", partes.length, partes[0] ? `texto[0]="${partes[0].texto?.slice(0,30)}"` : "sin partes")
   partesCacheRef.current.set(cancionId, partes)
   setPartesCache(cancionId, partes).catch(() => {})
@@ -1576,11 +1597,11 @@ const precargarPartesBatch = async (ids: string[]) => {
       marcarSupabaseOk()
 
       // Agrupar por cancion_id
-      const agrupado: Record<string, any[]> = {}
+      const agrupado: Record<string, Parte[]> = {}
       for (const parte of data || []) {
         if (!agrupado[parte.cancion_id]) agrupado[parte.cancion_id] = []
         // ✅ Normalizar: texto_letra → texto para compatibilidad con el resto del código
-        agrupado[parte.cancion_id].push({ ...parte, texto: parte.texto_letra || (parte as any).texto || "" })
+        agrupado[parte.cancion_id].push({ ...parte, texto: parte.texto_letra || parte.texto || "" })
       }
       for (const id of lote) {
         const partes = agrupado[id] || []
@@ -1594,13 +1615,15 @@ const precargarPartesBatch = async (ids: string[]) => {
 }
 
 // ✅ Precarga partes de lista de culto en batch
-const precargarPartesLista = (items: any[]) => {
-  const ids = items.filter(i => i.tipo === "cancion" && i.id).map(i => i.id)
+const precargarPartesLista = (items: ItemLista[]) => {
+  const ids = items
+    .filter((i): i is ItemLista & { id: string } => i.tipo === "cancion" && typeof i.id === "string")
+    .map(i => i.id)
   if (ids.length === 0) return
   precargarPartesBatch(ids)
 }
 
-const activarMediaSession = (titulo: string, partesList: any[], idx: number) => {
+const activarMediaSession = (titulo: string, partesList: Parte[], idx: number) => {
   if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return
   if (!audioSilenciosoRef.current) {
     audioSilenciosoRef.current = new Audio(
@@ -1727,9 +1750,9 @@ const proyectar = async (id: string, destinoConfirmado = false) => {
   detenerAutoAvance()
   // Activar audio desde gesto del usuario (requisito Android)
   activarMediaSession(cancion?.titulo || "", data || [], 0)
-  registrarProyeccionCancion(cancion) // ✅ fire & forget — no bloquea el socket
+  if (cancion) registrarProyeccionCancion(cancion) // ✅ fire & forget — no bloquea el socket
   console.log("📤 Enviando partes:", data?.length, "texto[0]:", data?.[0]?.texto?.slice(0, 40))
-  socket.emit("cargar-cancion", {
+  socket?.emit("cargar-cancion", {
     partes: data,
     index: 0,
     titulo: cancion?.titulo || "",
@@ -1739,7 +1762,7 @@ const proyectar = async (id: string, destinoConfirmado = false) => {
     fondo: fondoCancionActual()
   })
 
-  socket.emit("cancion-activa", { id })
+  socket?.emit("cancion-activa", { id })
 }
 
 // ── Helpers transposición ───────────────────────────────────────────
@@ -1793,7 +1816,7 @@ const transponerTexto = (texto: string, semitonos: number, americano: boolean): 
   return result
 }
 
-const cargarPreview = async (c: any) => {
+const cargarPreview = async (c: Cancion) => {
   previewSolicitudRef.current = c.id
   setPreviewCancion(c)
   setPreviewIndex(leerPartePreview(c.id))
@@ -1816,7 +1839,7 @@ const cargarPreview = async (c: any) => {
   }
 }
 
-const abrirVisor = async (c: any) => {
+const abrirVisor = async (c: Cancion) => {
   setVisorTitulo(c.titulo || "")
   setVisorTono(c.tono || "")
   setVisorIndex(0)
@@ -1868,13 +1891,13 @@ const cargarTiempos = (cancionId: string): number[] => {
   try {
     const raw = localStorage.getItem(claveTimingCancion(cancionId))
     return raw ? normalizarTiempos(JSON.parse(raw)) : []
-  } catch (e) { return [] }
+  } catch { return [] }
 }
 
 const guardarTiempos = (cancionId: string, tiempos: number[]) => {
   try {
     localStorage.setItem(claveTimingCancion(cancionId), JSON.stringify(tiempos))
-  } catch (e) {}
+  } catch {}
 }
 
 const iniciarAprendizaje = () => {
@@ -2117,8 +2140,8 @@ useEffect(() => {
     } else {
       localStorage.removeItem(key)
     }
-  } catch (e: any) {
-    logError(`No se pudo guardar la lista del culto: ${e?.message || e}`, { tipo:"general", pagina:"/control" })
+  } catch (e: unknown) {
+    logError(`No se pudo guardar la lista del culto: ${e instanceof Error ? e.message : String(e)}`, { tipo:"general", pagina:"/control" })
   }
 }, [lista, listaIdActual, nombreCulto])
 
@@ -2182,7 +2205,7 @@ useEffect(() => {
   return () => window.removeEventListener("keydown", onKey)
 }, [cambiarZoom])
 
-const agregarALista = async (cancion: any) => {
+const agregarALista = async (cancion: Cancion) => {
   // ✅ Antes bloqueaba de plano al editar un culto guardado. Ahora se permite
   // modificarlo (se actualiza al guardar), con una confirmación para no hacerlo
   // sin querer. Si prefieren no tocar el guardado, cancelan y usan "Nuevo".
@@ -2290,7 +2313,7 @@ const eliminarDeLista = (index: number) => {
 }
 
 // ✅ Helper: convierte un item de lista en fila para items_lista
-const itemAFila = (item: any, i: number, listaId: string) => ({
+const itemAFila = (item: ItemLista, i: number, listaId: string) => ({
   lista_id: listaId,
   orden: i,
   cancion_id: item.tipo === "cancion" ? item.id : null,
@@ -2546,7 +2569,7 @@ const guardarCultoComoCopia = async () => {
 
 guardarCultoComoCopiaRef.current = guardarCultoComoCopia
 
-const renombrarCulto = async (culto: any) => {
+const renombrarCulto = async (culto: CultoData) => {
   const nuevoNombre = await pedirTexto("Nuevo nombre del culto", {
     valorInicial: culto.nombre || "", textoOk: "Renombrar"
   })
@@ -2572,7 +2595,7 @@ const renombrarCulto = async (culto: any) => {
   flashCtrl("✅ Culto renombrado")
 }
 
-const duplicarCulto = async (culto: any) => {
+const duplicarCulto = async (culto: CultoData) => {
   const nuevoNombre = await pedirTexto("Nombre para la copia", {
     valorInicial: `${culto.nombre || "Culto"} (copia)`, textoOk: "Duplicar"
   })
@@ -2741,11 +2764,12 @@ const cargarListaDesdeBD = async (id: string) => {
   }
   firmaItemsBDRef.current = firmaItemsPersistidos(items)
 
-  const ids = items
+  const itemsBD = items as ItemListaBD[]
+  const ids = itemsBD
     .map(i => i.cancion_id)
-    .filter(Boolean)
+    .filter((id): id is string => typeof id === "string")
 
-  let cancionesBD: any[] = []
+  let cancionesBD: Cancion[] = []
 
   if (ids.length > 0) {
     const { data: canciones, error: error2 } = await supabase
@@ -2761,12 +2785,12 @@ const cargarListaDesdeBD = async (id: string) => {
     cancionesBD = canciones || []
   }
 
-  const listaOrdenada = items.map(item => {
+  const listaOrdenada: ItemLista[] = itemsBD.map(item => {
     if (item.tipo === "imagen" || item.tipo === "video") {
       return {
         tipo: item.tipo,
-        url: item.imagen_url,
-        titulo: nombreImagenAmigable(item.imagen_url, item.tipo === "video" ? "Video" : "Imagen")
+        url: item.imagen_url || "",
+        titulo: nombreImagenAmigable(item.imagen_url || undefined, item.tipo === "video" ? "Video" : "Imagen")
       }
     }
 
@@ -2790,7 +2814,7 @@ const cargarListaDesdeBD = async (id: string) => {
     if (item.tipo === "estado") {
       return {
         tipo: "estado",
-        modo: item.estado_modo,
+        modo: item.estado_modo || "",
         titulo: item.estado_titulo || "Estado",
         subtitulo: item.estado_subtitulo || "",
         url: item.estado_url || ""
@@ -3006,7 +3030,7 @@ const irAItemLista = async (i: number, alFinal = false) => {
   setIndex(parteInicial)
 
   const cancion = canciones.find(c => c.id === item.id)
-  registrarProyeccionCancion(cancion || item) // ✅ fire & forget
+  if (cancion) registrarProyeccionCancion(cancion) // ✅ fire & forget
   socket.emit("cargar-cancion", {
   partes: partesCancion,
   index: parteInicial,
@@ -3042,7 +3066,7 @@ const optimizarImagen = (file: File): Promise<File> => {
       const maxWidth = 1920
       const maxHeight = 1080
 
-      let { width, height } = img
+      const { width, height } = img
 
       const scale = Math.min(
         1,
@@ -3218,9 +3242,9 @@ const subirImagen = async (file: File) => {
     const { data } = supabase.storage.from("imagenes-culto").getPublicUrl(ruta)
     return { url: data.publicUrl, nombre: baseName || "Imagen", local: false }
 
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error(e)
-    logError(`Galería: falló la imagen ${file.name}: ${e?.message || e}`, { tipo: "galeria", pagina: "/control" })
+    logError(`Galería: falló la imagen ${file.name}: ${mensajeDeError(e)}`, { tipo: "galeria", pagina: "/control" })
     flashCtrl(`No se pudo procesar “${file.name}”. Prueba con JPG, PNG o WEBP.`)
     return null
   }
@@ -3231,11 +3255,12 @@ const subirImagen = async (file: File) => {
 // Las imágenes resultantes se suben a la galería (reusa subirImagen).
 const importarPPT = async (modo: "imagenes" | "diapositivas") => {
   setPptMenu(false)
-  const pp = (window as any).powerpoint
+  const pp = (window as VentanaControl).powerpoint
   if (!pp) { flashCtrl("Importar de PowerPoint funciona solo en la app de escritorio."); return }
   try {
     const sel = await pp.elegir()
     if (!sel?.ok) { if (!sel?.cancelado) flashCtrl(sel?.error || "No se pudo abrir el archivo."); return }
+    if (!sel.ruta) { flashCtrl("No se recibió la ruta del PowerPoint."); return }
     setPptProg("Procesando PowerPoint…")
     const r = modo === "imagenes" ? await pp.imagenes(sel.ruta) : await pp.diapositivas(sel.ruta)
     if (!r?.ok || !r.imagenes?.length) { setPptProg(""); flashCtrl(r?.error || "No se pudo importar."); return }
@@ -3261,14 +3286,14 @@ const importarPPT = async (modo: "imagenes" | "diapositivas") => {
           } catch {}
           void sincronizarMetadataMedia({ ...res, nombre: nombreVisible, carpeta: carpetaDestino })
         }
-      } catch (e: any) { logError(`Importar imagen ${i + 1}/${r.imagenes.length} (${modo}): ${e?.message || e}`, { tipo: "ppt", pagina: "/control" }) }
+      } catch (e: unknown) { logError(`Importar imagen ${i + 1}/${r.imagenes.length} (${modo}): ${mensajeDeError(e)}`, { tipo: "ppt", pagina: "/control" }) }
     }
     setPptProg("")
     const imgs = await cargarGaleriaImagenes(); setGaleriaImagenes(imgs); setMostrarGaleriaPanel(true)
     flashCtrl(subidas > 0
       ? `✅ ${subidas} ${modo === "diapositivas" ? "diapositiva(s)" : "imagen(es)"} importada(s) a la galería`
       : "No se pudo importar ninguna imagen.")
-  } catch (e: any) { setPptProg(""); flashCtrl("Falló la importación: " + (e?.message || "")) }
+  } catch (e: unknown) { setPptProg(""); flashCtrl("Falló la importación: " + mensajeDeError(e)) }
 }
 
 // ✅ ¿La URL apunta a un video? (para re-agregar desde la galería con el tipo
@@ -3348,9 +3373,11 @@ const cargarGaleriaImagenes = async (): Promise<{url: string, nombre: string, lo
       const res = await fetch("http://localhost:4000/api/imagenes/listar")
       if (res.ok) {
         const { imagenes } = await res.json()
-        imagenes.forEach((img: any) => resultado.push({ ...img, local: true, carpeta: "" }))
+        if (Array.isArray(imagenes)) {
+          imagenes.forEach((img: { url: string; nombre: string }) => resultado.push({ ...img, local: true, carpeta: "" }))
+        }
       }
-    } catch(e) {}
+    } catch {}
   }
 
   // Imágenes en nube
@@ -3405,7 +3432,7 @@ const cargarGaleriaImagenes = async (): Promise<{url: string, nombre: string, lo
   return resultado
 }
 
-const enviarPrecargaImagenes = (items: any[]) => {
+const enviarPrecargaImagenes = (items: ItemLista[]) => {
   if (!socket) return
 
   const urls = items
@@ -3445,10 +3472,10 @@ const subirLogoEspera = async (file: File) => {
   setLogoEsperaNombre(resultado.nombre || "Logo")
 }
 
-const buscarVersiculo = (ref: string): Promise<any> => {
+const buscarVersiculo = (ref: string): Promise<RespuestaBiblia> => {
   return new Promise((resolve, reject) => {
     if (!socket) { reject(new Error("Sin conexión al servidor")); return }
-    socket.emit("buscar-biblia", ref, (response: any) => {
+    socket.emit("buscar-biblia", ref, (response: RespuestaBiblia) => {
       if (response?.error) reject(new Error(response.error))
       else resolve(response)
     })
@@ -3484,8 +3511,8 @@ const proyectarBiblia = async (ref: string, destinoConfirmado = false) => {
     logo_marca_url: logoEsperaUrl || "",
     fondo: fondoCancionActual()  // ✅ Bug 2: enviar fondo al proyector
   })
-  } catch (error: any) {
-    flashCtrl(error.message || "No se pudo cargar el versículo")
+  } catch (error: unknown) {
+    flashCtrl(mensajeDeError(error) || "No se pudo cargar el versículo")
   }
 }
 
@@ -3505,8 +3532,8 @@ const agregarBibliaALista = async (ref: string) => {
     },
     `✅ Palabra agregada: ${data.referencia}`
   )
-  } catch (error: any) {
-    flashCtrl(error.message || "No se pudo agregar la cita")
+  } catch (error: unknown) {
+    flashCtrl(mensajeDeError(error) || "No se pudo agregar la cita")
   }
 }
 
@@ -3718,7 +3745,7 @@ const resumirTexto = (texto?: string, max = 45) => {
   return limpio.slice(0, max).trimEnd() + "..."
 }
 
-const subtituloItemLista = (item: any) => {
+const subtituloItemLista = (item: ItemLista) => {
   if (item?.tipo === "cancion") return "Canción"
   if (item?.tipo === "biblia") return "Palabra"
   if (item?.tipo === "imagen") return "Imagen"
@@ -3736,7 +3763,7 @@ const subtituloItemLista = (item: any) => {
   return ""
 }
 
-const iconoItemLista = (item: any) => {
+const iconoItemLista = (item: ItemLista) => {
   if (item?.tipo === "cancion") return "🎵"
   if (item?.tipo === "biblia") return "📖"
   if (item?.tipo === "imagen") return "🖼️"
@@ -3755,21 +3782,10 @@ const iconoItemLista = (item: any) => {
   return "•"
 }
 
-const tituloCancionVisible = (c: any) => {
+const tituloCancionVisible = (c: Cancion) => {
   const numero = c?.numero ? `${c.numero}. ` : ""
   return `${numero}${c?.titulo || "Sin título"}`
 }
-
-const subtituloCancionVisible = (c: any) => {
-  const partes: string[] = []
-
-  if (c?.categoria) partes.push(c.categoria)
-  if (c?.tono) partes.push(nombreTono(c.tono))
-  if (idsCancionesConAcordes.includes(c?.id)) partes.push("Con acordes")
-
-  return partes.join(" • ")
-}
-
 
 const sugerenciasBiblia = [
   "Génesis 1",
@@ -4028,7 +4044,7 @@ useEffect(() => {
   setTimeout(() => centrarCancionEnLista(activaId), 500)
 }, [cargandoControl])
 
-const agregarItemAListaConFeedback = (item: any, mensaje: string) => {
+const agregarItemAListaConFeedback = (item: ItemLista, mensaje: string) => {
   setLista(prev => {
     indicePendienteScrollRef.current = prev.length
     return [...prev, item]
@@ -4163,9 +4179,9 @@ const eliminarMediaGaleria = async (img: { url:string; nombre:string; local:bool
     try { localStorage.removeItem("img-nombre-" + img.url); localStorage.removeItem("img-carpeta-" + img.url) } catch {}
     setGaleriaImagenes(await cargarGaleriaImagenes())
     flashCtrl(`✅ Eliminado: ${img.nombre}`)
-  } catch (e: any) {
-    logError(`Galería: no se pudo eliminar ${img.nombre}: ${e?.message || e}`, { tipo:"galeria", pagina:"/control" })
-    flashCtrl("No se pudo eliminar: " + (e?.message || "error desconocido"))
+  } catch (e: unknown) {
+    logError(`Galería: no se pudo eliminar ${img.nombre}: ${mensajeDeError(e)}`, { tipo:"galeria", pagina:"/control" })
+    flashCtrl("No se pudo eliminar: " + mensajeDeError(e))
   }
 }
 
@@ -4213,21 +4229,8 @@ const alternarGaleriaPrincipal = () => {
   setCargandoGaleria(true)
   void cargarGaleriaImagenes()
     .then(setGaleriaImagenes)
-    .catch((e: any) => logError(`Galería: actualización en segundo plano: ${e?.message || e}`, { tipo:"galeria", pagina:"/control" }))
+    .catch((e: unknown) => logError(`Galería: actualización en segundo plano: ${mensajeDeError(e)}`, { tipo:"galeria", pagina:"/control" }))
     .finally(() => setCargandoGaleria(false))
-}
-
-const abrirBibliotecaVisual = async () => {
-  setCargandoGaleria(true)
-  try {
-    setGaleriaImagenes(await cargarGaleriaImagenes())
-    setGaleriaAbierta(true)
-  } catch (e: any) {
-    logError(`Galería: no se pudo cargar: ${e?.message || e}`, { tipo: "galeria", pagina: "/control" })
-    flashCtrl("No se pudo abrir la galería. Revisa tu conexión y vuelve a intentar.")
-  } finally {
-    setCargandoGaleria(false)
-  }
 }
 
 // El centro de comandos también consulta la caché de Galería. Si aún no se
@@ -4258,8 +4261,8 @@ const procesarArchivoGaleria = async (input: HTMLInputElement) => {
       `✅ ${esVideo ? "Video agregado" : "Imagen agregada"} a la lista: ${resultado.nombre}`
     )
     setGaleriaImagenes(await cargarGaleriaImagenes())
-  } catch (e: any) {
-    logError(`Galería móvil: ${file.name}: ${e?.message || e}`, { tipo: "galeria", pagina: "/control" })
+  } catch (e: unknown) {
+    logError(`Galería móvil: ${file.name}: ${mensajeDeError(e)}`, { tipo: "galeria", pagina: "/control" })
     flashCtrl("No se pudo cargar el archivo. El detalle quedó guardado en Configuración → Registro de errores.")
   } finally {
     input.value = ""
@@ -4349,10 +4352,6 @@ useEffect(() => {
     window.clearInterval(timer)
   }
 }, [iglesiaIdActual, plan, recargarConfiguracionControlNube])
-
-const etiquetaBoton = (texto: string) => {
-  return isMobile ? "" : ` ${texto}`
-}
 
 if (!pantallaDetectada) {
   return (
@@ -4496,230 +4495,6 @@ const etiquetaParteControl = (() => {
 
 // ✅ ¿La parte activa es el coro? Para resaltarlo en el indicador con color.
 const parteActualEsCoro = partes.length > 0 && /coro|estribillo|chorus/i.test(partes[index]?.tipo || "")
-
-const container: CSSProperties = {
-  minHeight: "100vh",
-  background: "linear-gradient(180deg, #081120 0%, #0f172a 100%)",
-  color: "white",
-  padding: isMobile ? "0px" : "18px",
-  paddingTop: isMobile ? "6px" : "18px",
-  display: "flex",
-  flexDirection: "column",
-  gap: isMobile ? "8px" : "16px",
-  boxSizing: "border-box"
-}
-
-const topbar: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  flexWrap: "wrap",
-  gap: "12px"
-}
-
-const controles: CSSProperties = {
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  gap: "10px",
-  flexWrap: "nowrap",
-  background: "rgba(15, 23, 42, 0.97)",
-  border: "1px solid rgba(255,255,255,0.08)",
-  borderRadius: "16px",
-  padding: isMobile ? "8px 10px" : "14px",
-  position: "sticky",
-  top: isMobile ? "8px" : "12px",
-  zIndex: 80,
-  backdropFilter: "blur(8px)",
-  boxShadow: "0 8px 20px rgba(0,0,0,0.18)",
-  alignSelf: "stretch"
-}
-
-const seccion: CSSProperties = {
-  background: "rgba(30, 41, 59, 0.96)",
-  padding: isMobile ? "12px" : "16px",
-  borderRadius: "16px",
-  border: "1px solid rgba(255,255,255,0.08)",
-  boxShadow: "0 10px 25px rgba(0,0,0,0.22)"
-}
-
-const titulo: CSSProperties = {
-  fontSize: isMobile ? "18px" : "22px",
-  fontWeight: 700,
-  marginBottom: "12px"
-}
-
-const subtitulo: CSSProperties = {
-  fontSize: "14px",
-  opacity: 0.75,
-  marginBottom: "10px"
-}
-
-const card: CSSProperties = {
-  background: "#243449",
-  padding: isMobile ? "8px 10px" : "12px",
-  borderRadius: "12px",
-  marginBottom: "10px",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: isMobile ? "flex-start" : "center",
-  gap: "10px"
-}
-
-const acciones: CSSProperties = isMobile
-  ? {
-      display: "grid",
-      gridTemplateColumns: "repeat(2, 42px)",
-      gap: "6px",
-      flexShrink: 0
-    }
-  : {
-      display: "flex",
-      gap: "8px",
-      flexWrap: "nowrap",
-      justifyContent: "flex-start",
-      flexShrink: 0
-    }
-
-const btn: CSSProperties = {
-  padding: isMobile ? "8px 10px" : "10px 14px",
-  borderRadius: "10px",
-  border: "none",
-  background: "#2563eb",
-  color: "white",
-  cursor: "pointer",
-  fontWeight: 700
-}
-
-const btnSecundario: CSSProperties = {
-  ...btn,
-  background: "#334155",
-  padding: isMobile ? "8px 10px" : "10px 14px"
-}
-
-const btnVerde: CSSProperties = {
-  ...btn,
-  background: "#16a34a"
-}
-
-const btnRojo: CSSProperties = {
-  ...btn,
-  background: "#dc2626"
-}
-
-const btnGrande: CSSProperties = {
-  padding: isMobile ? "8px 12px" : "12px 16px",
-  fontSize: isMobile ? "16px" : "18px",
-  borderRadius: "12px",
-  border: "none",
-  background: "#2563eb",
-  color: "white",
-  cursor: "pointer",
-  fontWeight: 700,
-  minWidth: isMobile ? "56px" : "64px"
-}
-
-const input: CSSProperties = {
-  width: "100%",
-  padding: isMobile ? "10px 12px" : "12px 14px",
-  marginBottom: "10px",
-  borderRadius: "10px",
-  border: "1px solid rgba(255,255,255,0.08)",
-  background: "#0f172a",
-  color: "white",
-  outline: "none",
-  fontSize: isMobile ? "14px" : "15px"
-}
-
-const fila: CSSProperties = {
-  display: "flex",
-  gap: "10px",
-  flexWrap: "wrap",
-  alignItems: "center"
-}
-
-const gridDesktop: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1fr",
-  gap: isMobile ? "16px" : "28px",
-  alignItems: "start",
-  width: "100%",
-  boxSizing: "border-box"
-}
-
-const columna: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "16px"
-}
-
-const columnaLista: CSSProperties = {
- display: "flex",
-  flexDirection: "column",
-  gap: "16px",
-  height: "100%",
-  minHeight: 0
-}
-
-
-
-const btnListaMini: CSSProperties = {
-  width: "42px",
-  height: "42px",
-  padding: 0,
-  borderRadius: "10px",
-  border: "none",
-  background: "#334155",
-  color: "white",
-  cursor: "pointer",
-  fontWeight: 700,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center"
-}
-const btnListaPlay: CSSProperties = {
-  ...btnListaMini,
-  background: "#2563eb"
-}
-const btnListaDelete: CSSProperties = {
-  ...btnListaMini,
-  background: "#dc2626"
-}
-
-const btnListaMenu: CSSProperties = {
-  ...btnListaMini,
-  background: "#475569"
-}
-
-const textoCardPrincipal: CSSProperties = {
-  flex: 1,
-  minWidth: 0,
-  overflow: "hidden",
-  alignSelf: "stretch"
-}
-
-const tituloCardResponsive = (isMobile: boolean): CSSProperties => ({
-  display: "-webkit-box",
-  WebkitLineClamp: isMobile ? 2 : 1,
-  WebkitBoxOrient: "vertical" as any,
-  fontWeight: 700,
-  minWidth: 0,
-  lineHeight: 1.25,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  wordBreak: "break-word"
-})
-
-const subtituloCardResponsive = (isMobile: boolean): CSSProperties => ({
-  fontSize: isMobile ? "11px" : "12px",
-  opacity: 0.68,
-  marginTop: "4px",
-  whiteSpace: isMobile ? "normal" : "nowrap",
-  overflow: "hidden",
-  textOverflow: isMobile ? "clip" : "ellipsis",
-  wordBreak: "break-word",
-  lineHeight: 1.2
-})
 
 const colorCategoria = (cat?: string): { bg: string; border: string; text: string } => {
   switch ((cat || "").toLowerCase()) {
@@ -5063,7 +4838,7 @@ return (
       flexShrink: 0, display: "flex", gap: 6, alignItems: "center", overflowX: "auto", padding: "9px 16px",
       background: "rgba(255,255,255,0.025)", borderBottom: "1px solid rgba(255,255,255,0.05)"
     }}>
-      {visorPartes.map((parte: any, i: number) => <button key={i} onClick={() => setVisorIndex(i)} style={{
+      {visorPartes.map((parte, i) => <button key={i} onClick={() => setVisorIndex(i)} style={{
         flexShrink: 0, padding: "6px 11px", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 800,
         border: `1px solid ${i === visorIndex ? "rgba(96,165,250,0.55)" : "rgba(255,255,255,0.08)"}`,
         background: i === visorIndex ? "rgba(37,99,235,0.28)" : "rgba(255,255,255,0.04)",
@@ -5280,7 +5055,7 @@ return (
             <EstadoOperativo compacto nivel="ok" etiqueta="LISTO" detalle={sinConexion ? "Proyección local activa; la nube no está disponible" : "PC y proyector conectados"} />
           )}
           {!isMobile && <>
-            {(socketConectado === false || (socketConectado === null && !!(window as any).Capacitor)) && <EstadoOperativo compacto nivel="error" etiqueta="SIN CONEXIÓN" detalle="Toca para buscar el servidor" onClick={() => setModalServidor(true)} />}
+            {(socketConectado === false || (socketConectado === null && !!(window as VentanaControl).Capacitor)) && <EstadoOperativo compacto nivel="error" etiqueta="SIN CONEXIÓN" detalle="Toca para buscar el servidor" onClick={() => setModalServidor(true)} />}
             {socketConectado === true && <EstadoOperativo compacto nivel="ok" etiqueta="EN LÍNEA" detalle="Servidor local conectado" />}
             {proyectorConectado && <EstadoOperativo compacto nivel="ok" icono="🖥️" etiqueta="PROYECTOR" detalle="Pantalla de proyección activa" />}
             {socketConectado === true && !proyectorConectado && <EstadoOperativo compacto nivel="warning" icono="🖥️" etiqueta="SIN PROYECTOR" detalle="Abre Proyectar para mostrar contenido" />}
@@ -5360,7 +5135,7 @@ return (
         {tiemposAprendidos.length > 0 && !autoAvanceActivo && activaId && (
           <button onClick={async () => {
             if (!(await confirmar("¿Borrar tiempos?", { textoOk: "Borrar", peligro: true }))) return
-            try { localStorage.removeItem(`selah-tiempos-${activaId}`) } catch (e) {}
+            try { localStorage.removeItem(`selah-tiempos-${activaId}`) } catch {}
             setTiemposAprendidos([]); tiemposRegistrados.current = []; iniciarAprendizaje()
           }} style={{
             padding: "4px 7px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.2)",
@@ -5426,7 +5201,7 @@ return (
         {tiemposAprendidos.length > 0 && !autoAvanceActivo && activaId && (
           <button onClick={async () => {
             if (!(await confirmar("¿Borrar tiempos aprendidos?", { textoOk: "Borrar", peligro: true }))) return
-            try { localStorage.removeItem(`selah-tiempos-${activaId}`) } catch (e) {}
+            try { localStorage.removeItem(`selah-tiempos-${activaId}`) } catch {}
             setTiemposAprendidos([]); tiemposRegistrados.current = []; iniciarAprendizaje()
           }} style={{
             padding: "6px 8px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.2)",
@@ -5478,7 +5253,7 @@ return (
         panel (antes solo mostraba la parte, ej. "Verso 2"). Solo para canciones,
         no para Biblia/estados. */}
     {tituloActual && partes.length > 0 && !estadoEspecialActivo && paginasBiblia.length === 0 && (() => {
-      const c = canciones.find(x => x.id === activaId) as any
+      const c = canciones.find(x => x.id === activaId)
       return (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
           <span style={{ color: "#93c5fd", fontWeight: 800 }}>
@@ -5983,7 +5758,7 @@ return (
                 const video = esUrlVideo(img.url)
                 const numeroCarrusel = selCarrusel.indexOf(img.url)
                 return <div key={img.url} style={{ minWidth:0, position:"relative", border:`${numeroCarrusel >= 0 ? 3 : 1}px solid ${numeroCarrusel >= 0 ? "#22c55e" : "rgba(255,255,255,.09)"}`, borderRadius:9, overflow:"visible", background:numeroCarrusel >= 0 ? "rgba(22,163,74,.12)" : "rgba(255,255,255,.035)", color:"white" }}>
-                  <div role="button" tabIndex={0} aria-label={modoCarrusel ? `Seleccionar ${img.nombre} para el carrusel` : `Agregar ${img.nombre} al culto`} onClick={() => modoCarrusel ? toggleSelCarrusel(img.url) : agregarMediaDesdeGaleria(img)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); modoCarrusel ? toggleSelCarrusel(img.url) : agregarMediaDesdeGaleria(img) } }} style={{ aspectRatio:"16/10", borderRadius:"8px 8px 0 0", background:"#050a12", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", cursor:"pointer" }}>
+                  <div role="button" tabIndex={0} aria-label={modoCarrusel ? `Seleccionar ${img.nombre} para el carrusel` : `Agregar ${img.nombre} al culto`} onClick={() => { if (modoCarrusel) toggleSelCarrusel(img.url); else agregarMediaDesdeGaleria(img) }} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (modoCarrusel) toggleSelCarrusel(img.url); else agregarMediaDesdeGaleria(img) } }} style={{ aspectRatio:"16/10", borderRadius:"8px 8px 0 0", background:"#050a12", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", cursor:"pointer" }}>
                     {video ? <video src={img.url} muted preload="metadata" style={{ width:"100%", height:"100%", objectFit:"cover" }} /> : <img src={img.url} alt="" loading="lazy" style={{ width:"100%", height:"100%", objectFit:"cover" }} />}
                     {numeroCarrusel >= 0 && <span style={{ position:"absolute", top:6, left:6, width:25, height:25, borderRadius:"50%", background:"#16a34a", color:"white", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:900, boxShadow:"0 2px 8px rgba(0,0,0,.45)" }}>{numeroCarrusel + 1}</span>}
                   </div>
@@ -6418,7 +6193,7 @@ return (
                                     } catch {}
                                     const actualizadas = await cargarGaleriaImagenes()
                                     setGaleriaImagenes(actualizadas)
-                                  } catch(e:any) { flashCtrl("No se pudo eliminar: " + (e?.message || "")) }
+                                  } catch(e: unknown) { flashCtrl("No se pudo eliminar: " + mensajeDeError(e)) }
                                 }} style={{
                                   position:"absolute", top:3, right:3,
                                   width:20, height:20, borderRadius:4,
@@ -6571,7 +6346,7 @@ return (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
                 <select
                   value={fondoCancionModo}
-                  onChange={e => setFondoCancionModo(e.target.value as any)}
+                  onChange={e => setFondoCancionModo(e.target.value as ModoFondoCancion)}
                   style={{
                     padding: "9px 10px", borderRadius: 10,
                     border: "1px solid rgba(255,255,255,0.08)",
@@ -7071,12 +6846,12 @@ return (
                 <div style={{ fontSize: Math.max(8, Math.round(11 * escalaPanelPreview)), display: "flex", alignItems: "center", gap: Math.max(4, Math.round(8 * escalaPanelPreview)), marginTop: 1 }}>
                   {previewEsSeleccion ? (
                     <span style={{ color: "#60a5fa", fontWeight: 900 }}>● PREVIA</span>
-                  ) : (partes.length > 0 || paginasBiblia.length > 0 || estadoEspecialActivo || carruselActivo || (indiceActivoLista != null && ["imagen", "video", "carrusel"].includes((lista[indiceActivoLista] as any)?.tipo))) && (
+                  ) : (partes.length > 0 || paginasBiblia.length > 0 || estadoEspecialActivo || carruselActivo || (indiceActivoLista != null && ["imagen", "video", "carrusel"].includes(lista[indiceActivoLista]?.tipo || ""))) && (
                     <span style={{ color: "#4ade80", fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 4 }}>
                       <span style={{ width: 6, height: 6, borderRadius: 999, background: "#4ade80" }} />EN VIVO
                     </span>
                   )}
-                  {(() => { const t = previewEsSeleccion ? previewCancion?.tono : (canciones.find((c: any) => c.id === activaId) as any)?.tono; return t ? <span style={{ color: previewEsSeleccion ? "#93c5fd" : "#86efac", fontWeight: 600 }}>Tono {t}</span> : null })()}
+                  {(() => { const t = previewEsSeleccion ? previewCancion?.tono : canciones.find(c => c.id === activaId)?.tono; return t ? <span style={{ color: previewEsSeleccion ? "#93c5fd" : "#86efac", fontWeight: 600 }}>Tono {t}</span> : null })()}
                 </div>
               </div>
             </div>
@@ -7106,7 +6881,7 @@ return (
             <div style={{ margin: `${Math.round(12 * escalaPanelPreview)}px ${Math.round(14 * escalaPanelPreview)}px ${Math.round(8 * escalaPanelPreview)}px`, aspectRatio: "16 / 9", overflow: "hidden", borderRadius: Math.max(7, Math.round(10 * escalaPanelPreview)), background: "#02050a", border: "2px solid rgba(148,163,184,0.38)", boxShadow: "0 0 0 4px rgba(255,255,255,0.025), inset 0 0 45px rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <div style={{ width: "100%", height: "100%", overflow: "hidden", padding: Math.max(8, Math.round(previewAncho / 28)), boxSizing: "border-box", display: "flex", flexDirection: "column", justifyContent: "center" }}>
               {(() => {
-                const it: any = (indiceActivoLista != null && lista[indiceActivoLista]) ? lista[indiceActivoLista] : null
+                const it: ItemLista | null = (indiceActivoLista != null && lista[indiceActivoLista]) ? lista[indiceActivoLista] : null
                 const escalaPreview = previewAncho / 384
                 const estiloMedia: React.CSSProperties = { width: "100%", height: "100%", maxHeight: "100%", objectFit: "contain", display: "block", background: "#000" }
 
@@ -7168,9 +6943,8 @@ return (
 
                 // 5) Pantalla especial (con detalle: texto del mensaje / cuenta regresiva en vivo)
                 if (estadoEspecialActivo || it?.tipo === "estado") {
-                  const esp: any = (it?.tipo === "estado" ? it : null) || estadoEspData || {}
+                  const esp: ItemLista = (it?.tipo === "estado" ? it : null) || estadoEspData || {}
                   const modo = esp.modo || esp.tipo || ""
-                  void tickPreview // fuerza re-render cada segundo para la cuenta
 
                   if (modo === "cuenta-regresiva") {
                     let target: number | null = esp.hasta ? new Date(esp.hasta).getTime() : null
@@ -7179,7 +6953,7 @@ return (
                       const o = new Date(); o.setHours(hh, mm, 0, 0); if (o.getTime() <= Date.now()) o.setDate(o.getDate() + 1)
                       target = o.getTime()
                     }
-                    const rem = target ? Math.max(0, Math.floor((target - Date.now()) / 1000)) : 0
+                    const rem = target ? Math.max(0, Math.floor((target - tickPreview) / 1000)) : 0
                     const pad = (n: number) => String(n).padStart(2, "0")
                     const h = Math.floor(rem / 3600), m = Math.floor((rem % 3600) / 60), s = rem % 60
                     const txt = rem > 0 ? (h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`) : "¡Comenzamos!"
@@ -7459,7 +7233,10 @@ return (
     else void proyectarBiblia(referencia)
   }}
   onAccion={accion => {
-    if (accion === "espera") logoEsperaUrl.trim() ? proyectarPantallaLogo() : proyectarPantallaEspera()
+    if (accion === "espera") {
+      if (logoEsperaUrl.trim()) proyectarPantallaLogo()
+      else proyectarPantallaEspera()
+    }
     else if (accion === "negro") proyectarPantallaNegra()
     else if (accion === "guardar") guardarCultoRef.current()
     else { setVolverCentroTrasRevision(true); setRevisionCultoAbierta(true) }

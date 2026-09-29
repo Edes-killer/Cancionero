@@ -415,6 +415,7 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - Configuración también forma parte del gate: miembros, invitaciones, log, QR, firewall y diagnóstico de red usan contratos explícitos; se corrigieron dependencias de carga y la detección de plataforma posterior a la hidratación.
 - Historial quedó tipado para cultos, proyecciones y estadísticas; su carga inicial evita efectos sin dependencias y también está protegida por el lint crítico.
 - Unión, configuración del servidor, onboarding, emisión directa, laboratorios y componentes de ayuda/editor quedaron sin deuda de lint. El editor libera listeners de puntero al terminar o desmontarse, y los flujos diferidos ya no mutan estado directamente durante los efectos.
+- Control quedó sin errores de TypeScript ni reglas de lint: se tiparon listas, cultos, Biblia, galería, PowerPoint, estados especiales y el monitor de proyección, y se retiró un bloque grande de estilos muertos. Permanecen 18 advertencias de dependencias de efectos que requieren separar el orquestador antes de modificarlas con seguridad; no bloquean la compilación ni se ocultaron con excepciones globales.
 - Los módulos CommonJS del servidor web y Biblia declaran explícitamente su formato, no conservan excepciones sin usar y pasan tanto ESLint como `node --check`.
 
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).

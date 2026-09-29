@@ -35,6 +35,7 @@ export interface ItemLista {
   cancion_id?: string
   lista_id?: string
   titulo?: string
+  nombre?: string
   subtitulo?: string
   tono?: string
   categoria?: string
@@ -44,6 +45,8 @@ export interface ItemLista {
   texto?: string
   modo?: string
   estado_subtitulo?: string
+  mensaje?: string
+  hasta?: string
   fondo?: FondoConfig | null
   referencia?: string
   referencia_biblica?: string

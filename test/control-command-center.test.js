@@ -37,7 +37,8 @@ test("las acciones rápidas conservan el contexto operativo", () => {
   assert.match(centro, /Espera con logo/)
   assert.match(control, /volverCentroTrasRevision/)
   assert.match(control, /Seguir editando/)
-  assert.match(control, /logoEsperaUrl\.trim\(\) \? proyectarPantallaLogo\(\) : proyectarPantallaEspera\(\)/)
+  assert.match(control, /if \(logoEsperaUrl\.trim\(\)\) proyectarPantallaLogo\(\)/)
+  assert.match(control, /else proyectarPantallaEspera\(\)/)
 })
 
 test("Control advierte cambios pendientes y permite guardarlos con Ctrl S", () => {
