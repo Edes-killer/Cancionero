@@ -58,6 +58,11 @@ const comprobaciones = [
     comando: process.execPath,
     args: ["--check", "electron/grabaciones-pendientes.js"],
   },
+  {
+    nombre: "Sintaxis del benchmark de transmisión",
+    comando: process.execPath,
+    args: ["--check", "scripts/qa-eficiencia.cjs"],
+  },
 ]
 
 const resultados = []

@@ -13,12 +13,13 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 
 ## Evidencia automática
 
-- `npm run qa:release`: 10/10 comprobaciones aprobadas.
+- `npm run qa:release`: 11/11 comprobaciones aprobadas.
 - 138/138 pruebas automatizadas aprobadas.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
 - Auditoría de dependencias de producción y de compilación: cero vulnerabilidades conocidas.
 - La recuperación se prueba con FFmpeg real: crea segmentos, reconstruye y decodifica el MP4.
+- `npm run qa:eficiencia -- 30` compara el codificador de Windows con el fallback por software sin usar Internet ni credenciales.
 
 Esto no certifica cámaras, micrófonos, WiFi, sincronía labial ni Facebook reales.
 
@@ -63,5 +64,5 @@ en la grabación local.
 - La recuperación individual de un destino caído todavía requiere separar codificación y
   distribución; el `tee` actual conserva los otros destinos, pero no puede reinsertar uno.
 - CameraX continúa como laboratorio debug y no reemplaza aún la cámara web de producción.
-- El lint global heredado no está limpio; el gate estricto cubre los módulos críticos.
+- El lint global y el gate estricto están limpios; Control también forma parte del gate obligatorio.
 - La prueba prolongada de dos horas y la medición comparativa de eficiencia siguen pendientes.

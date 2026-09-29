@@ -12,6 +12,7 @@ const inicio = fuente.indexOf('function construirArgsFFmpeg('), fin = fuente.ind
 if (inicio < 0 || fin < 0) throw Error('No se encontró configuración FFmpeg')
 const construir = new Function(fuente.slice(inicio, fin) + '; return construirArgsFFmpeg;')()
 ;(async () => {
+  const inicioEnsayo = Date.now()
   let bytes = 0, errorProductor = '', colaMax = 0, salida = ''
   const sockets = new Set()
   const server = net.createServer(s => { sockets.add(s); s.on('data', b => bytes += b.length); s.on('error', () => {}); s.on('close', () => sockets.delete(s)) })
@@ -37,8 +38,17 @@ const construir = new Function(fuente.slice(inicio, fin) + '; return construirAr
     consumidor.stdin.end()
     const codigos = await Promise.all([finP,finC])
     d.stderr('\n')
+    const ultimoNumero = re => {
+      let valor = null, coincidencia
+      while ((coincidencia = re.exec(salida)) !== null) valor = Number(coincidencia[1])
+      return Number.isFinite(valor) ? valor : null
+    }
+    const fpsSalida = ultimoNumero(/fps=\s*([\d.]+)/g)
+    const velocidad = ultimoNumero(/speed=\s*([\d.]+)x/g)
+    const bitrateSalidaKbps = ultimoNumero(/bitrate=\s*([\d.]+)kbits\/s/g)
+    const elapsedMs = Date.now() - inicioEnsayo
     const ok = codigos.every(c=>c===0) && bytes > 0 && d.cuadros >= segundos*29 && d.dts===0
-    console.log(JSON.stringify({ok, segundos, encoder, codigos, cuadros:d.cuadros, avisosTiempo:d.dts, bytesRecibidos:bytes, colaMax}))
+    console.log(JSON.stringify({ok, segundos, encoder, codigos, cuadros:d.cuadros, fpsSalida, velocidad, bitrateSalidaKbps, elapsedMs, avisosTiempo:d.dts, bytesRecibidos:bytes, colaMax}))
     if (!ok) { console.error(salida, errorProductor); process.exitCode=1 }
   } catch(e) { console.error(e.message); process.exitCode=1 }
   finally { clearInterval(informe); clearTimeout(timer); productor.kill(); consumidor.kill(); sockets.forEach(s=>s.destroy()); server.close() }

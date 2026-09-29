@@ -14,6 +14,7 @@
     "qa:audio": "node scripts/qa-audio.cjs",
     "qa:video": "node scripts/qa-video.cjs",
     "qa:captura": "node scripts/qa-captura-envio.cjs",
+    "qa:eficiencia": "node scripts/qa-eficiencia.cjs",
     "qa:release": "node scripts/qa-release.mjs",
     "lint:critico": "eslint app/en-vivo/page.tsx app/camara/page.tsx app/transmision/page.tsx app/canciones/page.tsx app/control/page.tsx app/musicos/page.tsx app/proyectar/page.tsx app/login/page.tsx app/page.tsx app/configuracion/page.tsx app/historial/page.tsx app/unirse/page.tsx app/configurar-servidor/page.tsx app/en-vivo-lab/page.tsx app/onboarding/page.tsx app/ver/page.tsx app/server/index.js components/transmision components/control/CentroComandos.tsx components/Navbar.tsx components/AuthProvider.tsx components/AvisoActualizacion.tsx components/BibleAutocomplete.tsx components/DeepLinkHandler.tsx components/Ensayo.tsx components/Improvisador.tsx components/ObjetoEditable.tsx components/ui/AyudaBotones.tsx context/AppContext.tsx lib/obs.ts lib/getIglesia.ts lib/webrtc.ts lib/biblia.ts lib/biblia-server.js --max-warnings=0",
     "lint": "eslint app components context lib --max-warnings=0",

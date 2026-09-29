@@ -116,7 +116,7 @@ function probarEncoder(enc) {
   })
 }
 
-// Elegir el mejor encoder disponible: hardware primero (liviano para el i3),
+// Elegir el mejor encoder disponible: hardware primero (reduce carga de CPU),
 // software (libx264) como último recurso siempre disponible.
 async function elegirEncoder() {
   if (encoderElegido) return encoderElegido
