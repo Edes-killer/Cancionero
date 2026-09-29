@@ -107,10 +107,15 @@ en todos los teléfonos.
 Cuantificar costo de canvas → MediaRecorder → FFmpeg, comparar alternativas y selección de
 codificador por GPU. No reemplazar toda la arquitectura sin un benchmark y una ruta de retorno.
 
-## 6. Validación del servicio — pendiente
+## 6. Validación del servicio — informe implementado; prueba prolongada pendiente
 
 Asistente previo al culto, informe final y pruebas de dos horas con dos cámaras, grabación,
 varios celulares/PC y cortes de red controlados. Nunca cambiar la IP de la tarjeta del usuario
 como requisito del laboratorio (ya causó pérdida de conectividad en una prueba anterior).
+
+El asistente previo ya comprueba fuentes, micrófono, destino, internet, respaldo y espacio.
+Al terminar, Selah conserva un informe descargable con duración, calidad, nombres de destinos,
+reconexiones, cuadros caídos, tamaño/carpeta del respaldo y diagnóstico final. El informe elimina
+direcciones RTMP y no afirma que Facebook u otra plataforma haya publicado el video.
 
 Procedimiento de audio y cámaras: [QA-CAMARA-TRANSMISION.md](QA-CAMARA-TRANSMISION.md).

@@ -28,6 +28,7 @@ import { claveCamara, EnlacesCamara } from "@/lib/identidadCamara"
 import { dibujarCamaraCompleta } from "@/lib/encuadreCamara"
 import { ColaTransmision } from "@/lib/colaTransmision"
 import { cargarConfiguracionNube, guardarConfiguracionNube, permiteConfiguracionNube, type ConfiguracionTransmisionNube } from "@/lib/configuracionNube"
+import { crearInformeTransmision } from "@/lib/informeTransmision"
 
 type Escena = "camara" | "camara-letra" | "letra" | "espera"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
@@ -345,6 +346,13 @@ export default function EnVivoPage() {
   const [grabInfo, setGrabInfo] = useState<{ carpeta?: string; ruta?: string; listo?: boolean } | null>(null)
   const [grabMB, setGrabMB] = useState(0)
   const intentoRef = useRef(0)
+  const inicioSesionRef = useRef<number | null>(null)
+  const maxReconexionesRef = useRef(0)
+  const maxCuadrosCaidosRef = useRef<number | null>(null)
+  const [informeSesion, setInformeSesion] = useState(() => {
+    if (typeof window === "undefined") return ""
+    try { return localStorage.getItem("selah-ultimo-informe-transmision") || "" } catch { return "" }
+  })
 
   // ── Audio: reducción de ruido + medidor de nivel (VU) ───────────────────────
   // Por defecto OFF = alta fidelidad para música (el procesamiento de voz arruina
@@ -1004,6 +1012,7 @@ export default function EnVivoPage() {
     })
     const offStats = tx.onStats?.((d: any) => {
       setSalud({ bitrate: d?.bitrate ?? null, fps: d?.fps ?? null, speed: d?.speed ?? null, drop: d?.drop ?? null })
+      if (typeof d?.drop === "number") maxCuadrosCaidosRef.current = Math.max(maxCuadrosCaidosRef.current || 0, d.drop)
       if (txEstadoRef.current === "vivo") intentoRef.current = 0 // estable → resetear reintentos
     })
     const offGrab = tx.onGrabacionListo?.((d: any) => {
@@ -1384,6 +1393,7 @@ export default function EnVivoPage() {
     try { recRef.current?.stop() } catch {}
     recRef.current = null
     const n = (intentoRef.current || 0) + 1; intentoRef.current = n; setIntento(n)
+    maxReconexionesRef.current = Math.max(maxReconexionesRef.current, n)
     setTxEstado("reconectando")
     if (n > 30) { setTxEstado("error"); setErrorTx("No se pudo reconectar tras varios intentos. Revisa tu conexión."); return }
     // Facebook puede tardar varios segundos en liberar una sesión RTMPS caída.
@@ -1412,6 +1422,8 @@ export default function EnVivoPage() {
     if (!haySalidaVisual()) { setErrorTx("La escena elegida necesita una cámara. Conecta una, comparte pantalla o usa Proyección/Espera para emitir sin cámara."); return }
 
     setLogsTx([]); setSalud(null); setIntento(0); intentoRef.current = 0
+    inicioSesionRef.current = Date.now(); maxReconexionesRef.current = 0; maxCuadrosCaidosRef.current = null
+    setInformeSesion("")
     detenidoRef.current = false
     setSegundos(0)
     setGrabInfo(null); setGrabMB(0)
@@ -1465,7 +1477,27 @@ export default function EnVivoPage() {
     if (reconTimerRef.current) { clearTimeout(reconTimerRef.current); reconTimerRef.current = null }
     try { recRef.current?.stop() } catch {}
     recRef.current = null
-    try { await (window as any).transmision?.detener() } catch {}
+    const tx = (window as any).transmision
+    let diagnosticoFinal: unknown = null
+    try { diagnosticoFinal = await tx?.diagnostico?.() } catch {}
+    const informe = crearInformeTransmision({
+      inicio: inicioSesionRef.current || Date.now() - segundos * 1000,
+      fin: Date.now(),
+      calidad,
+      bitrateKbps: CALIDAD_KBPS[calidad],
+      destinos: PLATAFORMAS.filter(p => destinos[p.key].activo && destinos[p.key].valor.trim()).map(p => p.nombre),
+      reconexiones: maxReconexionesRef.current,
+      cuadrosCaidos: maxCuadrosCaidosRef.current,
+      grabacionActivada: !!grabInfo,
+      grabacionMB: grabMB,
+      carpetaGrabacion: grabInfo?.carpeta,
+      diagnostico: diagnosticoFinal,
+      resultado: errorTx || "Finalizada por el operador",
+    })
+    setInformeSesion(informe)
+    try { localStorage.setItem("selah-ultimo-informe-transmision", informe) } catch {}
+    inicioSesionRef.current = null
+    try { await tx?.detener() } catch {}
     await detenerGrabacion()
     setTxEstado("idle"); setErrorTx(null); setSegundos(0); setSalud(null); setIntento(0); intentoRef.current = 0
   }
@@ -2400,6 +2432,19 @@ export default function EnVivoPage() {
             </div>
           ) : (
             <>
+              {informeSesion && <div style={{ marginBottom: 14, padding: 12, borderRadius: 12, background: "rgba(34,197,94,.07)", border: "1px solid rgba(34,197,94,.22)" }}>
+                <div style={{ fontWeight: 800, color: "#86efac" }}>✓ Informe de la última sesión disponible</div>
+                <div style={{ marginTop: 5, fontSize: 11.5, color: C.tenue }}>Incluye duración, calidad, destinos, reconexiones, cuadros caídos, grabación y diagnóstico del motor.</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 9 }}>
+                  <button style={botonBase({ padding: "7px 10px" })} onClick={async () => flash(await copiarTexto(informeSesion) ? "Informe copiado" : "No se pudo copiar")}>Copiar informe</button>
+                  <button style={botonBase({ padding: "7px 10px" })} onClick={() => {
+                    const blob = new Blob([informeSesion], { type: "text/plain;charset=utf-8" })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement("a"); a.href = url; a.download = `selah-informe-transmision-${new Date().toISOString().slice(0, 10)}.txt`; a.click()
+                    setTimeout(() => URL.revokeObjectURL(url), 1000)
+                  }}>Descargar informe</button>
+                </div>
+              </div>}
               <div style={{ fontSize: 12, color: C.tenue, marginBottom: 12 }}>Activa una o varias plataformas — se transmite a todas a la vez (necesitas buena subida de internet).</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
                 {PLATAFORMAS.map(p => {
