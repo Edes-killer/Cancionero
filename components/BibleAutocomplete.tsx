@@ -1,5 +1,5 @@
 "use client"
-import { useMemo, useRef, useState, useEffect } from "react"
+import { useMemo, useRef } from "react"
 
 const LIBROS = [
   "Génesis","Éxodo","Levítico","Números","Deuteronomio","Josué","Jueces","Rut",

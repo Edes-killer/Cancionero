@@ -90,7 +90,7 @@ export default function EnVivoLab() {
   return (
     <div style={{ minHeight: "100vh", background: "#060d1a", color: "#eaf0fb", fontFamily: "system-ui", padding: 24 }}>
       <h1 style={{ fontSize: 20, fontWeight: 800 }}>🧪 Banco de pruebas — Editor</h1>
-      <p style={{ fontSize: 13, color: "rgba(234,240,251,0.6)", marginTop: 4 }}>La caja de "Letra" ajusta su alto al texto y su fuente al ancho. Redimensiona desde las esquinas.</p>
+      <p style={{ fontSize: 13, color: "rgba(234,240,251,0.6)", marginTop: 4 }}>La caja de &ldquo;Letra&rdquo; ajusta su alto al texto y su fuente al ancho. Redimensiona desde las esquinas.</p>
       <div style={{ maxWidth: 900, marginTop: 16 }}>
         <div style={{ position: "relative", aspectRatio: "16 / 9", borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)" }}>
           <canvas ref={canvasRef} width={ANCHO} height={ALTO} style={{ width: "100%", height: "100%", display: "block" }} />

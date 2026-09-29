@@ -27,7 +27,7 @@ export function DeepLinkHandler() {
       }
     }
 
-    if (!(window as any).Capacitor) return
+    if (!(window as Window & { Capacitor?: object }).Capacitor) return
 
     const run = async () => {
       try {
@@ -116,7 +116,7 @@ export function DeepLinkHandler() {
     }
 
     run()
-  }, [])
+  }, [router])
 
   return null
 }

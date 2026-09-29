@@ -39,7 +39,9 @@ export default function ObjetoEditable({
 
   // Props frescas para que los listeners del documento usen siempre lo último.
   const propsRef = useRef({ onChange, minW, maxAncho, ancho, alto, soloAncho })
-  propsRef.current = { onChange, minW, maxAncho, ancho, alto, soloAncho }
+  useEffect(() => {
+    propsRef.current = { onChange, minW, maxAncho, ancho, alto, soloAncho }
+  }, [alto, ancho, maxAncho, minW, onChange, soloAncho])
 
   // Estado del arrastre en curso (null = sin arrastre).
   const est = useRef<{
@@ -47,49 +49,47 @@ export default function ObjetoEditable({
     ax: number; ay: number; ratio: number; left: boolean; top: boolean
     rect: DOMRect
   } | null>(null)
+  const limpiarListenersRef = useRef<(() => void) | null>(null)
 
-  // Handlers estables (para add/removeEventListener).
-  const onMove = useRef((e: PointerEvent) => {
-    const s = est.current; if (!s) return
-    const r = s.rect; if (!r.width) return
-    const { onChange, minW, maxAncho, ancho, alto, soloAncho } = propsRef.current
-
-    if (s.modo === "mover") {
-      const dx = (e.clientX - s.px) * (ancho / r.width)
-      const dy = (e.clientY - s.py) * (alto / r.height)
-      onChange({ x: clamp(s.x + dx, 0, ancho - s.w), y: clamp(s.y + dy, 0, alto - s.h) }, s.w)
-      return
-    }
-    // Redimensionar: ancho = distancia horizontal del puntero al ancla.
-    const px = (e.clientX - r.left) * (ancho / r.width)
-    const nw = clamp(Math.abs(px - s.ax), minW, maxAncho)
-    const nx = clamp(s.left ? s.ax - nw : s.ax, 0, ancho - nw)
-    if (soloAncho) {
-      // El alto lo maneja el contenido; la parte de arriba (y) queda fija.
-      onChange({ x: nx, y: s.y }, nw)
-      return
-    }
-    const nh = nw * s.ratio
-    const ny = clamp(s.top ? s.ay - nh : s.ay, 0, alto - nh)
-    onChange({ x: nx, y: ny }, nw)
-  }).current
-
-  const onUp = useRef(() => {
-    est.current = null
-    document.removeEventListener("pointermove", onMove)
-    document.removeEventListener("pointerup", onUp)
-    document.removeEventListener("pointercancel", onUp)
-  }).current
-
-  useEffect(() => () => onUp(), []) // limpiar si se desmonta a mitad de arrastre
+  useEffect(() => () => limpiarListenersRef.current?.(), [])
 
   const arrancar = (comun: Omit<NonNullable<typeof est.current>, "rect">) => {
     const rect = ref.current?.parentElement?.getBoundingClientRect()
     if (!rect) return
     est.current = { ...comun, rect }
-    document.addEventListener("pointermove", onMove)
-    document.addEventListener("pointerup", onUp)
-    document.addEventListener("pointercancel", onUp)
+    const mover = (e: PointerEvent) => {
+      const s = est.current; if (!s) return
+      const r = s.rect; if (!r.width) return
+      const { onChange, minW, maxAncho, ancho, alto, soloAncho } = propsRef.current
+      if (s.modo === "mover") {
+        const dx = (e.clientX - s.px) * (ancho / r.width)
+        const dy = (e.clientY - s.py) * (alto / r.height)
+        onChange({ x: clamp(s.x + dx, 0, ancho - s.w), y: clamp(s.y + dy, 0, alto - s.h) }, s.w)
+        return
+      }
+      const px = (e.clientX - r.left) * (ancho / r.width)
+      const nw = clamp(Math.abs(px - s.ax), minW, maxAncho)
+      const nx = clamp(s.left ? s.ax - nw : s.ax, 0, ancho - nw)
+      if (soloAncho) {
+        onChange({ x: nx, y: s.y }, nw)
+        return
+      }
+      const nh = nw * s.ratio
+      const ny = clamp(s.top ? s.ay - nh : s.ay, 0, alto - nh)
+      onChange({ x: nx, y: ny }, nw)
+    }
+    const terminar = () => {
+      est.current = null
+      document.removeEventListener("pointermove", mover)
+      document.removeEventListener("pointerup", terminar)
+      document.removeEventListener("pointercancel", terminar)
+      limpiarListenersRef.current = null
+    }
+    limpiarListenersRef.current?.()
+    limpiarListenersRef.current = terminar
+    document.addEventListener("pointermove", mover)
+    document.addEventListener("pointerup", terminar)
+    document.addEventListener("pointercancel", terminar)
   }
 
   const iniciarMover = (e: React.PointerEvent) => {

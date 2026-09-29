@@ -15,7 +15,7 @@
     "qa:video": "node scripts/qa-video.cjs",
     "qa:captura": "node scripts/qa-captura-envio.cjs",
     "qa:release": "node scripts/qa-release.mjs",
-    "lint:critico": "eslint app/en-vivo/page.tsx app/camara/page.tsx app/transmision/page.tsx app/canciones/page.tsx app/musicos/page.tsx app/proyectar/page.tsx app/login/page.tsx app/page.tsx app/configuracion/page.tsx app/historial/page.tsx components/transmision components/Navbar.tsx components/AuthProvider.tsx components/AvisoActualizacion.tsx context/AppContext.tsx lib/obs.ts lib/getIglesia.ts lib/webrtc.ts --max-warnings=0",
+    "lint:critico": "eslint app/en-vivo/page.tsx app/camara/page.tsx app/transmision/page.tsx app/canciones/page.tsx app/musicos/page.tsx app/proyectar/page.tsx app/login/page.tsx app/page.tsx app/configuracion/page.tsx app/historial/page.tsx app/unirse/page.tsx app/configurar-servidor/page.tsx app/en-vivo-lab/page.tsx app/onboarding/page.tsx app/ver/page.tsx components/transmision components/control/CentroComandos.tsx components/Navbar.tsx components/AuthProvider.tsx components/AvisoActualizacion.tsx components/BibleAutocomplete.tsx components/DeepLinkHandler.tsx components/Ensayo.tsx components/Improvisador.tsx components/ObjetoEditable.tsx components/ui/AyudaBotones.tsx context/AppContext.tsx lib/obs.ts lib/getIglesia.ts lib/webrtc.ts lib/biblia.ts --max-warnings=0",
     "lint": "eslint app components context lib --max-warnings=0",
     "start": "next start -H 0.0.0.0 -p 3000",
     "electron:dev": "npm run build && electron electron/main.js",

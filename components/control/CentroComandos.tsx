@@ -44,20 +44,23 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
 
   useEffect(() => {
     if (!abierto) return
-    setQ("")
-    setVista("sugeridas")
-    setMensajeAbierto(false)
-    setBibliaAbierta(false)
+    const resetId = setTimeout(() => {
+      setQ("")
+      setVista("sugeridas")
+      setMensajeAbierto(false)
+      setBibliaAbierta(false)
+    }, 0)
     requestAnimationFrame(() => inputRef.current?.focus())
     const cerrarConEscape = (e: KeyboardEvent) => { if (e.key === "Escape") onCerrar() }
     document.addEventListener("keydown", cerrarConEscape)
     const overflowAnterior = document.body.style.overflow
     document.body.style.overflow = "hidden"
     return () => {
+      clearTimeout(resetId)
       document.removeEventListener("keydown", cerrarConEscape)
       document.body.style.overflow = overflowAnterior
     }
-  }, [abierto])
+  }, [abierto, onCerrar])
 
   const resultados = useMemo(() => {
     const nq = normalizar(q.trim())
@@ -108,7 +111,10 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
   ], [comandosEncontrados, itemsEncontrados, cultosEncontrados, recursosEncontrados, resultados, onProyectarLista, onAbrirCulto, onRecurso, onProyectar, onAgregar])
   const claveSeleccionada = opcionesTeclado[Math.min(seleccion, Math.max(0, opcionesTeclado.length - 1))]?.clave
 
-  useEffect(() => { setSeleccion(0) }, [q, vista])
+  useEffect(() => {
+    const id = setTimeout(() => setSeleccion(0), 0)
+    return () => clearTimeout(id)
+  }, [q, vista])
   useEffect(() => {
     if (!claveSeleccionada) return
     const selector = `[data-comando-clave="${CSS.escape(claveSeleccionada)}"]`
@@ -168,7 +174,11 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
             if (e.key === "Escape") onCerrar()
             else if (e.key === "ArrowDown") { e.preventDefault(); setSeleccion(i => Math.min(Math.max(0, opcionesTeclado.length - 1), i + 1)) }
             else if (e.key === "ArrowUp") { e.preventDefault(); setSeleccion(i => Math.max(0, i - 1)) }
-            else if (e.key === "Enter") { e.preventDefault(); e.shiftKey ? agregarSeleccion() : void ejecutarSeleccion() }
+            else if (e.key === "Enter") {
+              e.preventDefault()
+              if (e.shiftKey) agregarSeleccion()
+              else void ejecutarSeleccion()
+            }
           }} placeholder="Busca contenido o escribe una acción…" style={{ flex:1, minWidth:0, border:0, outline:0, background:"transparent", color:"white", fontSize:17, fontWeight:650 }} />
           <kbd style={{ padding:"4px 7px", borderRadius:6, background:"rgba(255,255,255,.07)", color:"#94a3b8", fontSize:11 }}>ESC</kbd>
         </div>
@@ -215,7 +225,11 @@ export default function CentroComandos({ abierto, canciones, lista, favoritos, r
           {q && recursosEncontrados.length > 0 && <>
             <div style={{ padding:"7px 8px 5px", color:"#64748b", fontSize:10, fontWeight:900, letterSpacing:1 }}>GALERÍA</div>
             {recursosEncontrados.map(r => <div className="selah-centro-fila" key={r.url} data-comando-clave={`recurso-${r.url}`} onMouseEnter={() => seleccionarClave(`recurso-${r.url}`)} style={{ alignItems:"center", gap:8, padding:"7px 8px", borderRadius:11, background:claveSeleccionada === `recurso-${r.url}` ? "rgba(37,99,235,.16)" : "rgba(168,85,247,.055)", outline:claveSeleccionada === `recurso-${r.url}` ? "1px solid #60a5fa" : "none", marginBottom:4 }}>
-              <div style={{ width:42, height:32, borderRadius:7, overflow:"hidden", background:"#020617", flexShrink:0, display:"grid", placeItems:"center" }}>{r.video ? <span>🎬</span> : <img src={r.url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />}</div>
+              <div style={{ width:42, height:32, borderRadius:7, overflow:"hidden", background:"#020617", flexShrink:0, display:"grid", placeItems:"center" }}>{r.video ? <span>🎬</span> : <>
+                {/* Recurso local o remoto elegido por la iglesia. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={r.url} alt={r.nombre} style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+              </>}</div>
               <div className="selah-comando-titulo" style={{ flex:1, minWidth:0 }}><b style={{ display:"block", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontSize:12.5 }}>{r.nombre}</b><small style={{ color:"#94a3b8" }}>{r.video ? "Video" : "Imagen"}{r.carpeta ? ` · ${r.carpeta}` : ""}</small></div>
               <button onClick={() => { onRecurso(r, true); onCerrar() }} style={{ padding:"7px 9px", borderRadius:8, border:"1px solid rgba(196,181,253,.25)", background:"rgba(124,58,237,.11)", color:"#ddd6fe", fontWeight:800, cursor:"pointer" }}>+ Lista</button>
               <button onClick={() => { onRecurso(r, false); onCerrar() }} style={{ width:38, height:35, borderRadius:8, border:0, background:"#7c3aed", color:"white", cursor:"pointer" }}>▶</button>

@@ -58,8 +58,8 @@ export default function OnboardingPage() {
       setIglesiaActivaId(nuevaIglesiaId)
       setIglesiaId(nuevaIglesiaId)
       setStep("logo")
-    } catch (e: any) {
-      setError(e.message || "Error al crear la iglesia")
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error al crear la iglesia")
       logCatch(e, "No se pudo completar la creación de la iglesia", { tipo:"autenticacion", pagina:"/onboarding" })
     } finally {
       setGuardando(false)
@@ -206,7 +206,9 @@ export default function OnboardingPage() {
               background: logoPreview ? "transparent" : "rgba(255,255,255,0.02)"
             }}>
               {logoPreview ? (
-                <img src={logoPreview} alt="" style={{ maxHeight: 120, maxWidth: "100%", objectFit: "contain", borderRadius: 8 }} />
+                // Vista previa local elegida por el usuario antes de subirla.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoPreview} alt="Vista previa del logo" style={{ maxHeight: 120, maxWidth: "100%", objectFit: "contain", borderRadius: 8 }} />
               ) : (
                 <>
                   <div style={{ fontSize: 40 }}>📷</div>
