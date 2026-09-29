@@ -72,10 +72,17 @@ Referencias oficiales: [Preview y ciclo de vida](https://developer.android.com/m
 [análisis de cuadros](https://developer.android.com/media/camera/camerax/analyze),
 [versiones CameraX](https://developer.android.com/jetpack/androidx/releases/camera).
 
-## 4. Continuidad del culto — pendiente de ampliación y pruebas
+## 4. Continuidad del culto — recuperación local implementada; pruebas físicas pendientes
 
-Recuperación por destino, alternativa cuando se pierde una cámara y grabación local recuperable
-tras cierre inesperado. Probar cortes provocados de red y fuentes.
+Recuperación por destino y alternativa cuando se pierde una cámara siguen pendientes. Probar
+cortes provocados de red y fuentes.
+
+La recuperación de grabación local ya detecta segmentos MKV abandonados después de un cierre
+inesperado y permite reconstruirlos como MP4 desde Transmisión. La operación excluye la sesión
+activa y conversiones en curso, impide procesar el mismo grupo dos veces y conserva los originales
+si FFmpeg falla o genera una salida vacía. Hay una prueba de integración que crea dos MKV reales,
+los concatena con el mismo plan usado en producción y decodifica el MP4 resultante. Falta validar
+un cierre forzado real durante una grabación larga en el PC de la iglesia.
 
 Detección de poco espacio implementada: el escritorio consulta el volumen real de la carpeta
 de grabaciones, muestra el resultado en el preflight, advierte bajo 8 GB y bloquea el inicio
@@ -99,8 +106,8 @@ de caída inesperada. La identidad es correlación, no una credencial de autoriz
 Validación: pruebas de identidad y prueba Socket.IO real con handlers del servidor, puerto
 local efímero, desconexión y nuevo socket. No prueba imagen/audio físicos ni restaura el armado
 al reiniciar escritorio. Requiere APK y escritorio nuevos; borrar datos de APK cambia identidad.
-Pendientes destinos, disco y grabación recuperable. La prueba no demuestra funcionamiento
-en todos los teléfonos.
+Pendientes destinos y pruebas físicas prolongadas. La prueba no demuestra funcionamiento en
+todos los teléfonos.
 
 ## 5. Eficiencia del motor — pendiente de medición
 

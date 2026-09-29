@@ -150,6 +150,13 @@ interface EspacioGrabacion {
   detalle: string
   carpeta?: string
 }
+interface GrabacionPendiente {
+  id: string
+  nombre: string
+  segmentos: number
+  bytes: number
+  modificadoEn: number
+}
 
 export default function EnVivoPage() {
   const router = useRouter()
@@ -307,6 +314,8 @@ export default function EnVivoPage() {
   const [diagTx, setDiagTx] = useState<any>(null)
   const [diagDisponible, setDiagDisponible] = useState(false)
   const [espacioGrabacion, setEspacioGrabacion] = useState<EspacioGrabacion | null>(null)
+  const [grabacionesPendientes, setGrabacionesPendientes] = useState<GrabacionPendiente[]>([])
+  const [recuperandoGrabacion, setRecuperandoGrabacion] = useState<string | null>(null)
   useEffect(() => {
     let activo = true, ocupado = false
     const timer = setInterval(async () => {
@@ -324,8 +333,13 @@ export default function EnVivoPage() {
     let activo = true
     const revisar = async () => {
       try {
-        const estado = await (window as any).transmision?.espacioGrabacion?.()
+        const tx = (window as any).transmision
+        const [estado, pendientes] = await Promise.all([
+          tx?.espacioGrabacion?.(),
+          tx?.grabacionesPendientes?.(),
+        ])
         if (activo && estado?.nivel) setEspacioGrabacion(estado)
+        if (activo && Array.isArray(pendientes)) setGrabacionesPendientes(pendientes)
       } catch { /* La grabación vuelve a comprobarlo al iniciar. */ }
     }
     void revisar()
@@ -2444,6 +2458,31 @@ export default function EnVivoPage() {
                     setTimeout(() => URL.revokeObjectURL(url), 1000)
                   }}>Descargar informe</button>
                 </div>
+              </div>}
+              {grabacionesPendientes.length > 0 && <div style={{ marginBottom: 14, padding: 12, borderRadius: 12, background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.25)" }}>
+                <div style={{ fontWeight: 800, color: "#fbbf24" }}>⚠ Grabaciones interrumpidas por recuperar</div>
+                <div style={{ marginTop: 5, fontSize: 11.5, color: C.tenue }}>Selah conservará los segmentos originales hasta confirmar que el MP4 recuperado quedó listo.</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+                  {grabacionesPendientes.map(pendiente => <div key={pendiente.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 10px", borderRadius: 9, background: C.panel2 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pendiente.nombre}</div>
+                      <div style={{ fontSize: 10.5, color: C.tenue }}>{pendiente.segmentos} segmento{pendiente.segmentos === 1 ? "" : "s"} · {(pendiente.bytes / 1048576).toFixed(0)} MB</div>
+                    </div>
+                    <button disabled={!!recuperandoGrabacion} style={botonBase({ padding: "7px 10px", opacity: recuperandoGrabacion ? .55 : 1 })} onClick={async () => {
+                      setRecuperandoGrabacion(pendiente.id)
+                      try {
+                        const resultado = await (window as any).transmision?.recuperarGrabacion?.(pendiente.id)
+                        if (!resultado?.ok) { flash(resultado?.error || "No se pudo recuperar la grabación"); return }
+                        setGrabacionesPendientes(lista => lista.filter(item => item.id !== pendiente.id))
+                        setGrabInfo({ ruta: resultado.ruta, carpeta: resultado.carpeta, listo: true })
+                        flash("Grabación recuperada correctamente")
+                      } catch {
+                        flash("No se pudo iniciar la recuperación. Los segmentos originales se conservaron.")
+                      } finally { setRecuperandoGrabacion(null) }
+                    }}>{recuperandoGrabacion === pendiente.id ? "Recuperando…" : "Recuperar MP4"}</button>
+                  </div>)}
+                </div>
+                <button style={{ ...botonBase({ padding: "7px 10px" }), marginTop: 9 }} onClick={() => (window as any).transmision?.abrirCarpetaGrabaciones?.()}>Abrir carpeta sin modificar archivos</button>
               </div>}
               <div style={{ fontSize: 12, color: C.tenue, marginBottom: 12 }}>Activa una o varias plataformas — se transmite a todas a la vez (necesitas buena subida de internet).</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>

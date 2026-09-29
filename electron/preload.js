@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld("transmision", {
   // Grabación local (respaldo del culto)
   iniciarGrabacion: (opts) => ipcRenderer.invoke("grabacion:iniciar", opts),
   espacioGrabacion: () => ipcRenderer.invoke("grabacion:espacio"),
+  grabacionesPendientes: () => ipcRenderer.invoke("grabacion:pendientes"),
+  recuperarGrabacion: (id) => ipcRenderer.invoke("grabacion:recuperar", id),
   estadoGrabacion: () => ipcRenderer.invoke("grabacion:estado"),
   detenerGrabacion: () => ipcRenderer.invoke("grabacion:detener"),
   nuevoSegmentoGrabacion: () => ipcRenderer.invoke("grabacion:nuevoSegmento"),

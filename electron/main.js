@@ -19,6 +19,7 @@ const SELAH_VERSION = require("../package.json").version
 const { DiagnosticoTransmision, ocultarDestinos } = require("./diagnostico-transmision")
 const { escribirFragmento } = require("./escritura-transmision")
 const { evaluarEspacioGrabacion } = require("./espacio-grabacion")
+const { buscarGrabacionesPendientes, crearPlanRecuperacion } = require("./grabaciones-pendientes")
 
 // ── Transmisión en vivo (Incremento 2): canvas+audio (webm) → ffmpeg → RTMP ──
 // ffmpeg va empaquetado (ffmpeg-static). En la app empaquetada el binario se
@@ -43,6 +44,7 @@ let encoderElegido = null // se cachea el primer encoder que funcione en este PC
 let grabStream = null   // fs.WriteStream del segmento en curso
 let grabBase = null     // ruta base (sin extensión) del culto en curso
 let grabSegs = []       // rutas .mkv de los segmentos grabados
+const grabRutasProcesando = new Set() // remux/recuperación activa: no ofrecer como pendiente
 
 function carpetaGrabaciones() {
   let base
@@ -61,6 +63,22 @@ function estadoEspacioGrabacion() {
   } catch (e) {
     return { ok: false, carpeta, ...evaluarEspacioGrabacion(Number.NaN), error: e.message || String(e) }
   }
+}
+
+function ejecutarFFmpeg(args) {
+  return new Promise(resolve => {
+    let terminado = false
+    const finalizar = resultado => {
+      if (terminado) return
+      terminado = true
+      resolve(resultado)
+    }
+    try {
+      const proc = spawn(ffmpegPath, args, { stdio: "ignore" })
+      proc.once("error", error => finalizar({ ok: false, error: error.message }))
+      proc.once("close", code => finalizar({ ok: code === 0, code }))
+    } catch (e) { finalizar({ ok: false, error: e.message || String(e) }) }
+  })
 }
 
 // Parsea la línea de estadísticas de ffmpeg (-stats) para el panel de salud.
@@ -265,6 +283,46 @@ function registrarIPCTransmision() {
   // ── Grabación local (respaldo) ────────────────────────────────────────────
   let grabUltimosBytes = 0, grabUltimoAvance = 0
   ipcMain.handle("grabacion:espacio", () => estadoEspacioGrabacion())
+  ipcMain.handle("grabacion:pendientes", () => {
+    const grupos = buscarGrabacionesPendientes(carpetaGrabaciones(), [...grabSegs, ...grabRutasProcesando])
+    return grupos.map(({ archivos, ...grupo }) => ({ ...grupo, segmentos: archivos.length }))
+  })
+  ipcMain.handle("grabacion:recuperar", async (_e, id) => {
+    let archivosProcesando = []
+    let lista = null
+    let salida = null
+    try {
+      if (!ffmpegPath) return { ok: false, error: "No se encontró el motor de video para recuperar la grabación." }
+      const grupos = buscarGrabacionesPendientes(carpetaGrabaciones(), [...grabSegs, ...grabRutasProcesando])
+      const grupo = grupos.find(item => item.id === id)
+      if (!grupo) return { ok: false, error: "La grabación pendiente ya no existe o está siendo utilizada." }
+      archivosProcesando = grupo.archivos.slice()
+      for (const archivo of archivosProcesando) grabRutasProcesando.add(archivo)
+
+      const carpeta = carpetaGrabaciones()
+      salida = path.join(carpeta, `${grupo.nombre} recuperada.mp4`)
+      for (let i = 2; fs.existsSync(salida); i++) salida = path.join(carpeta, `${grupo.nombre} recuperada (${i}).mp4`)
+      if (grupo.archivos.length > 1) {
+        lista = path.join(carpeta, `recuperar-${Date.now()}.txt`)
+      }
+      const plan = crearPlanRecuperacion(grupo.archivos, salida, lista)
+      if (lista) fs.writeFileSync(lista, plan.contenidoLista)
+      const resultado = await ejecutarFFmpeg(plan.args)
+      if (!resultado.ok || !fs.existsSync(salida) || fs.statSync(salida).size === 0) {
+        try { if (fs.existsSync(salida)) fs.unlinkSync(salida) } catch {}
+        return { ok: false, error: "No se pudo reconstruir el video. Los segmentos originales se conservaron.", detalle: resultado.error || resultado.code }
+      }
+      for (const archivo of grupo.archivos) { try { fs.unlinkSync(archivo) } catch {} }
+      return { ok: true, ruta: salida, carpeta }
+    } catch (e) {
+      try { if (salida && fs.existsSync(salida)) fs.unlinkSync(salida) } catch {}
+      return { ok: false, error: e.message || String(e) }
+    }
+    finally {
+      if (lista) { try { fs.unlinkSync(lista) } catch {} }
+      for (const archivo of archivosProcesando) grabRutasProcesando.delete(archivo)
+    }
+  })
   ipcMain.handle("grabacion:estado", () => {
     if (!grabStream) return { estado: "detenida" }
     if (grabStream.errored || grabStream.destroyed) return { estado: "error" }
@@ -317,15 +375,22 @@ function registrarIPCTransmision() {
   ipcMain.handle("grabacion:detener", async () => {
     try {
       const segs = grabSegs.slice(); const s = grabStream
+      for (const archivo of segs) grabRutasProcesando.add(archivo)
       grabStream = null; grabBase = null; grabSegs = []
-      if (!s || segs.length === 0) return { ok: false, error: "No había grabación en curso." }
+      if (!s || segs.length === 0) {
+        for (const archivo of segs) grabRutasProcesando.delete(archivo)
+        return { ok: false, error: "No había grabación en curso." }
+      }
       await new Promise(res => { try { s.end(res) } catch { res() } })
       const carpeta = carpetaGrabaciones()
       const enviar = (canal, dato) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(canal, dato) }
       const mp4 = segs[0].replace(/\.mkv$/i, ".mp4")
       const listo = (ruta) => enviar("grabacion:listo", { ok: true, ruta, carpeta })
 
-      if (!ffmpegPath) { listo(segs[0]); return { ok: true, ruta: segs[0], carpeta } }
+      if (!ffmpegPath) {
+        for (const archivo of segs) grabRutasProcesando.delete(archivo)
+        listo(segs[0]); return { ok: true, ruta: segs[0], carpeta }
+      }
       try {
         let proc
         if (segs.length === 1) {
@@ -338,12 +403,24 @@ function registrarIPCTransmision() {
           proc = spawn(ffmpegPath, ["-y", "-f", "concat", "-safe", "0", "-i", lista, "-c", "copy", "-movflags", "+faststart", mp4], { stdio: "ignore" })
           proc.on("close", () => { try { fs.unlinkSync(lista) } catch {} })
         }
-        proc.on("close", c => {
-          if (c === 0) { for (const p of segs) { try { fs.unlinkSync(p) } catch {} } listo(mp4) }
+        let finalizado = false
+        const finalizar = exito => {
+          if (finalizado) return
+          finalizado = true
+          let salidaValida = false
+          try { salidaValida = exito && fs.existsSync(mp4) && fs.statSync(mp4).size > 0 } catch {}
+          if (salidaValida) { for (const p of segs) { try { fs.unlinkSync(p) } catch {} } listo(mp4) }
           else listo(segs[0])
+          for (const archivo of segs) grabRutasProcesando.delete(archivo)
+        }
+        proc.on("close", c => {
+          finalizar(c === 0)
         })
-        proc.on("error", () => listo(segs[0]))
-      } catch { listo(segs[0]) }
+        proc.on("error", () => finalizar(false))
+      } catch {
+        for (const archivo of segs) grabRutasProcesando.delete(archivo)
+        listo(segs[0])
+      }
       return { ok: true, ruta: mp4, carpeta }
     } catch (e) { return { ok: false, error: e.message || String(e) } }
   })

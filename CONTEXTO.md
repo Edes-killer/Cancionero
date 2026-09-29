@@ -400,6 +400,7 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - La limpieza conserva el comportamiento: build de producción y suite automatizada aprobados después de la refactorización.
 - El preflight de Transmisión mide el espacio real de la carpeta de grabaciones cada 30 segundos. Bloquea nuevas grabaciones bajo 1 GB y advierte bajo 8 GB, volviendo a comprobar justo antes de abrir el archivo.
 - Al terminar una emisión se conserva un informe descargable con duración, calidad, destinos por nombre, reconexiones, cuadros caídos, respaldo local y diagnóstico final. Se eliminan direcciones RTMP antes de persistirlo.
+- Si Selah o el PC se cierran durante una grabación, Transmisión detecta los segmentos MKV restantes y permite reconstruir un MP4. Los originales solo se eliminan después de verificar una salida no vacía; las grabaciones activas o en conversión nunca se ofrecen como pendientes.
 
 - [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
 - [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).
