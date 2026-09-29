@@ -64,6 +64,11 @@ const comprobaciones = [
     args: ["--check", "scripts/qa-eficiencia.cjs"],
   },
   {
+    nombre: "Sintaxis de trazabilidad de build",
+    comando: process.execPath,
+    args: ["--check", "scripts/generar-build-info.cjs"],
+  },
+  {
     nombre: "Recuperación independiente de destinos",
     comando: process.execPath,
     args: ["scripts/qa-recuperacion-destinos.cjs"],

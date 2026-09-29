@@ -61,6 +61,7 @@ android/keystore.properties
 
 # NOTA: public/version.json SÍ se versiona (lo necesita el aviso de actualización en
 # la web/Vercel). next.config lo regenera desde package.json en cada build.
+/public/build-info.json
 
 # APKs generados por 'npm run apk'
 selah-live.apk

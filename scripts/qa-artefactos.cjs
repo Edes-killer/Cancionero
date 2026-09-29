@@ -3,6 +3,8 @@ const fs = require('node:fs')
 const path = require('node:path')
 const crypto = require('node:crypto')
 const { spawnSync } = require('node:child_process')
+const JSZip = require('jszip')
+const asar = require('@electron/asar')
 
 const raiz = path.resolve(__dirname, '..')
 const estrictoPublicacion = process.argv.includes('--publicar')
@@ -12,9 +14,22 @@ const apk = path.join(raiz, 'selah-live.apk')
 const exe = path.join(raiz, 'dist-electron', `Selah Live Setup ${version}.exe`)
 const metadata = path.join(raiz, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'output-metadata.json')
 const latestYml = path.join(raiz, 'dist-electron', 'latest.yml')
+const appAsar = path.join(raiz, 'dist-electron', 'win-unpacked', 'resources', 'app.asar')
 const firmaAndroidEsperada = 'e2f870e235bbdf4bee71ed91b8d82c21cad9543839b1518068a65f3a7b5dab55'
 const errores = []
 const avisos = []
+const git = (args) => spawnSync('git', args, { cwd:raiz, encoding:'utf8', windowsHide:true })
+const headResultado = git(['rev-parse', 'HEAD'])
+const commitActual = headResultado.status === 0 ? headResultado.stdout.trim() : ''
+if (!/^[a-f0-9]{40}$/i.test(commitActual)) errores.push('No se pudo determinar el commit Git actual')
+
+function validarBuildInfo(datos, origen) {
+  if (!datos || datos.schema !== 1) { errores.push(`${origen} no contiene trazabilidad de build válida`); return null }
+  if (datos.version !== version) errores.push(`${origen} fue construido como ${datos.version}; se esperaba ${version}`)
+  if (datos.commit !== commitActual) errores.push(`${origen} proviene de ${String(datos.commit || 'sin commit').slice(0, 8)}; HEAD es ${commitActual.slice(0, 8)}`)
+  if (datos.dirtyTracked !== false) errores.push(`${origen} fue construido con cambios rastreados sin commit`)
+  return { version:datos.version, commit:datos.commit, dirtyTracked:datos.dirtyTracked }
+}
 
 const sha256 = archivo => crypto.createHash('sha256').update(fs.readFileSync(archivo)).digest('hex').toUpperCase()
 const exigirArchivo = archivo => {
@@ -81,6 +96,25 @@ if (exigirArchivo(exe)) {
   }
 }
 
+async function validarProcedencia() {
+  if (fs.existsSync(apk)) {
+    try {
+      const zip = await JSZip.loadAsync(fs.readFileSync(apk))
+      const entrada = zip.file('assets/public/build-info.json')
+      const datos = entrada ? JSON.parse(await entrada.async('string')) : null
+      const build = validarBuildInfo(datos, 'La APK')
+      if (apkInfo) apkInfo.build = build
+    } catch (e) { errores.push(`No se pudo leer la trazabilidad de la APK: ${e.message}`) }
+  }
+  if (exigirArchivo(appAsar)) {
+    try {
+      const datos = JSON.parse(asar.extractFile(appAsar, 'public/build-info.json').toString('utf8'))
+      const build = validarBuildInfo(datos, 'El paquete Windows')
+      if (windowsInfo) windowsInfo.build = build
+    } catch (e) { errores.push(`No se pudo leer la trazabilidad de Windows: ${e.message}`) }
+  }
+}
+
 if (exigirArchivo(latestYml)) {
   const contenido = fs.readFileSync(latestYml, 'utf8')
   const publicada = /^version:\s*['"]?([^'"\s]+)['"]?/m.exec(contenido)?.[1]
@@ -88,6 +122,14 @@ if (exigirArchivo(latestYml)) {
   if (!contenido.includes(`Selah-Live-Setup-${version}.exe`)) errores.push('latest.yml no apunta al instalador esperado')
 }
 
-const informe = { ok:errores.length === 0, modo:estrictoPublicacion ? 'publicación' : 'candidata', version, apk:apkInfo, windows:windowsInfo, avisos, errores }
-console.log(JSON.stringify(informe, null, 2))
-if (errores.length) process.exitCode = 1
+async function principal() {
+  await validarProcedencia()
+  const informe = { ok:errores.length === 0, modo:estrictoPublicacion ? 'publicación' : 'candidata', version, commit:commitActual, apk:apkInfo, windows:windowsInfo, avisos, errores }
+  const rutaInforme = path.join(raiz, 'dist-electron', `artefactos-${version}.json`)
+  fs.mkdirSync(path.dirname(rutaInforme), { recursive:true })
+  fs.writeFileSync(rutaInforme, `${JSON.stringify(informe, null, 2)}\n`)
+  console.log(JSON.stringify(informe, null, 2))
+  console.log(`\nInforme guardado en ${path.relative(raiz, rutaInforme)}`)
+  if (errores.length) process.exitCode = 1
+}
+principal().catch(error => { console.error(error); process.exitCode = 1 })

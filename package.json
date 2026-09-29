@@ -7,6 +7,7 @@
   "private": true,
   "main": "electron/main.js",
   "scripts": {
+    "prebuild": "node scripts/generar-build-info.cjs",
     "dev": "next dev --webpack -H 0.0.0.0",
     "build": "next build",
     "test": "node --test test/*.test.js",

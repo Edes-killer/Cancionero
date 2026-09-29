@@ -15,7 +15,7 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 
 ## Evidencia automática
 
-- `npm run qa:release`: 13 comprobaciones obligatorias, incluida la recuperación real de un destino local.
+- `npm run qa:release`: 14 comprobaciones obligatorias, incluida la recuperación real de un destino local y trazabilidad del build.
 - 141/141 pruebas automatizadas aprobadas.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
