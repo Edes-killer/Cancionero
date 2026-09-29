@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- servidor Node CommonJS ejecutado fuera del bundle de Next */
 require("dotenv").config()
 const http  = require("http")
 const { Server } = require("socket.io")
@@ -129,7 +130,7 @@ io.use(async (socket, next) => {
         return next(new Error("Unauthorized: token inválido"))
       }
       socket.data.userId = user.id  // disponible en handlers
-    } catch (e) {
+    } catch {
       return next(new Error("Unauthorized"))
     }
   }
