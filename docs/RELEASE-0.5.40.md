@@ -9,13 +9,14 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 - Informe final de transmisión sin claves ni direcciones RTMP.
 - Recuperación a MP4 de segmentos MKV dejados por un cierre inesperado.
 - Recuperación independiente por destino: una plataforma caída ya no detiene las demás y se reintenta sin recodificar.
+- Estado visible por plataforma: “Enviando” o “Reconectando”, sin transportar claves RTMP a la interfaz.
 - Tipos y validaciones reforzados en Transmisión, Cámara, OBS opcional y conexión.
 - Dependencias transitivas actualizadas sin cambios mayores de API.
 
 ## Evidencia automática
 
 - `npm run qa:release`: 13 comprobaciones obligatorias, incluida la recuperación real de un destino local.
-- 138/138 pruebas automatizadas aprobadas.
+- 141/141 pruebas automatizadas aprobadas.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
 - Auditoría de dependencias de producción y de compilación: cero vulnerabilidades conocidas.

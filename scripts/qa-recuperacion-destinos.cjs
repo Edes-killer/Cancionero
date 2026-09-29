@@ -39,7 +39,8 @@ async function principal() {
   const puertoInestable = await escuchar(inestableInicial)
 
   const urls = [`tcp://127.0.0.1:${puertoEstable}`, `tcp://127.0.0.1:${puertoInestable}`]
-  const consumidor = spawn(ffmpeg, construir('libx264', urls, 1800), {
+  const argsConsumidor = construir('libx264', urls, 1800)
+  const consumidor = spawn(ffmpeg, argsConsumidor, {
     windowsHide:true, stdio:['pipe', 'ignore', 'pipe'],
   })
   let stderr = ''
@@ -74,13 +75,15 @@ async function principal() {
   const codigoConsumidor = await new Promise(resolve => consumidor.once('close', resolve))
   await Promise.all([cerrar(estable), cerrar(inestableRecuperado)])
 
+  const recuperacionDetectada = /Recovery successful/i.test(stderr)
   const resultado = {
     ok: codigoProductor === 0 && codigoConsumidor === 0 &&
-      bytesEstable > bytesEstableAntes && bytesInestable > bytesInestableAntes && conexionesInestables >= 2,
+      bytesEstable > bytesEstableAntes && bytesInestable > bytesInestableAntes && conexionesInestables >= 2 && recuperacionDetectada,
     codigos:[codigoProductor, codigoConsumidor],
     estable:{ antes:bytesEstableAntes, total:bytesEstable },
     inestable:{ antes:bytesInestableAntes, total:bytesInestable, conexiones:conexionesInestables },
-    recuperacionDetectada:/Recovery attempt|recover/i.test(stderr),
+    recuperacionDetectada,
+    eventos:stderr.split(/[\r\n]+/).filter(linea => /fifo|tee|tcp|recover|error|connection/i.test(linea)).slice(-20),
   }
   console.log(JSON.stringify(resultado, null, 2))
   if (!resultado.ok) {

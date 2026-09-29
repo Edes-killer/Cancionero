@@ -79,7 +79,10 @@ codificación y `tee + fifo` de FFmpeg: cada destino tiene cola acotada, descart
 antes que frenar a los demás, reintenta cada cinco segundos y vuelve desde un keyframe. Después de
 12 intentos consecutivos abandona solo esa salida; si era la única, el mecanismo general recrea la
 sesión. La prueba `npm.cmd run qa:destinos` corta y restablece un receptor TCP real mientras otro
-continúa recibiendo. Pendiente confirmar la misma recuperación contra RTMPS de plataformas reales.
+continúa recibiendo. El panel identifica cada salida como Enviando o Reconectando y vuelve a verde
+solo después de `Recovery successful`; los eventos enviados al renderer no contienen URL ni clave.
+“Enviando” significa que FFmpeg entrega paquetes, no que la plataforma ya publicó el video.
+Pendiente confirmar la misma recuperación contra RTMPS de plataformas reales.
 
 La recuperación de grabación local ya detecta segmentos MKV abandonados después de un cierre
 inesperado y permite reconstruirlos como MP4 desde Transmisión. La operación excluye la sesión

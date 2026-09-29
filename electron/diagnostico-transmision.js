@@ -2,7 +2,7 @@
 class DiagnosticoTransmision {
   constructor(ahora = Date.now()) {
     this.inicio = ahora; this.entrada = null; this.avance = null
-    this.bytes = 0; this.cuadros = 0; this.dts = 0; this.error = null; this.resto = ""
+    this.bytes = 0; this.cuadros = 0; this.dts = 0; this.error = null; this.errorTipo = null; this.resto = ""
   }
   chunk(bytes, ahora = Date.now()) { this.bytes += bytes; this.entrada = ahora }
   stderr(texto, ahora = Date.now()) {
@@ -10,11 +10,17 @@ class DiagnosticoTransmision {
     const lineas = this.resto.split(/[\r\n]/); this.resto = lineas.pop().slice(-4096)
     for (const l of lineas) {
       if (/Non-monotonic DTS|backward in time/.test(l)) this.dts++
-      if (/Publish Rejected|Invalid URL/.test(l)) this.error = "Destino rechazado: revisa la URL y clave de esta emisión."
-      else if (/Error in the push|I\/O error|Error number -10053|TLS fatal/.test(l) && !this.error) this.error = "Conexión de salida interrumpida; el registro no determina si fue red o plataforma."
+      if (/Publish Rejected|Invalid URL/.test(l)) { this.error = "Destino rechazado: revisa la URL y clave de esta emisión."; this.errorTipo = "rechazado" }
+      else if (/Error in the push|I\/O error|Error number -10053|TLS fatal|Recovery failed|Error opening rtmps?:\/\//.test(l) && !this.error) {
+        this.error = "Conexión de salida interrumpida; Selah está intentando recuperarla."
+        this.errorTipo = "conexion"
+      }
       const frame = /frame=\s*(\d+)/.exec(l)
       if (frame && +frame[1] > this.cuadros) { this.cuadros = +frame[1]; this.avance = ahora }
     }
+  }
+  recuperacionDestino() {
+    if (this.errorTipo === "conexion") { this.error = null; this.errorTipo = null }
   }
   estado(cola = 0, activo = true, ahora = Date.now()) {
     const entradaMs = this.entrada === null ? null : ahora - this.entrada

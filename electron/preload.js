@@ -49,6 +49,11 @@ contextBridge.exposeInMainWorld("transmision", {
     ipcRenderer.on("transmision:stats", h)
     return () => ipcRenderer.removeListener("transmision:stats", h)
   },
+  onEstadoDestino: (cb) => {
+    const h = (_e, d) => cb(d)
+    ipcRenderer.on("transmision:destino", h)
+    return () => ipcRenderer.removeListener("transmision:destino", h)
+  },
   onGrabacionListo: (cb) => {
     const h = (_e, d) => cb(d)
     ipcRenderer.on("grabacion:listo", h)

@@ -17,6 +17,7 @@ const os = require("os")
 const { spawn } = require("child_process")
 const SELAH_VERSION = require("../package.json").version
 const { DiagnosticoTransmision, ocultarDestinos } = require("./diagnostico-transmision")
+const { SeguimientoDestinos } = require("./estado-destinos")
 const { escribirFragmento } = require("./escritura-transmision")
 const { evaluarEspacioGrabacion } = require("./espacio-grabacion")
 const { buscarGrabacionesPendientes, crearPlanRecuperacion } = require("./grabaciones-pendientes")
@@ -137,7 +138,9 @@ function construirArgsFFmpeg(encoder, rtmpUrls, bitrateKbps) {
   const vb = `${kbps}k`, buf = `${kbps * 2}k`
   // -loglevel warning + stats cada 5s: vemos problemas reales (cortes,
   // "Broken pipe", "Connection reset") y si el PC va al día (speed≈1.0x).
-  const base = ["-hide_banner", "-loglevel", "warning", "-stats", "-stats_period", "5", "-fflags", "+genpts", "-i", "pipe:0"]
+  // verbose permite reconocer Recovery attempt/successful del muxer FIFO. El
+  // lector de stderr filtra después todo lo que no sea operativo.
+  const base = ["-hide_banner", "-loglevel", "verbose", "-stats", "-stats_period", "5", "-fflags", "+genpts", "-i", "pipe:0"]
   // Keyframe cada 2s POR TIEMPO real: aunque el PC entregue pocos fps, el
   // keyframe llega a tiempo y la plataforma no corta (era la causa de los cortes).
   const kf = ["-force_key_frames", "expr:gte(t,n_forced*2)"]
@@ -186,11 +189,19 @@ function registrarIPCTransmision() {
   let sesionTx = null
   ipcMain.handle("transmision:diagnostico", () => diagnosticoTx?.estado(ffmpegProc?.stdin?.writableLength || 0, !!ffmpegProc) || null)
   // Iniciar: levanta ffmpeg leyendo webm por stdin y empujando a RTMP.
-  ipcMain.handle("transmision:iniciar", async (_e, { rtmpUrl, rtmpUrls, bitrateKbps } = {}) => {
+  ipcMain.handle("transmision:iniciar", async (_e, { rtmpUrl, rtmpUrls, destinos, bitrateKbps } = {}) => {
     try {
       if (!ffmpegPath) return { ok: false, error: "No se encontró ffmpeg dentro de la app." }
       // Acepta un arreglo (multiplataforma) o una sola URL (compatibilidad).
-      const urls = (Array.isArray(rtmpUrls) ? rtmpUrls : [rtmpUrl]).filter(u => typeof u === "string" && /^rtmps?:\/\//i.test(u))
+      const candidatos = Array.isArray(destinos) && destinos.length
+        ? destinos.map((d, i) => ({
+          id: typeof d?.id === "string" && /^[a-z0-9_-]{1,30}$/i.test(d.id) ? d.id : `destino-${i + 1}`,
+          nombre: typeof d?.nombre === "string" ? d.nombre.trim().slice(0, 40) : `Destino ${i + 1}`,
+          url: d?.url,
+        }))
+        : (Array.isArray(rtmpUrls) ? rtmpUrls : [rtmpUrl]).map((url, i) => ({ id:`destino-${i + 1}`, nombre:`Destino ${i + 1}`, url }))
+      const salidas = candidatos.filter(d => typeof d.url === "string" && /^rtmps?:\/\//i.test(d.url))
+      const urls = salidas.map(d => d.url)
       if (urls.length === 0) return { ok: false, error: "No hay ninguna dirección de transmisión válida." }
       if (ffmpegProc) { try { ffmpegProc.kill("SIGKILL") } catch {} ffmpegProc = null }
       pararIntencional = false // arrancamos: cualquier cierre siguiente es una caída
@@ -199,7 +210,7 @@ function registrarIPCTransmision() {
       const args = construirArgsFFmpeg(encoder, urls, bitrateKbps)
       const proc = spawn(ffmpegPath, args, { stdio: ["pipe", "ignore", "pipe"] })
       ffmpegProc = proc
-      const sesion = { id: require("crypto").randomUUID(), proc, propietario: _e.sender.id, falloEntrada: null }
+      const sesion = { id: require("crypto").randomUUID(), proc, propietario: _e.sender.id, falloEntrada: null, salidas }
       sesionTx = sesion
       const diagnostico = new DiagnosticoTransmision()
       diagnosticoTx = diagnostico
@@ -222,6 +233,8 @@ function registrarIPCTransmision() {
           if (!win.isDestroyed() && win.webContents.getURL().includes("/en-vivo")) win.webContents.send(canal, dato)
         }
       }
+      const seguimientoDestinos = new SeguimientoDestinos(salidas, estado => enviar("transmision:destino", estado))
+      seguimientoDestinos.iniciar()
       let stderrPendiente = ""
       proc.stderr.on("data", d => {
         diagnostico.stderr(d.toString())
@@ -230,9 +243,14 @@ function registrarIPCTransmision() {
         // No divulgar mitades de una URL/clave cortada entre dos chunks.
         for (const linea of lineas) {
           if (!linea) continue
+          const eventoDestino = seguimientoDestinos.linea(linea)
+          if (eventoDestino.recuperado) diagnostico.recuperacionDestino()
+          const st = parseStats(linea)
+          const relevante = !!st || /Recovery |FIFO queue full|Error|failed|TLS|Non-monotonic|backward in time/i.test(linea)
+          if (!relevante) continue
           const m = ocultarDestinos(linea) + "\n"
           console.error("[ffmpeg]", m); aLog(m); enviar("transmision:log", m)
-          const st = parseStats(linea); if (st) enviar("transmision:stats", st)
+          if (st) enviar("transmision:stats", st)
         }
         if (stderrPendiente.length > 65536) stderrPendiente = "[línea excesiva omitida]"
       })

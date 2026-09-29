@@ -25,6 +25,18 @@ test('rechazo de destino prevalece sobre error de conexión genérico', () => {
   d.stderr('Publish Rejected: Invalid URL\nI/O error\n',1)
   assert.match(d.estado(0,false,2).diagnostico,/Destino rechazado/)
 })
+test('una recuperación limpia la alarma de conexión pero no un rechazo permanente', () => {
+  const conexion = new DiagnosticoTransmision(0)
+  conexion.stderr('TLS fatal alert\n', 1)
+  assert.match(conexion.estado(0, true, 2).diagnostico, /intentando recuperarla/)
+  conexion.recuperacionDestino()
+  assert.doesNotMatch(conexion.estado(0, true, 3).diagnostico, /interrumpida/)
+
+  const rechazo = new DiagnosticoTransmision(0)
+  rechazo.stderr('Publish Rejected: Invalid URL\n', 1)
+  rechazo.recuperacionDestino()
+  assert.match(rechazo.estado(0, true, 2).diagnostico, /Destino rechazado/)
+})
 test('timestamps se contabilizan y la salud nunca confirma Facebook', () => {
   const d = new DiagnosticoTransmision(0)
   d.stderr('frame=1\nNon-monotonic DTS\nQueue input is backward in time\n',100)

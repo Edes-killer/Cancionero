@@ -33,6 +33,8 @@ import type { Parte } from "@/lib/modelosCulto"
 
 type Escena = "camara" | "camara-letra" | "letra" | "espera"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
+type DestinoTransmision = { id: DestKey; nombre: string; url: string }
+type EstadoDestino = { id: string; nombre: string; estado: "enviando" | "reconectando"; detalle?: string }
 
 const PLATAFORMAS: { key: DestKey; nombre: string; emoji: string; esUrl: boolean; ayuda: string; placeholder: string }[] = [
   { key: "facebook", nombre: "Facebook", emoji: "📘", esUrl: false, placeholder: "Clave de transmisión de Facebook", ayuda: "Live Producer → “Usar software de streaming” → copia la Clave de transmisión." },
@@ -203,7 +205,7 @@ interface ResultadoElectron {
   web?: number
 }
 interface TransmisionElectron {
-  iniciar: (opciones: { rtmpUrls: string[]; bitrateKbps: number }) => Promise<ResultadoElectron>
+  iniciar: (opciones: { destinos: DestinoTransmision[]; bitrateKbps: number }) => Promise<ResultadoElectron>
   detener: () => Promise<ResultadoElectron>
   abrirLog: () => Promise<ResultadoElectron>
   diagnostico: () => Promise<DiagnosticoElectron | null>
@@ -223,6 +225,7 @@ interface TransmisionElectron {
   onEstado: (cb: (evento: EventoTransmision) => void) => () => void
   onLog: (cb: (mensaje: string) => void) => () => void
   onStats?: (cb: (datos: EstadisticasTransmision) => void) => () => void
+  onEstadoDestino?: (cb: (datos: EstadoDestino) => void) => () => void
   onGrabacionListo?: (cb: (datos: ResultadoElectron) => void) => () => void
 }
 const transmisionElectron = (): TransmisionElectron | undefined =>
@@ -383,6 +386,7 @@ export default function EnVivoPage() {
   const [logsTx, setLogsTx] = useState<string[]>([])
   const [diagTx, setDiagTx] = useState<DiagnosticoElectron | null>(null)
   const [diagDisponible, setDiagDisponible] = useState(false)
+  const [estadoDestinos, setEstadoDestinos] = useState<Record<string, EstadoDestino>>({})
   const [espacioGrabacion, setEspacioGrabacion] = useState<EspacioGrabacion | null>(null)
   const [grabacionesPendientes, setGrabacionesPendientes] = useState<GrabacionPendiente[]>([])
   const [recuperandoGrabacion, setRecuperandoGrabacion] = useState<string | null>(null)
@@ -726,7 +730,7 @@ export default function EnVivoPage() {
 
   // Refs para reconectar sin re-suscribir listeners.
   const mimeRef = useRef<string>("video/webm")
-  const urlsTxRef = useRef<string[]>([])
+  const destinosTxRef = useRef<DestinoTransmision[]>([])
   const bitrateRef = useRef<number>(4500) // kbps elegido para la sesión
   const detenidoRef = useRef(false) // el usuario pidió terminar → no reconectar
   const reconTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1097,10 +1101,14 @@ export default function EnVivoPage() {
       if (typeof d?.drop === "number") maxCuadrosCaidosRef.current = Math.max(maxCuadrosCaidosRef.current || 0, d.drop)
       if (txEstadoRef.current === "vivo") intentoRef.current = 0 // estable → resetear reintentos
     })
+    const offDestino = tx.onEstadoDestino?.((d) => {
+      if (!d?.id || !d?.nombre) return
+      setEstadoDestinos(prev => ({ ...prev, [d.id]:d }))
+    })
     const offGrab = tx.onGrabacionListo?.((d) => {
       setGrabInfo(gi => ({ ...(gi || {}), carpeta: d?.carpeta, ruta: d?.ruta, listo: true }))
     })
-    return () => { offEstado?.(); offLog?.(); offStats?.(); offGrab?.() }
+    return () => { offEstado?.(); offLog?.(); offStats?.(); offDestino?.(); offGrab?.() }
   }, [])
 
   // Cronómetro de sesión: cuenta al aire Y mientras reconecta (la grabación
@@ -1298,8 +1306,12 @@ export default function EnVivoPage() {
 
   const reintentar = () => { setErrorCam(null); setPermiso("pidiendo"); setReintento(n => n + 1) }
 
-  const construirUrls = (): string[] =>
-    PLATAFORMAS.filter(p => destinos[p.key].activo).map(p => urlDeDestino(p.key, destinos[p.key].valor)).filter(Boolean)
+  const construirDestinos = (): DestinoTransmision[] => PLATAFORMAS.flatMap(p => {
+    if (!destinos[p.key].activo) return []
+    const url = urlDeDestino(p.key, destinos[p.key].valor)
+    return url ? [{ id:p.key, nombre:p.nombre, url }] : []
+  })
+  const construirUrls = (): string[] => construirDestinos().map(destino => destino.url)
 
   // ¿Hay alguna fuente de video alimentando el lienzo? Puede ser la cámara del PC,
   // la 2ª cámara, la PANTALLA compartida o la cámara del CELULAR. Sin esto, "Salir
@@ -1416,7 +1428,7 @@ export default function EnVivoPage() {
     const tx = transmisionElectron()
     if (!tx) return false
     if (!tx.enviarChunkConfirmado) { setErrorTx("Actualiza el escritorio para usar el envío protegido."); return false }
-    const res = await tx.iniciar({ rtmpUrls: urlsTxRef.current, bitrateKbps: bitrateRef.current })
+    const res = await tx.iniciar({ destinos: destinosTxRef.current, bitrateKbps: bitrateRef.current })
     if (!res?.ok || !res.sesionId) { setErrorTx(res?.error || "No se pudo iniciar la transmisión."); logError(`Transmisión no inició: ${res?.error || "?"}`, { tipo: "socket", pagina: "/en-vivo" }); return false }
     const sesionId = res.sesionId
     try {
@@ -1500,11 +1512,11 @@ export default function EnVivoPage() {
     setErrorTx(null)
     const tx = transmisionElectron()
     if (!tx) { setErrorTx("Esto solo funciona en la app de escritorio de Selah Live."); return }
-    const rtmpUrls = construirUrls()
-    if (rtmpUrls.length === 0) { setErrorTx("Activa al menos una plataforma y pega su clave / URL."); return }
+    const destinosActivos = construirDestinos()
+    if (destinosActivos.length === 0) { setErrorTx("Activa al menos una plataforma y pega su clave / URL."); return }
     if (!haySalidaVisual()) { setErrorTx("La escena elegida necesita una cámara. Conecta una, comparte pantalla o usa Proyección/Espera para emitir sin cámara."); return }
 
-    setLogsTx([]); setSalud(null); setIntento(0); intentoRef.current = 0
+    setLogsTx([]); setSalud(null); setEstadoDestinos({}); setIntento(0); intentoRef.current = 0
     inicioSesionRef.current = Date.now(); maxReconexionesRef.current = 0; maxCuadrosCaidosRef.current = null
     setInformeSesion("")
     detenidoRef.current = false
@@ -1521,13 +1533,13 @@ export default function EnVivoPage() {
       "video/webm",
     ].find(m => MediaRecorder.isTypeSupported(m)) || "video/webm"
     mimeRef.current = mime
-    urlsTxRef.current = rtmpUrls
+    destinosTxRef.current = destinosActivos
     bitrateRef.current = CALIDAD_KBPS[calidad]
     setLogsTx(prev => [...prev,
       `▶ salida de video: ${SALIDA_ANCHO}×${SALIDA_ALTO} @ 30 fps`,
       ...diagnosticoFuentesVideo(),
       `▶ formato de captura: ${mime}`,
-      `▶ destinos: ${rtmpUrls.length}`,
+      `▶ destinos: ${destinosActivos.length}`,
       `▶ calidad de salida: ${calidad} (${CALIDAD_KBPS[calidad]}k)`,
       `▶ captura interna: ${bitrateCaptura(CALIDAD_KBPS[calidad])}k`,
       grabar ? "● grabación local: activada" : "○ grabación local: desactivada",
@@ -2484,8 +2496,20 @@ export default function EnVivoPage() {
                         : txEstado === "reconectando" ? `Reconectando… (intento ${intento})`
                         : "Conectando…"}
                     </div>
-                    <div style={{ fontSize: 12, color: C.tenue }}>
-                      {PLATAFORMAS.filter(p => destinos[p.key].activo && destinos[p.key].valor.trim()).map(p => p.nombre).join(" · ") || "—"}
+                    <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:5 }}>
+                      {destinosTxRef.current.map(destino => {
+                        const estado = estadoDestinos[destino.id]
+                        const reconectando = estado?.estado === "reconectando"
+                        return <span key={destino.id} title={estado?.detalle || "Selah envía paquetes; confirma la recepción en la plataforma."} style={{
+                          display:"inline-flex", alignItems:"center", gap:5, borderRadius:99, padding:"3px 8px",
+                          fontSize:11, fontWeight:750, color:reconectando ? "#fbbf24" : "#86efac",
+                          background:reconectando ? "rgba(245,158,11,.1)" : "rgba(34,197,94,.09)",
+                          border:`1px solid ${reconectando ? "rgba(245,158,11,.3)" : "rgba(34,197,94,.25)"}`,
+                        }}>
+                          <span aria-hidden>{reconectando ? "↻" : "●"}</span>
+                          {destino.nombre} · {reconectando ? "Reconectando" : "Enviando"}
+                        </span>
+                      })}
                     </div>
                   </div>
                 </div>
