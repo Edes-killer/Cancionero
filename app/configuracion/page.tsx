@@ -1,6 +1,6 @@
 "use client"
 
-import { CSSProperties, useEffect, useRef, useState } from "react"
+import { CSSProperties, useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
 import { copiarTexto } from "@/lib/copiar"
@@ -34,25 +34,84 @@ const SECCIONES_AJUSTES = [
   { id:"ayuda", icono:"🛟", nombre:"Ayuda y log", alcance:"dispositivo" },
 ] as const
 
+interface RegistroError {
+  id: string
+  tipo: string
+  mensaje: string
+  pagina: string
+  plataforma: string
+  version: string | null
+  creado_en: string
+  detalle?: unknown
+  _local?: boolean
+}
+
+interface Invitacion {
+  id: string
+  rol: string
+  codigo: string
+  expira_at: string
+  usos_actuales: number
+  usos_max: number
+}
+
+interface MiembroIglesia {
+  user_id: string
+  email: string
+  rol: string
+}
+
+interface ConfiguracionIglesia {
+  nombre: string | null
+  localidad: string | null
+  logo_url: string | null
+  logo_nombre: string | null
+  pin_sala: string | null
+}
+
+interface ResultadoFirewall { existe?: boolean }
+interface ResultadoRedCamara { ok?: boolean; ip?: string; ips?: string[] }
+interface CodigoDetectado { rawValue: string }
+interface DetectorCodigos { detect(elemento: HTMLVideoElement): Promise<CodigoDetectado[]> }
+interface ConstructorDetectorCodigos { new(opciones: { formats: string[] }): DetectorCodigos }
+
+interface VentanaConfiguracion extends Window {
+  Capacitor?: object
+  BarcodeDetector?: ConstructorDetectorCodigos
+  firewall?: {
+    estado(): Promise<ResultadoFirewall>
+    reparar(): Promise<unknown>
+  }
+  transmision?: {
+    infoRedCamara?(): Promise<ResultadoRedCamara>
+  }
+  electron?: {
+    ipcRenderer?: {
+      send(canal: string): void
+      invoke(canal: string): Promise<unknown>
+    }
+  }
+}
+
 // ── Componente de log de errores ─────────────────────────────────────────────
 function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
   const { confirmar, ConfirmUI } = useConfirm()
-  const [errores, setErrores] = useState<any[]>([])
+  const [errores, setErrores] = useState<RegistroError[]>([])
   const [abierto, setAbierto] = useState(false)
   const [cargando, setCargando] = useState(false)
   const [filtroTipo, setFiltroTipo] = useState("")
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     setCargando(true)
     // 1) Registro LOCAL de este equipo (siempre disponible).
     const { getLocalLog } = await import("@/lib/Errorlogger")
     let locales = getLocalLog().map((e, i) => ({
       id: "local-" + e.ts + "-" + i, tipo: e.tipo, mensaje: e.mensaje, pagina: e.pagina,
-      plataforma: e.plataforma, version: null as any, creado_en: new Date(e.ts).toISOString(), detalle: e.detalle, _local: true,
+      plataforma: e.plataforma, version: null, creado_en: new Date(e.ts).toISOString(), detalle: e.detalle, _local: true,
     }))
     if (filtroTipo) locales = locales.filter(e => e.tipo === filtroTipo)
     // 2) Registro CENTRAL (Supabase), si se puede.
-    let remotos: any[] = []
+    let remotos: RegistroError[] = []
     try {
       let q = supabase
         .from("errores_log")
@@ -62,14 +121,14 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
         .limit(50)
       if (filtroTipo) q = q.eq("tipo", filtroTipo)
       const { data } = await q
-      remotos = data || []
+      remotos = (data || []) as RegistroError[]
     } catch {}
     const todo = [...locales, ...remotos].sort((a, b) => new Date(b.creado_en).getTime() - new Date(a.creado_en).getTime())
     setErrores(todo)
     setCargando(false)
-  }
+  }, [filtroTipo, iglesiaId])
 
-  useEffect(() => { if (abierto) cargar() }, [abierto, filtroTipo])
+  useEffect(() => { if (abierto) void cargar() }, [abierto, cargar])
 
   const borrarTodos = async () => {
     if (!(await confirmar("¿Borrar todos los errores registrados?", { textoOk: "Borrar", peligro: true }))) return
@@ -153,7 +212,7 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
                   <div style={{ fontSize:10, opacity:0.3 }}>
                     {e.plataforma} {e.version && `· v${e.version}`} {e._local && "· local"}
                   </div>
-                  {e.detalle && <details style={{ marginTop:5 }}>
+                  {e.detalle != null && <details style={{ marginTop:5 }}>
                     <summary style={{ fontSize:10, opacity:.55, cursor:"pointer" }}>Ver detalle técnico</summary>
                     <pre style={{ margin:"6px 0 0", whiteSpace:"pre-wrap", wordBreak:"break-word", fontSize:9.5, opacity:.55 }}>{JSON.stringify(e.detalle, null, 2)}</pre>
                   </details>}
@@ -184,24 +243,28 @@ export default function ConfiguracionPage() {
   const [logoNombre, setLogoNombre] = useState("")
 
   const [flash, setFlash] = useState<{ msg: string; tipo: "ok" | "error" | "info" } | null>(null)
+  const mostrarFlash = useCallback((msg: string, tipo: "ok" | "error" | "info" = "ok") => {
+    setFlash({ msg, tipo })
+    setTimeout(() => setFlash(null), 3000)
+  }, [])
 
   // ── PIN de sala ──────────────────────────────────────────────────────────
   const [pinSala, setPinSala] = useState("")
   const [pinGuardado, setPinGuardado] = useState(false)
 
   // ── Invitaciones ──────────────────────────────────────────────────────────
-  const [invitaciones, setInvitaciones] = useState<any[]>([])
+  const [invitaciones, setInvitaciones] = useState<Invitacion[]>([])
   const [rolInvitacion, setRolInvitacion] = useState("musico")
   const [generandoInv, setGenerandoInv] = useState(false)
   const [linkCopiado, setLinkCopiado] = useState("")
 
   // ── Miembros ──────────────────────────────────────────────────────────────
-  const [miembros, setMiembros] = useState<any[]>([])
+  const [miembros, setMiembros] = useState<MiembroIglesia[]>([])
   const [cargandoMiembros, setCargandoMiembros] = useState(false)
   const [miUserId, setMiUserId] = useState<string | null>(null)
   const [guardandoMiembro, setGuardandoMiembro] = useState<string | null>(null)
 
-  const cargarMiembros = async (igId: string) => {
+  const cargarMiembros = useCallback(async (igId: string) => {
     setCargandoMiembros(true)
     try {
       const { data, error } = await supabase.rpc("get_miembros_iglesia", { p_iglesia_id: igId })
@@ -210,7 +273,8 @@ export default function ConfiguracionPage() {
       // en usuarios_iglesia (ya se agregó una restricción única en la BD
       // para que no vuelva a pasar), no romper la lista con keys repetidas.
       const vistos = new Set<string>()
-      const unicos = (data || []).filter((m: any) => {
+      const filas = (data || []) as MiembroIglesia[]
+      const unicos = filas.filter(m => {
         if (vistos.has(m.user_id)) return false
         vistos.add(m.user_id)
         return true
@@ -219,7 +283,7 @@ export default function ConfiguracionPage() {
     } finally {
       setCargandoMiembros(false)
     }
-  }
+  }, [mostrarFlash])
 
   const cambiarRolMiembro = async (userId: string, nuevoRol: string) => {
     if (!iglesiaId) return
@@ -250,11 +314,11 @@ export default function ConfiguracionPage() {
     setGuardandoMiembro(null)
   }
 
-  const cargarInvitaciones = async (igId: string) => {
+  const cargarInvitaciones = useCallback(async (igId: string) => {
     const { data } = await supabase.from("invitaciones").select("*")
       .eq("iglesia_id", igId).eq("activa", true).order("created_at", { ascending: false })
-    setInvitaciones(data || [])
-  }
+    setInvitaciones((data || []) as Invitacion[])
+  }, [])
 
   const generarInvitacion = async () => {
     setGenerandoInv(true)
@@ -265,7 +329,7 @@ export default function ConfiguracionPage() {
       creado_por: miUserId
     }).select().single()
     if (!error && data) {
-      setInvitaciones(prev => [data, ...prev])
+      setInvitaciones(prev => [data as Invitacion, ...prev])
       copiarLink(data.codigo)
     }
     setGenerandoInv(false)
@@ -286,7 +350,7 @@ export default function ConfiguracionPage() {
     const hayWebPublica = site && !/localhost|127\.0\.0\.1/.test(site)
     const texto = hayWebPublica
       ? `Te invito a Selah Live 🎵\n\nAbre este enlace: ${site}/unirse?codigo=${codigo}\n\nO instala la app e ingresa el código: ${codigo}`
-      : `Te invito a Selah Live 🎵\n\nInstalá la app e ingresá este código en "Unirse a una iglesia":\n\n${codigo}`
+      : `Te invito a Selah Live 🎵\n\nInstala la app e ingresa este código en "Unirse a una iglesia":\n\n${codigo}`
     copiarTexto(texto).then(ok => {
       if (!ok) return
       setLinkCopiado(codigo)
@@ -327,10 +391,12 @@ export default function ConfiguracionPage() {
   const [isCapacitor, setIsCapacitor] = useState(false)
   const [isElectron, setIsElectron] = useState(false)
   useEffect(() => {
-    setIsCapacitor(!!(window as any).Capacitor)
-    setIsElectron(navigator.userAgent.includes("Electron"))
+    const id = setTimeout(() => {
+      setIsCapacitor(Boolean((window as VentanaConfiguracion).Capacitor))
+      setIsElectron(navigator.userAgent.includes("Electron"))
+    }, 0)
+    return () => clearTimeout(id)
   }, [])
-  const getLocalIPDisplay = () => servidorIp || "localhost"
 
   // Mostrar QR en Electron al cargar + obtener IP local
   useEffect(() => {
@@ -418,7 +484,7 @@ export default function ConfiguracionPage() {
     setServidorPing(resultado.http.ok && resultado.socket.ok ? "ok" : "error")
     if (!resultado.http.ok || !resultado.socket.ok) {
       void logError("Diagnóstico de conexión local fallido", {
-        tipo: "socket", pagina: "/configuracion", detalle: resultado as unknown as Record<string, any>,
+        tipo: "socket", pagina: "/configuracion", detalle: { ...resultado },
       })
     }
   }
@@ -446,7 +512,7 @@ export default function ConfiguracionPage() {
         return
       }
       mostrarFlash("❌ No se encontró el servidor. ¿Está abierto Selah Live en el PC?", "error")
-    } catch(e) {
+    } catch {
       mostrarFlash("❌ Error buscando servidor", "error")
     }
     setBuscandoServidor(false)
@@ -470,7 +536,7 @@ export default function ConfiguracionPage() {
         videoRef.current.play()
 
         // Usar BarcodeDetector si está disponible (Android Chrome)
-        const BarcodeDetector = (window as any).BarcodeDetector
+        const BarcodeDetector = (window as VentanaConfiguracion).BarcodeDetector
         if (BarcodeDetector) {
           const detector = new BarcodeDetector({ formats: ["qr_code"] })
           const scan = async () => {
@@ -492,7 +558,7 @@ export default function ConfiguracionPage() {
                   return
                 }
               }
-            } catch(e) {}
+            } catch {}
             requestAnimationFrame(scan)
           }
           scan()
@@ -503,7 +569,7 @@ export default function ConfiguracionPage() {
           setEscaneandoQR(false)
         }
       }, 300)
-    } catch(e) {
+    } catch {
       escaneandoRef.current = false
       setEscaneandoQR(false)
       mostrarFlash("❌ No se pudo acceder a la cámara", "error")
@@ -547,7 +613,7 @@ export default function ConfiguracionPage() {
     // En Electron: limpiar cookies del WebView (máx 2s)
     if (isElectron) {
       await conTimeout(
-        (window as any).electron?.ipcRenderer?.invoke("clear-session") ?? Promise.resolve(),
+        (window as VentanaConfiguracion).electron?.ipcRenderer?.invoke("clear-session") ?? Promise.resolve(),
         2000
       )
     }
@@ -570,7 +636,7 @@ export default function ConfiguracionPage() {
   // que el celular llegue a este PC por la red.
   const [fw, setFw] = useState<"desconocido" | "ok" | "falta" | "reparando">("desconocido")
   const [ipsPC, setIpsPC] = useState<string[]>([])   // IPs de este PC (para escribir en el celular)
-  const esEscritorio = typeof window !== "undefined" && !!(window as any).firewall
+  const esEscritorio = typeof window !== "undefined" && Boolean((window as VentanaConfiguracion).firewall)
   useEffect(() => {
     const escalaGuardada = localStorage.getItem("proyector-escala-fuente")
     if (escalaGuardada) setEscalaFuente(Number(escalaGuardada))
@@ -578,17 +644,12 @@ export default function ConfiguracionPage() {
     if (familiaGuardada) setFamiliaFuente(familiaGuardada)
     setRecordarUltima(localStorage.getItem("selah-recordar-ultima") !== "0")
     const ayudasGuardadas = localStorage.getItem("selah-ayudas-contextuales")
-    setAyudasContextuales(ayudasGuardadas === null ? !(window as any).Capacitor : ayudasGuardadas === "1")
-    const f = (window as any).firewall
-    if (f) f.estado().then((r: any) => setFw(r?.existe ? "ok" : "falta")).catch(() => {})
-    const tx = (window as any).transmision
-    if (tx?.infoRedCamara) tx.infoRedCamara().then((r: any) => { if (r?.ok) setIpsPC(r.ips || (r.ip ? [r.ip] : [])) }).catch(() => {})
+    setAyudasContextuales(ayudasGuardadas === null ? !(window as VentanaConfiguracion).Capacitor : ayudasGuardadas === "1")
+    const f = (window as VentanaConfiguracion).firewall
+    if (f) f.estado().then(r => setFw(r?.existe ? "ok" : "falta")).catch(() => {})
+    const tx = (window as VentanaConfiguracion).transmision
+    if (tx?.infoRedCamara) tx.infoRedCamara().then(r => { if (r?.ok) setIpsPC(r.ips || (r.ip ? [r.ip] : [])) }).catch(() => {})
   }, [])
-
-  const mostrarFlash = (msg: string, tipo: "ok" | "error" | "info" = "ok") => {
-    setFlash({ msg, tipo })
-    setTimeout(() => setFlash(null), 3000)
-  }
 
   // ── Carga inicial ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -618,7 +679,7 @@ export default function ConfiguracionPage() {
         .eq("id", id)
         .limit(1)
 
-      const data = (rows as any[])?.[0]
+      const data = (rows as ConfiguracionIglesia[] | null)?.[0]
 
       if (error) {
         mostrarFlash("No se pudo cargar la configuración", "error")
@@ -631,13 +692,13 @@ export default function ConfiguracionPage() {
       setLogoUrl(data?.logo_url || "")
       setLogoNombre(data?.logo_nombre || "")
       setPinSala(data?.pin_sala || "")
-      cargarInvitaciones(id)
-      cargarMiembros(id)
+      void cargarInvitaciones(id)
+      void cargarMiembros(id)
       setCargando(false)
     }
 
     cargar()
-  }, [router])
+  }, [cargarInvitaciones, cargarMiembros, mostrarFlash, router])
 
   // ── Optimizador de logo: SOLO redimensiona (ya NO borra el fondo) ────────────
   //  ✅ Antes hacía un flood-fill que borraba el blanco/claro desde los bordes.
@@ -1061,7 +1122,11 @@ export default function ConfiguracionPage() {
                 flexShrink: 0
               }}>
                 {logoUrl
-                  ? <img src={logoUrl} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ? <>
+                    {/* URL dinámica almacenada por la iglesia en Supabase. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={logoUrl} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  </>
                   : <span style={{ fontSize: 38 }}>⛪</span>
                 }
               </div>
@@ -1214,7 +1279,7 @@ export default function ConfiguracionPage() {
                   <div style={{ fontSize: 12, opacity: 0.6, lineHeight: 1.6, padding: "10px 12px", background: "rgba(255,255,255,0.04)", borderRadius: 8 }}>
                     📋 <b>¿Cómo encontrar la dirección?</b><br/>
                     En el computador del proyector, abre el programa y anota el número que aparece (Ej: <span style={{ fontFamily: "monospace", color: "#93c5fd" }}>192.168.1.5</span>).
-                    O busca "CMD" y escribe <span style={{ fontFamily: "monospace", color: "#93c5fd" }}>ipconfig</span>.
+                    O busca &ldquo;CMD&rdquo; y escribe <span style={{ fontFamily: "monospace", color: "#93c5fd" }}>ipconfig</span>.
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <input
@@ -1308,6 +1373,8 @@ export default function ConfiguracionPage() {
                   Escanea este QR con el celular para conectar automáticamente
                 </div>
                 {qrUrl ? (
+                  // El QR se genera dinámicamente en el servidor local de Electron.
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={qrUrl}
                     alt="QR Conexión"
@@ -1542,9 +1609,11 @@ export default function ConfiguracionPage() {
                 onClick={async () => {
                   setFw("reparando")
                   try {
-                    await (window as any).firewall.reparar()
+                    const firewall = (window as VentanaConfiguracion).firewall
+                    if (!firewall) throw new Error("El puente de firewall no está disponible")
+                    await firewall.reparar()
                     await new Promise(r => setTimeout(r, 2500))
-                    const r = await (window as any).firewall.estado()
+                    const r = await firewall.estado()
                     setFw(r?.existe ? "ok" : "falta")
                     mostrarFlash(r?.existe ? "✅ Firewall configurado para el celular" : "No se pudo confirmar (¿cancelaste el permiso de administrador?)", r?.existe ? "ok" : "error")
                   } catch { setFw("falta") }
@@ -1611,7 +1680,7 @@ export default function ConfiguracionPage() {
             )}
 
             <div style={{ fontSize: 12, opacity: 0.4, lineHeight: 1.6 }}>
-              El código es válido por 7 días y hasta 20 usos. La persona instala Selah Live e ingresa el código en "Unirse a una iglesia". Compártelo por WhatsApp o correo.
+              El código es válido por 7 días y hasta 20 usos. La persona instala Selah Live e ingresa el código en &ldquo;Unirse a una iglesia&rdquo;. Compártelo por WhatsApp o correo.
             </div>
           </div>
         </div>
@@ -1742,13 +1811,13 @@ export default function ConfiguracionPage() {
         )}
 
         {/* ── ACTUALIZACIONES ────────────────────────────────────────────── */}
-        {typeof window !== "undefined" && !!(window as any).electron && (
+        {typeof window !== "undefined" && Boolean((window as VentanaConfiguracion).electron) && (
           <div style={card}>
             <h2 style={{ margin: "0 0 12px", fontSize: "18px", fontWeight: 800 }}>🔄 Actualizaciones</h2>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <div style={{ fontSize: 13, opacity: 0.5 }}>Verificar si hay una nueva versión disponible</div>
               <button
-                onClick={() => (window as any).electron?.ipcRenderer?.send("check-for-updates")}
+                onClick={() => (window as VentanaConfiguracion).electron?.ipcRenderer?.send("check-for-updates")}
                 style={{ padding: "8px 16px", borderRadius: 10, border: "1px solid rgba(59,130,246,0.3)",
                   background: "rgba(59,130,246,0.1)", color: "#93c5fd",
                   fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
