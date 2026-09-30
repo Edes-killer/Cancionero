@@ -117,11 +117,13 @@ function probarEncoder(enc) {
   })
 }
 
-// Elegir el mejor encoder disponible: hardware primero (reduce carga de CPU),
-// software (libx264) como último recurso siempre disponible.
+// Media Foundation es la primera opción en Windows: funciona sobre Intel/AMD y
+// sostuvo Full HD en el benchmark real. QSV queda como fallback Intel; una
+// prueba corta solo demuestra que abre, no que mantendrá un culto a 1080p.
+// Software (libx264) es el último recurso siempre disponible.
 async function elegirEncoder() {
   if (encoderElegido) return encoderElegido
-  for (const enc of ["h264_qsv", "h264_mf"]) {
+  for (const enc of ["h264_mf", "h264_qsv"]) {
     if (await probarEncoder(enc)) { encoderElegido = enc; break }
   }
   if (!encoderElegido) encoderElegido = "libx264"

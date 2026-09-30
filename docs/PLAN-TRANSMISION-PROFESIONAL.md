@@ -129,12 +129,17 @@ codificador por GPU. No reemplazar toda la arquitectura sin un benchmark y una r
 
 `npm.cmd run qa:eficiencia -- 30` ejecuta el mismo transcodificador Full HD de producción
 contra un receptor TCP local, sin cámara, micrófono, Internet ni credenciales. En Windows compara
-Media Foundation (`h264_mf`) con `libx264`; exige 30 fps, cero cola y cero avisos de tiempo, e
+Media Foundation (`h264_mf`), Quick Sync (`h264_qsv`) y `libx264`; exige 30 fps, cero cola y cero avisos de tiempo, e
 informa cuadros, bitrate, velocidad y duración. En el PC de desarrollo ambos completaron 30 segundos
 con 900/900 cuadros, 31 fps, velocidad 1.03x, cola cero y ningún aviso temporal; `h264_mf` quedó
 recomendado. Esta medición valida el pipeline aislado,
 no la captura WebRTC/canvas ni la carga térmica de un culto largo; esas capas se deben medir juntas
 durante la prueba física de dos horas.
+
+La prueba física del 29 de septiembre eligió QSV porque el selector anterior solo comprobaba
+0,3 segundos a 640×360. En un intento cayó a `speed=0.03x` sin producir cuadros. El selector ahora
+prioriza Media Foundation —la alternativa que sí sostuvo el ensayo Full HD— y conserva QSV solo
+como respaldo cuando MF no está disponible.
 
 ## 6. Validación del servicio — informe implementado; prueba prolongada pendiente
 

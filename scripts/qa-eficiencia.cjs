@@ -9,7 +9,7 @@ if (!Number.isFinite(segundos) || segundos < 10 || segundos > 300) {
 }
 
 const ensayo = path.join(__dirname, 'qa-envio-local.cjs')
-const encoders = process.platform === 'win32' ? ['h264_mf', 'libx264'] : ['libx264']
+const encoders = process.platform === 'win32' ? ['h264_mf', 'h264_qsv', 'libx264'] : ['libx264']
 const resultados = []
 
 for (const encoder of encoders) {

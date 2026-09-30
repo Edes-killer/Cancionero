@@ -14,13 +14,14 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
   la recepción se atrasa aunque Chromium no informe limitación de red.
 - El preflight bloquea la salida cuando una cámara móvil seleccionada llega desconectada, con menos
   de 12 FPS o con 1,5 segundos o más de búfer.
+- Windows prioriza `h264_mf`, validado a Full HD, y usa `h264_qsv` solamente como respaldo.
 - Tipos y validaciones reforzados en Transmisión, Cámara, OBS opcional y conexión.
 - Dependencias transitivas actualizadas sin cambios mayores de API.
 
 ## Evidencia automática
 
 - `npm run qa:release`: 14 comprobaciones obligatorias, incluida la recuperación real de un destino local y trazabilidad del build.
-- 143/143 pruebas automatizadas aprobadas.
+- 144/144 pruebas automatizadas aprobadas.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
 - Auditoría de dependencias de producción y de compilación: cero vulnerabilidades conocidas.

@@ -173,7 +173,7 @@ Lienzo 1280×720 (cámara(s)/pantalla + overlays) ──captureStream(30)+audio�
   MediaRecorder (H264 mkv preferido) ──chunks 250ms via IPC──►
     ffmpeg stdin ──► RTMP(S)   (multi-destino con el muxer `tee`)
 ```
-- **Encoder auto-seleccionado** al arrancar y cacheado: `h264_qsv` → `h264_mf` → `libx264` (ultrafast).
+- **Encoder auto-seleccionado** al arrancar y cacheado: `h264_mf` → `h264_qsv` → `libx264` (ultrafast). Media Foundation se prioriza porque sostuvo el benchmark Full HD y es compatible con Intel/AMD; QSV queda como respaldo si MF no abre.
 - **Keyframe cada 2 s por TIEMPO** (`-force_key_frames expr:gte(t,n_forced*2)`) — clave para que Facebook no corte.
 - `backgroundThrottling:false` en la ventana (si no, los fps caen al perder foco).
 - **Destinos:** Facebook / YouTube / TikTok / RTMP propio (multiplataforma simultánea con `tee`).
@@ -404,7 +404,7 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - El preflight de Transmisión mide el espacio real de la carpeta de grabaciones cada 30 segundos. Bloquea nuevas grabaciones bajo 1 GB y advierte bajo 8 GB, volviendo a comprobar justo antes de abrir el archivo.
 - Al terminar una emisión se conserva un informe descargable con duración, calidad, destinos por nombre, reconexiones, cuadros caídos, respaldo local y diagnóstico final. Se eliminan direcciones RTMP antes de persistirlo.
 - Si Selah o el PC se cierran durante una grabación, Transmisión detecta los segmentos MKV restantes y permite reconstruir un MP4. Los originales solo se eliminan después de verificar una salida no vacía; las grabaciones activas o en conversión nunca se ofrecen como pendientes.
-- El gate `npm run qa:release` ejecuta 14 comprobaciones obligatorias: diff, 143 pruebas automatizadas, build web/TypeScript, lint estricto de transmisión/cámara/conexiones, auditoría de dependencias de producción, auditoría de herramientas de compilación, sintaxis de los módulos críticos de Electron, benchmark, trazabilidad de build, recuperación independiente de destinos y verificador de artefactos. Ambas auditorías quedaron en 0 vulnerabilidades conocidas.
+- El gate `npm run qa:release` ejecuta 14 comprobaciones obligatorias: diff, 144 pruebas automatizadas, build web/TypeScript, lint estricto de transmisión/cámara/conexiones, auditoría de dependencias de producción, auditoría de herramientas de compilación, sintaxis de los módulos críticos de Electron, benchmark, trazabilidad de build, recuperación independiente de destinos y verificador de artefactos. Ambas auditorías quedaron en 0 vulnerabilidades conocidas.
 - Después de empaquetar, `npm run qa:candidata` encadena el gate completo con la validación real de APK/NSIS; `npm run qa:publicar` repite ese flujo en modo estricto y exige Authenticode válido en Windows.
 - Cada `npm run build` genera `build-info.json` con versión, commit Git y estado de cambios rastreados. El dato se incorpora a `assets/public/` en APK y `out/` dentro de `app.asar` en Electron; el verificador rechaza artefactos de otro commit o construidos con cambios sin confirmar.
 - El benchmark Full HD de 30 segundos completó 900/900 cuadros tanto con `h264_mf` como con `libx264`, a 31 fps, velocidad 1.03x, sin cola ni avisos temporales. Esto valida el codificador aislado, no cámaras/WiFi reales.
