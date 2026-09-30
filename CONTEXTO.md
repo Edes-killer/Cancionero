@@ -173,7 +173,7 @@ Lienzo 1280×720 (cámara(s)/pantalla + overlays) ──captureStream(30)+audio�
   MediaRecorder (H264 mkv preferido) ──chunks 250ms via IPC──►
     ffmpeg stdin ──► RTMP(S)   (multi-destino con el muxer `tee`)
 ```
-- **Encoder auto-seleccionado** al arrancar y cacheado: `h264_mf` → `h264_qsv` → `libx264` (ultrafast). Media Foundation se prioriza porque sostuvo el benchmark Full HD y es compatible con Intel/AMD; QSV queda como respaldo si MF no abre.
+- **Encoder auto-seleccionado** al arrancar y cacheado: `h264_mf` → `h264_qsv` → `libx264` (ultrafast). Media Foundation se prioriza porque sostuvo el benchmark Full HD y es compatible con Intel/AMD; cada encoder de hardware debe producir al menos 55 cuadros y velocidad 0,95x en un ensayo de dos segundos a 1080p/30 con parámetros de producción. QSV queda como respaldo y no se elige solo porque logre abrir.
 - **Keyframe cada 2 s por TIEMPO** (`-force_key_frames expr:gte(t,n_forced*2)`) — clave para que Facebook no corte.
 - `backgroundThrottling:false` en la ventana (si no, los fps caen al perder foco).
 - **Destinos:** Facebook / YouTube / TikTok / RTMP propio (multiplataforma simultánea con `tee`).

@@ -15,6 +15,8 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 - El preflight bloquea la salida cuando una cámara móvil seleccionada llega desconectada, con menos
   de 12 FPS o con 1,5 segundos o más de búfer.
 - Windows prioriza `h264_mf`, validado a Full HD, y usa `h264_qsv` solamente como respaldo.
+- La selección comprueba cada encoder de hardware a 1920×1080/30 con los mismos parámetros
+  de producción; no basta con que el dispositivo declare compatibilidad.
 - El diagnóstico final conserva la causa del cierre —entrada atascada, destino, motor u operador—
   incluso cuando Windows informa que FFmpeg terminó con código nulo.
 - Esa causa aparece inmediatamente en el panel del operador al cerrarse el motor; no depende

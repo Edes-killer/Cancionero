@@ -139,7 +139,9 @@ durante la prueba física de dos horas.
 La prueba física del 29 de septiembre eligió QSV porque el selector anterior solo comprobaba
 0,3 segundos a 640×360. En un intento cayó a `speed=0.03x` sin producir cuadros. El selector ahora
 prioriza Media Foundation —la alternativa que sí sostuvo el ensayo Full HD— y conserva QSV solo
-como respaldo cuando MF no está disponible.
+como respaldo cuando MF no está disponible. Antes de elegir cualquiera de los dos, ejecuta en ese
+PC un ensayo Full HD de dos segundos con los mismos parámetros de producción y exige al menos 55
+cuadros y velocidad 0,95x; si ambos fallan utiliza `libx264`.
 
 ## 6. Validación del servicio — informe implementado; prueba prolongada pendiente
 

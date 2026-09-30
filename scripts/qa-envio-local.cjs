@@ -8,7 +8,7 @@ const ffmpeg = require('ffmpeg-static')
 const segundos = Number(process.argv[2] || 60)
 if (!Number.isFinite(segundos) || segundos < 10 || segundos > 1800) throw Error('Duración admitida: 10–1800 segundos')
 const fuente = fs.readFileSync('electron/main.js','utf8')
-const inicio = fuente.indexOf('function construirArgsFFmpeg('), fin = fuente.indexOf('\nfunction rutaLogTransmision', inicio)
+const inicio = fuente.indexOf('function opcionesVideoEncoder('), fin = fuente.indexOf('\nfunction rutaLogTransmision', inicio)
 if (inicio < 0 || fin < 0) throw Error('No se encontró configuración FFmpeg')
 const construir = new Function(fuente.slice(inicio, fin) + '; return construirArgsFFmpeg;')()
 ;(async () => {

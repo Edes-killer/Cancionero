@@ -49,6 +49,10 @@ test("la transmisión evita comprimir dos veces con el mismo bitrate bajo", () =
 
 test("Windows prioriza el encoder validado en Full HD y deja QSV como respaldo", () => {
   assert.match(electron, /for \(const enc of \["h264_mf", "h264_qsv"\]\)/)
+  assert.match(electron, /testsrc=size=1920x1080:rate=30/)
+  assert.match(electron, /cuadros >= 55 && velocidad >= 0\.95/)
+  assert.match(electron, /opcionesVideoEncoder\(enc, 6000\)/)
+  assert.match(electron, /const video = opcionesVideoEncoder\(encoder, kbps\)/)
 })
 
 test("el cierre de FFmpeg entrega el diagnóstico final directamente al operador", () => {

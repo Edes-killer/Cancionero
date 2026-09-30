@@ -97,21 +97,48 @@ function parseStats(m) {
   return { bitrate, fps, speed, drop, dup, timeMs }
 }
 
-// Probar si un encoder realmente arranca en ESTE PC (no basta con que exista;
-// h264_qsv puede estar listado pero fallar sin GPU Intel utilizable).
+// Opciones compartidas por la emisión y la prueba previa. Mantenerlas en un
+// solo lugar evita aprobar un encoder con una configuración distinta a la real.
+function opcionesVideoEncoder(encoder, kbps) {
+  const vb = `${kbps}k`, buf = `${kbps * 2}k`
+  const kf = ["-force_key_frames", "expr:gte(t,n_forced*2)"]
+  if (encoder === "h264_qsv") {
+    return ["-c:v", "h264_qsv", "-preset", "medium", "-scenario", "livestreaming", "-b:v", vb, "-maxrate", vb, "-bufsize", buf, "-g", "60", "-look_ahead", "0", ...kf]
+  }
+  if (encoder === "h264_mf") {
+    return ["-c:v", "h264_mf", "-rate_control", "cbr", "-scenario", "live_streaming", "-b:v", vb, "-maxrate", vb, "-bufsize", buf, "-pix_fmt", "yuv420p", "-g", "60", ...kf]
+  }
+  return [
+    "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-pix_fmt", "yuv420p",
+    "-g", "60", "-keyint_min", "60", ...kf,
+    "-b:v", vb, "-maxrate", vb, "-bufsize", buf,
+  ]
+}
+
+// Probar si un encoder realmente sostiene el perfil de producción en ESTE PC.
+// Que abra 0,3 s a 640×360 no demuestra que pueda emitir 1080p: ese ensayo corto
+// aprobó QSV en terreno y luego la sesión cayó hasta speed=0.03x y cero cuadros.
 function probarEncoder(enc) {
   return new Promise(resolve => {
-    let listo = false
-    const finalizar = ok => { if (!listo) { listo = true; resolve(ok) } }
+    let listo = false, stderr = "", limite
+    const finalizar = ok => {
+      if (listo) return
+      listo = true; clearTimeout(limite); resolve(ok)
+    }
     try {
       const p = spawn(ffmpegPath, [
-        "-hide_banner", "-loglevel", "error",
-        "-f", "lavfi", "-i", "testsrc=size=640x360:rate=15",
-        "-t", "0.3", "-c:v", enc, "-f", "null", "-",
-      ])
+        "-hide_banner", "-loglevel", "error", "-stats", "-stats_period", "0.5",
+        "-f", "lavfi", "-i", "testsrc=size=1920x1080:rate=30",
+        "-t", "2", ...opcionesVideoEncoder(enc, 6000), "-f", "null", "-",
+      ], { stdio: ["ignore", "ignore", "pipe"] })
+      p.stderr.on("data", dato => { stderr = (stderr + dato.toString()).slice(-16384) })
       p.on("error", () => finalizar(false))
-      p.on("close", code => finalizar(code === 0))
-      setTimeout(() => { try { p.kill("SIGKILL") } catch {} finalizar(false) }, 5000)
+      p.on("close", code => {
+        const cuadros = [...stderr.matchAll(/frame=\s*(\d+)/g)].reduce((max, m) => Math.max(max, Number(m[1]) || 0), 0)
+        const velocidad = [...stderr.matchAll(/speed=\s*([\d.]+)x/g)].reduce((max, m) => Math.max(max, Number(m[1]) || 0), 0)
+        finalizar(code === 0 && cuadros >= 55 && velocidad >= 0.95)
+      })
+      limite = setTimeout(() => { try { p.kill("SIGKILL") } catch {}; finalizar(false) }, 12000)
     } catch { finalizar(false) }
   })
 }
@@ -136,7 +163,6 @@ async function elegirEncoder() {
 // demás ni obliga a recrear el MediaRecorder del renderer.
 function construirArgsFFmpeg(encoder, rtmpUrls, bitrateKbps) {
   const kbps = Math.max(600, Math.min(8000, Number(bitrateKbps) || 2500))
-  const vb = `${kbps}k`, buf = `${kbps * 2}k`
   // -loglevel warning + stats cada 5s: vemos problemas reales (cortes,
   // "Broken pipe", "Connection reset") y si el PC va al día (speed≈1.0x).
   // verbose permite reconocer Recovery attempt/successful del muxer FIFO. El
@@ -144,19 +170,7 @@ function construirArgsFFmpeg(encoder, rtmpUrls, bitrateKbps) {
   const base = ["-hide_banner", "-loglevel", "verbose", "-stats", "-stats_period", "5", "-fflags", "+genpts", "-i", "pipe:0"]
   // Keyframe cada 2s POR TIEMPO real: aunque el PC entregue pocos fps, el
   // keyframe llega a tiempo y la plataforma no corta (era la causa de los cortes).
-  const kf = ["-force_key_frames", "expr:gte(t,n_forced*2)"]
-  let video
-  if (encoder === "h264_qsv") {
-    video = ["-c:v", "h264_qsv", "-preset", "medium", "-scenario", "livestreaming", "-b:v", vb, "-maxrate", vb, "-bufsize", buf, "-g", "60", "-look_ahead", "0", ...kf]
-  } else if (encoder === "h264_mf") {
-    video = ["-c:v", "h264_mf", "-rate_control", "cbr", "-scenario", "live_streaming", "-b:v", vb, "-maxrate", vb, "-bufsize", buf, "-pix_fmt", "yuv420p", "-g", "60", ...kf]
-  } else {
-    video = [
-      "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-pix_fmt", "yuv420p",
-      "-g", "60", "-keyint_min", "60", ...kf,
-      "-b:v", vb, "-maxrate", vb, "-bufsize", buf,
-    ]
-  }
+  const video = opcionesVideoEncoder(encoder, kbps)
   // El canvas entrega 30 fps aunque una cámara móvil entregue 19/24 fps. Forzar
   // CFR y resincronizar el audio contra el reloj de video evita que la voz se
   // adelante o atrase progresivamente durante un culto largo.
