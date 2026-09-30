@@ -35,6 +35,7 @@ try {
 } catch (e) { console.error("ffmpeg-static no disponible:", e) }
 let ffmpegProc = null
 let encoderElegido = null // se cachea el primer encoder que funcione en este PC
+let encoderPromesa = null // evita ejecutar dos ensayos si se confirma mientras prepara
 
 // Grabación local (respaldo del culto): los MISMOS trozos que van a ffmpeg se
 // escriben también a disco (un solo encode → no ahoga PCs modestos). Cada trozo
@@ -149,12 +150,15 @@ function probarEncoder(enc) {
 // Software (libx264) es el último recurso siempre disponible.
 async function elegirEncoder() {
   if (encoderElegido) return encoderElegido
-  for (const enc of ["h264_mf", "h264_qsv"]) {
-    if (await probarEncoder(enc)) { encoderElegido = enc; break }
-  }
-  if (!encoderElegido) encoderElegido = "libx264"
-  console.log("🎬 Encoder de transmisión:", encoderElegido)
-  return encoderElegido
+  if (!encoderPromesa) encoderPromesa = (async () => {
+    for (const enc of ["h264_mf", "h264_qsv", "libx264"]) {
+      if (await probarEncoder(enc)) { encoderElegido = enc; break }
+    }
+    if (!encoderElegido) throw Error("Este PC no logró sostener la prueba Full HD. Cierra programas pesados o usa otro equipo antes de transmitir.")
+    console.log("🎬 Encoder de transmisión:", encoderElegido)
+    return encoderElegido
+  })().finally(() => { encoderPromesa = null })
+  return encoderPromesa
 }
 
 // Argumentos de ffmpeg según el encoder. En todos: keyframe cada ~2s y AAC.
@@ -203,6 +207,13 @@ function registrarIPCTransmision() {
   let diagnosticoTx = null
   let sesionTx = null
   ipcMain.handle("transmision:diagnostico", () => diagnosticoTx?.estado(ffmpegProc?.stdin?.writableLength || 0, !!ffmpegProc) || null)
+  ipcMain.handle("transmision:preparar", async () => {
+    if (!ffmpegPath) return { ok: false, error: "No se encontró ffmpeg dentro de la app." }
+    try {
+      const encoder = await elegirEncoder()
+      return { ok: true, encoder, detalle: encoder === "libx264" ? "Full HD aprobado usando el procesador." : "Full HD aprobado usando aceleración de hardware." }
+    } catch (e) { return { ok: false, error: e.message || String(e) } }
+  })
   // Iniciar: levanta ffmpeg leyendo webm por stdin y empujando a RTMP.
   ipcMain.handle("transmision:iniciar", async (_e, { rtmpUrl, rtmpUrls, destinos, bitrateKbps } = {}) => {
     try {

@@ -17,6 +17,8 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 - Windows prioriza `h264_mf`, validado a Full HD, y usa `h264_qsv` solamente como respaldo.
 - La selección comprueba cada encoder de hardware a 1920×1080/30 con los mismos parámetros
   de producción; no basta con que el dispositivo declare compatibilidad.
+- “Revisar salida” ejecuta esa comprobación antes de habilitar la salida al aire y también
+  valida el respaldo `libx264`; si ninguno sostiene Full HD, Selah bloquea la emisión.
 - El diagnóstico final conserva la causa del cierre —entrada atascada, destino, motor u operador—
   incluso cuando Windows informa que FFmpeg terminó con código nulo.
 - Esa causa aparece inmediatamente en el panel del operador al cerrarse el motor; no depende
@@ -27,7 +29,7 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 ## Evidencia automática
 
 - `npm run qa:release`: 14 comprobaciones obligatorias, incluida la recuperación real de un destino local y trazabilidad del build.
-- 146/146 pruebas automatizadas aprobadas.
+- 147/147 pruebas automatizadas aprobadas.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
 - Auditoría de dependencias de producción y de compilación: cero vulnerabilidades conocidas.

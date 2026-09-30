@@ -195,6 +195,7 @@ interface EstadisticasTransmision {
 interface ResultadoElectron {
   ok?: boolean
   error?: string
+  encoder?: string
   sesionId?: string
   carpeta?: string
   ruta?: string
@@ -208,6 +209,7 @@ interface ResultadoElectron {
 }
 interface TransmisionElectron {
   iniciar: (opciones: { destinos: DestinoTransmision[]; bitrateKbps: number }) => Promise<ResultadoElectron>
+  preparar?: () => Promise<ResultadoElectron>
   detener: () => Promise<ResultadoElectron>
   abrirLog: () => Promise<ResultadoElectron>
   diagnostico: () => Promise<DiagnosticoElectron | null>
@@ -383,6 +385,7 @@ export default function EnVivoPage() {
   }
   const [txEstado, setTxEstado] = useState<"idle" | "conectando" | "vivo" | "reconectando" | "error">("idle")
   const [preflightAbierto, setPreflightAbierto] = useState(false)
+  const [motorPreflight, setMotorPreflight] = useState<{ estado: "pendiente" | "probando" | "ok" | "error"; encoder?: string; detalle?: string }>({ estado: "pendiente" })
   const [errorTx, setErrorTx] = useState<string | null>(null)
   const [segundos, setSegundos] = useState(0)
   const [logsTx, setLogsTx] = useState<string[]>([])
@@ -1441,6 +1444,7 @@ export default function EnVivoPage() {
     if (!tx.enviarChunkConfirmado) { setErrorTx("Actualiza el escritorio para usar el envío protegido."); return false }
     const res = await tx.iniciar({ destinos: destinosTxRef.current, bitrateKbps: bitrateRef.current })
     if (!res?.ok || !res.sesionId) { setErrorTx(res?.error || "No se pudo iniciar la transmisión."); logError(`Transmisión no inició: ${res?.error || "?"}`, { tipo: "socket", pagina: "/en-vivo" }); return false }
+    if (res.encoder) setLogsTx(prev => [...prev, `▶ motor Full HD: ${res.encoder}`])
     const sesionId = res.sesionId
     try {
       const salida = streamSalida(); if (!salida) return false
@@ -1555,6 +1559,25 @@ export default function EnVivoPage() {
     return { nivel, detalle: detalles.join(" ") }
   }
 
+  const abrirRevisionSalida = async (desplazar = false) => {
+    setErrorTx(null)
+    setPreflightAbierto(true)
+    if (desplazar) document.getElementById("panel-salida")?.scrollIntoView({ behavior:"smooth", block:"start" })
+    const tx = transmisionElectron()
+    if (!tx?.preparar) {
+      setMotorPreflight({ estado:"error", detalle:"Actualiza Selah Live para comprobar el motor Full HD." })
+      return
+    }
+    setMotorPreflight({ estado:"probando", detalle:"Probando 1920×1080 a 30 FPS en este PC…" })
+    try {
+      const resultado = await tx.preparar()
+      if (resultado?.ok && resultado.encoder) setMotorPreflight({ estado:"ok", encoder:resultado.encoder, detalle:resultado.detalle || "Motor Full HD aprobado." })
+      else setMotorPreflight({ estado:"error", detalle:resultado?.error || "El PC no aprobó la prueba Full HD." })
+    } catch (error) {
+      setMotorPreflight({ estado:"error", detalle:"No se pudo comprobar el motor: " + mensajeDeError(error) })
+    }
+  }
+
   const salirEnVivo = async () => {
     setPreflightAbierto(false)
     setErrorTx(null)
@@ -1563,6 +1586,7 @@ export default function EnVivoPage() {
     const destinosActivos = construirDestinos()
     if (destinosActivos.length === 0) { setErrorTx("Activa al menos una plataforma y pega su clave / URL."); return }
     if (!haySalidaVisual()) { setErrorTx("La escena elegida necesita una cámara. Conecta una, comparte pantalla o usa Proyección/Espera para emitir sin cámara."); return }
+    if (motorPreflight.estado !== "ok") { setErrorTx("Primero completa la prueba Full HD de este PC en Revisar salida."); return }
     const movil = estadoCamaraMovilParaVivo()
     if (movil?.nivel === "critico") { setErrorTx(`La cámara del celular aún no está lista: ${movil.detalle}`); return }
 
@@ -1609,6 +1633,7 @@ export default function EnVivoPage() {
     const movil = estadoCamaraMovilParaVivo()
     return [
       { nombre: "Aplicación de escritorio", ok: esEscritorio, critico: true, detalle: esEscritorio ? "Motor de transmisión disponible" : "Abre esta pantalla en Selah Live para Windows" },
+      ...(esEscritorio ? [{ nombre: "Motor Full HD", ok: motorPreflight.estado === "ok", critico: true, detalle: motorPreflight.estado === "ok" ? `${motorPreflight.detalle || "Prueba aprobada"} (${motorPreflight.encoder})` : motorPreflight.detalle || "Aún no se ha probado este PC" }] : []),
       { nombre: "Salida visual", ok: haySalidaVisual(), critico: true, detalle: hayFuenteVideo() ? "Cámara, celular o pantalla detectada" : haySalidaVisual() ? "Escena generada por Selah, no necesita cámara" : "Esta escena necesita una cámara o pantalla" },
       { nombre: "Micrófono", ok: !!mic && mic.readyState === "live" && mic.enabled && !sinAudio, critico: false, detalle: !mic ? "No hay micrófono activo" : sinAudio ? "Está conectado, pero no se detecta sonido" : "Señal disponible" },
       { nombre: "Destino", ok: urls.length > 0, critico: true, detalle: urls.length ? `${urls.length} destino${urls.length > 1 ? "s" : ""} configurado${urls.length > 1 ? "s" : ""}` : "Activa una plataforma y pega su clave o URL" },
@@ -2186,7 +2211,7 @@ export default function EnVivoPage() {
           ) : (
             <div style={{ display:"flex", gap:7 }}>
               <button data-ayuda="Graba la salida final en este computador sin iniciar una transmisión." onClick={grabarSolo} disabled={!esEscritorio || (permiso !== "ok" && escena !== "letra" && escena !== "espera")} style={botonBase({ background:"rgba(255,255,255,.07)", color:C.texto, padding:"9px 11px", opacity:!esEscritorio ? .45 : 1 })}>⏺ Grabar</button>
-              <button data-ayuda="Revisa cámaras, audio, escena y destinos antes de salir en vivo." onClick={() => { document.getElementById("panel-salida")?.scrollIntoView({ behavior:"smooth", block:"start" }); setPreflightAbierto(true) }} disabled={!esEscritorio} style={botonBase({ background:C.rojo, color:"#fff", padding:"9px 13px", opacity:esEscritorio ? 1 : .45 })}>✓ Revisar salida</button>
+              <button data-ayuda="Revisa cámaras, audio, escena, destinos y capacidad Full HD antes de salir en vivo." onClick={() => void abrirRevisionSalida(true)} disabled={!esEscritorio} style={botonBase({ background:C.rojo, color:"#fff", padding:"9px 13px", opacity:esEscritorio ? 1 : .45 })}>✓ Revisar salida</button>
             </div>
           )}
         </div>
@@ -2682,7 +2707,7 @@ export default function EnVivoPage() {
                 </div>
               </label>
 
-              <button onClick={() => { setErrorTx(null); setPreflightAbierto(true) }} disabled={permiso !== "ok" && escena !== "letra" && escena !== "espera"}
+              <button onClick={() => void abrirRevisionSalida()} disabled={permiso !== "ok" && escena !== "letra" && escena !== "espera"}
                 style={botonBase({ background: C.rojo, color: "#fff", width: "100%", padding: "14px", opacity: permiso !== "ok" && escena !== "letra" && escena !== "espera" ? 0.5 : 1 })}>
                 ✓ Revisar y salir en vivo
               </button>
@@ -2701,7 +2726,7 @@ export default function EnVivoPage() {
                   <div style={{ display:"flex", gap:8, marginTop:13 }}>
                     <button onClick={() => setPreflightAbierto(false)} style={botonBase({ background:"rgba(255,255,255,.06)", color:C.suave, flex:1, padding:"9px" })}>Volver</button>
                     <button onClick={salirEnVivo} disabled={bloqueado} style={botonBase({ background:bloqueado ? "rgba(255,255,255,.08)" : C.rojo, color:bloqueado ? C.tenue : "#fff", flex:2, padding:"9px", cursor:bloqueado ? "not-allowed" : "pointer" })}>
-                      {bloqueado ? "Corrige los puntos rojos" : "● Confirmar salida al aire"}
+                      {motorPreflight.estado === "probando" ? "Probando motor Full HD…" : bloqueado ? "Corrige los puntos rojos" : "● Confirmar salida al aire"}
                     </button>
                   </div>
                 </div>

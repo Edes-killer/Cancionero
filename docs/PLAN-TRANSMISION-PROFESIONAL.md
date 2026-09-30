@@ -143,6 +143,10 @@ como respaldo cuando MF no está disponible. Antes de elegir cualquiera de los d
 PC un ensayo Full HD de dos segundos con los mismos parámetros de producción y exige al menos 55
 cuadros y velocidad 0,95x; si ambos fallan utiliza `libx264`.
 
+`Revisar salida` ejecuta esta prueba antes de habilitar la confirmación al aire. Evalúa también
+`libx264`; si ningún motor sostiene Full HD, bloquea la emisión y explica que se deben cerrar
+programas pesados o usar otro PC. La selección aprobada queda cacheada durante esa ejecución.
+
 ## 6. Validación del servicio — informe implementado; prueba prolongada pendiente
 
 Asistente previo al culto, informe final y pruebas de dos horas con dos cámaras, grabación,
