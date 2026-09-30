@@ -27,6 +27,8 @@ interface DatosSenalCamara {
   candidate?: RTCIceCandidateInit
   video?: boolean | null
   grabacion?: EstadoCamaraPC["grabacion"]
+  fpsRecepcion?: number
+  bufferRecepcionMs?: number | null
 }
 interface EventoSenalCamara { data?: DatosSenalCamara; de?: string; rol?: string }
 const nombreError = (error: unknown) => error instanceof Error || error instanceof DOMException ? error.name : "?"
@@ -83,6 +85,7 @@ export default function CamaraMovil() {
   const codigoRef = useRef("")
   const hostIdRef = useRef("")
   const identidadRef = useRef("")
+  const retornoPCRef = useRef<{ fps: number; bufferMs: number | null; recibido: number } | null>(null)
   useEffect(() => { codigoRef.current = codigo }, [codigo])
 
   // Reconexión automática: recordamos que el usuario QUIERE estar conectado, para
@@ -440,6 +443,9 @@ export default function CamaraMovil() {
       if (data?.tipo === "estado-pc") {
         if (rol !== "host" || data.video === undefined || !data.grabacion || !new Set<string>(["activa", "detenida", "sin-datos", "error", "desconocida"]).has(data.grabacion)) return
         setEstadoPC({ recibido: Date.now(), video: data.video, grabacion: data.grabacion })
+        if (typeof data.fpsRecepcion === "number" && Number.isFinite(data.fpsRecepcion) && (data.bufferRecepcionMs === null || (typeof data.bufferRecepcionMs === "number" && Number.isFinite(data.bufferRecepcionMs)))) {
+          retornoPCRef.current = { fps: Math.max(0, Number(data.fpsRecepcion)), bufferMs: data.bufferRecepcionMs === null ? null : Math.max(0, Number(data.bufferRecepcionMs)), recibido: Date.now() }
+        }
         return
       }
       const pc = pcRef.current; if (!pc || !data) return
@@ -568,7 +574,7 @@ export default function CamaraMovil() {
       ocupado = true
       try {
         if (pc !== enlace || pista !== videoTrackRef.current) {
-          if (pc !== enlace) { adaptador = new CalidadAdaptativa(); setAjusteAutomatico("") }
+          if (pc !== enlace) { adaptador = new CalidadAdaptativa(); retornoPCRef.current = null; setAjusteAutomatico("") }
           enlace = pc; pista = videoTrackRef.current; anterior = null
         }
         const stats = await pc.getStats()
@@ -584,7 +590,9 @@ export default function CamaraMovil() {
             const sender = videoSenderRef.current
             if (calidadRef.current === "auto" && sender && sender.track === pista) {
               const ahora = performance.now()
-              const nivel = adaptador.observar(ahora, fps, s.qualityLimitationReason)
+              const retorno = retornoPCRef.current
+              const vigente = retorno && Date.now() - retorno.recibido < 12_000 ? { fps: retorno.fps, bufferMs: retorno.bufferMs } : null
+              const nivel = adaptador.observar(ahora, fps, s.qualityLimitationReason, vigente)
               if (nivel !== null) {
                 const perfil = PERFILES_ENVIO[nivel]
                 const parametros = sender.getParameters()

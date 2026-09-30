@@ -22,6 +22,22 @@ export interface MuestraRecepcion {
   id: string; timestamp: number; bytesReceived: number; framesDecoded: number
   jitterBufferDelay?: number; jitterBufferEmittedCount?: number
 }
+
+export interface RetornoRecepcion {
+  fps: number
+  bufferMs: number | null
+}
+
+export function estadoRecepcionMovil(fps: number, bufferMs: number | null) {
+  if (!Number.isFinite(fps) || fps < 0) return { nivel:"desconocido" as const, detalle:"Esperando una medición estable del celular." }
+  if ((bufferMs !== null && bufferMs >= 1500) || fps < 12) {
+    return { nivel:"critico" as const, detalle:`La cámara móvil llega con ${Math.round(fps)} FPS${bufferMs === null ? "" : ` y ${Math.round(bufferMs)} ms de búfer`}. Espera que se estabilice o baja su calidad antes de transmitir.` }
+  }
+  if ((bufferMs !== null && bufferMs >= 500) || fps < 20) {
+    return { nivel:"advertencia" as const, detalle:`La cámara móvil todavía no está estable (${Math.round(fps)} FPS${bufferMs === null ? "" : `, ${Math.round(bufferMs)} ms de búfer`}).` }
+  }
+  return { nivel:"estable" as const, detalle:`Recepción estable: ${Math.round(fps)} FPS${bufferMs === null ? "" : `, ${Math.round(bufferMs)} ms de búfer`}.` }
+}
 export function medirRecepcion(actual: MuestraRecepcion, anterior: MuestraRecepcion | null) {
   const convertir = (s: MuestraRecepcion): MuestraEnvio => ({ id: s.id, timestamp: s.timestamp, bytesSent: s.bytesReceived, framesEncoded: s.framesDecoded })
   const flujo = medirEnvio(convertir(actual), anterior ? convertir(anterior) : null)
@@ -43,16 +59,27 @@ export class CalidadAdaptativa {
   private ultimoCambio = -Infinity
   private ultimaMuestra = -Infinity
 
-  observar(ahora: number, fps: number, motivo: string | undefined): number | null {
+  observar(ahora: number, fps: number, motivo: string | undefined, recepcion?: RetornoRecepcion | null): number | null {
     // No interpretar una suspensión de la app ni estadísticas ausentes como estabilidad.
     if (!Number.isFinite(ahora) || ahora <= this.ultimaMuestra) return null
     if (ahora - this.ultimaMuestra > 10_000) this.malos = this.buenos = 0
     this.ultimaMuestra = ahora
     if (!Number.isFinite(fps) || fps <= 0) { this.malos = this.buenos = 0; return null }
-    const limitado = motivo === "cpu" || motivo === "bandwidth"
+    // Chromium no siempre informa `bandwidth` en el emisor. El PC sí puede
+    // comprobar que los cuadros llegan tarde o muy por debajo del FPS enviado;
+    // ese retorno evita mantener 1080p cuando el receptor ya acumula segundos.
+    const retornoLimitado = !!recepcion && (
+      (recepcion.bufferMs !== null && recepcion.bufferMs >= 750)
+      || (Number.isFinite(recepcion.fps) && recepcion.fps >= 0 && recepcion.fps + 4 < fps)
+    )
+    const limitado = motivo === "cpu" || motivo === "bandwidth" || retornoLimitado
     this.malos = limitado ? this.malos + 1 : 0
     // Un FPS bajo sin causa conocida no autoriza atribuir el problema a la red.
-    this.buenos = motivo === "none" && fps >= 27 ? this.buenos + 1 : 0
+    const retornoEstable = !recepcion || (
+      (recepcion.bufferMs === null || recepcion.bufferMs < 250)
+      && recepcion.fps >= Math.min(24, fps * 0.9)
+    )
+    this.buenos = motivo === "none" && fps >= 27 && retornoEstable ? this.buenos + 1 : 0
     if (ahora - this.ultimoCambio < 15_000) return null
     if (this.malos >= 3 && this.nivel < PERFILES_ENVIO.length - 1) return this.nivel + 1
     if (this.buenos >= 10 && this.nivel > 0) return this.nivel - 1

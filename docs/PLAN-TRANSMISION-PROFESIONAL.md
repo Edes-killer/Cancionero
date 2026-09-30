@@ -36,6 +36,12 @@ con avisos y descarga de las últimas 480 líneas de medición. Se conserva loca
 el último informe (muestras cada 15 segundos); no incluye logs FFmpeg ni claves RTMP.
 Las mediciones faltantes se muestran como desconocidas, no como cero.
 
+La prueba física del 29 de septiembre mostró 7,7–13 segundos de búfer y solo 11–14 FPS
+recibidos mientras el emisor aún no declaraba limitación de ancho de banda. El PC ahora devuelve
+esas métricas al celular: tres muestras degradadas reducen el perfil automático. El preflight
+considera crítica una fuente seleccionada con al menos 1,5 segundos de búfer o menos de 12 FPS y
+no permite salir al aire hasta que se estabilice o se reduzca su calidad.
+
 Pendiente: validación física de adaptación en distintos WebView, integración de estas
 medidas con carga del encoder final y reporte completo de sesión/audio/destinos.
 Las pruebas unitarias verifican la política y sus deltas, no simulan hardware ni WiFi real.

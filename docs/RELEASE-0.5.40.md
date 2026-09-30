@@ -10,13 +10,17 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 - Recuperación a MP4 de segmentos MKV dejados por un cierre inesperado.
 - Recuperación independiente por destino: una plataforma caída ya no detiene las demás y se reintenta sin recodificar.
 - Estado visible por plataforma: “Enviando” o “Reconectando”, sin transportar claves RTMP a la interfaz.
+- El PC devuelve al celular FPS y búfer realmente recibidos; el modo automático reduce calidad si
+  la recepción se atrasa aunque Chromium no informe limitación de red.
+- El preflight bloquea la salida cuando una cámara móvil seleccionada llega desconectada, con menos
+  de 12 FPS o con 1,5 segundos o más de búfer.
 - Tipos y validaciones reforzados en Transmisión, Cámara, OBS opcional y conexión.
 - Dependencias transitivas actualizadas sin cambios mayores de API.
 
 ## Evidencia automática
 
 - `npm run qa:release`: 14 comprobaciones obligatorias, incluida la recuperación real de un destino local y trazabilidad del build.
-- 141/141 pruebas automatizadas aprobadas.
+- 143/143 pruebas automatizadas aprobadas.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
 - Auditoría de dependencias de producción y de compilación: cero vulnerabilidades conocidas.

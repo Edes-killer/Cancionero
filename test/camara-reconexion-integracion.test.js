@@ -34,10 +34,12 @@ test('Socket.IO: identidad conservada, aviso de desconexión correcto y duplicad
     movil.emit('camara:senal', {codigo, para:host.id, data:{tipo:'offer', sdp:'prueba'}})
     assert.equal((await oferta).dispositivoId, dispositivoId)
     const confirmacion = evento(movil, 'camara:senal')
-    host.emit('camara:senal', {codigo, para:movil.id, data:{tipo:'estado-pc', video:true, grabacion:'detenida'}})
+    host.emit('camara:senal', {codigo, para:movil.id, data:{tipo:'estado-pc', video:true, grabacion:'detenida', fpsRecepcion:14, bufferRecepcionMs:7709}})
     const recibido = await confirmacion
     assert.equal(recibido.rol, 'host'); assert.equal(recibido.de, host.id)
     assert.equal(recibido.data.grabacion, 'detenida')
+    assert.equal(recibido.data.fpsRecepcion, 14)
+    assert.equal(recibido.data.bufferRecepcionMs, 7709)
     // Un emisor no puede hacerse pasar por confirmación del PC.
     const siguiente = evento(host, 'camara:senal')
     movil.emit('camara:senal', {codigo, para:host.id, data:{tipo:'estado-pc', video:true, grabacion:'activa'}})

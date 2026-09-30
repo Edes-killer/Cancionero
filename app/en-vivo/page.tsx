@@ -22,7 +22,7 @@ import OnboardingTour from "@/components/OnboardingTour"
 import { TOUR_TRANSMISION } from "@/lib/tours"
 import { crearCadenaAudioEmision, ajustarAudioEmision, medirAudio, type CadenaAudioEmision } from "@/lib/audioEmision"
 import PanelAudioProfesional from "@/components/transmision/PanelAudioProfesional"
-import { medirRecepcion, type MuestraRecepcion } from "@/lib/calidadAdaptativa"
+import { estadoRecepcionMovil, medirRecepcion, type MuestraRecepcion } from "@/lib/calidadAdaptativa"
 import { VigenciaVideo } from "@/lib/vigenciaVideo"
 import { claveCamara, EnlacesCamara } from "@/lib/identidadCamara"
 import { dibujarCamaraCompleta } from "@/lib/encuadreCamara"
@@ -490,6 +490,7 @@ export default function EnVivoPage() {
   const phoneVideosRef = useRef<Map<string, HTMLVideoElement>>(new Map())
   const phoneStreamsRef = useRef<Map<string, MediaStream>>(new Map())
   const pcHostsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
+  const recepcionMovilRef = useRef<Map<string, { fps: number; bufferMs: number | null; recibido: number }>>(new Map())
   const enlacesCamaraRef = useRef(new EnlacesCamara())
   const camSocketRef = useRef<Socket | null>(null)
   const camCodigoRef = useRef("")
@@ -534,6 +535,7 @@ export default function EnVivoPage() {
           }
           if (pc.connectionState !== "connected") {
             lineas.push(`Celular ${id.replace(/^movil-/, "").slice(0, 5)}: sin enlace de video activo`)
+            recepcionMovilRef.current.delete(id)
             for (const key of previos.keys()) if (key.startsWith(`${id}:`)) previos.delete(key)
             continue
           }
@@ -545,6 +547,7 @@ export default function EnVivoPage() {
             const lectura = medirRecepcion(s, previos.get(key) ?? null)
             if (lectura) {
               const { fps, mbps, bufferMs, aviso } = lectura
+              recepcionMovilRef.current.set(id, { fps, bufferMs, recibido: Date.now() })
               lineas.push(`Celular ${id.replace(/^movil-/, "").slice(0, 5)}: ${s.frameWidth || "?"}×${s.frameHeight || "?"} · ${fps.toFixed(0)} FPS recibidos · ${mbps.toFixed(1)} Mbps · búfer ${bufferMs === null ? "no disponible" : `${bufferMs.toFixed(0)} ms`}${aviso ? ` — ${aviso}` : ""}`)
             } else {
               lineas.push(`Celular ${id.replace(/^movil-/, "").slice(0, 5)}: esperando medición de video`)
@@ -554,6 +557,7 @@ export default function EnVivoPage() {
         }
         for (const id of conexiones.keys()) if (!pcHostsRef.current.has(id)) {
           conexiones.delete(id)
+          recepcionMovilRef.current.delete(id)
           for (const key of previos.keys()) if (key.startsWith(`${id}:`)) previos.delete(key)
         }
         if (activo) {
@@ -719,7 +723,12 @@ export default function EnVivoPage() {
           } catch { video = false }
           const para = enlacesCamaraRef.current.socketDe(clave)
           if (activo && socket === camSocketRef.current && pcHostsRef.current.get(clave) === pc && para) {
-            socket.emit("camara:senal", { codigo: camCodigoRef.current, para, data: { tipo: "estado-pc", video, grabacion: grabacion?.estado || "desconocida" } })
+            const recepcion = recepcionMovilRef.current.get(clave)
+            const vigente = recepcion && Date.now() - recepcion.recibido < 12_000 ? recepcion : null
+            socket.emit("camara:senal", { codigo: camCodigoRef.current, para, data: {
+              tipo: "estado-pc", video, grabacion: grabacion?.estado || "desconocida",
+              fpsRecepcion: vigente?.fps, bufferRecepcionMs: vigente?.bufferMs,
+            } })
           }
         }
         for (const pc of muestras.keys()) if (![...pcHostsRef.current.values()].includes(pc)) muestras.delete(pc)
@@ -1507,6 +1516,43 @@ export default function EnVivoPage() {
   }
   reconectarRef.current = reconectar
 
+  const estadoCamaraMovilParaVivo = () => {
+    if (escena !== "camara" && escena !== "camara-letra") return null
+    const ids: string[] = []
+    const agregar = (fuente: string) => {
+      if (!esFuenteCelular(fuente)) return
+      const id = idFuenteCelular(fuente) || celulares[0]?.id || ""
+      if (id && !ids.includes(id)) ids.push(id)
+    }
+    if (pantallaOn) {
+      if (camaraEnPip) agregar(camaraId)
+    } else if (camaraActiva === 1) agregar(camaraId)
+    else if (camaraActiva === 2) agregar(camara2Id)
+    else { agregar(camaraId); agregar(camara2Id) }
+    if (!ids.length) return null
+
+    let nivel: "estable" | "advertencia" | "critico" = "estable"
+    const detalles: string[] = []
+    for (const id of ids) {
+      if (!phoneStreamsRef.current.has(id)) {
+        nivel = "critico"; detalles.push("Una cámara móvil seleccionada está desconectada."); continue
+      }
+      const muestra = recepcionMovilRef.current.get(id)
+      if (!muestra) {
+        if (nivel === "estable") nivel = "advertencia"
+        detalles.push("Espera unos segundos para medir la cámara móvil antes de salir."); continue
+      }
+      if (Date.now() - muestra.recibido >= 12_000) {
+        nivel = "critico"; detalles.push("La medición de una cámara móvil dejó de actualizarse."); continue
+      }
+      const estado = estadoRecepcionMovil(muestra.fps, muestra.bufferMs)
+      if (estado.nivel === "critico") nivel = "critico"
+      else if (estado.nivel === "advertencia" && nivel === "estable") nivel = "advertencia"
+      detalles.push(estado.detalle)
+    }
+    return { nivel, detalle: detalles.join(" ") }
+  }
+
   const salirEnVivo = async () => {
     setPreflightAbierto(false)
     setErrorTx(null)
@@ -1515,6 +1561,8 @@ export default function EnVivoPage() {
     const destinosActivos = construirDestinos()
     if (destinosActivos.length === 0) { setErrorTx("Activa al menos una plataforma y pega su clave / URL."); return }
     if (!haySalidaVisual()) { setErrorTx("La escena elegida necesita una cámara. Conecta una, comparte pantalla o usa Proyección/Espera para emitir sin cámara."); return }
+    const movil = estadoCamaraMovilParaVivo()
+    if (movil?.nivel === "critico") { setErrorTx(`La cámara del celular aún no está lista: ${movil.detalle}`); return }
 
     setLogsTx([]); setSalud(null); setEstadoDestinos({}); setIntento(0); intentoRef.current = 0
     inicioSesionRef.current = Date.now(); maxReconexionesRef.current = 0; maxCuadrosCaidosRef.current = null
@@ -1556,12 +1604,14 @@ export default function EnVivoPage() {
   const itemsPreflight = () => {
     const urls = construirUrls()
     const mic = trackMicActivo()
+    const movil = estadoCamaraMovilParaVivo()
     return [
       { nombre: "Aplicación de escritorio", ok: esEscritorio, critico: true, detalle: esEscritorio ? "Motor de transmisión disponible" : "Abre esta pantalla en Selah Live para Windows" },
       { nombre: "Salida visual", ok: haySalidaVisual(), critico: true, detalle: hayFuenteVideo() ? "Cámara, celular o pantalla detectada" : haySalidaVisual() ? "Escena generada por Selah, no necesita cámara" : "Esta escena necesita una cámara o pantalla" },
       { nombre: "Micrófono", ok: !!mic && mic.readyState === "live" && mic.enabled && !sinAudio, critico: false, detalle: !mic ? "No hay micrófono activo" : sinAudio ? "Está conectado, pero no se detecta sonido" : "Señal disponible" },
       { nombre: "Destino", ok: urls.length > 0, critico: true, detalle: urls.length ? `${urls.length} destino${urls.length > 1 ? "s" : ""} configurado${urls.length > 1 ? "s" : ""}` : "Activa una plataforma y pega su clave o URL" },
       { nombre: "Conexión a internet", ok: navigator.onLine, critico: true, detalle: navigator.onLine ? "El equipo informa conexión" : "Windows informa que estás sin conexión" },
+      ...(movil ? [{ nombre: "Cámara móvil", ok: movil.nivel === "estable", critico: movil.nivel === "critico", detalle: movil.detalle }] : []),
       { nombre: "Grabación de respaldo", ok: grabar, critico: false, detalle: grabar ? "Se guardará una copia local" : "Recomendado si cae internet" },
       { nombre: "Espacio para grabar", ok: !grabar || espacioGrabacion?.puedeGrabar !== false, critico: grabar && espacioGrabacion?.nivel === "bloqueado", detalle: !grabar ? "Grabación desactivada" : espacioGrabacion?.detalle || "Se comprobará nuevamente al comenzar" },
     ]
@@ -1634,7 +1684,7 @@ export default function EnVivoPage() {
     pcHostsRef.current.forEach(pc => { try { pc.close() } catch {} }); pcHostsRef.current.clear()
     camIcePendienteRef.current.clear()
     try { camSocketRef.current?.close() } catch {}; camSocketRef.current = null
-    phoneStreamsRef.current.forEach(s => s.getTracks().forEach(t => t.stop())); phoneStreamsRef.current.clear()
+    phoneStreamsRef.current.forEach(s => s.getTracks().forEach(t => t.stop())); phoneStreamsRef.current.clear(); recepcionMovilRef.current.clear()
     phoneVideosRef.current.clear(); enlacesCamaraRef.current.limpiar(); setCelulares([])
     setCelularOn(false); setCamModal(false); setCamEstado("esperando")
     // Liberar los slots que apuntaban al celular (cámara y mic vuelven al PC).
@@ -1749,7 +1799,7 @@ export default function EnVivoPage() {
       if (!enlacesCamaraRef.current.retirar(de, peerId)) return
       if (de && pcHostsRef.current.has(de)) {
         try { pcHostsRef.current.get(de)?.close() } catch {}
-        pcHostsRef.current.delete(de); phoneStreamsRef.current.delete(de)
+        pcHostsRef.current.delete(de); phoneStreamsRef.current.delete(de); recepcionMovilRef.current.delete(de)
         const video = phoneVideosRef.current.get(de)
         if (video) video.srcObject = null
         // Conservar la opción y su nombre para recuperar cámara y micrófono al volver.
