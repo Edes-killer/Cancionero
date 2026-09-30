@@ -53,6 +53,23 @@ test("cerrar la consola no derriba el proceso principal", () => {
   assert.doesNotThrow(() => salida.emit("error", Object.assign(new Error("broken pipe"), { code: "EPIPE" })))
 })
 
+test("la actualización de escritorio mantiene un progreso visible hasta instalar", () => {
+  const main = fs.readFileSync("electron/main.js", "utf8")
+  assert.match(main, /function traerVentanaProgresoAlFrente\(/)
+  assert.match(main, /if \(!ventanaProgreso\.isVisible\(\)\) ventanaProgreso\.show\(\)/)
+  assert.match(main, /closable: false[\s\S]{0,160}show: true/)
+  assert.doesNotMatch(main, /backgroundColor: "#0b1220", show: false/)
+  assert.match(main, /webContents\.once\("did-finish-load"[\s\S]{0,180}aplicarEstadoVentanaProgreso\(\)/)
+  assert.match(main, /autoUpdater\.on\("download-progress"[\s\S]{0,800}actualizarProgreso\(/)
+  const inicioDescargada = main.indexOf('autoUpdater.on("update-downloaded"')
+  const finDescargada = main.indexOf('autoUpdater.on("error"')
+  const descargada = main.slice(inicioDescargada, finDescargada)
+  assert.match(descargada, /fase: "instalando"/)
+  assert.match(descargada, /aplicarEstadoVentanaProgreso\(\)/)
+  assert.match(descargada, /autoUpdater\.quitAndInstall\(false, true\)/)
+  assert.ok(descargada.indexOf('fase: "instalando"') < descargada.indexOf("autoUpdater.quitAndInstall"))
+})
+
 test("la migración cierra la elevación de privilegios y aísla multimedia", () => {
   const sql = fs.readFileSync("supabase/migrations/20260908_security_hardening.sql", "utf8")
   assert.match(sql, /^begin;/m)

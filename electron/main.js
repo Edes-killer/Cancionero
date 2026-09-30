@@ -1568,13 +1568,43 @@ let socketServer = null
 // ✅ El usuario debe VER que se está actualizando y cuánto falta. Antes todo
 // pasaba invisible y la app se cerraba de golpe.
 let ventanaProgreso = null
+let estadoVentanaActualizacion = {
+  fase: "descargando",
+  version: "",
+  pct: 0,
+  detalle: "Iniciando descarga...",
+  tiempo: ""
+}
+
+function traerVentanaProgresoAlFrente(enfocar = false) {
+  if (!ventanaProgreso || ventanaProgreso.isDestroyed()) return
+  try {
+    if (ventanaProgreso.isMinimized()) ventanaProgreso.restore()
+    if (!ventanaProgreso.isVisible()) ventanaProgreso.show()
+    ventanaProgreso.setAlwaysOnTop(true, "floating")
+    ventanaProgreso.moveTop()
+    if (enfocar) ventanaProgreso.focus()
+  } catch (e) {}
+}
+
+function aplicarEstadoVentanaProgreso() {
+  if (!ventanaProgreso || ventanaProgreso.isDestroyed()) return
+  ventanaProgreso.webContents
+    .executeJavaScript(`window.renderEstadoActualizacion && window.renderEstadoActualizacion(${JSON.stringify(estadoVentanaActualizacion)})`)
+    .catch(() => {})
+}
 
 function mostrarVentanaProgreso(version) {
-  if (ventanaProgreso && !ventanaProgreso.isDestroyed()) return ventanaProgreso
+  if (version) estadoVentanaActualizacion.version = version
+  if (ventanaProgreso && !ventanaProgreso.isDestroyed()) {
+    traerVentanaProgresoAlFrente(false)
+    aplicarEstadoVentanaProgreso()
+    return ventanaProgreso
+  }
   ventanaProgreso = new BrowserWindow({
     width: 440, height: 200,
     resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
-    alwaysOnTop: true, frame: false, backgroundColor: "#0b1220", show: false,
+    closable: false, alwaysOnTop: true, frame: false, backgroundColor: "#0b1220", show: true,
     skipTaskbar: false, title: "Actualizando Selah Live",
     webPreferences: { contextIsolation: true, nodeIntegration: false }
   })
@@ -1591,40 +1621,46 @@ function mostrarVentanaProgreso(version) {
   .row{display:flex;justify-content:space-between;margin-top:10px;font-size:12px;opacity:.75}
   .pct{font-weight:800;opacity:1}
 </style>
-<div class="t">⬇️ Descargando actualización${version ? " " + version : ""}</div>
+<div class="t">⬇️ Descargando actualización</div>
 <div class="s">Selah Live se reiniciará solo al terminar. No cierres la aplicación.</div>
 <div class="bar"><div class="fill" id="f"></div></div>
 <div class="row"><span id="d">Iniciando descarga...</span><span class="pct" id="p">0%</span></div>
 <div class="row"><span id="t2"></span><span></span></div>
 <script>
-  window.setProgreso = function(pct, detalle, tiempo){
-    document.getElementById('f').style.width = pct + '%'
-    document.getElementById('p').textContent = pct + '%'
-    document.getElementById('d').textContent = detalle || ''
-    document.getElementById('t2').textContent = tiempo || ''
-  }
-  window.setInstalando = function(){
-    document.querySelector('.t').textContent = '⚙️ Instalando actualización'
-    document.querySelector('.s').textContent = 'Esto toma unos segundos. Selah Live se abrirá sola al terminar.'
-    document.getElementById('f').style.width = '100%'
-    document.getElementById('p').textContent = ''
-    document.getElementById('d').textContent = 'Reemplazando archivos...'
-    document.getElementById('t2').textContent = ''
+  window.renderEstadoActualizacion = function(estado){
+    const instalando = estado.fase === 'instalando'
+    document.querySelector('.t').textContent = instalando
+      ? '⚙️ Instalando actualización'
+      : '⬇️ Descargando actualización' + (estado.version ? ' ' + estado.version : '')
+    document.querySelector('.s').textContent = instalando
+      ? 'Esto toma unos segundos. Selah Live se abrirá sola al terminar.'
+      : 'Puedes seguir viendo el avance aquí. No cierres la aplicación.'
+    document.getElementById('f').style.width = (instalando ? 100 : estado.pct || 0) + '%'
+    document.getElementById('p').textContent = instalando ? '' : (estado.pct || 0) + '%'
+    document.getElementById('d').textContent = instalando ? 'Reemplazando archivos...' : (estado.detalle || '')
+    document.getElementById('t2').textContent = instalando ? '' : (estado.tiempo || '')
   }
 </script>`
 
   ventanaProgreso.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html))
-  ventanaProgreso.once("ready-to-show", () => {
-    if (ventanaProgreso && !ventanaProgreso.isDestroyed()) ventanaProgreso.show()
+  ventanaProgreso.webContents.once("did-finish-load", () => {
+    aplicarEstadoVentanaProgreso()
+    traerVentanaProgresoAlFrente(true)
   })
+  traerVentanaProgresoAlFrente(true)
   return ventanaProgreso
 }
 
 function actualizarProgreso(pct, detalle, tiempo) {
-  if (!ventanaProgreso || ventanaProgreso.isDestroyed()) return
-  ventanaProgreso.webContents
-    .executeJavaScript(`window.setProgreso(${pct}, ${JSON.stringify(detalle || "")}, ${JSON.stringify(tiempo || "")})`)
-    .catch(() => {})
+  estadoVentanaActualizacion = {
+    ...estadoVentanaActualizacion,
+    fase: "descargando",
+    pct: Math.max(0, Math.min(100, Number(pct) || 0)),
+    detalle: detalle || "",
+    tiempo: tiempo || ""
+  }
+  mostrarVentanaProgreso(estadoVentanaActualizacion.version)
+  aplicarEstadoVentanaProgreso()
 }
 
 function cerrarVentanaProgreso() {
@@ -1632,6 +1668,13 @@ function cerrarVentanaProgreso() {
     if (ventanaProgreso && !ventanaProgreso.isDestroyed()) ventanaProgreso.destroy()
   } catch (e) {}
   ventanaProgreso = null
+  estadoVentanaActualizacion = {
+    fase: "descargando",
+    version: "",
+    pct: 0,
+    detalle: "Iniciando descarga...",
+    tiempo: ""
+  }
   try { mainWindow && !mainWindow.isDestroyed() && mainWindow.setProgressBar(-1) } catch (e) {}
 }
 
@@ -1879,6 +1922,13 @@ app.whenReady().then(async () => {
       // ✅ Ventana de progreso visible: el usuario tiene que SABER que se está
       // actualizando y cuánto falta. Antes la descarga era invisible y la app
       // simplemente se cerraba de golpe, lo que asusta.
+      estadoVentanaActualizacion = {
+        fase: "descargando",
+        version: info?.version || "",
+        pct: 0,
+        detalle: "Iniciando descarga...",
+        tiempo: ""
+      }
       mostrarVentanaProgreso(info?.version || "")
     })
 
@@ -1920,8 +1970,15 @@ app.whenReady().then(async () => {
           // ✅ Mostrar "Instalando..." mientras corre el instalador, para que el
           // usuario sepa qué está pasando y no crea que la app se colgó.
           try {
-            const v = mostrarVentanaProgreso("")
-            v.webContents.executeJavaScript("window.setInstalando()").catch(() => {})
+            estadoVentanaActualizacion = {
+              fase: "instalando",
+              version: info?.version || "",
+              pct: 100,
+              detalle: "Reemplazando archivos...",
+              tiempo: ""
+            }
+            mostrarVentanaProgreso(info?.version || "")
+            aplicarEstadoVentanaProgreso()
           } catch (e) {}
           // ✅ Cierre limpio antes de instalar. La causa raíz del "archivo en
           // uso": los servidores embebidos (3000/4000) mantenían VIVO el proceso
