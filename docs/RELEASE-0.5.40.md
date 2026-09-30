@@ -17,13 +17,15 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 - Windows prioriza `h264_mf`, validado a Full HD, y usa `h264_qsv` solamente como respaldo.
 - El diagnóstico final conserva la causa del cierre —entrada atascada, destino, motor u operador—
   incluso cuando Windows informa que FFmpeg terminó con código nulo.
+- Esa causa aparece inmediatamente en el panel del operador al cerrarse el motor; no depende
+  del siguiente sondeo del archivo de diagnóstico.
 - Tipos y validaciones reforzados en Transmisión, Cámara, OBS opcional y conexión.
 - Dependencias transitivas actualizadas sin cambios mayores de API.
 
 ## Evidencia automática
 
 - `npm run qa:release`: 14 comprobaciones obligatorias, incluida la recuperación real de un destino local y trazabilidad del build.
-- 145/145 pruebas automatizadas aprobadas.
+- 146/146 pruebas automatizadas aprobadas.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
 - Auditoría de dependencias de producción y de compilación: cero vulnerabilidades conocidas.

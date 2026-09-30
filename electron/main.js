@@ -262,8 +262,23 @@ function registrarIPCTransmision() {
         if (stderrPendiente.length > 65536) stderrPendiente = "[línea excesiva omitida]"
       })
       proc.once("close", () => { if (stderrPendiente) { diagnostico.stderr("\n"); aLog(stderrPendiente + "\n") } })
-      proc.on("error", err => { diagnostico.finalizar(`No se pudo ejecutar el motor de transmisión: ${err.message}`, "motor"); aLog(`\n[error de proceso] ${err.message}\n`); if (ffmpegProc === proc) { enviar("transmision:estado", { estado: "error", error: err.message, inesperado: !sesion.detencionIntencional }); ffmpegProc = null } })
-      proc.on("close", code => { aLog(`\n[ffmpeg terminó con código ${code}]\n`); if (ffmpegProc === proc) { enviar("transmision:estado", { estado: "terminado", code, error: sesion.falloEntrada, inesperado: !sesion.detencionIntencional && !sesion.falloEntrada }); ffmpegProc = null } })
+      proc.on("error", err => {
+        diagnostico.finalizar(`No se pudo ejecutar el motor de transmisión: ${err.message}`, "motor")
+        aLog(`\n[error de proceso] ${err.message}\n`)
+        if (ffmpegProc === proc) {
+          const final = diagnostico.estado(proc.stdin.writableLength, false)
+          enviar("transmision:estado", { estado: "error", error: err.message, diagnostico: final.diagnostico, finTipo: final.finTipo, inesperado: !sesion.detencionIntencional })
+          ffmpegProc = null
+        }
+      })
+      proc.on("close", code => {
+        aLog(`\n[ffmpeg terminó con código ${code}]\n`)
+        if (ffmpegProc === proc) {
+          const final = diagnostico.estado(proc.stdin.writableLength, false)
+          enviar("transmision:estado", { estado: "terminado", code, error: sesion.falloEntrada, diagnostico: final.diagnostico, finTipo: final.finTipo, inesperado: !sesion.detencionIntencional && !sesion.falloEntrada })
+          ffmpegProc = null
+        }
+      })
       proc.stdin.on("error", () => {}) // evitar crash si RTMP corta el pipe
 
       return { ok: true, encoder, sesionId: sesion.id }

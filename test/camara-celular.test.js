@@ -51,6 +51,12 @@ test("Windows prioriza el encoder validado en Full HD y deja QSV como respaldo",
   assert.match(electron, /for \(const enc of \["h264_mf", "h264_qsv"\]\)/)
 })
 
+test("el cierre de FFmpeg entrega el diagnóstico final directamente al operador", () => {
+  assert.match(electron, /diagnostico:\s*final\.diagnostico/)
+  assert.match(electron, /finTipo:\s*final\.finTipo/)
+  assert.match(transmision, /setErrorTx\(d\?\.diagnostico\s*\|\|\s*d\?\.error/)
+})
+
 test("la cadena de video conserva detalle Full HD y registra la fuente real", () => {
   assert.match(transmision, /const SALIDA_ANCHO = 1920, SALIDA_ALTO = 1080/)
   assert.match(transmision, /width: \{ ideal: 1920 \}, height: \{ ideal: 1080 \}/)

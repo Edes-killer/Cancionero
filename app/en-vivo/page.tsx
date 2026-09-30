@@ -181,6 +181,8 @@ const mensajeDeError = (error: unknown): string => error instanceof Error ? erro
 interface EventoTransmision {
   estado?: "error" | "terminado" | string
   error?: string
+  diagnostico?: string
+  finTipo?: "entrada" | "conexion" | "motor" | "operador" | string | null
   code?: number
   inesperado?: boolean
 }
@@ -1097,7 +1099,7 @@ export default function EnVivoPage() {
         try { recRef.current?.stop() } catch {}
         recRef.current = null
         setTxEstado("error")
-        setErrorTx(d?.error || (d?.code ? "La transmisión se cortó. Revisa los detalles técnicos más abajo." : "La transmisión terminó inesperadamente."))
+        setErrorTx(d?.diagnostico || d?.error || (d?.code ? "La transmisión se cortó. Revisa los detalles técnicos más abajo." : "La transmisión terminó inesperadamente."))
       }
     })
     const offLog = tx.onLog((m: string) => {
