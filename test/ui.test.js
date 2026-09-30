@@ -2,6 +2,15 @@ const test = require("node:test")
 const assert = require("node:assert/strict")
 const fs = require("node:fs")
 
+test("Login ofrece acceso directo y conserva Google en navegador seguro", () => {
+  const login = fs.readFileSync("app/login/page.tsx", "utf8")
+  assert.match(login, /signInWithPassword/)
+  assert.match(login, /Entrar directamente/)
+  assert.match(login, /no abre el navegador/)
+  assert.match(login, /puente\.abrirGoogle\(data\.url\)/)
+  assert.match(login, /skipBrowserRedirect: isCapacitor \|\| isElectron/)
+})
+
 test("Control mantiene una sola experiencia sin selector Preparar/Culto", () => {
   const control = fs.readFileSync("app/control/page.tsx", "utf8")
   assert.doesNotMatch(control, /selah-modo-control|modoOperacion|cambiarModoOperacion/)

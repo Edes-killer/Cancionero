@@ -26,6 +26,10 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 - La actualización de escritorio mantiene una ventana visible con porcentaje, tamaño,
   velocidad y tiempo restante; si Windows la oculta, Selah la restaura y muestra luego
   claramente la etapa de instalación.
+- El escritorio permite entrar directamente con correo y contraseña, sin abrir un navegador.
+- El acceso con Google continúa en el navegador seguro del sistema, pero ahora regresa a
+  Selah aunque la aplicación estuviera cerrada o Windows haya iniciado una instancia nueva.
+- Los enlaces de acceso por correo también regresan a Selah en vez de quedarse en localhost.
 - Tipos y validaciones reforzados en Transmisión, Cámara, OBS opcional y conexión.
 - Next.js y dependencias transitivas de red/compilación actualizadas sin cambios mayores
   de API; la auditoría queda sin vulnerabilidades conocidas.
@@ -33,7 +37,7 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 ## Evidencia automática
 
 - `npm run qa:release`: 14 comprobaciones obligatorias, incluida la recuperación real de un destino local y trazabilidad del build.
-- 148/148 pruebas automatizadas aprobadas.
+- 149/149 pruebas automatizadas aprobadas.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
 - Auditoría de dependencias de producción y de compilación: cero vulnerabilidades conocidas.

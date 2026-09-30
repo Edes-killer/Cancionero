@@ -43,6 +43,10 @@ function destinoCallbackOAuth(valor) {
     if (parametros.get("access_token") && parametros.get("refresh_token")) {
       return `http://localhost:3000/auth/callback/${u.hash}`
     }
+    const code = u.searchParams.get("code")
+    if (code) return `http://localhost:3000/auth/callback/?code=${encodeURIComponent(code)}`
+    const error = u.searchParams.get("error") || parametros.get("error")
+    if (error) return `http://localhost:3000/login/?error=oauth&detalle=${encodeURIComponent(error)}`
     return "http://localhost:3000/login/?error=oauth"
   } catch { return null }
 }

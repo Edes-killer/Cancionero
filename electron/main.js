@@ -682,6 +682,7 @@ ipcMain.handle("firewall:reparar", async () => {
 if (ffmpegPath) setTimeout(() => { elegirEncoder().catch(() => {}) }, 4000)
 
 // ✅ Single instance lock — necesario para que NSIS pueda cerrar la app al actualizar
+const enlaceOAuthInicial = process.argv.find(a => typeof a === "string" && a.startsWith("selahlive://")) || null
 const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
   app.quit()
@@ -691,11 +692,39 @@ if (!gotTheLock) {
 // Google OAuth corre en el navegador del sistema. La ventana principal nunca
 // navega a Google y solo acepta el enlace de regreso mientras espera un login.
 let oauthPendienteHasta = 0
+let protocoloSelahRegistrado = false
+function rutaOAuthPendiente() {
+  try { return path.join(app.getPath("userData"), "oauth-pendiente.json") }
+  catch { return null }
+}
+function guardarOAuthPendiente() {
+  oauthPendienteHasta = Date.now() + 10 * 60 * 1000
+  const ruta = rutaOAuthPendiente()
+  if (!ruta) return
+  try { fs.writeFileSync(ruta, JSON.stringify({ expira: oauthPendienteHasta }), { encoding: "utf8", mode: 0o600 }) }
+  catch (e) { console.error("No se pudo guardar el retorno de Google:", e?.message) }
+}
+function oauthPendienteVigente() {
+  if (Date.now() <= oauthPendienteHasta) return true
+  const ruta = rutaOAuthPendiente()
+  if (!ruta) return false
+  try {
+    const expira = Number(JSON.parse(fs.readFileSync(ruta, "utf8"))?.expira || 0)
+    if (Date.now() <= expira) { oauthPendienteHasta = expira; return true }
+  } catch (e) {}
+  try { fs.unlinkSync(ruta) } catch (e) {}
+  return false
+}
+function limpiarOAuthPendiente() {
+  oauthPendienteHasta = 0
+  const ruta = rutaOAuthPendiente()
+  if (ruta) try { fs.unlinkSync(ruta) } catch (e) {}
+}
 function recibirCallbackOAuth(valor) {
-  if (Date.now() > oauthPendienteHasta) return false
+  if (!oauthPendienteVigente()) return false
   const destino = destinoCallbackOAuth(valor)
   if (!destino || !mainWindow || mainWindow.isDestroyed()) return false
-  oauthPendienteHasta = 0
+  limpiarOAuthPendiente()
   mainWindow.loadURL(destino)
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.focus()
@@ -712,14 +741,24 @@ ipcMain.handle("oauth:abrir-google", async (evento, url) => {
   if (!mainWindow || evento.sender !== mainWindow.webContents || !esAutorizacionSupabase(url)) {
     return { ok: false, error: "No se pudo validar el enlace de Google." }
   }
+  if (!protocoloSelahRegistrado) {
+    return { ok: false, error: "Windows no pudo registrar el regreso a Selah. Reinicia la aplicación o usa correo y contraseña." }
+  }
   try {
-    oauthPendienteHasta = Date.now() + 10 * 60 * 1000
+    guardarOAuthPendiente()
     await shell.openExternal(url)
     return { ok: true }
   } catch {
-    oauthPendienteHasta = 0
+    limpiarOAuthPendiente()
     return { ok: false, error: "No se pudo abrir el navegador para iniciar sesión." }
   }
+})
+
+ipcMain.handle("oauth:preparar-retorno", async (evento) => {
+  if (!mainWindow || evento.sender !== mainWindow.webContents) return { ok: false }
+  if (!protocoloSelahRegistrado) return { ok: false, error: "Windows no registró el enlace de regreso a Selah." }
+  guardarOAuthPendiente()
+  return { ok: true }
 })
 
 // ── Obtener IP local ─────────────────────────────────────────────────────────
@@ -1813,10 +1852,13 @@ function createWindow() {
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
   if (process.defaultApp && process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient("selahlive", process.execPath, [path.resolve(process.argv[1])])
+    const args = [path.resolve(process.argv[1])]
+    protocoloSelahRegistrado = app.setAsDefaultProtocolClient("selahlive", process.execPath, args) ||
+      app.isDefaultProtocolClient("selahlive", process.execPath, args)
   } else {
-    app.setAsDefaultProtocolClient("selahlive")
+    protocoloSelahRegistrado = app.setAsDefaultProtocolClient("selahlive") || app.isDefaultProtocolClient("selahlive")
   }
+  console.log(protocoloSelahRegistrado ? "✅ Retorno de login registrado" : "⚠️ No se pudo registrar el retorno de login")
   const outDir = path.join(__dirname, "../out")
 
   console.log("🚀 Iniciando Selah Live...")
@@ -1827,6 +1869,11 @@ app.whenReady().then(async () => {
   console.log(`📡 IP local: ${ip}`)
 
   createWindow()
+  // Windows entrega el protocolo en argv cuando Selah estaba cerrada. Antes
+  // solo se atendía second-instance, así que Google abría la app pero esta
+  // volvía al login. La autorización pendiente persiste diez minutos y permite
+  // completar exactamente ese retorno sin aceptar enlaces espontáneos.
+  if (enlaceOAuthInicial) recibirCallbackOAuth(enlaceOAuthInicial)
 
   // ── Atajos de teclado globales ────────────────────────────────────────────
   const { globalShortcut } = require("electron")

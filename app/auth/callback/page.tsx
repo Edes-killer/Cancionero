@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { navegarSPA } from "@/lib/navegar"
 import { conTimeout } from "@/lib/timeout"
+import { establecerSesionDesdeUrl } from "@/lib/authCallback"
 
 export default function CallbackPage() {
   const router = useRouter()
@@ -15,32 +16,24 @@ export default function CallbackPage() {
 useEffect(() => {
   let activo = true
 
-  const completarLogin = async (hash: string) => {
-    try {
-      if (!hash.includes('access_token')) return
-      const params = new URLSearchParams(hash.replace('#', ''))
-      const access_token = params.get('access_token')
-      const refresh_token = params.get('refresh_token')
-      if (!access_token || !refresh_token) { setEstado('error'); setMensajeError('Link inválido.'); return }
-      const { error } = await supabase.auth.setSession({ access_token, refresh_token })
-      if (error) { setEstado('error'); setMensajeError('No se pudo iniciar sesión.'); return }
-      navegarSPA(router, '/', { replace: true })
-    } catch { setEstado('error'); setMensajeError('Error inesperado.') }
-  }
-
   const revisar = async () => {
-    // Web normal
-    if (window.location.hash.includes('access_token')) {
-      await completarLogin(window.location.hash)
-      return
-    }
-
-    // APK — leer URL guardada por DeepLinkHandler
-    const deepLinkUrl = sessionStorage.getItem('deepLinkUrl')
-    if (deepLinkUrl) {
-      sessionStorage.removeItem('deepLinkUrl')
-      const hash = deepLinkUrl.includes('#') ? '#' + deepLinkUrl.split('#')[1] : ''
-      await completarLogin(hash)
+    // Web/Electron: admite tanto implicit (#access_token) como PKCE (?code).
+    // APK: DeepLinkHandler puede haber guardado el esquema propio completo.
+    const deepLinkUrl = sessionStorage.getItem("deepLinkUrl")
+    if (deepLinkUrl) sessionStorage.removeItem("deepLinkUrl")
+    const url = deepLinkUrl || window.location.href
+    const tieneDatos = /[?#&](?:access_token|code)=/.test(url)
+    if (tieneDatos) {
+      const resultadoSesion = await establecerSesionDesdeUrl(url)
+      if (!activo) return
+      if (resultadoSesion === "ok") {
+        navegarSPA(router, "/", { replace: true })
+        return
+      }
+      setEstado("error")
+      setMensajeError(resultadoSesion === "timeout"
+        ? "Google respondió, pero la conexión tardó demasiado. Intenta nuevamente."
+        : "Google respondió, pero no se pudo establecer la sesión.")
       return
     }
 
