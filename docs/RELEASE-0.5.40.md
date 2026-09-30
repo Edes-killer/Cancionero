@@ -23,13 +23,17 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
   incluso cuando Windows informa que FFmpeg terminó con código nulo.
 - Esa causa aparece inmediatamente en el panel del operador al cerrarse el motor; no depende
   del siguiente sondeo del archivo de diagnóstico.
+- La actualización de escritorio mantiene una ventana visible con porcentaje, tamaño,
+  velocidad y tiempo restante; si Windows la oculta, Selah la restaura y muestra luego
+  claramente la etapa de instalación.
 - Tipos y validaciones reforzados en Transmisión, Cámara, OBS opcional y conexión.
-- Dependencias transitivas actualizadas sin cambios mayores de API.
+- Next.js y dependencias transitivas de red/compilación actualizadas sin cambios mayores
+  de API; la auditoría queda sin vulnerabilidades conocidas.
 
 ## Evidencia automática
 
 - `npm run qa:release`: 14 comprobaciones obligatorias, incluida la recuperación real de un destino local y trazabilidad del build.
-- 147/147 pruebas automatizadas aprobadas.
+- 148/148 pruebas automatizadas aprobadas.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
 - Auditoría de dependencias de producción y de compilación: cero vulnerabilidades conocidas.

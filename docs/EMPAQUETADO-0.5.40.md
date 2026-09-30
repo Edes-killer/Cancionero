@@ -1,6 +1,6 @@
 # Evidencia de empaquetado 0.5.40
 
-Fecha: 29 de septiembre de 2026. Esta evidencia corresponde a la candidata de prueba,
+Fecha: 30 de septiembre de 2026. Esta evidencia corresponde a la candidata de prueba,
 no certifica todavía el funcionamiento físico en la iglesia.
 
 ## Android
