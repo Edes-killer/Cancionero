@@ -34,7 +34,6 @@ try {
   }
 } catch (e) { console.error("ffmpeg-static no disponible:", e) }
 let ffmpegProc = null
-let pararIntencional = false // true cuando el usuario detiene (no es una caída)
 let encoderElegido = null // se cachea el primer encoder que funcione en este PC
 
 // Grabación local (respaldo del culto): los MISMOS trozos que van a ffmpeg se
@@ -206,13 +205,11 @@ function registrarIPCTransmision() {
       const urls = salidas.map(d => d.url)
       if (urls.length === 0) return { ok: false, error: "No hay ninguna dirección de transmisión válida." }
       if (ffmpegProc) { try { ffmpegProc.kill("SIGKILL") } catch {} ffmpegProc = null }
-      pararIntencional = false // arrancamos: cualquier cierre siguiente es una caída
-
       const encoder = await elegirEncoder()
       const args = construirArgsFFmpeg(encoder, urls, bitrateKbps)
       const proc = spawn(ffmpegPath, args, { stdio: ["pipe", "ignore", "pipe"] })
       ffmpegProc = proc
-      const sesion = { id: require("crypto").randomUUID(), proc, propietario: _e.sender.id, falloEntrada: null, salidas }
+      const sesion = { id: require("crypto").randomUUID(), proc, propietario: _e.sender.id, falloEntrada: null, detencionIntencional: false, salidas }
       sesionTx = sesion
       const diagnostico = new DiagnosticoTransmision()
       diagnosticoTx = diagnostico
@@ -226,7 +223,15 @@ function registrarIPCTransmision() {
       const resumenTimer = setInterval(() => {
         if (ffmpegProc === proc) aLog(`\n[diagnóstico ${new Date().toISOString()}] ${JSON.stringify(diagnostico.estado(proc.stdin.writableLength, true))}\n`)
       }, 10000)
-      proc.once("close", () => { clearInterval(resumenTimer); aLog(`\n[diagnóstico final] ${JSON.stringify(diagnostico.estado(proc.stdin.writableLength, false))}\n`) })
+      proc.once("close", code => {
+        clearInterval(resumenTimer)
+        if (sesion.falloEntrada) diagnostico.finalizar(sesion.falloEntrada, "entrada", code)
+        else if (sesion.detencionIntencional) diagnostico.finalizar("Finalizada por el operador.", "operador", code)
+        else if (diagnostico.fin) { if (Number.isInteger(code)) diagnostico.codigoSalida = code }
+        else if (diagnostico.errorTipo === "conexion") diagnostico.finalizar("La conexión con el destino se interrumpió y el motor terminó.", "conexion", code)
+        else diagnostico.finalizar(`El motor de transmisión terminó inesperadamente${Number.isInteger(code) ? ` (código ${code})` : ""}.`, "motor", code)
+        aLog(`\n[diagnóstico final] ${JSON.stringify(diagnostico.estado(proc.stdin.writableLength, false))}\n`)
+      })
 
       const enviar = (canal, dato) => {
         // Transmisión ahora vive en una BrowserWindow independiente. El motor
@@ -257,8 +262,8 @@ function registrarIPCTransmision() {
         if (stderrPendiente.length > 65536) stderrPendiente = "[línea excesiva omitida]"
       })
       proc.once("close", () => { if (stderrPendiente) { diagnostico.stderr("\n"); aLog(stderrPendiente + "\n") } })
-      proc.on("error", err => { aLog(`\n[error de proceso] ${err.message}\n`); if (ffmpegProc === proc) { enviar("transmision:estado", { estado: "error", error: err.message, inesperado: !pararIntencional }); ffmpegProc = null } })
-      proc.on("close", code => { aLog(`\n[ffmpeg terminó con código ${code}]\n`); if (ffmpegProc === proc) { enviar("transmision:estado", { estado: "terminado", code, error: sesion.falloEntrada, inesperado: !pararIntencional && !sesion.falloEntrada }); ffmpegProc = null } })
+      proc.on("error", err => { diagnostico.finalizar(`No se pudo ejecutar el motor de transmisión: ${err.message}`, "motor"); aLog(`\n[error de proceso] ${err.message}\n`); if (ffmpegProc === proc) { enviar("transmision:estado", { estado: "error", error: err.message, inesperado: !sesion.detencionIntencional }); ffmpegProc = null } })
+      proc.on("close", code => { aLog(`\n[ffmpeg terminó con código ${code}]\n`); if (ffmpegProc === proc) { enviar("transmision:estado", { estado: "terminado", code, error: sesion.falloEntrada, inesperado: !sesion.detencionIntencional && !sesion.falloEntrada }); ffmpegProc = null } })
       proc.stdin.on("error", () => {}) // evitar crash si RTMP corta el pipe
 
       return { ok: true, encoder, sesionId: sesion.id }
@@ -289,12 +294,13 @@ function registrarIPCTransmision() {
   })
 
   // Detener: cerrar stdin para que ffmpeg termine limpio; forzar si se demora.
-  // pararIntencional evita que el cierre se trate como una caída (reconexión).
+  // La marca vive en la sesión concreta para que el cierre tardío de un
+  // proceso anterior no contamine una reconexión nueva.
   ipcMain.handle("transmision:detener", async () => {
     try {
-      pararIntencional = true
       if (ffmpegProc) {
         const p = ffmpegProc; ffmpegProc = null
+        if (sesionTx?.proc === p) sesionTx.detencionIntencional = true
         try { p.stdin.end() } catch {}
         setTimeout(() => { try { p.kill("SIGKILL") } catch {} }, 1500)
       }

@@ -152,4 +152,9 @@ Al terminar, Selah conserva un informe descargable con duración, calidad, nombr
 reconexiones, cuadros caídos, tamaño/carpeta del respaldo y diagnóstico final. El informe elimina
 direcciones RTMP y no afirma que Facebook u otra plataforma haya publicado el video.
 
+El diagnóstico terminal conserva la causa después de cerrar FFmpeg: distingue protección por
+entrada atascada, interrupción del destino, fallo del motor y finalización del operador. Un cierre
+forzado que Node informa como `código null` ya no borra la causa con el mensaje genérico de proceso
+detenido. La intención de cierre pertenece a cada sesión para no contaminar una reconexión nueva.
+
 Procedimiento de audio y cámaras: [QA-CAMARA-TRANSMISION.md](QA-CAMARA-TRANSMISION.md).

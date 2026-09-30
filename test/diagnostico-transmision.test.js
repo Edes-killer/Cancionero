@@ -43,6 +43,22 @@ test('timestamps se contabilizan y la salud nunca confirma Facebook', () => {
   assert.equal(d.estado(0,true,200).avisosTiempo,2)
   assert.match(d.estado(0,false,200).diagnostico,/detenido/)
 })
+test('el diagnóstico final conserva la causa aunque el proceso ya esté detenido', () => {
+  const entrada = new DiagnosticoTransmision(0)
+  entrada.finalizar('Límite de video pendiente alcanzado.', 'entrada', null)
+  assert.deepEqual(
+    { texto: entrada.estado(0, false, 100).diagnostico, tipo: entrada.estado(0, false, 100).finTipo, codigo: entrada.estado(0, false, 100).codigoSalida },
+    { texto: 'Límite de video pendiente alcanzado.', tipo: 'entrada', codigo: null },
+  )
+
+  const conexion = new DiagnosticoTransmision(0)
+  conexion.stderr('TLS fatal alert\n', 10)
+  conexion.finalizar('La conexión con el destino se interrumpió y el motor terminó.', 'conexion', 1)
+  const estado = conexion.estado(0, false, 100)
+  assert.match(estado.diagnostico, /conexión con el destino/i)
+  assert.equal(estado.finTipo, 'conexion')
+  assert.equal(estado.codigoSalida, 1)
+})
 test('redacción no expone claves de destinos simples ni tee', () => {
   const oculto = ocultarDestinos("rtmps://host/app/SECRETO [f=flv]rtmp://host/OTRO|rtmps://x/TERCERO")
   for (const clave of ['SECRETO','OTRO','TERCERO']) assert.ok(!oculto.includes(clave))
