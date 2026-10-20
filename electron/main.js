@@ -740,7 +740,11 @@ function recibirCallbackOAuth(valor) {
 app.on("second-instance", (_evento, argumentos) => {
   const enlace = argumentos.find(a => typeof a === "string" && a.startsWith("selahlive://"))
   if (enlace) recibirCallbackOAuth(enlace)
-  else if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus()
+  else if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  }
 })
 app.on("open-url", (evento, enlace) => { evento.preventDefault(); recibirCallbackOAuth(enlace) })
 
@@ -841,7 +845,7 @@ const MIME = {
 }
 
 function startStaticServer(outDir, port) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       // Limpiar query strings y hash
       let urlPath
@@ -875,7 +879,13 @@ function startStaticServer(outDir, port) {
       fs.createReadStream(filePath).pipe(res)
     })
 
+    let iniciado = false
+    server.on("error", error => {
+      if (!iniciado) reject(error)
+      else console.error(`Servidor web detenido: ${error?.code || error?.message || "error"}`)
+    })
     server.listen(port, "0.0.0.0", () => {
+      iniciado = true
       console.log(`🌐 Servidor web en http://localhost:${port}`)
       resolve(server)
     })
@@ -1602,11 +1612,18 @@ try {
     })
   })
 
-  server.listen(port, "0.0.0.0", () => {
-    console.log(`🔥 Socket.IO en puerto ${port}`)
+  return new Promise((resolve, reject) => {
+    let iniciado = false
+    server.on("error", error => {
+      if (!iniciado) reject(error)
+      else console.error(`Servidor de conexión detenido: ${error?.code || error?.message || "error"}`)
+    })
+    server.listen(port, "0.0.0.0", () => {
+      iniciado = true
+      console.log(`🔥 Socket.IO en puerto ${port}`)
+      resolve(server)
+    })
   })
-
-  return server
 }
 
 // ── Ventana principal ─────────────────────────────────────────────────────────
@@ -1878,8 +1895,28 @@ app.whenReady().then(async () => {
   const outDir = path.join(__dirname, "../out")
 
   console.log("🚀 Iniciando Selah Live...")
-  staticServer = await startStaticServer(outDir, 3000)
-  socketServer = startSocketServer(4000)
+  try {
+    staticServer = await startStaticServer(outDir, 3000)
+    socketServer = await startSocketServer(4000)
+  } catch (error) {
+    try { staticServer?.close() } catch {}
+    staticServer = null
+    const puertoOcupado = error?.code === "EADDRINUSE"
+    console.error(puertoOcupado ? "Selah Live ya estaba abierto." : `No se pudo iniciar Selah Live: ${error?.code || error?.message || "error"}`)
+    await dialog.showMessageBox({
+      type: puertoOcupado ? "info" : "error",
+      title: puertoOcupado ? "Selah Live ya está abierto" : "No se pudo iniciar Selah Live",
+      message: puertoOcupado
+        ? "Ya existe otra ventana de Selah Live funcionando en este computador."
+        : "Selah Live no pudo iniciar sus servicios internos.",
+      detail: puertoOcupado
+        ? "Usa la ventana que ya estaba abierta. Si estabas probando el modo de desarrollo, primero cierra la versión instalada."
+        : "Cierra Selah Live, vuelve a abrirlo y revisa el registro de diagnóstico si el problema continúa.",
+      buttons: ["Entendido"],
+    })
+    app.quit()
+    return
+  }
 
   const ip = getLocalIP()
   console.log(`📡 IP local: ${ip}`)

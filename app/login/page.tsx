@@ -292,11 +292,14 @@ function LoginContent() {
               disabled={cargando} style={s.input} autoComplete="email" inputMode="email" />
           </div>
           {modoCorreo === "password" && <div style={{ marginBottom: 12 }}>
-            <label style={s.label}>Contraseña</label>
-            <input type="password" placeholder="Tu contraseña" value={password}
+            <label style={s.label}>Contraseña de Selah</label>
+            <input type="password" placeholder="La contraseña que configuraste en Selah" value={password}
               onChange={e => { setPassword(e.target.value); setError("") }}
               onKeyDown={e => e.key === "Enter" && loginPassword()}
               disabled={cargando} style={s.input} autoComplete="current-password" />
+            <p style={{ margin:"7px 2px 0", fontSize:11, color:"#fbbf24", lineHeight:1.45 }}>
+              No escribas la contraseña de Gmail. Si entraste siempre con Google, usa Google o “Sin contraseña”.
+            </p>
           </div>}
           {error && <div style={s.errorBox}>⚠️ {error}</div>}
           <button onClick={modoCorreo === "password" ? loginPassword : loginEmail} disabled={cargando || !email.trim() || (modoCorreo === "password" && !password)}

@@ -12,6 +12,8 @@ test("Login ofrece acceso directo y conserva Google en navegador seguro", () => 
   assert.match(login, /onAuthStateChange/)
   assert.match(login, /otp_disabled/)
   assert.match(login, /diagnosticarElectron\("enlace-error", codigo\)/)
+  assert.match(login, /Contraseña de Selah/)
+  assert.match(login, /No escribas la contraseña de Gmail/)
   assert.match(login, /puente\.abrirGoogle\(data\.url\)/)
   assert.match(login, /skipBrowserRedirect: isCapacitor \|\| isElectron/)
 })
