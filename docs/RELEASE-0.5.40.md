@@ -50,6 +50,12 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
   `sprintf-js` en electron-builder); un verificador por ID permite solo esos casos y bloquea
   automáticamente cualquier alerta nueva o crítica.
 - La recuperación se prueba con FFmpeg real: crea segmentos, reconstruye y decodifica el MP4.
+- `npm run qa:audio` aprobó retraso, silencio de espera, volumen cero, compresión de picos,
+  medición y monitoreo local sin alterar la salida.
+- `npm run qa:video` aprobó adaptación 1280→640→1280 y recuperación después de perder
+  cuadros, conservando la misma pista y conexión WebRTC.
+- `npm run qa:captura` sostuvo 60 segundos de captura H264/Opus y entregó 1800/1800
+  cuadros a FFmpeg, sin avisos de tiempo ni cola acumulada.
 - `npm run qa:eficiencia -- 30` compara el codificador de Windows con el fallback por software sin usar Internet ni credenciales.
 
 Esto no certifica cámaras, micrófonos, WiFi, sincronía labial ni Facebook reales.
