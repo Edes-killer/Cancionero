@@ -30,9 +30,12 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 - El acceso con Google continúa en el navegador seguro del sistema, pero ahora regresa a
   Selah aunque la aplicación estuviera cerrada o Windows haya iniciado una instancia nueva.
 - Los enlaces de acceso por correo también regresan a Selah en vez de quedarse en localhost.
+- El login prioriza el enlace sin contraseña para las cuentas históricas creadas con Google,
+  separa claramente ambos métodos y muestra el código seguro del rechazo sin registrar correo,
+  contraseña ni tokens. Al aparecer una sesión válida, entra sin exigir una recarga manual.
 - Tipos y validaciones reforzados en Transmisión, Cámara, OBS opcional y conexión.
-- Next.js y dependencias transitivas de red/compilación actualizadas sin cambios mayores
-  de API; la auditoría queda sin vulnerabilidades conocidas.
+- Capacitor Android, Sharp y Source Map actualizados para corregir una vulnerabilidad
+  crítica y dos altas publicadas después de preparar la primera candidata.
 
 ## Evidencia automática
 
@@ -40,7 +43,10 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 - 149/149 pruebas automatizadas aprobadas.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
-- Auditoría de dependencias de producción y de compilación: cero vulnerabilidades conocidas.
+- Auditoría de producción: cero vulnerabilidades conocidas. En herramientas quedan dos
+  advisories transitivos sin versión corregida publicada (`braces` en el lint de Next.js y
+  `sprintf-js` en electron-builder); un verificador por ID permite solo esos casos y bloquea
+  automáticamente cualquier alerta nueva o crítica.
 - La recuperación se prueba con FFmpeg real: crea segmentos, reconstruye y decodifica el MP4.
 - `npm run qa:eficiencia -- 30` compara el codificador de Windows con el fallback por software sin usar Internet ni credenciales.
 

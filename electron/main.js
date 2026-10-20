@@ -721,9 +721,16 @@ function limpiarOAuthPendiente() {
   if (ruta) try { fs.unlinkSync(ruta) } catch (e) {}
 }
 function recibirCallbackOAuth(valor) {
-  if (!oauthPendienteVigente()) return false
+  console.log("🔐 Login: retorno recibido desde el navegador o correo")
+  if (!oauthPendienteVigente()) {
+    console.warn("⚠️ Login: retorno ignorado porque no había un acceso pendiente")
+    return false
+  }
   const destino = destinoCallbackOAuth(valor)
-  if (!destino || !mainWindow || mainWindow.isDestroyed()) return false
+  if (!destino || !mainWindow || mainWindow.isDestroyed()) {
+    console.warn("⚠️ Login: retorno inválido o ventana no disponible")
+    return false
+  }
   limpiarOAuthPendiente()
   mainWindow.loadURL(destino)
   if (mainWindow.isMinimized()) mainWindow.restore()
@@ -759,6 +766,15 @@ ipcMain.handle("oauth:preparar-retorno", async (evento) => {
   if (!protocoloSelahRegistrado) return { ok: false, error: "Windows no registró el enlace de regreso a Selah." }
   guardarOAuthPendiente()
   return { ok: true }
+})
+
+// Diagnóstico mínimo y sin datos personales: permite que la consola principal
+// explique por qué falló Auth sin imprimir correo, contraseña, token ni URL.
+ipcMain.on("auth:diagnostico", (evento, datos) => {
+  if (!mainWindow || evento.sender !== mainWindow.webContents) return
+  const nombre = typeof datos?.evento === "string" ? datos.evento.replace(/[^a-z0-9_-]/gi, "").slice(0, 40) : "desconocido"
+  const codigo = typeof datos?.codigo === "string" ? datos.codigo.replace(/[^a-z0-9_-]/gi, "").slice(0, 50) : ""
+  console.log(`🔐 Login: ${nombre}${codigo ? ` · ${codigo}` : ""}`)
 })
 
 // ── Obtener IP local ─────────────────────────────────────────────────────────

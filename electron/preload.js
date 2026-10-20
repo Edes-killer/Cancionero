@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("electron", {
 contextBridge.exposeInMainWorld("oauthElectron", {
   abrirGoogle: (url) => ipcRenderer.invoke("oauth:abrir-google", url),
   prepararRetorno: () => ipcRenderer.invoke("oauth:preparar-retorno"),
+  diagnostico: (evento, codigo) => ipcRenderer.send("auth:diagnostico", { evento, codigo }),
 })
 
 // ── Transmisión en vivo (nativa) ─────────────────────────────────────────────

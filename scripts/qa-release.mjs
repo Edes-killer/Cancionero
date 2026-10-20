@@ -34,9 +34,9 @@ const comprobaciones = [
     args: [npmCli, "audit", "--omit=dev", "--audit-level=moderate"],
   },
   {
-    nombre: "Herramientas de compilación sin vulnerabilidades altas",
+    nombre: "Herramientas auditadas con excepciones explícitas y acotadas",
     comando: process.execPath,
-    args: [npmCli, "audit", "--audit-level=high"],
+    args: ["scripts/qa-auditoria-herramientas.cjs"],
   },
   {
     nombre: "Sintaxis del proceso principal Electron",
