@@ -3,6 +3,10 @@
 Fecha: 30 de septiembre de 2026. Esta evidencia corresponde a la candidata de prueba,
 no certifica todavía el funcionamiento físico en la iglesia.
 
+> Estado actual: estos binarios provienen del commit `3f58247`. Los arreglos posteriores de
+> acceso y doble apertura los dejaron obsoletos; `qa:artefactos` los rechazará frente al HEAD
+> actual. Deben reconstruirse con `npm run candidata:build` después de validar el login real.
+
 ## Android
 
 - `npm.cmd run apk:debug`: compilación aprobada.
@@ -18,7 +22,7 @@ keystore: Android rechazará una actualización firmada con otro certificado.
 
 ## Windows
 
-- `electron-builder --win --publish never`: empaquetado NSIS aprobado.
+- `npm run electron:package:win`: empaquetado NSIS local, sin publicación automática.
 - Electron `42.11.0`, arquitectura x64, instalador one-click por usuario.
 - Artefacto local: `dist-electron/Selah Live Setup 0.5.40.exe`.
 - Estado Authenticode comprobado con PowerShell: `NotSigned`.
@@ -45,3 +49,5 @@ electron-builder que dice “signing with signtool.exe” no demuestra por sí s
 - `npm.cmd run qa:candidata`: ejecuta el gate completo del código y después verifica los artefactos.
 - `npm.cmd run qa:publicar`: repite ambas capas en modo estricto y bloquea una publicación comercial
   mientras el instalador Windows no tenga firma válida.
+- `npm.cmd run candidata:build`: ejecuta el gate, construye Windows y APK y verifica su
+  procedencia antes de permitir que se decida una publicación.

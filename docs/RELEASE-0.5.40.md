@@ -58,11 +58,20 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
   cuadros a FFmpeg, sin avisos de tiempo ni cola acumulada.
 - `npm run qa:eficiencia -- 30` compara el codificador de Windows con el fallback por software sin usar Internet ni credenciales.
 
+## Empaquetado seguro
+
+- `npm run electron:package:win` genera el instalador sin subirlo.
+- `npm run candidata:build` ejecuta el QA, empaqueta Windows y Android y después valida
+  versión, commit, firma Android, manifiesto de actualización y procedencia de ambos binarios.
+- El comando histórico `electron:build:win` continúa disponible para publicación, pero solo
+  debe ejecutarse después de aprobar `qa:candidata` y la prueba física.
+
 Esto no certifica cámaras, micrófonos, WiFi, sincronía labial ni Facebook reales.
 
-El APK release y el instalador NSIS fueron generados localmente. La APK tiene firma v2 válida;
-el instalador Windows todavía no tiene firma Authenticode y puede activar SmartScreen. Evidencia:
-[EMPAQUETADO-0.5.40.md](EMPAQUETADO-0.5.40.md).
+El APK release y el instalador NSIS de la primera candidata fueron generados localmente, pero
+quedaron obsoletos después de los arreglos de acceso. Deben reconstruirse desde el commit final.
+La APK conserva firma v2; el instalador Windows todavía no tiene firma Authenticode y puede
+activar SmartScreen. Evidencia y estado: [EMPAQUETADO-0.5.40.md](EMPAQUETADO-0.5.40.md).
 
 ## Prueba corta en iglesia
 
