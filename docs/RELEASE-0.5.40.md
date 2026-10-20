@@ -40,6 +40,8 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 ## Evidencia automática
 
 - `npm run qa:release`: 14 comprobaciones obligatorias, incluida la recuperación real de un destino local y trazabilidad del build.
+- GitHub repite esa misma compuerta en Windows para cada candidata `codex/release-*`,
+  cada cambio de `main` y cada solicitud de integración; no usa credenciales ni publica artefactos.
 - 149/149 pruebas automatizadas aprobadas.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
