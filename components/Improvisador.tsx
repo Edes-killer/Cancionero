@@ -4,7 +4,7 @@
 // Muestra las escalas sugeridas para el tono de la canción + un piano que marca
 // las notas. Reutilizable en /musicos (y donde haga falta).
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, type ReactNode } from "react"
 import { improvisar, type Escala } from "@/lib/improvisacion"
 
 // Un piano de 2 octavas (SVG, escala al ancho) que resalta las notas de la
@@ -18,7 +18,7 @@ function Piano({ escala, nombrePc }: { escala: Escala; nombrePc: Record<number, 
   const enEscala = (pc: number) => escala.clases.includes(pc)
   const esRaiz = (pc: number) => pc === escala.raiz
 
-  const blancas: any[] = [], negrasEls: any[] = []
+  const blancas: ReactNode[] = [], negrasEls: ReactNode[] = []
   for (let o = 0; o < 2; o++) {
     for (let k = 0; k < 7; k++) {
       const i = o * 7 + k, pc = blancasPc[k], x = i * ancho

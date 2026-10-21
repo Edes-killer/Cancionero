@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
 import { supabase } from "@/lib/supabase"
@@ -25,6 +25,7 @@ type InvitacionPublica = {
 }
 
 type VinculoAceptado = Pick<InvitacionPublica, "iglesia_id" | "rol">
+type IglesiaInvitada = { nombre: string; logo_url: string | null }
 
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -40,8 +41,8 @@ export default function UnirsePage() {
 
   const [codigoInput, setCodigoInput] = useState("")
   const [codigo, setCodigo]           = useState("")
-  const [invitacion, setInvitacion]   = useState<any>(null)
-  const [iglesia, setIglesia]         = useState<any>(null)
+  const [invitacion, setInvitacion]   = useState<InvitacionPublica | null>(null)
+  const [iglesia, setIglesia]         = useState<IglesiaInvitada | null>(null)
   const [error, setError]             = useState("")
   const [cargando, setCargando]       = useState(false)
   const [buscando, setBuscando]       = useState(false)
@@ -50,16 +51,9 @@ export default function UnirsePage() {
   const [enviado, setEnviado] = useState(false)
   const [enviando, setEnviando] = useState(false)
 
-  // ── Al montar: leer código de URL o localStorage ──────────────────────────
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const cod = params.get("codigo") || localStorage.getItem("selah_inv_codigo") || ""
-    if (cod) { setCodigo(cod); cargarInvitacion(cod) }
-  }, [])
-
   const getRedirectUrl = (cod: string) => {
     if (typeof window === "undefined") return "/unirse"
-    if ((window as any).Capacitor) return `com.tuiglesia.cancionero://unirse?codigo=${cod}`
+    if ((window as Window & { Capacitor?: object }).Capacitor) return `com.tuiglesia.cancionero://unirse?codigo=${cod}`
     return `${window.location.origin}/unirse?codigo=${cod}`
   }
 
@@ -72,7 +66,22 @@ export default function UnirsePage() {
     setBuscando(false)
   }
 
-  const cargarInvitacion = async (cod: string) => {
+  const unirseAIglesia = useCallback(async (codigoInvitacion: string) => {
+    const { data, error: errIns } = await supabase.rpc("aceptar_invitacion", { p_codigo: codigoInvitacion })
+    const vinculo = (Array.isArray(data) ? data[0] : data) as VinculoAceptado | null
+    if (errIns || !vinculo) {
+      const msg = /l[íi]mite de usuarios/i.test(errIns?.message || "")
+        ? "Esta iglesia alcanzó el límite de usuarios de su plan. El administrador debe pasar a Pro para sumar más personas."
+        : `No se pudo unir a la iglesia: ${errIns?.message || "intenta de nuevo"}`
+      setError(msg); setEnviando(false)
+      return
+    }
+    setIglesiaActivaId(vinculo.iglesia_id)
+    localStorage.removeItem("selah_inv_codigo")
+    navegarSPA(router, vinculo.rol === "musico" ? "/musicos" : vinculo.rol === "lider" ? "/control" : "/", { replace: true })
+  }, [router])
+
+  const cargarInvitacion = useCallback(async (cod: string) => {
     setCargando(true); setError("")
     const { data, error: errorInv } = await supabase
       .rpc("ver_invitacion", { p_codigo: cod }).maybeSingle()
@@ -90,28 +99,17 @@ export default function UnirsePage() {
       await unirseAIglesia(cod); return
     }
     setCargando(false)
-  }
+  }, [unirseAIglesia])
 
-  const unirseAIglesia = async (codigoInvitacion: string) => {
-    const { data, error: errIns } = await supabase.rpc("aceptar_invitacion", { p_codigo: codigoInvitacion })
-    const vinculo = (Array.isArray(data) ? data[0] : data) as VinculoAceptado | null
-    if (errIns || !vinculo) {
-        // ✅ El trigger de la base rechaza si se alcanzó el límite de usuarios
-        // del plan (mensaje "Límite de usuarios..."). Se muestra amigable.
-        const msg = /l[íi]mite de usuarios/i.test(errIns?.message || "")
-          ? "Esta iglesia alcanzó el límite de usuarios de su plan. El administrador debe pasar a Pro para sumar más personas."
-          : `No se pudo unir a la iglesia: ${errIns?.message || "intenta de nuevo"}`
-        setError(msg); setEnviando(false)
-        return
-    }
-    // ✅ Si la cuenta ya estaba vinculada a OTRA iglesia (cacheada en este
-    // dispositivo), sin esto seguía viendo los datos de la iglesia vieja
-    // después de aceptar una invitación nueva — nada actualizaba cuál es
-    // la "iglesia activa".
-    setIglesiaActivaId(vinculo.iglesia_id)
-    localStorage.removeItem("selah_inv_codigo")
-    navegarSPA(router, vinculo.rol === "musico" ? "/musicos" : vinculo.rol === "lider" ? "/control" : "/", { replace: true })
-  }
+  // ── Al montar: leer código de URL o localStorage ──────────────────────────
+  useEffect(() => {
+    const id = setTimeout(() => {
+      const params = new URLSearchParams(window.location.search)
+      const cod = params.get("codigo") || localStorage.getItem("selah_inv_codigo") || ""
+      if (cod) { setCodigo(cod); void cargarInvitacion(cod) }
+    }, 0)
+    return () => clearTimeout(id)
+  }, [cargarInvitacion])
 
   // ── Google OAuth — redirige de vuelta al /unirse?codigo=X ─────────────────
   const loginGoogle = async () => {
@@ -215,7 +213,9 @@ export default function UnirsePage() {
         {/* Iglesia + rol */}
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           {iglesia?.logo_url ? (
-            <img src={iglesia.logo_url} alt="" style={{ width: 68, height: 68, borderRadius: 18, objectFit: "cover", border: "1px solid rgba(255,255,255,0.1)", margin: "0 auto 14px", display: "block" }} />
+            // Logo remoto configurado por la iglesia invitante.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={iglesia.logo_url} alt={`Logo de ${iglesia.nombre}`} style={{ width: 68, height: 68, borderRadius: 18, objectFit: "cover", border: "1px solid rgba(255,255,255,0.1)", margin: "0 auto 14px", display: "block" }} />
           ) : (
             <div style={{ fontSize: 48, marginBottom: 14 }}>⛪</div>
           )}

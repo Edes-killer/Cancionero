@@ -1,5 +1,5 @@
 "use client"
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState } from "react"
 
 export interface PasoTour {
   titulo: string
@@ -17,6 +17,27 @@ interface Props {
   pasos: PasoTour[]
   nombrePagina?: string
   onFin?: () => void
+}
+
+function posicionTooltip(r: DOMRect, pos: string, vw: number, vh: number) {
+  const W = Math.min(380, vw - 24), H = Math.min(270, vh - 24), pad = 16
+  let top = 0, left = 0
+
+  if (pos === "bottom")     { top = r.bottom + pad; left = r.left + r.width / 2 - W / 2 }
+  else if (pos === "top")   { top = r.top - H - pad; left = r.left + r.width / 2 - W / 2 }
+  else if (pos === "right") { top = r.top + r.height / 2 - H / 2; left = r.right + pad }
+  else                       { top = r.top + r.height / 2 - H / 2; left = r.left - W - pad }
+
+  if (top + H > vh - 12) top = r.top - H - pad
+  if (top < 12) top = Math.max(12, vh / 2 - H / 2)
+
+  const tapa = top < r.bottom + 8 && top + H > r.top - 8
+  if (tapa) top = r.bottom + pad < vh - H - 12 ? r.bottom + pad : r.top - H - pad
+
+  return {
+    top: Math.max(12, Math.min(top, vh - H - 12)),
+    left: Math.max(12, Math.min(left, vw - W - 12)),
+  }
 }
 
 export default function OnboardingTour({ id, pasos, nombrePagina, onFin }: Props) {
@@ -87,7 +108,7 @@ export default function OnboardingTour({ id, pasos, nombrePagina, onFin }: Props
         setTimeout(() => {
           const r = el.getBoundingClientRect()
           setRect(r)
-          calcularPos(r, p.posicion || "bottom")
+          setTooltipPos(posicionTooltip(r, p.posicion || "bottom", window.innerWidth, window.innerHeight))
         }, 450)
         return
       }
@@ -98,29 +119,6 @@ export default function OnboardingTour({ id, pasos, nombrePagina, onFin }: Props
     }
     run()
   }, [paso, activo, inicio, pasos])
-
-  const calcularPos = (r: DOMRect, pos: string) => {
-    const vh = window.innerHeight, vw = window.innerWidth
-    const W = Math.min(380, vw - 24), H = Math.min(270, vh - 24), pad = 16
-    let top = 0, left = 0
-
-    if (pos === "bottom")     { top = r.bottom + pad; left = r.left + r.width / 2 - W / 2 }
-    else if (pos === "top")   { top = r.top - H - pad; left = r.left + r.width / 2 - W / 2 }
-    else if (pos === "right") { top = r.top + r.height / 2 - H / 2; left = r.right + pad }
-    else                      { top = r.top + r.height / 2 - H / 2; left = r.left - W - pad }
-
-    // Si no cabe abajo → arriba, si no cabe arriba → centro
-    if (top + H > vh - 12) top = r.top - H - pad
-    if (top < 12)          top = Math.max(12, vh / 2 - H / 2)
-
-    // ✅ Anti-solape: si el tooltip tapa el elemento, moverlo al lado opuesto
-    const tapa = top < r.bottom + 8 && top + H > r.top - 8
-    if (tapa) top = r.bottom + pad < vh - H - 12 ? r.bottom + pad : r.top - H - pad
-
-    left = Math.max(12, Math.min(left, vw - W - 12))
-    top  = Math.max(12, Math.min(top, vh - H - 12))
-    setTooltipPos({ top, left })
-  }
 
   const siguiente = () => {
     if (paso < pasos.length - 1) { setEntrando(true); setTimeout(() => setEntrando(false), 300); setPaso(p => p + 1) }

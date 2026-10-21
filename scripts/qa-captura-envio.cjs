@@ -27,7 +27,7 @@ if (!process.versions.electron) {
     try {
       await new Promise(r=>servidor.listen(0,'127.0.0.1',r))
       const fuente = fs.readFileSync(path.join(__dirname,'../electron/main.js'),'utf8')
-      const inicio = fuente.indexOf('function construirArgsFFmpeg('), fin = fuente.indexOf('\nfunction rutaLogTransmision',inicio)
+      const inicio = fuente.indexOf('function opcionesVideoEncoder('), fin = fuente.indexOf('\nfunction rutaLogTransmision',inicio)
       if (inicio<0 || fin<0) throw Error('No se encontró constructor FFmpeg')
       const construir = new Function(fuente.slice(inicio,fin)+';return construirArgsFFmpeg;')()
       const d = new DiagnosticoTransmision(); let log = ''

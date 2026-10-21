@@ -11,6 +11,10 @@ import { getSocketUrl } from "@/lib/servidor"
 import { opusHiFi } from "@/lib/webrtc"
 
 type Estado = "conectando" | "esperando" | "en-vivo" | "finalizada" | "sin-emision"
+type SenalEmision =
+  | { tipo: "offer"; sdp: RTCSessionDescriptionInit }
+  | { tipo: "answer"; sdp: RTCSessionDescriptionInit }
+  | { tipo: "ice"; candidate: RTCIceCandidateInit }
 
 const ICE = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }
 
@@ -24,7 +28,10 @@ export default function Ver() {
 
   useEffect(() => {
     const codigo = new URLSearchParams(window.location.search).get("codigo")?.trim().toUpperCase() || ""
-    if (!/^[A-Z0-9]{5,8}$/.test(codigo)) { setEstado("sin-emision"); return }
+    if (!/^[A-Z0-9]{5,8}$/.test(codigo)) {
+      const id = setTimeout(() => setEstado("sin-emision"), 0)
+      return () => clearTimeout(id)
+    }
     const socket = io(getSocketUrl(), { transports: ["websocket", "polling"], forceNew: true })
     socketRef.current = socket
 
@@ -40,7 +47,7 @@ export default function Ver() {
     socket.on("connect", unirse)
     socket.on("disconnect", () => cerrarPC())
 
-    socket.on("emision:senal", async ({ data, de }: { data?: any; de?: string } = {}) => {
+    socket.on("emision:senal", async ({ data, de }: { data?: SenalEmision; de?: string } = {}) => {
       if (!data) return
       if (data.tipo === "offer") {
         emisorRef.current = de || null

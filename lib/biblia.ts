@@ -1,5 +1,3 @@
-type LibroBiblia = string[][]
-
 const libros: Record<string, string> = {
   genesis: "genesis",
   gen: "genesis",

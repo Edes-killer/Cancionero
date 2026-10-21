@@ -25,11 +25,39 @@ test('rechazo de destino prevalece sobre error de conexión genérico', () => {
   d.stderr('Publish Rejected: Invalid URL\nI/O error\n',1)
   assert.match(d.estado(0,false,2).diagnostico,/Destino rechazado/)
 })
+test('una recuperación limpia la alarma de conexión pero no un rechazo permanente', () => {
+  const conexion = new DiagnosticoTransmision(0)
+  conexion.stderr('TLS fatal alert\n', 1)
+  assert.match(conexion.estado(0, true, 2).diagnostico, /intentando recuperarla/)
+  conexion.recuperacionDestino()
+  assert.doesNotMatch(conexion.estado(0, true, 3).diagnostico, /interrumpida/)
+
+  const rechazo = new DiagnosticoTransmision(0)
+  rechazo.stderr('Publish Rejected: Invalid URL\n', 1)
+  rechazo.recuperacionDestino()
+  assert.match(rechazo.estado(0, true, 2).diagnostico, /Destino rechazado/)
+})
 test('timestamps se contabilizan y la salud nunca confirma Facebook', () => {
   const d = new DiagnosticoTransmision(0)
   d.stderr('frame=1\nNon-monotonic DTS\nQueue input is backward in time\n',100)
   assert.equal(d.estado(0,true,200).avisosTiempo,2)
   assert.match(d.estado(0,false,200).diagnostico,/detenido/)
+})
+test('el diagnóstico final conserva la causa aunque el proceso ya esté detenido', () => {
+  const entrada = new DiagnosticoTransmision(0)
+  entrada.finalizar('Límite de video pendiente alcanzado.', 'entrada', null)
+  assert.deepEqual(
+    { texto: entrada.estado(0, false, 100).diagnostico, tipo: entrada.estado(0, false, 100).finTipo, codigo: entrada.estado(0, false, 100).codigoSalida },
+    { texto: 'Límite de video pendiente alcanzado.', tipo: 'entrada', codigo: null },
+  )
+
+  const conexion = new DiagnosticoTransmision(0)
+  conexion.stderr('TLS fatal alert\n', 10)
+  conexion.finalizar('La conexión con el destino se interrumpió y el motor terminó.', 'conexion', 1)
+  const estado = conexion.estado(0, false, 100)
+  assert.match(estado.diagnostico, /conexión con el destino/i)
+  assert.equal(estado.finTipo, 'conexion')
+  assert.equal(estado.codigoSalida, 1)
 })
 test('redacción no expone claves de destinos simples ni tee', () => {
   const oculto = ocultarDestinos("rtmps://host/app/SECRETO [f=flv]rtmp://host/OTRO|rtmps://x/TERCERO")

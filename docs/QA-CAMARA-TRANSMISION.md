@@ -46,8 +46,8 @@ No publicar como corrección definitiva del sensor hasta completar esta prueba e
   Debe usarse con audífonos. Su ganancia es independiente de la emisión.
 - Calibración: clip temporal de 8 segundos dentro de Selah, con reproducción y ajuste manual.
   Se bloquea durante emisión/grabación y Espera. Al cerrar no detiene el micrófono compartido.
-- Volumen y retardo se guardan por identificador de micrófono en este PC. El identificador de una
-  cámara móvil aún depende de la conexión: conservar perfiles entre nuevas conexiones queda pendiente.
+- Volumen y retardo se guardan por identificador de micrófono en este PC. Cada cámara móvil usa una
+  identidad persistente local, por lo que conserva el perfil al reconectar mientras no se borren sus datos.
 
 `npm.cmd run qa:audio` ejecuta Web Audio real de Electron con señales sintéticas y una interfaz
 de calibración con video de canvas. Verifica retraso efectivo, silencio, compresión, independencia

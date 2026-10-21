@@ -17,7 +17,12 @@ test('Socket.IO: identidad conservada, aviso de desconexión correcto y duplicad
   const http = createServer()
   const io = new Server(http)
   const clientes = []
-  io.on('connection', s => instalar(s, io))
+  io.on('connection', s => {
+    // El host real vive en Electron/loopback; el laboratorio efímero replica
+    // explícitamente esa identidad de confianza antes de instalar handlers.
+    s.data.localConfiable = true
+    instalar(s, io)
+  })
   await new Promise(r => http.listen(0, '127.0.0.1', r))
   const conectar = async () => {
     const c = cliente(`http://127.0.0.1:${http.address().port}`, { transports:['websocket'], reconnection:false })
@@ -34,10 +39,12 @@ test('Socket.IO: identidad conservada, aviso de desconexión correcto y duplicad
     movil.emit('camara:senal', {codigo, para:host.id, data:{tipo:'offer', sdp:'prueba'}})
     assert.equal((await oferta).dispositivoId, dispositivoId)
     const confirmacion = evento(movil, 'camara:senal')
-    host.emit('camara:senal', {codigo, para:movil.id, data:{tipo:'estado-pc', video:true, grabacion:'detenida'}})
+    host.emit('camara:senal', {codigo, para:movil.id, data:{tipo:'estado-pc', video:true, grabacion:'detenida', fpsRecepcion:14, bufferRecepcionMs:7709}})
     const recibido = await confirmacion
     assert.equal(recibido.rol, 'host'); assert.equal(recibido.de, host.id)
     assert.equal(recibido.data.grabacion, 'detenida')
+    assert.equal(recibido.data.fpsRecepcion, 14)
+    assert.equal(recibido.data.bufferRecepcionMs, 7709)
     // Un emisor no puede hacerse pasar por confirmación del PC.
     const siguiente = evento(host, 'camara:senal')
     movil.emit('camara:senal', {codigo, para:host.id, data:{tipo:'estado-pc', video:true, grabacion:'activa'}})

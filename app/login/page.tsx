@@ -6,15 +6,35 @@ import { conTimeout } from "@/lib/timeout"
 import { establecerSesionDesdeUrl } from "@/lib/authCallback"
 import { logError } from "@/lib/Errorlogger"
 
+type VentanaSelah = Window & {
+  Capacitor?: object
+  oauthElectron?: {
+    abrirGoogle?: (url: string) => Promise<{ ok?: boolean; error?: string }>
+    prepararRetorno?: (tipo?: "google" | "enlace") => Promise<{ ok?: boolean; error?: string; redirectTo?: string }>
+    diagnostico?: (evento: string, codigo?: string) => void
+  }
+}
+
+const esCapacitor = () => Boolean((window as VentanaSelah).Capacitor)
+const diagnosticarElectron = (evento: string, codigo?: string) =>
+  (window as VentanaSelah).oauthElectron?.diagnostico?.(evento, codigo)
+
 function LoginContent() {
   const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  // La mayoría de las cuentas históricas de Selah fueron creadas con Google
+  // o enlace mágico y no tienen contraseña. Por eso el acceso sin contraseña
+  // debe ser el camino principal; contraseña queda disponible para quien sí
+  // la configuró explícitamente.
+  const [modoCorreo, setModoCorreo] = useState<"password" | "link">("link")
   const [enviado, setEnviado] = useState(false)
   const [cargando, setCargando] = useState(false)
+  const [esperandoGoogle, setEsperandoGoogle] = useState(false)
   const [error, setError] = useState("")
   const [isApk, setIsApk] = useState(false)
 
   useEffect(() => {
-    setIsApk(!!(window as any).Capacitor)
+    setIsApk(esCapacitor())
     // ✅ useSearchParams() de next/navigation obliga a envolver la página en
     // <Suspense> porque en export estático Next.js no puede conocer los
     // parámetros de la URL al compilar -- hornea solo el spinner de fallback
@@ -29,9 +49,23 @@ function LoginContent() {
     if (err === "oauth")      setError("No se completó el acceso con Google. Intenta nuevamente.")
   }, [])
 
+  // Si Supabase recupera una sesión mientras esta pantalla sigue montada
+  // (por retorno de enlace, otra pestaña o almacenamiento persistido), entrar
+  // inmediatamente. Antes el usuario podía quedar mirando el login aunque la
+  // sesión ya estuviera creada correctamente.
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((evento, sesion) => {
+      if ((evento === "SIGNED_IN" || evento === "INITIAL_SESSION") && sesion) {
+        diagnosticarElectron("sesion-recibida")
+        window.location.replace("/")
+      }
+    })
+    return () => data.subscription.unsubscribe()
+  }, [])
+
   // ── Diagnóstico + manejo de callback en Capacitor ─────────────────────────
   useEffect(() => {
-    if (!(window as any).Capacitor) return
+    if (!esCapacitor()) return
     console.log('[Login] ✅ Capacitor detectado')
     import('@capacitor/app').then(({ App }) => {
 
@@ -67,22 +101,36 @@ function LoginContent() {
     }).catch(e => console.error('[Login] error importando App:', e))
   }, [])
 
-  const getRedirectUrl = (modo?: "google") => {
+  const getRedirectUrl = () => {
     if (typeof window === "undefined") return "/auth/callback"
-    if (!!(window as any).Capacitor) return "com.tuiglesia.cancionero://auth/callback"
-    if (modo === "google" && navigator.userAgent.includes("Electron")) return "selahlive://auth/callback"
+    if (esCapacitor()) return "com.tuiglesia.cancionero://auth/callback"
+    if (navigator.userAgent.includes("Electron")) return "selahlive://auth/callback"
     return `${window.location.origin}/auth/callback`
   }
 
   const loginGoogle = async () => {
-    setError(""); setCargando(true)
-    const isCapacitor = !!(window as any).Capacitor
+    setError(""); setEsperandoGoogle(false); setCargando(true)
+    const isCapacitor = esCapacitor()
     const isElectron  = navigator.userAgent.includes("Electron")
+    let redirectElectron = ""
     try {
+      if (isElectron) diagnosticarElectron("google-iniciado")
+      // Registrar el retorno ANTES de pedir la URL a Supabase. Además de ser
+      // el orden correcto para una app de escritorio, evita una carrera en la
+      // que el navegador alcanza a abrirse pero Windows devuelve el callback
+      // antes de que Electron lo marque como esperado.
+      if (isElectron) {
+        const preparado = await (window as VentanaSelah).oauthElectron?.prepararRetorno?.("google")
+        if (!preparado?.ok) {
+          throw new Error(preparado?.error || "No se pudo preparar el regreso a Selah.")
+        }
+        redirectElectron = preparado.redirectTo || ""
+        diagnosticarElectron("retorno-preparado")
+      }
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: getRedirectUrl("google"),
+          redirectTo: redirectElectron || getRedirectUrl(),
           // ✅ skipBrowserRedirect solo en APK — en Electron y web manejamos la redirección nosotros
           skipBrowserRedirect: isCapacitor || isElectron,
           // ✅ Sin esto, Google reutiliza en silencio la última cuenta con
@@ -107,17 +155,21 @@ function LoginContent() {
         await Browser.open({ url: data.url })
         setCargando(false)
       } else if (isElectron) {
-        const puente = (window as any).oauthElectron
+        const puente = (window as VentanaSelah).oauthElectron
         if (!puente?.abrirGoogle) throw new Error("Este instalador no admite el acceso con Google. Actualiza Selah Live.")
         const resultado = await puente.abrirGoogle(data.url)
         if (!resultado?.ok) throw new Error(resultado?.error || "No se pudo abrir Google.")
+        diagnosticarElectron("google-navegador-abierto")
         setCargando(false)
+        setEsperandoGoogle(true)
       } else {
         // Web: ídem
         window.location.href = data.url
       }
-    } catch (e: any) {
-      setError(e?.message || "Error al iniciar sesión")
+    } catch (error: unknown) {
+      if (isElectron) diagnosticarElectron("google-error", error instanceof Error ? error.name : "desconocido")
+      setError(error instanceof Error ? error.message : "Error al iniciar sesión")
+      setEsperandoGoogle(false)
       setCargando(false)
     }
   }
@@ -126,13 +178,75 @@ function LoginContent() {
     if (!email.trim()) { setError("Ingresa tu correo electrónico"); return }
     if (!email.includes("@")) { setError("El correo no parece válido"); return }
     setError(""); setCargando(true)
-    const { error } = await supabase.auth.signInWithOtp({
+    diagnosticarElectron("enlace-iniciado")
+    if (navigator.userAgent.includes("Electron")) {
+      const preparado = await (window as VentanaSelah).oauthElectron?.prepararRetorno?.("enlace")
+      if (!preparado?.ok) {
+        setError(preparado?.error || "No se pudo preparar el regreso a Selah. Reinicia la aplicación e intenta nuevamente.")
+        setCargando(false)
+        return
+      }
+    }
+    const resultado = await conTimeout(supabase.auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: getRedirectUrl() }
-    })
+      options: {
+        emailRedirectTo: getRedirectUrl(),
+        shouldCreateUser: false,
+      }
+    }), 12000)
     setCargando(false)
-    if (error) { setError(error.message); return }
+    if (resultado === "timeout") {
+      const mensaje = "La conexión tardó demasiado. Revisa Internet e intenta nuevamente."
+      setError(mensaje)
+      void logError(mensaje, { tipo: "autenticacion", pagina: "/login", detalle: { metodo: "enlace", codigo: "timeout" } })
+      diagnosticarElectron("enlace-error", "timeout")
+      return
+    }
+    if (resultado.error) {
+      const codigo = resultado.error.code || "auth_error"
+      const mensaje = codigo === "otp_disabled"
+        ? "No encontramos una cuenta con ese correo. Prueba con Google o revisa que esté bien escrito."
+        : /user not found|invalid/i.test(resultado.error.message)
+          ? "No encontramos una cuenta con ese correo. Prueba con Google o revisa que esté bien escrito."
+          : `No se pudo enviar el acceso (${codigo}). Intenta nuevamente.`
+      setError(mensaje)
+      void logError(`Acceso por correo rechazado: ${codigo}`, { tipo: "autenticacion", pagina: "/login", detalle: { metodo: "enlace", codigo } })
+      diagnosticarElectron("enlace-error", codigo)
+      return
+    }
+    diagnosticarElectron("enlace-enviado")
     setEnviado(true)
+  }
+
+  const loginPassword = async () => {
+    if (!email.trim() || !email.includes("@")) { setError("Ingresa un correo electrónico válido."); return }
+    if (!password) { setError("Ingresa tu contraseña."); return }
+    setError(""); setCargando(true)
+    diagnosticarElectron("password-iniciado")
+    const resultado = await conTimeout(supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    }), 12000)
+    setCargando(false)
+    if (resultado === "timeout") {
+      const mensaje = "La conexión tardó demasiado. Revisa Internet e intenta nuevamente."
+      setError(mensaje)
+      void logError(mensaje, { tipo: "autenticacion", pagina: "/login", detalle: { metodo: "password", codigo: "timeout" } })
+      diagnosticarElectron("password-error", "timeout")
+      return
+    }
+    if (resultado.error || !resultado.data.session) {
+      const msg = resultado.error?.message || "No se pudo iniciar sesión."
+      const codigo = resultado.error?.code || "sin_sesion"
+      setError(/invalid login credentials/i.test(msg)
+        ? "Correo o contraseña incorrectos. Si creaste tu cuenta con Google, usa Google o solicita un enlace de acceso."
+        : `No se pudo iniciar sesión (${codigo}).`)
+      void logError(`Acceso con contraseña rechazado: ${codigo}`, { tipo: "autenticacion", pagina: "/login", detalle: { metodo: "password", codigo } })
+      diagnosticarElectron("password-error", codigo)
+      return
+    }
+    diagnosticarElectron("password-ok")
+    window.location.replace("/")
   }
 
   if (enviado) return (
@@ -174,22 +288,50 @@ function LoginContent() {
             <GoogleIcon />
             {cargando ? "Abriendo..." : "Continuar con Google"}
           </button>
+          {esperandoGoogle && <div style={s.googleEspera}>
+            <strong style={{ display:"block", color:"#bfdbfe", marginBottom:4 }}>Google está esperando tu confirmación</strong>
+            Elige tu cuenta en el navegador. Al terminar, Selah volverá al frente e ingresará automáticamente.
+          </div>}
           <div style={s.divider}><div style={s.dividerLine}/><span style={s.dividerText}>o</span><div style={s.dividerLine}/></div>
+          <div style={s.modosCorreo} role="tablist" aria-label="Forma de acceso por correo">
+            <button type="button" role="tab" aria-selected={modoCorreo === "link"}
+              onClick={() => { setModoCorreo("link"); setError(""); setPassword("") }} disabled={cargando}
+              style={{ ...s.modoCorreo, ...(modoCorreo === "link" ? s.modoCorreoActivo : {}) }}>
+              ✉️ Sin contraseña
+            </button>
+            <button type="button" role="tab" aria-selected={modoCorreo === "password"}
+              onClick={() => { setModoCorreo("password"); setError("") }} disabled={cargando}
+              style={{ ...s.modoCorreo, ...(modoCorreo === "password" ? s.modoCorreoActivo : {}) }}>
+              🔑 Con contraseña
+            </button>
+          </div>
           <div style={{ marginBottom: 12 }}>
             <label style={s.label}>Correo electrónico</label>
             <input type="email" placeholder="tu@correo.com" value={email}
               onChange={e => { setEmail(e.target.value); setError("") }}
-              onKeyDown={e => e.key === "Enter" && loginEmail()}
+              onKeyDown={e => e.key === "Enter" && (modoCorreo === "password" ? loginPassword() : loginEmail())}
               disabled={cargando} style={s.input} autoComplete="email" inputMode="email" />
           </div>
+          {modoCorreo === "password" && <div style={{ marginBottom: 12 }}>
+            <label style={s.label}>Contraseña de Selah</label>
+            <input type="password" placeholder="La contraseña que configuraste en Selah" value={password}
+              onChange={e => { setPassword(e.target.value); setError("") }}
+              onKeyDown={e => e.key === "Enter" && loginPassword()}
+              disabled={cargando} style={s.input} autoComplete="current-password" />
+            <p style={{ margin:"7px 2px 0", fontSize:11, color:"#fbbf24", lineHeight:1.45 }}>
+              No escribas la contraseña de Gmail. Si entraste siempre con Google, usa Google o “Sin contraseña”.
+            </p>
+          </div>}
           {error && <div style={s.errorBox}>⚠️ {error}</div>}
-          <button onClick={loginEmail} disabled={cargando || !email.trim()}
-            style={{ ...s.btnPrimary, opacity: cargando || !email.trim() ? 0.55 : 1, cursor: cargando || !email.trim() ? "not-allowed" : "pointer" }}>
-            {cargando ? "Enviando..." : "Enviar link de acceso"}
+          <button onClick={modoCorreo === "password" ? loginPassword : loginEmail} disabled={cargando || !email.trim() || (modoCorreo === "password" && !password)}
+            style={{ ...s.btnPrimary, opacity: cargando || !email.trim() || (modoCorreo === "password" && !password) ? 0.55 : 1, cursor: cargando || !email.trim() || (modoCorreo === "password" && !password) ? "not-allowed" : "pointer" }}>
+            {cargando ? (modoCorreo === "password" ? "Entrando..." : "Enviando...") : (modoCorreo === "password" ? "Entrar directamente" : "Enviar enlace de acceso")}
           </button>
           <p style={{ margin: "14px 0 0", fontSize: 12, opacity: 0.38, textAlign: "center", lineHeight: 1.5 }}>
-            {isApk ? "Recibirás un link en tu correo. Al hacer clic, la app se abrirá automáticamente."
-                   : "Te enviaremos un link sin contraseña. Solo haz clic para entrar."}
+            {modoCorreo === "password"
+              ? "El acceso con contraseña ocurre dentro de Selah y no abre el navegador."
+              : isApk ? "Recibirás un enlace en tu correo. Al tocarlo, Selah se abrirá automáticamente."
+                      : "No necesitas contraseña. Abre el correo y el enlace te devolverá directamente a Selah."}
           </p>
         </div>
         <p style={{ fontSize: 11, opacity: 0.2, textAlign: "center", margin: 0 }}>Selah Live · Proyección para iglesias</p>
@@ -223,9 +365,14 @@ const s: Record<string, React.CSSProperties> = {
   label:{display:"block",fontSize:11,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase" as const,color:"rgba(240,244,255,0.45)",marginBottom:7},
   input:{width:"100%",padding:"13px 14px",background:"#0a1525",color:"white",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,fontSize:16,outline:"none",boxSizing:"border-box" as const},
   errorBox:{background:"rgba(239,68,68,0.10)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:10,padding:"10px 14px",fontSize:13,color:"#fca5a5",marginBottom:12,lineHeight:1.5},
+  googleEspera:{marginTop:10,background:"rgba(59,130,246,0.10)",border:"1px solid rgba(96,165,250,0.26)",borderRadius:10,padding:"10px 12px",fontSize:12,color:"rgba(219,234,254,0.72)",lineHeight:1.5,textAlign:"left" as const},
   btnGoogle:{width:"100%",padding:"13px 16px",background:"white",color:"#1a1a2e",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10},
   btnPrimary:{width:"100%",padding:"13px 16px",background:"linear-gradient(135deg,#3b82f6,#6366f1)",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:700,boxShadow:"0 8px 24px rgba(59,130,246,0.22)"},
   btnSecondary:{padding:"11px 22px",background:"rgba(255,255,255,0.07)",color:"white",border:"1px solid rgba(255,255,255,0.10)",borderRadius:12,fontSize:14,fontWeight:600,cursor:"pointer"},
+  btnText:{width:"100%",marginTop:10,padding:"8px 6px",background:"transparent",color:"#93c5fd",border:"none",fontSize:12,fontWeight:650,cursor:"pointer"},
+  modosCorreo:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,padding:4,marginBottom:14,background:"rgba(255,255,255,0.035)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12},
+  modoCorreo:{padding:"9px 8px",border:"1px solid transparent",borderRadius:9,background:"transparent",color:"rgba(255,255,255,0.5)",fontSize:12,fontWeight:700,cursor:"pointer"},
+  modoCorreoActivo:{background:"rgba(59,130,246,0.16)",borderColor:"rgba(96,165,250,0.38)",color:"#bfdbfe"},
   divider:{display:"flex",alignItems:"center",gap:12,margin:"18px 0"},
   dividerLine:{flex:1,height:1,background:"rgba(255,255,255,0.07)"},
   dividerText:{fontSize:12,color:"rgba(255,255,255,0.28)",fontWeight:600}

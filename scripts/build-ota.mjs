@@ -10,11 +10,12 @@ import { readFileSync } from "node:fs"
 
 const version = JSON.parse(readFileSync("./package.json", "utf8")).version
 const appId = "com.tuiglesia.cancionero"
+const sinBuild = process.argv.includes("--sin-build")
 const run = (cmd) => { console.log("\n▶ " + cmd); execSync(cmd, { stdio: "inherit" }) }
 
 console.log(`\n📦 Bundle OTA (web) · versión ${version}`)
-run("npm run build")
-run(`npx --yes @capgo/cli@latest bundle zip ${appId} --path out --name bundle.zip`)
+if (!sinBuild) run("npm run build")
+run(`npx --yes @capgo/cli@8.91.0 bundle zip ${appId} --path out --name bundle.zip`)
 
 console.log(`\n✅ Listo: bundle.zip  (v${version})`)
 console.log('→ Súbelo al release de GitHub como asset con el nombre "bundle.zip".')

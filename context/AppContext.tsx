@@ -1,19 +1,26 @@
 "use client"
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react"
+import type { Session } from "@supabase/supabase-js"
 import { supabase } from "@/lib/supabase"
 import { getIglesiaId } from "@/lib/getIglesia"
 import { conTimeout } from "@/lib/timeout"
-import { getCancelacionesCache, setCancelacionesCache, cacheEsValido, supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "@/lib/cache"
+import { getCancelacionesCache, setCancelacionesCache, supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "@/lib/cache"
+import type { Cancion } from "@/lib/modelosCulto"
+import { esPlanValido } from "@/lib/planes"
+
+type VentanaSeguridadLocal = Window & {
+  seguridadLocal?: { registrarPinSala?: (sala: string, pin: string | null) => Promise<{ ok?: boolean }> }
+}
 
 interface AppContextType {
-  session: any
+  session: Session | null
   userId: string | null
   iglesiaId: string | null
   nombreIglesia: string
   logoUrl: string
   localidad: string
   plan: string
-  canciones: any[]
+  canciones: Cancion[]
   cargandoCanciones: boolean
   errorCanciones: string | null
   recargarCanciones: () => Promise<void>
@@ -46,7 +53,7 @@ const KEY_MODO_SIN_CONEXION = "selah-modo-sin-conexion"
 // número), se oculta el himno GLOBAL (iglesia_id null) para no mostrarlo
 // duplicado. Se aplica acá, en la fuente compartida, así Canciones, Control y
 // Músicos ven siempre la versión de la iglesia (con sus acordes).
-export function ocultarGlobalesConCopia(lista: any[]): any[] {
+export function ocultarGlobalesConCopia<T extends { iglesia_id?: string | null; numero?: number | null }>(lista: T[]): T[] {
   const propios = new Set(
     lista.filter(c => c.iglesia_id && c.numero != null).map(c => c.numero)
   )
@@ -54,14 +61,14 @@ export function ocultarGlobalesConCopia(lista: any[]): any[] {
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<any>(null)
+  const [session, setSession] = useState<Session | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [iglesiaId, setIglesiaId] = useState<string | null>(null)
   const [nombreIglesia, setNombreIglesia] = useState("")
   const [logoUrl, setLogoUrl] = useState("")
   const [localidad, setLocalidad] = useState("")
   const [plan, setPlan] = useState<string>("gratis")  // ✅ plan de la iglesia (freemium)
-  const [canciones, setCanciones] = useState<any[]>([])
+  const [canciones, setCanciones] = useState<Cancion[]>([])
   const [cargandoCanciones, setCargandoCanciones] = useState(false)
   const [errorCanciones, setErrorCanciones] = useState<string | null>(null)
   const [listo, setListo] = useState(false)
@@ -71,6 +78,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // AuthProvider.tsx) para no causar un hydration mismatch. El valor real
   // se sincroniza en el useEffect de abajo, ya en el cliente.
   const [sinConexion, setSinConexion] = useState(false)
+
+  // El proceso principal conserva el PIN autoritativo aunque Electron esté en
+  // Inicio, Configuración o Transmisión. Así el APK puede conectarse sin exigir
+  // que el operador abra primero la pantalla Control.
+  useEffect(() => {
+    if (!listo || !iglesiaId || !navigator.userAgent.includes("Electron")) return
+    void (window as VentanaSeguridadLocal).seguridadLocal?.registrarPinSala?.(iglesiaId, pinSala)
+  }, [iglesiaId, listo, pinSala])
 
   // ✅ AuthProvider es quien decide activar/desactivar el modo sin conexión
   // (escribe en localStorage) — acá solo lo reflejamos para que cualquier
@@ -94,7 +109,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ignora solo en modo development; en la app compilada sí escribe.)
   useEffect(() => {
     let ultimoMsg = ""; let ultimoTs = 0
-    const registrar = (msg: string, detalle: Record<string, any>) => {
+    const registrar = (msg: string, detalle: Record<string, unknown>) => {
       const ahora = Date.now()
       // Anti-spam: mismo mensaje en < 3s se ignora (evita loops de error).
       if (msg === ultimoMsg && ahora - ultimoTs < 3000) return
@@ -106,8 +121,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const onError = (e: ErrorEvent) =>
       registrar(e.message || "error", { archivo: e.filename, linea: e.lineno })
     const onRejection = (e: PromiseRejectionEvent) => {
-      const r: any = e.reason
-      registrar(r?.message || String(r) || "promesa rechazada", {})
+      const motivo: unknown = e.reason
+      const mensaje = motivo instanceof Error ? motivo.message : String(motivo || "promesa rechazada")
+      registrar(mensaje, {})
     }
     window.addEventListener("error", onError)
     window.addEventListener("unhandledrejection", onRejection)
@@ -144,7 +160,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const PAGINA = 1000
-      let todas: any[] = []
+      let todas: Cancion[] = []
       let desde = 0
       let continuar = true
 
@@ -169,7 +185,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         if (error) throw error
         if (!data || data.length === 0) break
-        todas = todas.concat(data)
+        todas = todas.concat(data as Cancion[])
         continuar = data.length === PAGINA
         desde += PAGINA
       }
@@ -179,8 +195,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setCanciones(ocultarGlobalesConCopia(todas))
       setDesdeCache(false)
       await setCancelacionesCache(igId, todas)
-    } catch (e: any) {
-      console.error("Error cargando canciones:", e)
+    } catch (error: unknown) {
+      console.error("Error cargando canciones:", error)
       marcarSupabaseCaido()
       // ✅ Si ya había caché mostrándose, no insistir con más reintentos —
       // esos son solo para el primer arranque sin nada que mostrar todavía.
@@ -235,26 +251,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!igId) { setListo(true); return }
       setIglesiaId(igId)
 
+      // El plan se conserva por iglesia para que Premium no desaparezca por un
+      // instante cuando se abre la app sin red. Supabase sigue siendo la fuente
+      // autoritativa y reemplaza este valor apenas responde.
+      try {
+        const planGuardado = localStorage.getItem(`selah-plan-${igId}`)
+        if (esPlanValido(planGuardado)) setPlan(planGuardado)
+        const pinGuardado = localStorage.getItem("selah-sala-pin")
+        if (pinGuardado) setPinSala(pinGuardado)
+      } catch {}
+
       // ✅ Cargar canciones SIEMPRE, independiente de si iglesias falla
       console.log("🚀 AppContext: iniciando carga de canciones para iglesia", igId)
       cargarCanciones(igId)
 
-      // Iglesia (nombre/logo) en paralelo — si falla no bloquea las canciones
-      Promise.resolve(
-        supabase.from("iglesias")
-          .select("nombre, logo_url, localidad, pin_sala, plan")
-          .eq("id", igId).single()
-      ).then(({ data, error }) => {
-          if (!error && data) {
-            setNombreIglesia(data.nombre || "")
-            setLogoUrl(data.logo_url || "")
-            setLocalidad(data.localidad || "")
-            setPinSala(data.pin_sala || null)
-            setPlan((data as any).plan || "gratis")
-            if (data.pin_sala) localStorage.setItem("selah-sala-pin", data.pin_sala)
-            else localStorage.removeItem("selah-sala-pin")
-          }
-        }).catch(() => {})
+      // Esperar el plan antes de declarar listo evita mostrar por un instante
+      // el bloqueo Gratis a una iglesia Premium recién iniciada.
+      const resultadoIglesia = await conTimeout(
+        Promise.resolve(
+          supabase.from("iglesias")
+            .select("nombre, logo_url, localidad, pin_sala, plan")
+            .eq("id", igId).single()
+        ),
+        5000,
+      )
+      if (resultadoIglesia !== "timeout") {
+        const { data, error } = resultadoIglesia
+        if (!error && data) {
+          setNombreIglesia(data.nombre || "")
+          setLogoUrl(data.logo_url || "")
+          setLocalidad(data.localidad || "")
+          setPinSala(data.pin_sala || null)
+          const planActual = esPlanValido(data.plan) ? data.plan : "gratis"
+          setPlan(planActual)
+          try { localStorage.setItem(`selah-plan-${igId}`, planActual) } catch {}
+          if (data.pin_sala) localStorage.setItem("selah-sala-pin", data.pin_sala)
+          else localStorage.removeItem("selah-sala-pin")
+        }
+      }
 
       yaCargadoRef.current = true
       setListo(true)
@@ -274,6 +308,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setNombreIglesia("")
     setLogoUrl("")
     setLocalidad("")
+    setPlan("gratis")
     setPinSala(null)
     setDesdeCache(false)
     setCanciones([])

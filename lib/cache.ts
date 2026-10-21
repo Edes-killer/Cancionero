@@ -1,4 +1,5 @@
 // lib/cache.ts — Cache local de canciones usando IndexedDB
+import type { Cancion, Parte } from "@/lib/modelosCulto"
 const DB_NAME    = "selah-live"
 const DB_VERSION = 3  // ✅ v3: agrega STORE_PARTES sin borrar los stores existentes
 const STORE_CANCIONES = "canciones"
@@ -34,7 +35,7 @@ function openDB(): Promise<IDBDatabase> {
 // Antes solo vivía en memoria (useRef) y se perdía en cada reinicio de la
 // app — si Supabase ya estaba caído al abrir, no había forma de proyectar
 // ninguna canción aunque la lista (títulos) sí se viera desde el caché.
-export async function getPartesCache(cancionId: string): Promise<any[] | null> {
+export async function getPartesCache(cancionId: string): Promise<Parte[] | null> {
   try {
     const db = await openDB()
     return new Promise((resolve) => {
@@ -46,7 +47,7 @@ export async function getPartesCache(cancionId: string): Promise<any[] | null> {
   } catch { return null }
 }
 
-export async function setPartesCache(cancionId: string, partes: any[]): Promise<void> {
+export async function setPartesCache(cancionId: string, partes: Parte[]): Promise<void> {
   try {
     const db = await openDB()
     await new Promise<void>((resolve, reject) => {
@@ -60,7 +61,7 @@ export async function setPartesCache(cancionId: string, partes: any[]): Promise<
 
 export interface CacheEntry {
   iglesiaId: string
-  canciones: any[]
+  canciones: Cancion[]
   timestamp: number
 }
 
@@ -76,7 +77,7 @@ export async function getCancelacionesCache(iglesiaId: string): Promise<CacheEnt
   } catch { return null }
 }
 
-export async function setCancelacionesCache(iglesiaId: string, canciones: any[]): Promise<void> {
+export async function setCancelacionesCache(iglesiaId: string, canciones: Cancion[]): Promise<void> {
   try {
     const db = await openDB()
     await new Promise<void>((resolve, reject) => {

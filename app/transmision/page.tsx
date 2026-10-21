@@ -7,6 +7,7 @@ import {
   GestorOBS, leerConfigOBS, guardarConfigOBS, CONFIG_OBS_DEFAULT,
   type ConfigOBS, type EstadoOBS,
 } from "@/lib/obs"
+import RequierePlan from "@/components/RequierePlan"
 
 const C = {
   fondo: "#060d1a", panel: "#111b2e", panel2: "#0d1626",
@@ -16,6 +17,10 @@ const C = {
 }
 
 export default function TransmisionPage() {
+  return <RequierePlan funcion="Integración avanzada con OBS" capacidad="premium"><TransmisionPremium /></RequierePlan>
+}
+
+function TransmisionPremium() {
   const router = useRouter()
   const [cfg, setCfg] = useState<ConfigOBS>(CONFIG_OBS_DEFAULT)
   const [estado, setEstado] = useState<EstadoOBS>({
@@ -24,18 +29,17 @@ export default function TransmisionPage() {
   })
   const [preview, setPreview] = useState<string | null>(null)
   const [conectando, setConectando] = useState(false)
-  const [mostrarAjustes, setMostrarAjustes] = useState(false)
   const gestorRef = useRef<GestorOBS | null>(null)
 
   useEffect(() => {
-    setCfg(leerConfigOBS())
+    const cargar = setTimeout(() => setCfg(leerConfigOBS()), 0)
     gestorRef.current = new GestorOBS(setEstado)
-    return () => { gestorRef.current?.desconectar() }
+    return () => { clearTimeout(cargar); gestorRef.current?.desconectar() }
   }, [])
 
   // Vista previa en vivo: pedirle a OBS una foto de la escena al aire cada ~1.2s.
   useEffect(() => {
-    if (!estado.conectado) { setPreview(null); return }
+    if (!estado.conectado) return
     let vivo = true
     let timer: ReturnType<typeof setTimeout>
     const tick = async () => {
@@ -53,7 +57,7 @@ export default function TransmisionPage() {
     guardarConfigOBS(cfg)
     const ok = await gestorRef.current?.conectar(cfg)
     setConectando(false)
-    if (ok) setMostrarAjustes(false)
+    if (!ok) setPreview(null)
   }
 
   const desconectar = () => gestorRef.current?.desconectar()
@@ -176,7 +180,9 @@ export default function TransmisionPage() {
                 border: `1px solid ${C.borde}`, background: "#000", aspectRatio: "16 / 9",
                 display: "flex", alignItems: "center", justifyContent: "center",
               }}>
-                {preview ? (
+                {estado.conectado && preview ? (
+                  // Captura data URL entregada directamente por OBS; no requiere optimización web.
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={preview} alt="Escena al aire"
                     style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
                 ) : (

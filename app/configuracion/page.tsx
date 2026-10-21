@@ -1,6 +1,6 @@
 "use client"
 
-import { CSSProperties, useEffect, useRef, useState } from "react"
+import { CSSProperties, useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
 import { copiarTexto } from "@/lib/copiar"
@@ -34,25 +34,95 @@ const SECCIONES_AJUSTES = [
   { id:"ayuda", icono:"🛟", nombre:"Ayuda y log", alcance:"dispositivo" },
 ] as const
 
+interface RegistroError {
+  id: string
+  tipo: string
+  mensaje: string
+  pagina: string
+  plataforma: string
+  version: string | null
+  creado_en: string
+  detalle?: unknown
+  _local?: boolean
+  nivel?: "info" | "advertencia" | "error" | "critico"
+  sesionId?: string
+  operacionId?: string
+}
+
+interface Invitacion {
+  id: string
+  rol: string
+  codigo: string
+  expira_at: string
+  usos_actuales: number
+  usos_max: number
+}
+
+interface MiembroIglesia {
+  user_id: string
+  email: string
+  rol: string
+}
+
+interface ConfiguracionIglesia {
+  nombre: string | null
+  localidad: string | null
+  logo_url: string | null
+  logo_nombre: string | null
+  pin_sala: string | null
+}
+
+interface ResultadoFirewall { existe?: boolean }
+interface ResultadoRedCamara { ok?: boolean; ip?: string; ips?: string[] }
+interface CodigoDetectado { rawValue: string }
+interface DetectorCodigos { detect(elemento: HTMLVideoElement): Promise<CodigoDetectado[]> }
+interface ConstructorDetectorCodigos { new(opciones: { formats: string[] }): DetectorCodigos }
+
+interface VentanaConfiguracion extends Window {
+  Capacitor?: object
+  BarcodeDetector?: ConstructorDetectorCodigos
+  firewall?: {
+    estado(): Promise<ResultadoFirewall>
+    reparar(): Promise<unknown>
+  }
+  transmision?: {
+    infoRedCamara?(): Promise<ResultadoRedCamara>
+  }
+  soporteSelah?: {
+    diagnostico?(): Promise<unknown>
+    abrirCarpeta?(): Promise<unknown>
+  }
+  electron?: {
+    ipcRenderer?: {
+      send(canal: string): void
+      invoke(canal: string): Promise<unknown>
+    }
+  }
+}
+
 // ── Componente de log de errores ─────────────────────────────────────────────
 function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
   const { confirmar, ConfirmUI } = useConfirm()
-  const [errores, setErrores] = useState<any[]>([])
+  const [errores, setErrores] = useState<RegistroError[]>([])
   const [abierto, setAbierto] = useState(false)
   const [cargando, setCargando] = useState(false)
   const [filtroTipo, setFiltroTipo] = useState("")
+  const [preparando, setPreparando] = useState(false)
+  const [codigoSoporte, setCodigoSoporte] = useState("")
+  const soporteElectron = typeof window !== "undefined" ? (window as VentanaConfiguracion).soporteSelah : undefined
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     setCargando(true)
     // 1) Registro LOCAL de este equipo (siempre disponible).
     const { getLocalLog } = await import("@/lib/Errorlogger")
     let locales = getLocalLog().map((e, i) => ({
       id: "local-" + e.ts + "-" + i, tipo: e.tipo, mensaje: e.mensaje, pagina: e.pagina,
-      plataforma: e.plataforma, version: null as any, creado_en: new Date(e.ts).toISOString(), detalle: e.detalle, _local: true,
+      plataforma: e.plataforma, version: e.version || null, creado_en: new Date(e.ts).toISOString(), detalle: e.detalle,
+      nivel: e.nivel || "error", sesionId: e.sesionId, operacionId: e.operacionId, _local: true,
     }))
     if (filtroTipo) locales = locales.filter(e => e.tipo === filtroTipo)
     // 2) Registro CENTRAL (Supabase), si se puede.
-    let remotos: any[] = []
+    let remotos: RegistroError[] = []
     try {
       let q = supabase
         .from("errores_log")
@@ -62,14 +132,24 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
         .limit(50)
       if (filtroTipo) q = q.eq("tipo", filtroTipo)
       const { data } = await q
-      remotos = data || []
+      remotos = ((data || []) as RegistroError[]).map(e => {
+        const detalle = e.detalle && typeof e.detalle === "object" ? e.detalle as Record<string, unknown> : null
+        const meta = detalle?.meta && typeof detalle.meta === "object" ? detalle.meta as Record<string, unknown> : null
+        return {
+          ...e,
+          nivel: ["info", "advertencia", "error", "critico"].includes(String(meta?.nivel))
+            ? meta?.nivel as RegistroError["nivel"] : "error",
+          sesionId: typeof meta?.sesion_id === "string" ? meta.sesion_id : undefined,
+          operacionId: typeof meta?.operacion_id === "string" ? meta.operacion_id : undefined,
+        }
+      })
     } catch {}
     const todo = [...locales, ...remotos].sort((a, b) => new Date(b.creado_en).getTime() - new Date(a.creado_en).getTime())
     setErrores(todo)
     setCargando(false)
-  }
+  }, [filtroTipo, iglesiaId])
 
-  useEffect(() => { if (abierto) cargar() }, [abierto, filtroTipo])
+  useEffect(() => { if (abierto) void cargar() }, [abierto, cargar])
 
   const borrarTodos = async () => {
     if (!(await confirmar("¿Borrar todos los errores registrados?", { textoOk: "Borrar", peligro: true }))) return
@@ -79,18 +159,40 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
     setErrores([])
   }
 
-  const descargarInforme = () => {
-    const contenido = JSON.stringify({
-      producto: "Selah Live",
-      generado_en: new Date().toISOString(),
-      navegador: typeof navigator !== "undefined" ? navigator.userAgent : "",
-      errores,
-    }, null, 2)
-    const url = URL.createObjectURL(new Blob([contenido], { type: "application/json;charset=utf-8" }))
-    const a = document.createElement("a")
-    a.href = url; a.download = `selah-diagnostico-${new Date().toISOString().slice(0, 10)}.json`
-    document.body.appendChild(a); a.click(); a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  const descargarInforme = async () => {
+    setPreparando(true)
+    try {
+      const { obtenerInfoBuild, obtenerSesionSoporte, sanitizarParaLog } = await import("@/lib/observabilidad")
+      const build = await obtenerInfoBuild()
+      const sesion = obtenerSesionSoporte()
+      let electron: unknown = null
+      try { electron = await (window as VentanaConfiguracion).soporteSelah?.diagnostico?.() || null } catch {}
+      const porNivel = errores.reduce<Record<string, number>>((acc, e) => {
+        acc[e.nivel || "error"] = (acc[e.nivel || "error"] || 0) + 1
+        return acc
+      }, {})
+      const informe = sanitizarParaLog({
+        esquema: 2,
+        producto: "Selah Live",
+        codigo_soporte: sesion,
+        generado_en: new Date().toISOString(),
+        build,
+        dispositivo: {
+          idioma: typeof navigator !== "undefined" ? navigator.language : "",
+          conectadoInternet: typeof navigator !== "undefined" ? navigator.onLine : null,
+        },
+        resumen: { total: errores.length, porNivel },
+        electron,
+        registros: errores,
+      })
+      const contenido = JSON.stringify(informe, null, 2)
+      const url = URL.createObjectURL(new Blob([contenido], { type: "application/json;charset=utf-8" }))
+      const a = document.createElement("a")
+      a.href = url; a.download = `selah-soporte-${sesion}-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      setCodigoSoporte(sesion)
+    } finally { setPreparando(false) }
   }
 
   const colorTipo: Record<string, string> = {
@@ -103,7 +205,10 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
     <div style={cardStyle}>
       {ConfirmUI}
       <div onClick={() => setAbierto(v => !v)} style={{ cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: abierto ? 14 : 0 }}>
-        <h2 style={{ margin:0, fontSize:18, fontWeight:800 }}>🪵 Log de errores</h2>
+        <div>
+          <h2 style={{ margin:0, fontSize:18, fontWeight:800 }}>🛟 Diagnóstico y soporte</h2>
+          {!abierto && <div style={{ fontSize:11, opacity:.45, marginTop:3 }}>Prepara evidencia segura si algo falla</div>}
+        </div>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           {errores.length > 0 && <span style={{ fontSize:11, background:"rgba(239,68,68,0.2)", color:"#fca5a5", padding:"2px 8px", borderRadius:6, fontWeight:700 }}>{errores.length}</span>}
           <span style={{ opacity:0.4, fontSize:14 }}>{abierto ? "▲" : "▼"}</span>
@@ -112,6 +217,21 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
 
       {abierto && (
         <div>
+          <div style={{ padding:"12px 14px", borderRadius:12, marginBottom:12, background:"rgba(59,130,246,.08)", border:"1px solid rgba(96,165,250,.18)" }}>
+            <div style={{ fontSize:13, fontWeight:800, marginBottom:4 }}>Informe listo para soporte</div>
+            <div style={{ fontSize:11, opacity:.6, lineHeight:1.5, marginBottom:10 }}>
+              Incluye versión, estado del equipo y últimos eventos. Las claves, tokens, correos y destinos de transmisión se ocultan automáticamente.
+            </div>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              <button onClick={descargarInforme} disabled={preparando} style={{ padding:"8px 12px", borderRadius:8, fontSize:12, fontWeight:800, cursor:preparando ? "wait" : "pointer", border:"1px solid rgba(96,165,250,.35)", background:"rgba(59,130,246,.16)", color:"#bfdbfe" }}>
+                {preparando ? "Preparando…" : "⬇ Preparar informe de soporte"}
+              </button>
+              {soporteElectron?.abrirCarpeta && <button onClick={() => void soporteElectron.abrirCarpeta?.()} style={{ padding:"8px 12px", borderRadius:8, fontSize:12, fontWeight:700, cursor:"pointer", border:"1px solid rgba(255,255,255,.12)", background:"rgba(255,255,255,.05)", color:"white" }}>
+                📁 Abrir registros del PC
+              </button>}
+            </div>
+            {codigoSoporte && <div style={{ marginTop:9, fontSize:11, color:"#93c5fd" }}>Código de soporte: <b>{codigoSoporte}</b></div>}
+          </div>
           {/* Filtros */}
           <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
             {["", "socket", "supabase", "proyeccion", "biblia", "imagen", "general"].map(t => (
@@ -127,9 +247,6 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
             <button onClick={borrarTodos} style={{ marginLeft:"auto", padding:"3px 10px", borderRadius:6, fontSize:11, fontWeight:700, cursor:"pointer", border:"1px solid rgba(239,68,68,0.3)", background:"rgba(239,68,68,0.08)", color:"#fca5a5" }}>
               🗑 Borrar todo
             </button>
-            <button onClick={descargarInforme} disabled={errores.length === 0} style={{ padding:"3px 10px", borderRadius:6, fontSize:11, fontWeight:700, cursor:errores.length ? "pointer" : "default", border:"1px solid rgba(96,165,250,0.3)", background:"rgba(59,130,246,0.08)", color:"#93c5fd", opacity:errores.length ? 1 : .45 }}>
-              ⬇ Descargar informe
-            </button>
           </div>
 
           {cargando ? (
@@ -141,6 +258,7 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
               {errores.map(e => (
                 <div key={e.id} style={{ padding:"10px 12px", borderRadius:10, background:"rgba(255,255,255,0.03)", border:`1px solid ${colorTipo[e.tipo] || "rgba(255,255,255,0.06)"}20` }}>
                   <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                    <span style={{ fontSize:9, fontWeight:900, textTransform:"uppercase", color:e.nivel === "critico" ? "#fca5a5" : e.nivel === "advertencia" ? "#fcd34d" : "#cbd5e1" }}>{e.nivel || "error"}</span>
                     <span style={{ fontSize:10, fontWeight:800, padding:"2px 6px", borderRadius:4, background:`${colorTipo[e.tipo] || "rgba(255,255,255,0.1)"}25`, color: colorTipo[e.tipo] || "rgba(255,255,255,0.5)" }}>
                       {e.tipo}
                     </span>
@@ -153,7 +271,8 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
                   <div style={{ fontSize:10, opacity:0.3 }}>
                     {e.plataforma} {e.version && `· v${e.version}`} {e._local && "· local"}
                   </div>
-                  {e.detalle && <details style={{ marginTop:5 }}>
+                  {e.sesionId && <div style={{ fontSize:9.5, opacity:.28, marginTop:2 }}>Sesión {e.sesionId}{e.operacionId ? ` · ${e.operacionId}` : ""}</div>}
+                  {e.detalle != null && <details style={{ marginTop:5 }}>
                     <summary style={{ fontSize:10, opacity:.55, cursor:"pointer" }}>Ver detalle técnico</summary>
                     <pre style={{ margin:"6px 0 0", whiteSpace:"pre-wrap", wordBreak:"break-word", fontSize:9.5, opacity:.55 }}>{JSON.stringify(e.detalle, null, 2)}</pre>
                   </details>}
@@ -184,24 +303,28 @@ export default function ConfiguracionPage() {
   const [logoNombre, setLogoNombre] = useState("")
 
   const [flash, setFlash] = useState<{ msg: string; tipo: "ok" | "error" | "info" } | null>(null)
+  const mostrarFlash = useCallback((msg: string, tipo: "ok" | "error" | "info" = "ok") => {
+    setFlash({ msg, tipo })
+    setTimeout(() => setFlash(null), 3000)
+  }, [])
 
   // ── PIN de sala ──────────────────────────────────────────────────────────
   const [pinSala, setPinSala] = useState("")
   const [pinGuardado, setPinGuardado] = useState(false)
 
   // ── Invitaciones ──────────────────────────────────────────────────────────
-  const [invitaciones, setInvitaciones] = useState<any[]>([])
+  const [invitaciones, setInvitaciones] = useState<Invitacion[]>([])
   const [rolInvitacion, setRolInvitacion] = useState("musico")
   const [generandoInv, setGenerandoInv] = useState(false)
   const [linkCopiado, setLinkCopiado] = useState("")
 
   // ── Miembros ──────────────────────────────────────────────────────────────
-  const [miembros, setMiembros] = useState<any[]>([])
+  const [miembros, setMiembros] = useState<MiembroIglesia[]>([])
   const [cargandoMiembros, setCargandoMiembros] = useState(false)
   const [miUserId, setMiUserId] = useState<string | null>(null)
   const [guardandoMiembro, setGuardandoMiembro] = useState<string | null>(null)
 
-  const cargarMiembros = async (igId: string) => {
+  const cargarMiembros = useCallback(async (igId: string) => {
     setCargandoMiembros(true)
     try {
       const { data, error } = await supabase.rpc("get_miembros_iglesia", { p_iglesia_id: igId })
@@ -210,7 +333,8 @@ export default function ConfiguracionPage() {
       // en usuarios_iglesia (ya se agregó una restricción única en la BD
       // para que no vuelva a pasar), no romper la lista con keys repetidas.
       const vistos = new Set<string>()
-      const unicos = (data || []).filter((m: any) => {
+      const filas = (data || []) as MiembroIglesia[]
+      const unicos = filas.filter(m => {
         if (vistos.has(m.user_id)) return false
         vistos.add(m.user_id)
         return true
@@ -219,7 +343,7 @@ export default function ConfiguracionPage() {
     } finally {
       setCargandoMiembros(false)
     }
-  }
+  }, [mostrarFlash])
 
   const cambiarRolMiembro = async (userId: string, nuevoRol: string) => {
     if (!iglesiaId) return
@@ -250,11 +374,11 @@ export default function ConfiguracionPage() {
     setGuardandoMiembro(null)
   }
 
-  const cargarInvitaciones = async (igId: string) => {
+  const cargarInvitaciones = useCallback(async (igId: string) => {
     const { data } = await supabase.from("invitaciones").select("*")
       .eq("iglesia_id", igId).eq("activa", true).order("created_at", { ascending: false })
-    setInvitaciones(data || [])
-  }
+    setInvitaciones((data || []) as Invitacion[])
+  }, [])
 
   const generarInvitacion = async () => {
     setGenerandoInv(true)
@@ -265,7 +389,7 @@ export default function ConfiguracionPage() {
       creado_por: miUserId
     }).select().single()
     if (!error && data) {
-      setInvitaciones(prev => [data, ...prev])
+      setInvitaciones(prev => [data as Invitacion, ...prev])
       copiarLink(data.codigo)
     }
     setGenerandoInv(false)
@@ -286,7 +410,7 @@ export default function ConfiguracionPage() {
     const hayWebPublica = site && !/localhost|127\.0\.0\.1/.test(site)
     const texto = hayWebPublica
       ? `Te invito a Selah Live 🎵\n\nAbre este enlace: ${site}/unirse?codigo=${codigo}\n\nO instala la app e ingresa el código: ${codigo}`
-      : `Te invito a Selah Live 🎵\n\nInstalá la app e ingresá este código en "Unirse a una iglesia":\n\n${codigo}`
+      : `Te invito a Selah Live 🎵\n\nInstala la app e ingresa este código en "Unirse a una iglesia":\n\n${codigo}`
     copiarTexto(texto).then(ok => {
       if (!ok) return
       setLinkCopiado(codigo)
@@ -327,10 +451,12 @@ export default function ConfiguracionPage() {
   const [isCapacitor, setIsCapacitor] = useState(false)
   const [isElectron, setIsElectron] = useState(false)
   useEffect(() => {
-    setIsCapacitor(!!(window as any).Capacitor)
-    setIsElectron(navigator.userAgent.includes("Electron"))
+    const id = setTimeout(() => {
+      setIsCapacitor(Boolean((window as VentanaConfiguracion).Capacitor))
+      setIsElectron(navigator.userAgent.includes("Electron"))
+    }, 0)
+    return () => clearTimeout(id)
   }, [])
-  const getLocalIPDisplay = () => servidorIp || "localhost"
 
   // Mostrar QR en Electron al cargar + obtener IP local
   useEffect(() => {
@@ -418,7 +544,7 @@ export default function ConfiguracionPage() {
     setServidorPing(resultado.http.ok && resultado.socket.ok ? "ok" : "error")
     if (!resultado.http.ok || !resultado.socket.ok) {
       void logError("Diagnóstico de conexión local fallido", {
-        tipo: "socket", pagina: "/configuracion", detalle: resultado as unknown as Record<string, any>,
+        tipo: "socket", pagina: "/configuracion", detalle: { ...resultado },
       })
     }
   }
@@ -446,7 +572,7 @@ export default function ConfiguracionPage() {
         return
       }
       mostrarFlash("❌ No se encontró el servidor. ¿Está abierto Selah Live en el PC?", "error")
-    } catch(e) {
+    } catch {
       mostrarFlash("❌ Error buscando servidor", "error")
     }
     setBuscandoServidor(false)
@@ -470,7 +596,7 @@ export default function ConfiguracionPage() {
         videoRef.current.play()
 
         // Usar BarcodeDetector si está disponible (Android Chrome)
-        const BarcodeDetector = (window as any).BarcodeDetector
+        const BarcodeDetector = (window as VentanaConfiguracion).BarcodeDetector
         if (BarcodeDetector) {
           const detector = new BarcodeDetector({ formats: ["qr_code"] })
           const scan = async () => {
@@ -492,7 +618,7 @@ export default function ConfiguracionPage() {
                   return
                 }
               }
-            } catch(e) {}
+            } catch {}
             requestAnimationFrame(scan)
           }
           scan()
@@ -503,7 +629,7 @@ export default function ConfiguracionPage() {
           setEscaneandoQR(false)
         }
       }, 300)
-    } catch(e) {
+    } catch {
       escaneandoRef.current = false
       setEscaneandoQR(false)
       mostrarFlash("❌ No se pudo acceder a la cámara", "error")
@@ -547,7 +673,7 @@ export default function ConfiguracionPage() {
     // En Electron: limpiar cookies del WebView (máx 2s)
     if (isElectron) {
       await conTimeout(
-        (window as any).electron?.ipcRenderer?.invoke("clear-session") ?? Promise.resolve(),
+        (window as VentanaConfiguracion).electron?.ipcRenderer?.invoke("clear-session") ?? Promise.resolve(),
         2000
       )
     }
@@ -570,7 +696,7 @@ export default function ConfiguracionPage() {
   // que el celular llegue a este PC por la red.
   const [fw, setFw] = useState<"desconocido" | "ok" | "falta" | "reparando">("desconocido")
   const [ipsPC, setIpsPC] = useState<string[]>([])   // IPs de este PC (para escribir en el celular)
-  const esEscritorio = typeof window !== "undefined" && !!(window as any).firewall
+  const esEscritorio = typeof window !== "undefined" && Boolean((window as VentanaConfiguracion).firewall)
   useEffect(() => {
     const escalaGuardada = localStorage.getItem("proyector-escala-fuente")
     if (escalaGuardada) setEscalaFuente(Number(escalaGuardada))
@@ -578,17 +704,12 @@ export default function ConfiguracionPage() {
     if (familiaGuardada) setFamiliaFuente(familiaGuardada)
     setRecordarUltima(localStorage.getItem("selah-recordar-ultima") !== "0")
     const ayudasGuardadas = localStorage.getItem("selah-ayudas-contextuales")
-    setAyudasContextuales(ayudasGuardadas === null ? !(window as any).Capacitor : ayudasGuardadas === "1")
-    const f = (window as any).firewall
-    if (f) f.estado().then((r: any) => setFw(r?.existe ? "ok" : "falta")).catch(() => {})
-    const tx = (window as any).transmision
-    if (tx?.infoRedCamara) tx.infoRedCamara().then((r: any) => { if (r?.ok) setIpsPC(r.ips || (r.ip ? [r.ip] : [])) }).catch(() => {})
+    setAyudasContextuales(ayudasGuardadas === null ? !(window as VentanaConfiguracion).Capacitor : ayudasGuardadas === "1")
+    const f = (window as VentanaConfiguracion).firewall
+    if (f) f.estado().then(r => setFw(r?.existe ? "ok" : "falta")).catch(() => {})
+    const tx = (window as VentanaConfiguracion).transmision
+    if (tx?.infoRedCamara) tx.infoRedCamara().then(r => { if (r?.ok) setIpsPC(r.ips || (r.ip ? [r.ip] : [])) }).catch(() => {})
   }, [])
-
-  const mostrarFlash = (msg: string, tipo: "ok" | "error" | "info" = "ok") => {
-    setFlash({ msg, tipo })
-    setTimeout(() => setFlash(null), 3000)
-  }
 
   // ── Carga inicial ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -618,7 +739,7 @@ export default function ConfiguracionPage() {
         .eq("id", id)
         .limit(1)
 
-      const data = (rows as any[])?.[0]
+      const data = (rows as ConfiguracionIglesia[] | null)?.[0]
 
       if (error) {
         mostrarFlash("No se pudo cargar la configuración", "error")
@@ -631,13 +752,13 @@ export default function ConfiguracionPage() {
       setLogoUrl(data?.logo_url || "")
       setLogoNombre(data?.logo_nombre || "")
       setPinSala(data?.pin_sala || "")
-      cargarInvitaciones(id)
-      cargarMiembros(id)
+      void cargarInvitaciones(id)
+      void cargarMiembros(id)
       setCargando(false)
     }
 
     cargar()
-  }, [router])
+  }, [cargarInvitaciones, cargarMiembros, mostrarFlash, router])
 
   // ── Optimizador de logo: SOLO redimensiona (ya NO borra el fondo) ────────────
   //  ✅ Antes hacía un flood-fill que borraba el blanco/claro desde los bordes.
@@ -1061,7 +1182,11 @@ export default function ConfiguracionPage() {
                 flexShrink: 0
               }}>
                 {logoUrl
-                  ? <img src={logoUrl} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ? <>
+                    {/* URL dinámica almacenada por la iglesia en Supabase. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={logoUrl} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  </>
                   : <span style={{ fontSize: 38 }}>⛪</span>
                 }
               </div>
@@ -1214,7 +1339,7 @@ export default function ConfiguracionPage() {
                   <div style={{ fontSize: 12, opacity: 0.6, lineHeight: 1.6, padding: "10px 12px", background: "rgba(255,255,255,0.04)", borderRadius: 8 }}>
                     📋 <b>¿Cómo encontrar la dirección?</b><br/>
                     En el computador del proyector, abre el programa y anota el número que aparece (Ej: <span style={{ fontFamily: "monospace", color: "#93c5fd" }}>192.168.1.5</span>).
-                    O busca "CMD" y escribe <span style={{ fontFamily: "monospace", color: "#93c5fd" }}>ipconfig</span>.
+                    O busca &ldquo;CMD&rdquo; y escribe <span style={{ fontFamily: "monospace", color: "#93c5fd" }}>ipconfig</span>.
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <input
@@ -1308,6 +1433,8 @@ export default function ConfiguracionPage() {
                   Escanea este QR con el celular para conectar automáticamente
                 </div>
                 {qrUrl ? (
+                  // El QR se genera dinámicamente en el servidor local de Electron.
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={qrUrl}
                     alt="QR Conexión"
@@ -1383,17 +1510,28 @@ export default function ConfiguracionPage() {
           </div>
           <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ fontSize: 13, opacity: 0.6, lineHeight: 1.5 }}>
-              Solo dispositivos con este PIN podrán controlar el proyector. Déjalo vacío para no usar PIN.
+              El escritorio registra este PIN y solo los dispositivos que lo conozcan podrán controlar el proyector. Para usar Control desde el celular, configura entre 4 y 6 dígitos.
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <input type="number" placeholder="Ej: 1234" value={pinSala}
                 onChange={e => { setPinSala(e.target.value.slice(0, 6)); setPinGuardado(false) }}
+                inputMode="numeric" minLength={4} maxLength={6}
                 style={{ ...inputStyle, flex: 1, fontSize: 18, fontWeight: 700, letterSpacing: 8 }}
               />
               <button onClick={async () => {
-                  await supabase.from("iglesias").update({ pin_sala: pinSala || null }).eq("id", iglesiaId)
+                  if (pinSala && !/^\d{4,6}$/.test(pinSala)) {
+                    mostrarFlash("El PIN debe tener entre 4 y 6 dígitos.", "error")
+                    return
+                  }
+                  const { error } = await supabase.from("iglesias").update({ pin_sala: pinSala || null }).eq("id", iglesiaId)
+                  if (error) {
+                    mostrarFlash(`No se pudo guardar el PIN: ${error.message}`, "error")
+                    return
+                  }
                   if (pinSala) localStorage.setItem("selah-sala-pin", pinSala)
                   else localStorage.removeItem("selah-sala-pin")
+                  const seguridad = (window as Window & { seguridadLocal?: { registrarPinSala?: (sala:string, pin:string|null) => Promise<unknown> } }).seguridadLocal
+                  if (iglesiaId) await seguridad?.registrarPinSala?.(iglesiaId, pinSala || null)
                   setPinGuardado(true)
                 }}
                 style={{ ...btnPrincipal, flexShrink: 0, background: pinGuardado ? "rgba(34,197,94,0.2)" : undefined, color: pinGuardado ? "#4ade80" : undefined }}>
@@ -1402,8 +1540,14 @@ export default function ConfiguracionPage() {
             </div>
             {pinSala && (
               <button onClick={async () => {
+                  const { error } = await supabase.from("iglesias").update({ pin_sala: null }).eq("id", iglesiaId)
+                  if (error) {
+                    mostrarFlash(`No se pudo quitar el PIN: ${error.message}`, "error")
+                    return
+                  }
                   setPinSala(""); localStorage.removeItem("selah-sala-pin")
-                  await supabase.from("iglesias").update({ pin_sala: null }).eq("id", iglesiaId)
+                  const seguridad = (window as Window & { seguridadLocal?: { registrarPinSala?: (sala:string, pin:string|null) => Promise<unknown> } }).seguridadLocal
+                  if (iglesiaId) await seguridad?.registrarPinSala?.(iglesiaId, null)
                   setPinGuardado(false)
                 }}
                 style={{ alignSelf: "flex-start", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", color: "#fca5a5", fontSize: 12, cursor: "pointer" }}>
@@ -1542,9 +1686,11 @@ export default function ConfiguracionPage() {
                 onClick={async () => {
                   setFw("reparando")
                   try {
-                    await (window as any).firewall.reparar()
+                    const firewall = (window as VentanaConfiguracion).firewall
+                    if (!firewall) throw new Error("El puente de firewall no está disponible")
+                    await firewall.reparar()
                     await new Promise(r => setTimeout(r, 2500))
-                    const r = await (window as any).firewall.estado()
+                    const r = await firewall.estado()
                     setFw(r?.existe ? "ok" : "falta")
                     mostrarFlash(r?.existe ? "✅ Firewall configurado para el celular" : "No se pudo confirmar (¿cancelaste el permiso de administrador?)", r?.existe ? "ok" : "error")
                   } catch { setFw("falta") }
@@ -1611,7 +1757,7 @@ export default function ConfiguracionPage() {
             )}
 
             <div style={{ fontSize: 12, opacity: 0.4, lineHeight: 1.6 }}>
-              El código es válido por 7 días y hasta 20 usos. La persona instala Selah Live e ingresa el código en "Unirse a una iglesia". Compártelo por WhatsApp o correo.
+              El código es válido por 7 días y hasta 20 usos. La persona instala Selah Live e ingresa el código en &ldquo;Unirse a una iglesia&rdquo;. Compártelo por WhatsApp o correo.
             </div>
           </div>
         </div>
@@ -1742,13 +1888,13 @@ export default function ConfiguracionPage() {
         )}
 
         {/* ── ACTUALIZACIONES ────────────────────────────────────────────── */}
-        {typeof window !== "undefined" && !!(window as any).electron && (
+        {typeof window !== "undefined" && Boolean((window as VentanaConfiguracion).electron) && (
           <div style={card}>
             <h2 style={{ margin: "0 0 12px", fontSize: "18px", fontWeight: 800 }}>🔄 Actualizaciones</h2>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <div style={{ fontSize: 13, opacity: 0.5 }}>Verificar si hay una nueva versión disponible</div>
               <button
-                onClick={() => (window as any).electron?.ipcRenderer?.send("check-for-updates")}
+                onClick={() => (window as VentanaConfiguracion).electron?.ipcRenderer?.send("check-for-updates")}
                 style={{ padding: "8px 16px", borderRadius: 10, border: "1px solid rgba(59,130,246,0.3)",
                   background: "rgba(59,130,246,0.1)", color: "#93c5fd",
                   fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>

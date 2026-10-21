@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import { io } from "socket.io-client"
+import { useEffect, useRef, useState, type Key } from "react"
+import { io, type Socket } from "socket.io-client"
 import { supabase } from "../../lib/supabase"
 import { getIglesiaId } from "../../lib/getIglesia"
 import { getSocketUrl, buscarServidorEnRed } from "../../lib/servidor"
@@ -14,8 +14,41 @@ import { useMetronomo } from "@/components/useMetronomo"
 import OnboardingTour from "@/components/OnboardingTour"
 import { TOUR_MUSICOS } from "@/lib/tours"
 
+interface CancionMusico {
+  id: string
+  titulo: string
+  tono?: string | null
+  categoria?: string | null
+  numero?: number | null
+  iglesia_id?: string | null
+  tiene_acordes?: boolean
+}
+
+interface ParteMusico {
+  tipo: string
+  texto?: string | null
+  texto_letra?: string | null
+  texto_acordes?: string | null
+  tiene_acordes?: boolean
+  orden?: number
+}
+
+interface EstadoCultoMusicos {
+  tipo?: string
+  partes?: ParteMusico[]
+  index?: number
+  titulo?: string
+  tono?: string
+}
+
+interface AcordePosicionado { acorde: string; pos: number }
+type LineaMusical =
+  | { tipo: "corchete"; acordes: AcordePosicionado[]; letra: string }
+  | { tipo: "linea"; acordes: string; letra: string }
+  | { tipo: "solo"; letra: string }
+
 export default function MusicosPage() {
-  const [partes, setPartes] = useState<any[]>([])
+  const [partes, setPartes] = useState<ParteMusico[]>([])
   const [index, setIndex] = useState(0)
   const [titulo, setTitulo] = useState("")
   const [tono, setTono] = useState("")
@@ -67,6 +100,9 @@ export default function MusicosPage() {
     }).catch(() => {}).finally(() => {
       cargarRepertorio()
     })
+  // Es una carga inicial deliberada. Agregar cargarRepertorio recrearía el efecto
+  // al actualizar el repertorio y duplicaría consultas/caché.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const [esMovil, setEsMovil] = useState(false)
   const [panelAbierto, setPanelAbierto] = useState(false)
@@ -108,16 +144,16 @@ export default function MusicosPage() {
   const [improvAbierto, setImprovAbierto] = useState(false)
   const [ensayoAbierto, setEnsayoAbierto] = useState(false)
   const metro = useMetronomo()   // motor del metrónomo a nivel de página (sigue sonando al cerrar el panel)
-  const [cancionesRepo, setCancionesRepo] = useState<any[]>([])
+  const [cancionesRepo, setCancionesRepo] = useState<CancionMusico[]>([])
   const [cargandoRepo, setCargandoRepo] = useState(false)
   const [busquedaRepo, setBusquedaRepo] = useState("")
   const [filtroAcordesRepo, setFiltroAcordesRepo] = useState(false)
-  const [cancionRepo, setCancionRepo] = useState<any>(null)
-  const [partesRepo, setPartesRepo] = useState<any[]>([])
+  const [cancionRepo, setCancionRepo] = useState<CancionMusico | null>(null)
+  const [partesRepo, setPartesRepo] = useState<ParteMusico[]>([])
   const [transposicionRepo, setTransposicionRepo] = useState(0)
   const [alertaVivo, setAlertaVivo] = useState(false)
   // ✅ Caché en memoria: evita re-fetchar partes al cambiar entre canciones
-  const partesCacheRef = useRef<Map<string, any[]>>(new Map())  // nueva canción llegó mientras estaba en repertorio
+  const partesCacheRef = useRef<Map<string, ParteMusico[]>>(new Map())  // nueva canción llegó mientras estaba en repertorio
 
   const cargarRepertorio = async () => {
     // ✅ Si el socket no conectó (músico fuera del WiFi de la iglesia),
@@ -168,7 +204,7 @@ export default function MusicosPage() {
 
       // ✅ Paginación — Supabase corta en 1000 por defecto
       const PAGINA = 1000
-      let todas: any[] = []
+      let todas: CancionMusico[] = []
       let desde = 0
       let continuar = true
       while (continuar) {
@@ -181,7 +217,7 @@ export default function MusicosPage() {
           .range(desde, desde + PAGINA - 1)
         if (error) throw error
         if (!data || data.length === 0) break
-        todas = todas.concat(data)
+        todas = todas.concat(data as CancionMusico[])
         continuar = data.length === PAGINA
         desde += PAGINA
       }
@@ -209,7 +245,7 @@ export default function MusicosPage() {
     setCargandoRepo(false)
   }
 
-  const verCancion = async (cancion: any) => {
+  const verCancion = async (cancion: CancionMusico) => {
     setCancionRepo(cancion)
     setTransposicionRepo(0)
 
@@ -282,7 +318,7 @@ export default function MusicosPage() {
     // efecto. Antes el `return () => s.disconnect()` estaba dentro del .then(),
     // así que retornaba del callback de la promesa y no se ejecutaba jamás: el
     // socket quedaba abierto para siempre (y al recrearlo se acumulaban).
-    let socketLocal: any = null
+    let socketLocal: Socket | null = null
     const dev = process.env.NODE_ENV === "development"
 
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -320,8 +356,8 @@ export default function MusicosPage() {
         }
       })
 
-      s.on("connect_error", (e: any) => {
-        logConex(`connect_error a ${getSocketUrl()}: ${e?.message || e}`)
+      s.on("connect_error", (error: Error) => {
+        logConex(`connect_error a ${getSocketUrl()}: ${error.message}`)
         if (!activo) return
         setMsgConexion("No se pudo conectar. Revisa que Selah Live esté abierto en el PC y que estén en la misma red WiFi.")
       })
@@ -332,7 +368,7 @@ export default function MusicosPage() {
         setMsgConexion("🔒 " + (data?.mensaje || "PIN de sala incorrecto. Pídele el PIN al encargado."))
       })
 
-    s.on("estado-actual", (estado: any) => {
+    s.on("estado-actual", (estado: EstadoCultoMusicos & { data?: EstadoCultoMusicos }) => {
       socketConectadoRef.current = true
       if (estado?.tipo !== "cancion") return
       const data = estado.data || {}
@@ -344,7 +380,7 @@ export default function MusicosPage() {
       setAlertaVivo(true)
     })
 
-    s.on("cargar-cancion", (data: any) => {
+    s.on("cargar-cancion", (data: EstadoCultoMusicos) => {
       socketConectadoRef.current = true
       setPartes(data.partes || [])
       setIndex(0)
@@ -365,10 +401,10 @@ export default function MusicosPage() {
   // la escribía) -- por eso nunca funcionó. Ahora control.tsx sí publica ahí
   // en cada cambio de canción/parte (ver control/page.tsx).
   useEffect(() => {
-    let channel: any = null
+    let channel: ReturnType<typeof supabase.channel> | null = null
     let activo = true
 
-    const aplicarFila = (d: any) => {
+    const aplicarFila = (d: EstadoCultoMusicos | null) => {
       if (!d || d.tipo !== "cancion") return
       if (socketConectadoRef.current) return
       setPartes(d.partes || [])
@@ -399,15 +435,15 @@ export default function MusicosPage() {
           schema: "public",
           table: "estado_culto",
           filter: `iglesia_id=eq.${igId}`
-        }, (payload: any) => { if (activo) aplicarFila(payload.new) })
-        .subscribe((status: string, err: any) => {
+        }, payload => { if (activo) aplicarFila(payload.new as EstadoCultoMusicos) })
+        .subscribe((status, error) => {
           // ✅ Antes la suscripción fallaba en silencio: si Realtime rechazaba
           // (RLS, tabla no publicada, etc.) el músico no se enteraba de por qué
           // "no llega la letra en vivo". Ahora se registra.
           if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-            console.warn("⚠️ Realtime estado_culto:", status, err?.message || "")
+            console.warn("⚠️ Realtime estado_culto:", status, error?.message || "")
             import("@/lib/Errorlogger").then(({ logError }) =>
-              logError(`Realtime estado_culto ${status}: ${err?.message || ""}`, { tipo: "supabase", pagina: "/musicos" })
+              logError(`Realtime estado_culto ${status}: ${error?.message || ""}`, { tipo: "supabase", pagina: "/musicos" })
             ).catch(() => {})
           }
         })
@@ -467,17 +503,10 @@ export default function MusicosPage() {
     return tokens.every(token => esAcorde(limpiarTokenAcorde(token)))
   }
 
-  const transponerLinea = (linea: string, pasos: number) =>
-    linea.replace(/\S+/g, token => {
-      const limpio = limpiarTokenAcorde(token)
-      if (!esAcorde(limpio)) return token
-      return token.replace(limpio, transponerAcorde(limpio, pasos))
-    })
-
   // ── Parser de acordes ─────────────────────────────────────────────────────
-  const detectarFormato = (texto: string) => {
+  const detectarFormato = (texto: string): LineaMusical[] => {
     const lineas = texto.replace(/\r/g, "").split("\n").map(l => l.trimEnd())
-    const resultado: any[] = []
+    const resultado: LineaMusical[] = []
 
     for (let i = 0; i < lineas.length; i++) {
       const actual = lineas[i] || ""
@@ -485,7 +514,7 @@ export default function MusicosPage() {
       if (!actual.trim()) continue
 
       if (actual.includes("[")) {
-        const acordes: any[] = []
+        const acordes: AcordePosicionado[] = []
         const letra = actual.replace(/\[(.*?)\]/g, "")
         const regex = /\[(.*?)\]/g
         let match
@@ -572,7 +601,7 @@ export default function MusicosPage() {
   })()
 
   // ── Render acordes ────────────────────────────────────────────────────────
-  const renderAcordeChip = (acorde: string, key?: any, compacto = false, transposicionOverride?: number) => {
+  const renderAcordeChip = (acorde: string, key?: Key, compacto = false, transposicionOverride?: number) => {
     const limpio = limpiarTokenAcorde(acorde)
     const pasos = transposicionOverride ?? transposicion
     const texto = convertirEscala(transponerAcorde(limpio, pasos), usarAmericano)
@@ -1247,7 +1276,7 @@ export default function MusicosPage() {
                 {/* Partes */}
                 {partesRepo.length === 0 ? (
                   <div style={{ textAlign: "center", opacity: 0.3, paddingTop: 40 }}>Cargando partes...</div>
-                ) : partesRepo.map((parte: any, pi: number) => {
+                ) : partesRepo.map((parte, pi) => {
                   const textoRender = (mostrarAcordes && parte.tiene_acordes && parte.texto_acordes)
                     ? parte.texto_acordes : parte.texto_letra || parte.texto || ""
                   const bloqueRepo = detectarFormato(textoRender)
@@ -1256,11 +1285,11 @@ export default function MusicosPage() {
                       <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.4, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
                         {parte.tipo}
                       </div>
-                      {bloqueRepo.map((linea: any, li: number) => (
+                      {bloqueRepo.map((linea, li) => (
                         <div key={li} style={{ marginBottom: 8 }}>
                           {linea.tipo === "corchete" && (
                             <div style={{ position: "relative", minHeight: 24, marginBottom: 4 }}>
-                              {linea.acordes.map((a: any, ai: number) => (
+                              {linea.acordes.map((a, ai) => (
                                 <span key={ai} style={{ position: "absolute", left: `${a.pos}ch` }}>
                                   {renderAcordeChip(a.acorde, ai, true, transposicionRepo)}
                                 </span>
@@ -1337,7 +1366,7 @@ export default function MusicosPage() {
                       maxWidth: "100%",
                       textAlign: "left"
                     }}>
-                      {linea.acordes.map((a: any, j: number) => (
+                      {linea.acordes.map((a, j) => (
                         <span key={j} style={{ position: "absolute", left: `${a.pos}ch`, top: 0, whiteSpace: "nowrap" }}>
                           {renderAcordeChip(a.acorde, j, totalLineasParte > 4)}
                         </span>

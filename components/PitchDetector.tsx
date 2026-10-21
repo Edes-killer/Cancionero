@@ -3,7 +3,6 @@ import { useEffect, useRef, useState, useCallback } from "react"
 
 // Frecuencias de referencia (La4 = 440Hz, sistema temperado igual)
 const NOTAS_LATINAS = ["Do","Do#","Re","Re#","Mi","Fa","Fa#","Sol","Sol#","La","La#","Si"]
-const NOTAS_INGLESAS = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
 
 const frecANota = (freq: number): { nota: string; octava: number; cents: number } | null => {
   if (!freq || freq < 50 || freq > 2000) return null
@@ -86,7 +85,10 @@ export default function PitchDetector({ onDetectar, style }: Props) {
       })
       streamRef.current = stream
 
-      const ctx     = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const AudioContextCtor = window.AudioContext
+        || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+      if (!AudioContextCtor) throw new Error("Este dispositivo no ofrece Web Audio para analizar el tono")
+      const ctx = new AudioContextCtor()
       if (ctx.state === "suspended") await ctx.resume()
       const source  = ctx.createMediaStreamSource(stream)
       const analyser = ctx.createAnalyser()
@@ -128,14 +130,16 @@ export default function PitchDetector({ onDetectar, style }: Props) {
         rafRef.current = requestAnimationFrame(loop)
       }
       rafRef.current = requestAnimationFrame(loop)
-    } catch (e: any) {
+    } catch (e: unknown) {
       const mensajes: Record<string,string> = {
         NotAllowedError: "Selah no tiene permiso para usar el micrófono. Habilítalo en los permisos del sistema.",
         NotFoundError: "No se encontró ningún micrófono disponible.",
         NotReadableError: "El micrófono está siendo usado por otra aplicación. Ciérrala e intenta nuevamente.",
         OverconstrainedError: "El micrófono seleccionado ya no está disponible. Elige otro dispositivo."
       }
-      setError(mensajes[e?.name] || e?.message || "No se pudo iniciar el afinador")
+      const nombre = e instanceof DOMException ? e.name : ""
+      const mensaje = e instanceof Error ? e.message : ""
+      setError(mensajes[nombre] || mensaje || "No se pudo iniciar el afinador")
     }
   }
 

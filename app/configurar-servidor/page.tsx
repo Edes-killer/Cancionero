@@ -1,22 +1,16 @@
 "use client"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { navegarSPA } from "@/lib/navegar"
 
 export default function ConfigurarServidor() {
   const [ip, setIp] = useState("")
-  const [puerto, setPuerto] = useState("4000")
+  const puerto = "4000"
   const [estado, setEstado] = useState<"buscando" | "manual" | "encontrado">("buscando")
   const [progreso, setProgreso] = useState(0)
   const router = useRouter()
 
-  useEffect(() => {
-    const ipGuardada = localStorage.getItem("servidor_ip")
-    if (ipGuardada) setIp(ipGuardada)
-    buscarServidor()
-  }, [])
-
-  const buscarServidor = async () => {
+  const buscarServidor = useCallback(async () => {
     setEstado("buscando")
     setProgreso(0)
 
@@ -53,7 +47,16 @@ export default function ConfigurarServidor() {
     }
 
     if (!encontrado) setEstado("manual")
-  }
+  }, [router])
+
+  useEffect(() => {
+    const id = setTimeout(() => {
+      const ipGuardada = localStorage.getItem("servidor_ip")
+      if (ipGuardada) setIp(ipGuardada)
+      void buscarServidor()
+    }, 0)
+    return () => clearTimeout(id)
+  }, [buscarServidor])
 
   const guardar = () => {
     if (!ip.trim()) return

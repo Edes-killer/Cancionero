@@ -24,9 +24,19 @@ const comprobaciones = [
     args: [npmCli, "run", "build"],
   },
   {
+    nombre: "Lint de transmisión, cámara y conexiones críticas",
+    comando: process.execPath,
+    args: [npmCli, "run", "lint:critico"],
+  },
+  {
     nombre: "Dependencias de producción",
     comando: process.execPath,
-    args: [npmCli, "audit", "--omit=dev", "--audit-level=high"],
+    args: [npmCli, "audit", "--omit=dev", "--audit-level=moderate"],
+  },
+  {
+    nombre: "Herramientas auditadas con excepciones explícitas y acotadas",
+    comando: process.execPath,
+    args: ["scripts/qa-auditoria-herramientas.cjs"],
   },
   {
     nombre: "Sintaxis del proceso principal Electron",
@@ -42,6 +52,41 @@ const comprobaciones = [
     nombre: "Sintaxis de seguridad Electron",
     comando: process.execPath,
     args: ["--check", "electron/security.js"],
+  },
+  {
+    nombre: "Sintaxis del registro operativo",
+    comando: process.execPath,
+    args: ["--check", "electron/registro-operativo.js"],
+  },
+  {
+    nombre: "Sintaxis de revisión de destinos",
+    comando: process.execPath,
+    args: ["--check", "electron/preflight-red.js"],
+  },
+  {
+    nombre: "Sintaxis de recuperación de grabaciones",
+    comando: process.execPath,
+    args: ["--check", "electron/grabaciones-pendientes.js"],
+  },
+  {
+    nombre: "Sintaxis del benchmark de transmisión",
+    comando: process.execPath,
+    args: ["--check", "scripts/qa-eficiencia.cjs"],
+  },
+  {
+    nombre: "Sintaxis de trazabilidad de build",
+    comando: process.execPath,
+    args: ["--check", "scripts/generar-build-info.cjs"],
+  },
+  {
+    nombre: "Recuperación independiente de destinos",
+    comando: process.execPath,
+    args: ["scripts/qa-recuperacion-destinos.cjs"],
+  },
+  {
+    nombre: "Sintaxis del verificador de artefactos",
+    comando: process.execPath,
+    args: ["--check", "scripts/qa-artefactos.cjs"],
   },
 ]
 

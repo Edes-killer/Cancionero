@@ -7,6 +7,7 @@ import { useEffect, useState } from "react"
 import { useApp } from "@/context/AppContext"
 import { getRolEnIglesia, limpiarIglesiaActivaId } from "@/lib/getIglesia"
 import { navegarSPA, normalizarRuta } from "@/lib/navegar"
+import { permiteCamaraMovil, permiteTransmision } from "@/lib/planes"
 
 const ROLES_INFO: Record<string, { icon: string; label: string }> = {
   admin:  { icon: "👑", label: "Administrador" },
@@ -14,11 +15,13 @@ const ROLES_INFO: Record<string, { icon: string; label: string }> = {
   musico: { icon: "🎸", label: "Músico" },
 }
 
-const LINKS = [
+interface LinkNavegacion { href: string; label: string; icon: string; ayuda: string; soloLider?: boolean }
+
+const LINKS: LinkNavegacion[] = [
   { href: "/",              label: "Inicio",    icon: "⌂", ayuda:"Vuelve al resumen y los accesos principales." },
   { href: "/canciones",     label: "Canciones", icon: "🎵", ayuda:"Administra letras, tonos, acordes y el repertorio." },
   { href: "/control",       label: "Control",   icon: "🎛️", ayuda:"Prepara y opera la proyección del culto." },
-  { href: "/en-vivo",       label: "Transmitir", icon: "🎥", ayuda:"Abre la consola de transmisión en vivo de tu iglesia. Función Premium.", soloLider: true },
+  { href: "/en-vivo",       label: "Transmitir", icon: "🎥", ayuda:"Abre la consola de transmisión en vivo de tu iglesia. Disponible desde Pro.", soloLider: true },
   { href: "/camara",        label: "Cámara",    icon: "📷", ayuda:"Usa este celular como cámara para la transmisión.", soloLider: true },
   { href: "/configuracion", label: "Ajustes",   icon: "⚙️", ayuda:"Configura la iglesia, dispositivos, red y preferencias." },
 ]
@@ -57,7 +60,10 @@ export default function Navbar() {
   // ✅ La "Cámara" (celular como cámara del PC) solo va en la APK. Estado por
   // efecto para no romper la hidratación (server/primer render = false).
   const [esApp, setEsApp] = useState(false)
-  useEffect(() => { setEsApp(typeof window !== "undefined" && !!(window as any).Capacitor) }, [])
+  useEffect(() => {
+    const id = setTimeout(() => setEsApp(Boolean((window as Window & { Capacitor?: object }).Capacitor)), 0)
+    return () => clearTimeout(id)
+  }, [])
   // ✅ Indicador de sin internet. La app funciona igual offline (con la caché),
   // que está bien, pero el usuario no tenía forma de SABER que está sin conexión.
   // Arranca en true para no marcar "offline" por un instante en el primer render.
@@ -90,7 +96,10 @@ export default function Navbar() {
     return () => { activo = false }
   }, [iglesiaId])
 
-  useEffect(() => { setMenuAbierto(false) }, [pathname])
+  useEffect(() => {
+    const id = setTimeout(() => setMenuAbierto(false), 0)
+    return () => clearTimeout(id)
+  }, [pathname])
 
   const rutaActual = normalizarRuta(pathname)
   if (RUTAS_SIN_NAVBAR.some(r => rutaActual === r || rutaActual.startsWith(r + "/"))) return null
@@ -122,13 +131,13 @@ export default function Navbar() {
   // Config: solo admin. Cámara (transmisión): solo admin/líder (los músicos no
   // la ven). Mientras no se sabe el rol se muestran; el AuthProvider igual bloquea.
   const linksVisibles = LINKS.filter(l =>
-    l.href === "/camara" ? (esApp && (rol === null || rol === "admin" || rol === "lider"))
+    l.href === "/camara" ? (esApp && permiteCamaraMovil(plan) && (rol === null || rol === "admin" || rol === "lider"))
     : l.href === "/configuracion" ? (rol === null || rol === "admin")
-    : (l as any).soloLider ? (rol === null || rol === "admin" || rol === "lider")
+    : l.soloLider ? (rol === null || rol === "admin" || rol === "lider")
     : true
   )
 
-  const isCapacitor = typeof window !== "undefined" && (window as any).Capacitor
+  const isCapacitor = typeof window !== "undefined" && Boolean((window as Window & { Capacitor?: object }).Capacitor)
 
   return (
     <>
@@ -197,7 +206,7 @@ export default function Navbar() {
                     whiteSpace: "nowrap"
                   }}>
                     <span style={{ fontSize: 13 }}>{icon}</span>{label}
-                    {href === "/en-vivo" && plan !== "premium" && <span title="Función del plan Premium" style={{ fontSize:10, color:"#fbbf24" }}>★</span>}
+                    {href === "/en-vivo" && !permiteTransmision(plan) && <span title="Disponible desde el plan Pro" style={{ fontSize:10, color:"#fbbf24" }}>★</span>}
                   </Link>
                 )
               })}
@@ -324,7 +333,7 @@ export default function Navbar() {
                   }}
                 >
                   <span>{icon}</span>{label}
-                  {href === "/en-vivo" && plan !== "premium" && <span style={{ fontSize:11, color:"#fbbf24" }}>Premium</span>}
+                  {href === "/en-vivo" && !permiteTransmision(plan) && <span style={{ fontSize:11, color:"#fbbf24" }}>Pro</span>}
                 </Link>
               )
             })}

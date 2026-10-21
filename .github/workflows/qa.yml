@@ -1,0 +1,44 @@
+name: QA Selah Live
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qa-release:
+    name: Código y transmisión
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      CI: true
+      NEXT_TELEMETRY_DISABLED: 1
+      # El build estático solo necesita valores sintácticamente válidos. No se
+      # entregan claves ni se conecta el QA de GitHub a la base real.
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+      NEXT_PUBLIC_SITE_URL: https://ci-placeholder.invalid
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependencias exactas
+        run: npm ci
+
+      - name: Ejecutar compuerta de publicación
+        run: npm run qa:release

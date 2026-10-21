@@ -40,7 +40,7 @@ export async function subirBitrateAudio(pc: RTCPeerConnection, kbps = 256): Prom
   if (!sender) return
   try {
     const params = sender.getParameters()
-    if (!params.encodings || params.encodings.length === 0) (params as any).encodings = [{}]
+    if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
     params.encodings[0].maxBitrate = kbps * 1000
     await sender.setParameters(params)
   } catch { /* algunos navegadores no lo permiten; el SDP ya ayuda */ }

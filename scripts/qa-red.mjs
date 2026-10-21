@@ -1,8 +1,9 @@
 import { io } from "socket.io-client"
+import { randomUUID } from "node:crypto"
 
 const servidor = process.argv[2] || process.env.SELAH_QA_SERVER || "http://127.0.0.1:4000"
-const sala = `qa-${Date.now()}`
-const otraSala = `${sala}-aislada`
+const sala = randomUUID()
+const otraSala = randomUUID()
 const pin = "7391"
 
 const resultados = []
@@ -12,8 +13,8 @@ const registrar = (nombre, ok, detalle = "") => {
 }
 
 const esperar = (ms) => new Promise(resolve => setTimeout(resolve, ms))
-const conectar = () => new Promise((resolve, reject) => {
-  const socket = io(servidor, { transports: ["websocket", "polling"], timeout: 3000, reconnection: false })
+const conectar = (extraHeaders) => new Promise((resolve, reject) => {
+  const socket = io(servidor, { transports: ["websocket", "polling"], timeout: 3000, reconnection: false, extraHeaders })
   const timer = setTimeout(() => { socket.close(); reject(new Error("timeout")) }, 4000)
   socket.once("connect", () => { clearTimeout(timer); resolve(socket) })
   socket.once("connect_error", error => { clearTimeout(timer); reject(error) })
@@ -43,7 +44,7 @@ try {
   }
   const info = await ping.json()
   registrar("Servidor identificable", ping.ok && info.app === "selah-live", JSON.stringify(info))
-  if (!Number.isInteger(info.qaProtocol) || info.qaProtocol < 6) {
+  if (!Number.isInteger(info.qaProtocol) || info.qaProtocol < 7) {
     throw new Error(`El servidor abierto es Selah ${info.version || "antiguo"}, pero no incluye el protocolo QA actual. Cierra por completo la versión instalada y abre el código nuevo con "npm.cmd run electron:dev".`)
   }
 
@@ -61,10 +62,22 @@ try {
   const formato = await fetch(`${servidor}/api/imagenes/guardar`, { method: "POST", body: archivoRaro })
   registrar("La galería rechaza extensiones extrañas", formato.status === 415, `HTTP ${formato.status}`)
 
+  const origenAjenoHttp = await fetch(`${servidor}/api/imagenes/listar`, { headers:{ Origin:"https://sitio-malicioso.example" } })
+  registrar("Una web ajena no accede a archivos locales", origenAjenoHttp.status === 403, `HTTP ${origenAjenoHttp.status}`)
+
   const [controlA, controlB, proyector, aislado, pinMalo, intruso] = await Promise.all(
     Array.from({ length: 6 }, conectar)
   )
   sockets = [controlA, controlB, proyector, aislado, pinMalo, intruso]
+
+  const unionInvalida = await unir(intruso, { sala:"../otra", pantalla:"administrador" })
+  registrar("Uniones manipuladas son rechazadas", unionInvalida?.error === "solicitud_invalida")
+
+  const webAjena = await conectar({ Origin:"https://sitio-malicioso.example" })
+  sockets.push(webAjena)
+  const pantallaFalsa = await unir(webAjena, { sala, pantalla:"proyectar" })
+  const hostFalso = await new Promise(resolve => webAjena.emit("camara:host", { codigo:"ATAQUE1" }, resolve))
+  registrar("Una web ajena no suplanta al escritorio", pantallaFalsa?.error === "pantalla_solo_local" && hostFalso?.error === "host_solo_local")
 
   await unir(proyector, { sala, pantalla: "proyectar" })
   await unir(controlA, { sala, pantalla: "control", pin, puedeAbrirProyector:false })
@@ -139,6 +152,16 @@ try {
   const nuevoViewer = await nuevoViewerP
   const viewerBloqueado = await new Promise(resolve => viewerAjeno.emit("emision:ver", { codigo:"OTRO99" }, resolve))
   registrar("La emisión directa queda aislada por código", hostOk?.ok && viewerOk?.ok && nuevoViewer.recibido && viewerBloqueado?.ok === false)
+
+  const senalLegitimaP = eventoEn(viewerBueno, "emision:senal", 700)
+  hostEmision.emit("emision:senal", { para:viewerBueno.id, data:{ tipo:"qa-legitima" } })
+  const senalLegitima = await senalLegitimaP
+  registrar("La señal directa legítima llega a su espectador", senalLegitima.recibido && senalLegitima.data?.data?.tipo === "qa-legitima")
+
+  const senalInyectadaP = eventoEn(viewerBueno, "emision:senal", 500)
+  viewerAjeno.emit("emision:senal", { para:viewerBueno.id, data:{ tipo:"inyeccion" } })
+  const senalInyectada = await senalInyectadaP
+  registrar("Otra sala no puede inyectar señal directa", !senalInyectada.recibido)
 
   // ── Modo caos: dos operadores escriben casi al mismo tiempo ─────────────
   const partesQa = Array.from({ length: 6 }, (_, i) => ({ tipo: `Parte ${i + 1}`, texto: `QA ${i + 1}` }))

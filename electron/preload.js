@@ -9,8 +9,19 @@ contextBridge.exposeInMainWorld("electron", {
   }
 })
 
+contextBridge.exposeInMainWorld("seguridadLocal", {
+  registrarPinSala: (sala, pin) => ipcRenderer.invoke("seguridad:registrar-pin-sala", { sala, pin }),
+})
+
+contextBridge.exposeInMainWorld("soporteSelah", {
+  diagnostico: () => ipcRenderer.invoke("soporte:diagnostico"),
+  abrirCarpeta: () => ipcRenderer.invoke("soporte:abrir-carpeta"),
+})
+
 contextBridge.exposeInMainWorld("oauthElectron", {
   abrirGoogle: (url) => ipcRenderer.invoke("oauth:abrir-google", url),
+  prepararRetorno: (tipo) => ipcRenderer.invoke("oauth:preparar-retorno", tipo),
+  diagnostico: (evento, codigo) => ipcRenderer.send("auth:diagnostico", { evento, codigo }),
 })
 
 // ── Transmisión en vivo (nativa) ─────────────────────────────────────────────
@@ -20,10 +31,15 @@ contextBridge.exposeInMainWorld("transmision", {
   detener: () => ipcRenderer.invoke("transmision:detener"),
   abrirLog: () => ipcRenderer.invoke("transmision:abrirLog"),
   diagnostico: () => ipcRenderer.invoke("transmision:diagnostico"),
+  probarDestinos: (urls) => ipcRenderer.invoke("transmision:probar-destinos", urls),
+  preparar: () => ipcRenderer.invoke("transmision:preparar"),
   enviarChunkConfirmado: (sesionId, chunk) => ipcRenderer.invoke("transmision:chunk-confirmado", { sesionId, chunk }),
   abortarAtasco: (sesionId, motivo) => ipcRenderer.invoke("transmision:abortar-atasco", sesionId, motivo),
   // Grabación local (respaldo del culto)
   iniciarGrabacion: (opts) => ipcRenderer.invoke("grabacion:iniciar", opts),
+  espacioGrabacion: () => ipcRenderer.invoke("grabacion:espacio"),
+  grabacionesPendientes: () => ipcRenderer.invoke("grabacion:pendientes"),
+  recuperarGrabacion: (id) => ipcRenderer.invoke("grabacion:recuperar", id),
   estadoGrabacion: () => ipcRenderer.invoke("grabacion:estado"),
   detenerGrabacion: () => ipcRenderer.invoke("grabacion:detener"),
   nuevoSegmentoGrabacion: () => ipcRenderer.invoke("grabacion:nuevoSegmento"),
@@ -45,6 +61,11 @@ contextBridge.exposeInMainWorld("transmision", {
     const h = (_e, d) => cb(d)
     ipcRenderer.on("transmision:stats", h)
     return () => ipcRenderer.removeListener("transmision:stats", h)
+  },
+  onEstadoDestino: (cb) => {
+    const h = (_e, d) => cb(d)
+    ipcRenderer.on("transmision:destino", h)
+    return () => ipcRenderer.removeListener("transmision:destino", h)
   },
   onGrabacionListo: (cb) => {
     const h = (_e, d) => cb(d)

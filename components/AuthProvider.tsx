@@ -60,7 +60,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     // podría falsear): Capacitor en el APK, window.electron (nuestro puente de
     // preload) en la app de escritorio.
     const esApp = typeof window !== "undefined" &&
-      (!!(window as any).Capacitor || !!(window as any).electron)
+      (Boolean((window as Window & { Capacitor?: object }).Capacitor) ||
+       Boolean((window as Window & { electron?: object }).electron))
     const destinoAnonimo = (!esApp && pathnameNormalizado === "/") ? "/bienvenido" : "/login"
 
     const checkSession = async () => {
@@ -168,7 +169,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
     // ✅ Escuchar cambios de sesión en tiempo real
     // Esto cubre el caso de login por magic link / OAuth
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange(event => {
       if (!activo) return
       if (event === "SIGNED_OUT") {
         try { localStorage.removeItem(KEY_MODO_SIN_CONEXION) } catch {}
@@ -185,7 +186,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       activo = false
       listener.subscription.unsubscribe()
     }
-  }, [pathname, router, isPublicRoute])
+  }, [pathname, pathnameNormalizado, router, isPublicRoute, requiereAdmin, requiereLider])
 
   if (checking && !isPublicRoute) {
     return (

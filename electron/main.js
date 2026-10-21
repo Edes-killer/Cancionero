@@ -7,17 +7,51 @@ protegerSalida(process.stderr)
 
 try { require("dotenv").config() } catch(e) {}
 const { app, BrowserWindow, shell, Menu, ipcMain, dialog, session, desktopCapturer } = require("electron")
+const registroOperativo = require("./registro-operativo")
 const path = require("path")
 const http = require("http")
+const crypto = require("crypto")
 const { Server } = require("socket.io")
-const { rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb, esAutorizacionSupabase, destinoCallbackOAuth } = require("./security")
+const {
+  rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esOrigenServidorSelah, esEnlaceWeb,
+  esAutorizacionSupabase, destinoCallbackOAuth, destinoCallbackOAuthLocal,
+  esDireccionLoopback, pantallaSelahValida, salaSelahValida,
+  pinSalaValido, pinSalaCoincide, puedeSenalizarEmision,
+} = require("./security")
 const fs = require("fs")
 const net = require("net")
 const os = require("os")
 const { spawn } = require("child_process")
 const SELAH_VERSION = require("../package.json").version
 const { DiagnosticoTransmision, ocultarDestinos } = require("./diagnostico-transmision")
+const { SeguimientoDestinos } = require("./estado-destinos")
 const { escribirFragmento } = require("./escritura-transmision")
+const { evaluarEspacioGrabacion } = require("./espacio-grabacion")
+const { buscarGrabacionesPendientes, crearPlanRecuperacion } = require("./grabaciones-pendientes")
+const { probarDestinos } = require("./preflight-red")
+
+try { registroOperativo.configurarCarpeta(app.getPath("userData")) } catch {}
+process.on("uncaughtExceptionMonitor", error => {
+  registroOperativo.registrar("excepcion_no_controlada", { error }, "critico")
+})
+process.on("unhandledRejection", razon => {
+  registroOperativo.registrar("promesa_no_controlada", { error: razon }, "error")
+})
+app.on("render-process-gone", (_evento, webContents, detalles) => {
+  registroOperativo.registrar("proceso_ventana_finalizado", {
+    razon: detalles?.reason,
+    codigo: detalles?.exitCode,
+    ruta: (() => { try { return new URL(webContents.getURL()).pathname } catch { return "" } })(),
+  }, detalles?.reason === "clean-exit" ? "info" : "critico")
+})
+app.on("child-process-gone", (_evento, detalles) => {
+  registroOperativo.registrar("proceso_auxiliar_finalizado", {
+    tipo: detalles?.type,
+    razon: detalles?.reason,
+    codigo: detalles?.exitCode,
+    servicio: detalles?.serviceName,
+  }, detalles?.reason === "clean-exit" ? "info" : "error")
+})
 
 // ── Transmisión en vivo (Incremento 2): canvas+audio (webm) → ffmpeg → RTMP ──
 // ffmpeg va empaquetado (ffmpeg-static). En la app empaquetada el binario se
@@ -31,8 +65,8 @@ try {
   }
 } catch (e) { console.error("ffmpeg-static no disponible:", e) }
 let ffmpegProc = null
-let pararIntencional = false // true cuando el usuario detiene (no es una caída)
 let encoderElegido = null // se cachea el primer encoder que funcione en este PC
+let encoderPromesa = null // evita ejecutar dos ensayos si se confirma mientras prepara
 
 // Grabación local (respaldo del culto): los MISMOS trozos que van a ffmpeg se
 // escriben también a disco (un solo encode → no ahoga PCs modestos). Cada trozo
@@ -42,6 +76,7 @@ let encoderElegido = null // se cachea el primer encoder que funcione en este PC
 let grabStream = null   // fs.WriteStream del segmento en curso
 let grabBase = null     // ruta base (sin extensión) del culto en curso
 let grabSegs = []       // rutas .mkv de los segmentos grabados
+const grabRutasProcesando = new Set() // remux/recuperación activa: no ofrecer como pendiente
 
 function carpetaGrabaciones() {
   let base
@@ -49,6 +84,33 @@ function carpetaGrabaciones() {
   const dir = path.join(base, "Selah Live")
   try { fs.mkdirSync(dir, { recursive: true }) } catch {}
   return dir
+}
+
+function estadoEspacioGrabacion() {
+  const carpeta = carpetaGrabaciones()
+  try {
+    const info = fs.statfsSync(carpeta)
+    const libresBytes = Number(info.bavail) * Number(info.bsize)
+    return { ok: true, carpeta, ...evaluarEspacioGrabacion(libresBytes) }
+  } catch (e) {
+    return { ok: false, carpeta, ...evaluarEspacioGrabacion(Number.NaN), error: e.message || String(e) }
+  }
+}
+
+function ejecutarFFmpeg(args) {
+  return new Promise(resolve => {
+    let terminado = false
+    const finalizar = resultado => {
+      if (terminado) return
+      terminado = true
+      resolve(resultado)
+    }
+    try {
+      const proc = spawn(ffmpegPath, args, { stdio: "ignore" })
+      proc.once("error", error => finalizar({ ok: false, error: error.message }))
+      proc.once("close", code => finalizar({ ok: code === 0, code }))
+    } catch (e) { finalizar({ ok: false, error: e.message || String(e) }) }
+  })
 }
 
 // Parsea la línea de estadísticas de ffmpeg (-stats) para el panel de salud.
@@ -67,61 +129,83 @@ function parseStats(m) {
   return { bitrate, fps, speed, drop, dup, timeMs }
 }
 
-// Probar si un encoder realmente arranca en ESTE PC (no basta con que exista;
-// h264_qsv puede estar listado pero fallar sin GPU Intel utilizable).
+// Opciones compartidas por la emisión y la prueba previa. Mantenerlas en un
+// solo lugar evita aprobar un encoder con una configuración distinta a la real.
+function opcionesVideoEncoder(encoder, kbps) {
+  const vb = `${kbps}k`, buf = `${kbps * 2}k`
+  const kf = ["-force_key_frames", "expr:gte(t,n_forced*2)"]
+  if (encoder === "h264_qsv") {
+    return ["-c:v", "h264_qsv", "-preset", "medium", "-scenario", "livestreaming", "-b:v", vb, "-maxrate", vb, "-bufsize", buf, "-g", "60", "-look_ahead", "0", ...kf]
+  }
+  if (encoder === "h264_mf") {
+    return ["-c:v", "h264_mf", "-rate_control", "cbr", "-scenario", "live_streaming", "-b:v", vb, "-maxrate", vb, "-bufsize", buf, "-pix_fmt", "yuv420p", "-g", "60", ...kf]
+  }
+  return [
+    "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-pix_fmt", "yuv420p",
+    "-g", "60", "-keyint_min", "60", ...kf,
+    "-b:v", vb, "-maxrate", vb, "-bufsize", buf,
+  ]
+}
+
+// Probar si un encoder realmente sostiene el perfil de producción en ESTE PC.
+// Que abra 0,3 s a 640×360 no demuestra que pueda emitir 1080p: ese ensayo corto
+// aprobó QSV en terreno y luego la sesión cayó hasta speed=0.03x y cero cuadros.
 function probarEncoder(enc) {
   return new Promise(resolve => {
-    let listo = false
-    const finalizar = ok => { if (!listo) { listo = true; resolve(ok) } }
+    let listo = false, stderr = "", limite
+    const finalizar = ok => {
+      if (listo) return
+      listo = true; clearTimeout(limite); resolve(ok)
+    }
     try {
       const p = spawn(ffmpegPath, [
-        "-hide_banner", "-loglevel", "error",
-        "-f", "lavfi", "-i", "testsrc=size=640x360:rate=15",
-        "-t", "0.3", "-c:v", enc, "-f", "null", "-",
-      ])
+        "-hide_banner", "-loglevel", "error", "-stats", "-stats_period", "0.5",
+        "-f", "lavfi", "-i", "testsrc=size=1920x1080:rate=30",
+        "-t", "2", ...opcionesVideoEncoder(enc, 6000), "-f", "null", "-",
+      ], { stdio: ["ignore", "ignore", "pipe"] })
+      p.stderr.on("data", dato => { stderr = (stderr + dato.toString()).slice(-16384) })
       p.on("error", () => finalizar(false))
-      p.on("close", code => finalizar(code === 0))
-      setTimeout(() => { try { p.kill("SIGKILL") } catch {} finalizar(false) }, 5000)
+      p.on("close", code => {
+        const cuadros = [...stderr.matchAll(/frame=\s*(\d+)/g)].reduce((max, m) => Math.max(max, Number(m[1]) || 0), 0)
+        const velocidad = [...stderr.matchAll(/speed=\s*([\d.]+)x/g)].reduce((max, m) => Math.max(max, Number(m[1]) || 0), 0)
+        finalizar(code === 0 && cuadros >= 55 && velocidad >= 0.95)
+      })
+      limite = setTimeout(() => { try { p.kill("SIGKILL") } catch {}; finalizar(false) }, 12000)
     } catch { finalizar(false) }
   })
 }
 
-// Elegir el mejor encoder disponible: hardware primero (liviano para el i3),
-// software (libx264) como último recurso siempre disponible.
+// Media Foundation es la primera opción en Windows: funciona sobre Intel/AMD y
+// sostuvo Full HD en el benchmark real. QSV queda como fallback Intel; una
+// prueba corta solo demuestra que abre, no que mantendrá un culto a 1080p.
+// Software (libx264) es el último recurso siempre disponible.
 async function elegirEncoder() {
   if (encoderElegido) return encoderElegido
-  for (const enc of ["h264_qsv", "h264_mf"]) {
-    if (await probarEncoder(enc)) { encoderElegido = enc; break }
-  }
-  if (!encoderElegido) encoderElegido = "libx264"
-  console.log("🎬 Encoder de transmisión:", encoderElegido)
-  return encoderElegido
+  if (!encoderPromesa) encoderPromesa = (async () => {
+    for (const enc of ["h264_mf", "h264_qsv", "libx264"]) {
+      if (await probarEncoder(enc)) { encoderElegido = enc; break }
+    }
+    if (!encoderElegido) throw Error("Este PC no logró sostener la prueba Full HD. Cierra programas pesados o usa otro equipo antes de transmitir.")
+    console.log("🎬 Encoder de transmisión:", encoderElegido)
+    return encoderElegido
+  })().finally(() => { encoderPromesa = null })
+  return encoderPromesa
 }
 
 // Argumentos de ffmpeg según el encoder. En todos: keyframe cada ~2s y AAC.
-// rtmpUrls: 1 destino → -f flv; varios → muxer "tee" (codifica una vez y empuja
-// a todas las plataformas a la vez). onfail=ignore: si una cae, las otras siguen.
+// Todos los destinos usan tee + fifo: se codifica una sola vez y cada salida
+// tiene su propia cola/reconexión. Una plataforma lenta o caída no bloquea las
+// demás ni obliga a recrear el MediaRecorder del renderer.
 function construirArgsFFmpeg(encoder, rtmpUrls, bitrateKbps) {
   const kbps = Math.max(600, Math.min(8000, Number(bitrateKbps) || 2500))
-  const vb = `${kbps}k`, buf = `${kbps * 2}k`
   // -loglevel warning + stats cada 5s: vemos problemas reales (cortes,
   // "Broken pipe", "Connection reset") y si el PC va al día (speed≈1.0x).
-  const base = ["-hide_banner", "-loglevel", "warning", "-stats", "-stats_period", "5", "-fflags", "+genpts", "-i", "pipe:0"]
+  // verbose permite reconocer Recovery attempt/successful del muxer FIFO. El
+  // lector de stderr filtra después todo lo que no sea operativo.
+  const base = ["-hide_banner", "-loglevel", "verbose", "-stats", "-stats_period", "5", "-fflags", "+genpts", "-i", "pipe:0"]
   // Keyframe cada 2s POR TIEMPO real: aunque el PC entregue pocos fps, el
   // keyframe llega a tiempo y la plataforma no corta (era la causa de los cortes).
-  const kf = ["-force_key_frames", "expr:gte(t,n_forced*2)"]
-  let video
-  if (encoder === "h264_qsv") {
-    video = ["-c:v", "h264_qsv", "-preset", "medium", "-scenario", "livestreaming", "-b:v", vb, "-maxrate", vb, "-bufsize", buf, "-g", "60", "-look_ahead", "0", ...kf]
-  } else if (encoder === "h264_mf") {
-    video = ["-c:v", "h264_mf", "-rate_control", "cbr", "-scenario", "live_streaming", "-b:v", vb, "-maxrate", vb, "-bufsize", buf, "-pix_fmt", "yuv420p", "-g", "60", ...kf]
-  } else {
-    video = [
-      "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-pix_fmt", "yuv420p",
-      "-g", "60", "-keyint_min", "60", ...kf,
-      "-b:v", vb, "-maxrate", vb, "-bufsize", buf,
-    ]
-  }
+  const video = opcionesVideoEncoder(encoder, kbps)
   // El canvas entrega 30 fps aunque una cámara móvil entregue 19/24 fps. Forzar
   // CFR y resincronizar el audio contra el reloj de video evita que la voz se
   // adelante o atrase progresivamente durante un culto largo.
@@ -130,11 +214,12 @@ function construirArgsFFmpeg(encoder, rtmpUrls, bitrateKbps) {
   const sincronizacion = ["-vf", "fps=30", "-fps_mode", "cfr", "-af", "aresample=async=1000:first_pts=0,asetpts=N/SR/TB"]
   const audio = ["-c:a", "aac", "-b:a", "160k", "-ar", "48000"]
   const comun = [...base, ...sincronizacion, ...video, ...audio, "-max_muxing_queue_size", "1024"]
-  if (rtmpUrls.length === 1) return [...comun, "-f", "flv", rtmpUrls[0]]
-  // Varios destinos: un solo encode → muxer tee a todas las plataformas.
-  // -flags +global_header es necesario para que el tee escriba la cabecera.
+  // FIFO reintenta cada salida por separado. La cola acotada descarta cuadros
+  // durante una caída antes que atrasar toda la emisión; al recuperar espera un
+  // keyframe. Tras 12 fallos consecutivos tee abandona solo esa salida.
+  const fifo = "attempt_recovery=1:recover_any_error=1:recovery_wait_time=5:restart_with_keyframe=1:drop_pkts_on_overflow=1:queue_size=300:max_recovery_attempts=12"
   const spec = rtmpUrls.map(u => `[f=flv:onfail=ignore]${u}`).join("|")
-  return [...comun, "-flags", "+global_header", "-map", "0:v", "-map", "0:a", "-f", "tee", spec]
+  return [...comun, "-flags", "+global_header", "-map", "0:v", "-map", "0:a", "-use_fifo", "1", "-fifo_options", fifo, "-f", "tee", spec]
 }
 
 function rutaLogTransmision() {
@@ -153,21 +238,39 @@ function registrarIPCTransmision() {
   let diagnosticoTx = null
   let sesionTx = null
   ipcMain.handle("transmision:diagnostico", () => diagnosticoTx?.estado(ffmpegProc?.stdin?.writableLength || 0, !!ffmpegProc) || null)
+  ipcMain.handle("transmision:probar-destinos", async (evento, urls) => {
+    if (!esOrigenInterno(evento.sender.getURL())) return { ok:false, error:"emisor_no_autorizado", resultados:[] }
+    const resultados = await probarDestinos(urls, 5_000)
+    return { ok:resultados.length > 0 && resultados.every(item => item.ok), resultados }
+  })
+  ipcMain.handle("transmision:preparar", async () => {
+    if (!ffmpegPath) return { ok: false, error: "No se encontró ffmpeg dentro de la app." }
+    try {
+      const encoder = await elegirEncoder()
+      return { ok: true, encoder, detalle: encoder === "libx264" ? "Full HD aprobado usando el procesador." : "Full HD aprobado usando aceleración de hardware." }
+    } catch (e) { return { ok: false, error: e.message || String(e) } }
+  })
   // Iniciar: levanta ffmpeg leyendo webm por stdin y empujando a RTMP.
-  ipcMain.handle("transmision:iniciar", async (_e, { rtmpUrl, rtmpUrls, bitrateKbps } = {}) => {
+  ipcMain.handle("transmision:iniciar", async (_e, { rtmpUrl, rtmpUrls, destinos, bitrateKbps } = {}) => {
     try {
       if (!ffmpegPath) return { ok: false, error: "No se encontró ffmpeg dentro de la app." }
       // Acepta un arreglo (multiplataforma) o una sola URL (compatibilidad).
-      const urls = (Array.isArray(rtmpUrls) ? rtmpUrls : [rtmpUrl]).filter(u => typeof u === "string" && /^rtmps?:\/\//i.test(u))
+      const candidatos = Array.isArray(destinos) && destinos.length
+        ? destinos.map((d, i) => ({
+          id: typeof d?.id === "string" && /^[a-z0-9_-]{1,30}$/i.test(d.id) ? d.id : `destino-${i + 1}`,
+          nombre: typeof d?.nombre === "string" ? d.nombre.trim().slice(0, 40) : `Destino ${i + 1}`,
+          url: d?.url,
+        }))
+        : (Array.isArray(rtmpUrls) ? rtmpUrls : [rtmpUrl]).map((url, i) => ({ id:`destino-${i + 1}`, nombre:`Destino ${i + 1}`, url }))
+      const salidas = candidatos.filter(d => typeof d.url === "string" && /^rtmps?:\/\//i.test(d.url))
+      const urls = salidas.map(d => d.url)
       if (urls.length === 0) return { ok: false, error: "No hay ninguna dirección de transmisión válida." }
       if (ffmpegProc) { try { ffmpegProc.kill("SIGKILL") } catch {} ffmpegProc = null }
-      pararIntencional = false // arrancamos: cualquier cierre siguiente es una caída
-
       const encoder = await elegirEncoder()
       const args = construirArgsFFmpeg(encoder, urls, bitrateKbps)
       const proc = spawn(ffmpegPath, args, { stdio: ["pipe", "ignore", "pipe"] })
       ffmpegProc = proc
-      const sesion = { id: require("crypto").randomUUID(), proc, propietario: _e.sender.id, falloEntrada: null }
+      const sesion = { id: require("crypto").randomUUID(), proc, propietario: _e.sender.id, falloEntrada: null, detencionIntencional: false, salidas }
       sesionTx = sesion
       const diagnostico = new DiagnosticoTransmision()
       diagnosticoTx = diagnostico
@@ -181,7 +284,15 @@ function registrarIPCTransmision() {
       const resumenTimer = setInterval(() => {
         if (ffmpegProc === proc) aLog(`\n[diagnóstico ${new Date().toISOString()}] ${JSON.stringify(diagnostico.estado(proc.stdin.writableLength, true))}\n`)
       }, 10000)
-      proc.once("close", () => { clearInterval(resumenTimer); aLog(`\n[diagnóstico final] ${JSON.stringify(diagnostico.estado(proc.stdin.writableLength, false))}\n`) })
+      proc.once("close", code => {
+        clearInterval(resumenTimer)
+        if (sesion.falloEntrada) diagnostico.finalizar(sesion.falloEntrada, "entrada", code)
+        else if (sesion.detencionIntencional) diagnostico.finalizar("Finalizada por el operador.", "operador", code)
+        else if (diagnostico.fin) { if (Number.isInteger(code)) diagnostico.codigoSalida = code }
+        else if (diagnostico.errorTipo === "conexion") diagnostico.finalizar("La conexión con el destino se interrumpió y el motor terminó.", "conexion", code)
+        else diagnostico.finalizar(`El motor de transmisión terminó inesperadamente${Number.isInteger(code) ? ` (código ${code})` : ""}.`, "motor", code)
+        aLog(`\n[diagnóstico final] ${JSON.stringify(diagnostico.estado(proc.stdin.writableLength, false))}\n`)
+      })
 
       const enviar = (canal, dato) => {
         // Transmisión ahora vive en una BrowserWindow independiente. El motor
@@ -190,6 +301,8 @@ function registrarIPCTransmision() {
           if (!win.isDestroyed() && win.webContents.getURL().includes("/en-vivo")) win.webContents.send(canal, dato)
         }
       }
+      const seguimientoDestinos = new SeguimientoDestinos(salidas, estado => enviar("transmision:destino", estado))
+      seguimientoDestinos.iniciar()
       let stderrPendiente = ""
       proc.stderr.on("data", d => {
         diagnostico.stderr(d.toString())
@@ -198,15 +311,35 @@ function registrarIPCTransmision() {
         // No divulgar mitades de una URL/clave cortada entre dos chunks.
         for (const linea of lineas) {
           if (!linea) continue
+          const eventoDestino = seguimientoDestinos.linea(linea)
+          if (eventoDestino.recuperado) diagnostico.recuperacionDestino()
+          const st = parseStats(linea)
+          const relevante = !!st || /Recovery |FIFO queue full|Error|failed|TLS|Non-monotonic|backward in time/i.test(linea)
+          if (!relevante) continue
           const m = ocultarDestinos(linea) + "\n"
           console.error("[ffmpeg]", m); aLog(m); enviar("transmision:log", m)
-          const st = parseStats(linea); if (st) enviar("transmision:stats", st)
+          if (st) enviar("transmision:stats", st)
         }
         if (stderrPendiente.length > 65536) stderrPendiente = "[línea excesiva omitida]"
       })
       proc.once("close", () => { if (stderrPendiente) { diagnostico.stderr("\n"); aLog(stderrPendiente + "\n") } })
-      proc.on("error", err => { aLog(`\n[error de proceso] ${err.message}\n`); if (ffmpegProc === proc) { enviar("transmision:estado", { estado: "error", error: err.message, inesperado: !pararIntencional }); ffmpegProc = null } })
-      proc.on("close", code => { aLog(`\n[ffmpeg terminó con código ${code}]\n`); if (ffmpegProc === proc) { enviar("transmision:estado", { estado: "terminado", code, error: sesion.falloEntrada, inesperado: !pararIntencional && !sesion.falloEntrada }); ffmpegProc = null } })
+      proc.on("error", err => {
+        diagnostico.finalizar(`No se pudo ejecutar el motor de transmisión: ${err.message}`, "motor")
+        aLog(`\n[error de proceso] ${err.message}\n`)
+        if (ffmpegProc === proc) {
+          const final = diagnostico.estado(proc.stdin.writableLength, false)
+          enviar("transmision:estado", { estado: "error", error: err.message, diagnostico: final.diagnostico, finTipo: final.finTipo, inesperado: !sesion.detencionIntencional })
+          ffmpegProc = null
+        }
+      })
+      proc.on("close", code => {
+        aLog(`\n[ffmpeg terminó con código ${code}]\n`)
+        if (ffmpegProc === proc) {
+          const final = diagnostico.estado(proc.stdin.writableLength, false)
+          enviar("transmision:estado", { estado: "terminado", code, error: sesion.falloEntrada, diagnostico: final.diagnostico, finTipo: final.finTipo, inesperado: !sesion.detencionIntencional && !sesion.falloEntrada })
+          ffmpegProc = null
+        }
+      })
       proc.stdin.on("error", () => {}) // evitar crash si RTMP corta el pipe
 
       return { ok: true, encoder, sesionId: sesion.id }
@@ -237,12 +370,13 @@ function registrarIPCTransmision() {
   })
 
   // Detener: cerrar stdin para que ffmpeg termine limpio; forzar si se demora.
-  // pararIntencional evita que el cierre se trate como una caída (reconexión).
+  // La marca vive en la sesión concreta para que el cierre tardío de un
+  // proceso anterior no contamine una reconexión nueva.
   ipcMain.handle("transmision:detener", async () => {
     try {
-      pararIntencional = true
       if (ffmpegProc) {
         const p = ffmpegProc; ffmpegProc = null
+        if (sesionTx?.proc === p) sesionTx.detencionIntencional = true
         try { p.stdin.end() } catch {}
         setTimeout(() => { try { p.kill("SIGKILL") } catch {} }, 1500)
       }
@@ -252,6 +386,47 @@ function registrarIPCTransmision() {
 
   // ── Grabación local (respaldo) ────────────────────────────────────────────
   let grabUltimosBytes = 0, grabUltimoAvance = 0
+  ipcMain.handle("grabacion:espacio", () => estadoEspacioGrabacion())
+  ipcMain.handle("grabacion:pendientes", () => {
+    const grupos = buscarGrabacionesPendientes(carpetaGrabaciones(), [...grabSegs, ...grabRutasProcesando])
+    return grupos.map(({ archivos, ...grupo }) => ({ ...grupo, segmentos: archivos.length }))
+  })
+  ipcMain.handle("grabacion:recuperar", async (_e, id) => {
+    let archivosProcesando = []
+    let lista = null
+    let salida = null
+    try {
+      if (!ffmpegPath) return { ok: false, error: "No se encontró el motor de video para recuperar la grabación." }
+      const grupos = buscarGrabacionesPendientes(carpetaGrabaciones(), [...grabSegs, ...grabRutasProcesando])
+      const grupo = grupos.find(item => item.id === id)
+      if (!grupo) return { ok: false, error: "La grabación pendiente ya no existe o está siendo utilizada." }
+      archivosProcesando = grupo.archivos.slice()
+      for (const archivo of archivosProcesando) grabRutasProcesando.add(archivo)
+
+      const carpeta = carpetaGrabaciones()
+      salida = path.join(carpeta, `${grupo.nombre} recuperada.mp4`)
+      for (let i = 2; fs.existsSync(salida); i++) salida = path.join(carpeta, `${grupo.nombre} recuperada (${i}).mp4`)
+      if (grupo.archivos.length > 1) {
+        lista = path.join(carpeta, `recuperar-${Date.now()}.txt`)
+      }
+      const plan = crearPlanRecuperacion(grupo.archivos, salida, lista)
+      if (lista) fs.writeFileSync(lista, plan.contenidoLista)
+      const resultado = await ejecutarFFmpeg(plan.args)
+      if (!resultado.ok || !fs.existsSync(salida) || fs.statSync(salida).size === 0) {
+        try { if (fs.existsSync(salida)) fs.unlinkSync(salida) } catch {}
+        return { ok: false, error: "No se pudo reconstruir el video. Los segmentos originales se conservaron.", detalle: resultado.error || resultado.code }
+      }
+      for (const archivo of grupo.archivos) { try { fs.unlinkSync(archivo) } catch {} }
+      return { ok: true, ruta: salida, carpeta }
+    } catch (e) {
+      try { if (salida && fs.existsSync(salida)) fs.unlinkSync(salida) } catch {}
+      return { ok: false, error: e.message || String(e) }
+    }
+    finally {
+      if (lista) { try { fs.unlinkSync(lista) } catch {} }
+      for (const archivo of archivosProcesando) grabRutasProcesando.delete(archivo)
+    }
+  })
   ipcMain.handle("grabacion:estado", () => {
     if (!grabStream) return { estado: "detenida" }
     if (grabStream.errored || grabStream.destroyed) return { estado: "error" }
@@ -270,6 +445,8 @@ function registrarIPCTransmision() {
   // Abre el archivo del culto y empieza a recibir trozos (los mismos del stream).
   ipcMain.handle("grabacion:iniciar", async (_e, { nombre } = {}) => {
     try {
+      const espacio = estadoEspacioGrabacion()
+      if (!espacio.puedeGrabar) return { ok: false, error: espacio.detalle, espacio }
       if (grabStream) { try { grabStream.end() } catch {} grabStream = null }
       grabSegs = []
       const limpio = String(nombre || "Culto").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 40) || "Culto"
@@ -302,15 +479,22 @@ function registrarIPCTransmision() {
   ipcMain.handle("grabacion:detener", async () => {
     try {
       const segs = grabSegs.slice(); const s = grabStream
+      for (const archivo of segs) grabRutasProcesando.add(archivo)
       grabStream = null; grabBase = null; grabSegs = []
-      if (!s || segs.length === 0) return { ok: false, error: "No había grabación en curso." }
+      if (!s || segs.length === 0) {
+        for (const archivo of segs) grabRutasProcesando.delete(archivo)
+        return { ok: false, error: "No había grabación en curso." }
+      }
       await new Promise(res => { try { s.end(res) } catch { res() } })
       const carpeta = carpetaGrabaciones()
       const enviar = (canal, dato) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(canal, dato) }
       const mp4 = segs[0].replace(/\.mkv$/i, ".mp4")
       const listo = (ruta) => enviar("grabacion:listo", { ok: true, ruta, carpeta })
 
-      if (!ffmpegPath) { listo(segs[0]); return { ok: true, ruta: segs[0], carpeta } }
+      if (!ffmpegPath) {
+        for (const archivo of segs) grabRutasProcesando.delete(archivo)
+        listo(segs[0]); return { ok: true, ruta: segs[0], carpeta }
+      }
       try {
         let proc
         if (segs.length === 1) {
@@ -323,12 +507,24 @@ function registrarIPCTransmision() {
           proc = spawn(ffmpegPath, ["-y", "-f", "concat", "-safe", "0", "-i", lista, "-c", "copy", "-movflags", "+faststart", mp4], { stdio: "ignore" })
           proc.on("close", () => { try { fs.unlinkSync(lista) } catch {} })
         }
-        proc.on("close", c => {
-          if (c === 0) { for (const p of segs) { try { fs.unlinkSync(p) } catch {} } listo(mp4) }
+        let finalizado = false
+        const finalizar = exito => {
+          if (finalizado) return
+          finalizado = true
+          let salidaValida = false
+          try { salidaValida = exito && fs.existsSync(mp4) && fs.statSync(mp4).size > 0 } catch {}
+          if (salidaValida) { for (const p of segs) { try { fs.unlinkSync(p) } catch {} } listo(mp4) }
           else listo(segs[0])
+          for (const archivo of segs) grabRutasProcesando.delete(archivo)
+        }
+        proc.on("close", c => {
+          finalizar(c === 0)
         })
-        proc.on("error", () => listo(segs[0]))
-      } catch { listo(segs[0]) }
+        proc.on("error", () => finalizar(false))
+      } catch {
+        for (const archivo of segs) grabRutasProcesando.delete(archivo)
+        listo(segs[0])
+      }
       return { ok: true, ruta: mp4, carpeta }
     } catch (e) { return { ok: false, error: e.message || String(e) } }
   })
@@ -522,6 +718,7 @@ ipcMain.handle("firewall:reparar", async () => {
 if (ffmpegPath) setTimeout(() => { elegirEncoder().catch(() => {}) }, 4000)
 
 // ✅ Single instance lock — necesario para que NSIS pueda cerrar la app al actualizar
+const enlaceOAuthInicial = process.argv.find(a => typeof a === "string" && a.startsWith("selahlive://")) || null
 const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
   app.quit()
@@ -531,11 +728,72 @@ if (!gotTheLock) {
 // Google OAuth corre en el navegador del sistema. La ventana principal nunca
 // navega a Google y solo acepta el enlace de regreso mientras espera un login.
 let oauthPendienteHasta = 0
-function recibirCallbackOAuth(valor) {
-  if (Date.now() > oauthPendienteHasta) return false
-  const destino = destinoCallbackOAuth(valor)
-  if (!destino || !mainWindow || mainWindow.isDestroyed()) return false
+let oauthPendienteNonce = ""
+let protocoloSelahRegistrado = false
+function rutaOAuthPendiente() {
+  try { return path.join(app.getPath("userData"), "oauth-pendiente.json") }
+  catch { return null }
+}
+function guardarOAuthPendiente() {
+  oauthPendienteHasta = Date.now() + 10 * 60 * 1000
+  oauthPendienteNonce = crypto.randomBytes(24).toString("hex")
+  const ruta = rutaOAuthPendiente()
+  if (!ruta) return oauthPendienteNonce
+  try { fs.writeFileSync(ruta, JSON.stringify({ expira: oauthPendienteHasta, nonce: oauthPendienteNonce }), { encoding: "utf8", mode: 0o600 }) }
+  catch (e) { console.error("No se pudo guardar el retorno de Google:", e?.message) }
+  return oauthPendienteNonce
+}
+function oauthPendienteVigente(nonce = "") {
+  if (Date.now() <= oauthPendienteHasta) {
+    return !nonce || (oauthPendienteNonce && nonce === oauthPendienteNonce)
+  }
+  const ruta = rutaOAuthPendiente()
+  if (!ruta) return false
+  try {
+    const guardado = JSON.parse(fs.readFileSync(ruta, "utf8")) || {}
+    const expira = Number(guardado.expira || 0)
+    if (Date.now() <= expira) {
+      oauthPendienteHasta = expira
+      oauthPendienteNonce = typeof guardado.nonce === "string" ? guardado.nonce : ""
+      return !nonce || (oauthPendienteNonce && nonce === oauthPendienteNonce)
+    }
+  } catch (e) {}
+  try { fs.unlinkSync(ruta) } catch (e) {}
+  return false
+}
+function limpiarOAuthPendiente() {
   oauthPendienteHasta = 0
+  oauthPendienteNonce = ""
+  const ruta = rutaOAuthPendiente()
+  if (ruta) try { fs.unlinkSync(ruta) } catch (e) {}
+}
+function recibirCallbackOAuthLocal(valor) {
+  const callback = destinoCallbackOAuthLocal(valor)
+  if (!callback || !oauthPendienteVigente(callback.nonce)) {
+    console.warn("⚠️ Login: retorno local rechazado")
+    return false
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+  console.log("🔐 Login: retorno local recibido desde el navegador")
+  limpiarOAuthPendiente()
+  mainWindow.loadURL(callback.destino)
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+  return true
+}
+function recibirCallbackOAuth(valor) {
+  console.log("🔐 Login: retorno recibido desde el navegador o correo")
+  if (!oauthPendienteVigente()) {
+    console.warn("⚠️ Login: retorno ignorado porque no había un acceso pendiente")
+    return false
+  }
+  const destino = destinoCallbackOAuth(valor)
+  if (!destino || !mainWindow || mainWindow.isDestroyed()) {
+    console.warn("⚠️ Login: retorno inválido o ventana no disponible")
+    return false
+  }
+  limpiarOAuthPendiente()
   mainWindow.loadURL(destino)
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.focus()
@@ -544,7 +802,11 @@ function recibirCallbackOAuth(valor) {
 app.on("second-instance", (_evento, argumentos) => {
   const enlace = argumentos.find(a => typeof a === "string" && a.startsWith("selahlive://"))
   if (enlace) recibirCallbackOAuth(enlace)
-  else if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus()
+  else if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  }
 })
 app.on("open-url", (evento, enlace) => { evento.preventDefault(); recibirCallbackOAuth(enlace) })
 
@@ -553,13 +815,34 @@ ipcMain.handle("oauth:abrir-google", async (evento, url) => {
     return { ok: false, error: "No se pudo validar el enlace de Google." }
   }
   try {
-    oauthPendienteHasta = Date.now() + 10 * 60 * 1000
+    if (!oauthPendienteVigente()) guardarOAuthPendiente()
     await shell.openExternal(url)
     return { ok: true }
   } catch {
-    oauthPendienteHasta = 0
+    limpiarOAuthPendiente()
     return { ok: false, error: "No se pudo abrir el navegador para iniciar sesión." }
   }
+})
+
+ipcMain.handle("oauth:preparar-retorno", async (evento, tipo) => {
+  if (!mainWindow || evento.sender !== mainWindow.webContents) return { ok: false }
+  if (tipo !== "google" && !protocoloSelahRegistrado) {
+    return { ok: false, error: "Windows no registró el enlace de regreso a Selah." }
+  }
+  const nonce = guardarOAuthPendiente()
+  return {
+    ok: true,
+    redirectTo: `http://localhost:3000/auth/callback/?selah_nonce=${encodeURIComponent(nonce)}`,
+  }
+})
+
+// Diagnóstico mínimo y sin datos personales: permite que la consola principal
+// explique por qué falló Auth sin imprimir correo, contraseña, token ni URL.
+ipcMain.on("auth:diagnostico", (evento, datos) => {
+  if (!mainWindow || evento.sender !== mainWindow.webContents) return
+  const nombre = typeof datos?.evento === "string" ? datos.evento.replace(/[^a-z0-9_-]/gi, "").slice(0, 40) : "desconocido"
+  const codigo = typeof datos?.codigo === "string" ? datos.codigo.replace(/[^a-z0-9_-]/gi, "").slice(0, 50) : ""
+  console.log(`🔐 Login: ${nombre}${codigo ? ` · ${codigo}` : ""}`)
 })
 
 // ── Obtener IP local ─────────────────────────────────────────────────────────
@@ -626,8 +909,44 @@ const MIME = {
 }
 
 function startStaticServer(outDir, port) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
+      // Puente OAuth loopback: el navegador del sistema recibe el callback de
+      // Supabase y entrega su URL completa (incluido el fragmento) al proceso
+      // Electron. Solo se acepta desde este mismo computador, con nonce
+      // temporal y mientras existe un inicio de sesión pendiente.
+      if (req.url?.startsWith("/oauth/entregar") && req.method === "POST") {
+        const remoto = req.socket.remoteAddress || ""
+        const esLocal = remoto === "127.0.0.1" || remoto === "::1" || remoto === "::ffff:127.0.0.1"
+        if (!esLocal) { res.writeHead(403); res.end(); return }
+        const trozos = []
+        let bytes = 0, excedido = false
+        req.on("data", trozo => {
+          if (excedido) return
+          bytes += trozo.length
+          if (bytes > 32 * 1024) {
+            excedido = true
+            res.writeHead(413, { "Content-Type": "application/json" })
+            res.end(JSON.stringify({ ok: false }))
+            return
+          }
+          trozos.push(trozo)
+        })
+        req.on("end", () => {
+          if (excedido) return
+          try {
+            const datos = JSON.parse(Buffer.concat(trozos).toString("utf8"))
+            const ok = recibirCallbackOAuthLocal(typeof datos?.url === "string" ? datos.url : "")
+            res.writeHead(ok ? 200 : 403, { "Content-Type": "application/json", "Cache-Control": "no-store" })
+            res.end(JSON.stringify({ ok }))
+          } catch {
+            res.writeHead(400, { "Content-Type": "application/json" })
+            res.end(JSON.stringify({ ok: false }))
+          }
+        })
+        return
+      }
+
       // Limpiar query strings y hash
       let urlPath
       try { urlPath = decodeURIComponent(req.url.split("?")[0].split("#")[0]) }
@@ -660,7 +979,13 @@ function startStaticServer(outDir, port) {
       fs.createReadStream(filePath).pipe(res)
     })
 
+    let iniciado = false
+    server.on("error", error => {
+      if (!iniciado) reject(error)
+      else console.error(`Servidor web detenido: ${error?.code || error?.message || "error"}`)
+    })
     server.listen(port, "0.0.0.0", () => {
+      iniciado = true
       console.log(`🌐 Servidor web en http://localhost:${port}`)
       resolve(server)
     })
@@ -670,6 +995,19 @@ function startStaticServer(outDir, port) {
 // ── Servidor Socket.IO ─────────────────────────────────────────────────────────
 let estadosPorSala = {}
 const pinesPorSala = {}
+const intentosPinPorOrigen = new Map()
+ipcMain.handle("seguridad:registrar-pin-sala", (evento, { sala, pin } = {}) => {
+  if (!mainWindow || mainWindow.isDestroyed() || evento.sender !== mainWindow.webContents) return { ok:false, error:"emisor_no_autorizado" }
+  if (!salaSelahValida(sala)) return { ok:false, error:"sala_invalida" }
+  if (pin == null || pin === "") {
+    delete pinesPorSala[sala]
+    return { ok:true, conPin:false }
+  }
+  const pinFinal = String(pin)
+  if (!pinSalaValido(pinFinal)) return { ok:false, error:"pin_invalido" }
+  pinesPorSala[sala] = pinFinal
+  return { ok:true, conPin:true }
+})
 // ✅ Banner de urgencia: se superpone a lo que sea que esté proyectando sin
 // reemplazarlo, así que se guarda aparte de estadosPorSala. No se persiste
 // a disco -es intencionalmente efímero.
@@ -730,6 +1068,14 @@ function startSocketServer(port) {
     res.setHeader("Access-Control-Allow-Headers", "Content-Type")
     if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return }
 
+    const exigirSolicitudLocal = () => {
+      const origen = req.headers.origin
+      if (esDireccionLoopback(req.socket?.remoteAddress) && (!origen || esOrigenServidorSelah(origen))) return true
+      res.writeHead(403, { "Content-Type":"application/json" })
+      res.end(JSON.stringify({ error:"solo_escritorio_local" }))
+      return false
+    }
+
     if (req.url?.startsWith("/qr")) {
       const handler = async () => {
         try {
@@ -757,7 +1103,7 @@ function startSocketServer(port) {
         puerto: 4000,
         app: "selah-live",
         version: SELAH_VERSION,
-        qaProtocol: 6,
+        qaProtocol: 7,
       }))
       return
     }
@@ -767,12 +1113,13 @@ function startSocketServer(port) {
         ok: true,
         app: "selah-live",
         version: SELAH_VERSION,
-        qaProtocol: 6,
+        qaProtocol: 7,
         puerto: 4000,
       }))
       return
     }
     if (req.url?.startsWith("/api/imagenes/listar")) {
+      if (!exigirSolicitudLocal()) return
       const dir = path.join(app.getPath("userData"), "imagenes")
       if (!fs.existsSync(dir)) { res.writeHead(200, {"Content-Type":"application/json"}); res.end(JSON.stringify({imagenes:[]})); return }
       const archivos = fs.readdirSync(dir).filter(f => /\.(webp|jpg|jpeg|png|gif)$/i.test(f))
@@ -797,6 +1144,7 @@ function startSocketServer(port) {
     }
 
     if (req.url === "/api/imagenes/eliminar" && req.method === "DELETE") {
+      if (!exigirSolicitudLocal()) return
       let body = ""
       let excedido = false
       req.on("data", c => {
@@ -832,6 +1180,7 @@ function startSocketServer(port) {
     // por PowerShell. Si no hay PowerPoint instalado o algo falla, responde
     // con error claro y el frontend muestra instrucciones manuales.
     if (req.url === "/api/ppt/convertir" && req.method === "POST") {
+      if (!exigirSolicitudLocal()) return
       const chunksPpt = []
       let bytesPpt = 0, excedidoPpt = false
       req.on("data", c => {
@@ -927,6 +1276,7 @@ try {
     }
 
     if (req.url === "/api/imagenes/guardar" && req.method === "POST") {
+      if (!exigirSolicitudLocal()) return
       const dir = path.join(app.getPath("userData"), "imagenes")
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
       const chunks = []
@@ -1009,7 +1359,30 @@ try {
     if (sala) io.to(sala).emit("estado-presencia", presenciaSala(sala))
   }
 
+  const claveIntentoPin = (socket, sala) => `${socket.handshake.address || "sin-ip"}|${sala}`
+  const estadoIntentosPin = (socket, sala) => {
+    const clave = claveIntentoPin(socket, sala)
+    const previo = intentosPinPorOrigen.get(clave)
+    if (!previo) return { clave, intentos:0, bloqueadoHasta:0 }
+    if (previo.bloqueadoHasta && previo.bloqueadoHasta <= Date.now()) {
+      intentosPinPorOrigen.delete(clave)
+      return { clave, intentos:0, bloqueadoHasta:0 }
+    }
+    return { clave, ...previo }
+  }
+  const registrarFalloPin = (socket, sala) => {
+    const estado = estadoIntentosPin(socket, sala)
+    const intentos = estado.intentos + 1
+    intentosPinPorOrigen.set(estado.clave, {
+      intentos,
+      bloqueadoHasta: intentos >= 5 ? Date.now() + 30_000 : 0,
+    })
+  }
+  const limpiarFallosPin = (socket, sala) => intentosPinPorOrigen.delete(claveIntentoPin(socket, sala))
+
   io.on("connection", (socket) => {
+    const origen = socket.handshake.headers?.origin
+    socket.data.localConfiable = esDireccionLoopback(socket.handshake.address) && (!origen || esOrigenServidorSelah(origen))
     console.log("📱 Cliente conectado:", socket.id)
 
     // Autorización por evento. Antes un cliente podía unirse como "musicos" y
@@ -1028,18 +1401,69 @@ try {
       next(new Error("accion_no_autorizada"))
     })
 
-    socket.on("unirse-sala", ({ sala, pantalla, pin, puedeAbrirProyector }, callback) => {
+    socket.on("unirse-sala", (datos = {}, callback) => {
+      const { sala, pantalla, pin, puedeAbrirProyector } = datos && typeof datos === "object" ? datos : {}
       const salaFinal = sala || "global"
+      if (!salaSelahValida(salaFinal) || !pantallaSelahValida(pantalla)) {
+        if (typeof callback === "function") callback({ ok:false, error:"solicitud_invalida" })
+        socket.emit("entrada-invalida", { evento:"unirse-sala" })
+        return
+      }
 
-      if (pantalla === "control" || pantalla === "canciones" || pantalla === "inicio") {
-        const pinG = pinesPorSala[salaFinal]
-        if (pinG && String(pin || "") !== String(pinG)) {
-          socket.emit("pin-invalido", { mensaje: "PIN incorrecto. Verifica en configuración." })
-          if (typeof callback === "function") callback({ ok: false, error: "pin_invalido" })
+      const local = socket.data.localConfiable === true
+      if ((pantalla === "proyectar" || pantalla === "en-vivo") && !local) {
+        if (typeof callback === "function") callback({ ok:false, error:"pantalla_solo_local" })
+        return
+      }
+
+      const requierePin = pantalla === "control" || pantalla === "canciones" || pantalla === "inicio"
+      const pinRecibido = String(pin || "")
+      if (requierePin) {
+        const pinGuardado = pinesPorSala[salaFinal]
+        const intentos = estadoIntentosPin(socket, salaFinal)
+        if (!local && intentos.bloqueadoHasta > Date.now()) {
+          socket.emit("pin-invalido", { mensaje:"Demasiados intentos. Espera 30 segundos." })
+          if (typeof callback === "function") callback({ ok:false, error:"pin_bloqueado" })
           return
         }
-        if (!pinG && pin) pinesPorSala[salaFinal] = String(pin)
+
+        // Solo una pantalla que corre dentro de Electron puede registrar o
+        // actualizar el PIN autoritativo. Un celular que llega primero jamás
+        // puede apropiarse de la sala.
+        if (local) {
+          if (!pinGuardado && pinSalaValido(pinRecibido)) {
+            pinesPorSala[salaFinal] = pinRecibido
+          } else if (pinGuardado && !pinSalaCoincide(pinRecibido, pinGuardado)) {
+            socket.emit("pin-invalido", { mensaje:"PIN incorrecto. Verifica en configuración." })
+            if (typeof callback === "function") callback({ ok:false, error:"pin_invalido" })
+            return
+          }
+        } else if (!pinGuardado) {
+          if (typeof callback === "function") callback({ ok:false, error:"pin_no_configurado" })
+          return
+        } else if (!pinSalaCoincide(pinRecibido, pinGuardado)) {
+          registrarFalloPin(socket, salaFinal)
+          socket.emit("pin-invalido", { mensaje:"PIN incorrecto. Verifica en configuración." })
+          if (typeof callback === "function") callback({ ok:false, error:"pin_invalido" })
+          return
+        } else {
+          limpiarFallosPin(socket, salaFinal)
+        }
+      } else if (pantalla === "musicos" && pinesPorSala[salaFinal] && !local && !pinSalaCoincide(pinRecibido, pinesPorSala[salaFinal])) {
+        const intentos = estadoIntentosPin(socket, salaFinal)
+        if (intentos.bloqueadoHasta > Date.now()) {
+          socket.emit("pin-invalido", { mensaje:"Demasiados intentos. Espera 30 segundos." })
+          if (typeof callback === "function") callback({ ok:false, error:"pin_bloqueado" })
+          return
+        }
+        registrarFalloPin(socket, salaFinal)
+        socket.emit("pin-invalido", { mensaje:"PIN incorrecto. Pídeselo al encargado." })
+        if (typeof callback === "function") callback({ ok:false, error:"pin_invalido" })
+        return
       }
+
+      const salaAnterior = socket.data.sala
+      if (salaAnterior && salaAnterior !== salaFinal) socket.leave(salaAnterior)
 
       socket.data.sala = salaFinal
       socket.data.pantalla = pantalla || "desconocida"
@@ -1088,7 +1512,7 @@ try {
     socket.on("bridge-nube", ({ evento, data } = {}) => {
       // Solo el proyector legítimamente suscrito al canal de Supabase actúa
       // como puente. Un cliente LAN cualquiera no puede inyectar eventos.
-      if (socket.data.pantalla === "proyectar" && EVENTOS_PUENTE_NUBE.has(evento)) {
+      if (socket.data.localConfiable === true && socket.data.pantalla === "proyectar" && EVENTOS_PUENTE_NUBE.has(evento)) {
         io.to(salaDe(socket)).emit(evento, data)
       }
     })
@@ -1271,10 +1695,20 @@ try {
 
     socket.on("camara:host", ({ codigo } = {}, cb) => {
       const codigoFinal = String(codigo || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8)
-      if (codigoFinal.length < 4) {
+      if (socket.data.localConfiable !== true) {
+        if (typeof cb === "function") cb({ ok:false, error:"host_solo_local" })
+        return
+      }
+      if (codigoFinal.length < 6) {
         if (typeof cb === "function") cb({ ok: false, error: "codigo-invalido" })
         return
       }
+      const hostExistente = io.sockets.adapter.rooms.get(salaCam(codigoFinal))
+      if (hostExistente && [...hostExistente].some(id => id !== socket.id && io.sockets.sockets.get(id)?.data?.camaraRol === "host")) {
+        if (typeof cb === "function") cb({ ok:false, error:"codigo-ocupado" })
+        return
+      }
+      if (socket.data.camaraCodigo && socket.data.camaraCodigo !== codigoFinal) socket.leave(salaCam(socket.data.camaraCodigo))
       socket.data.camaraCodigo = codigoFinal
       socket.data.camaraRol = "host"
       socket.join(salaCam(codigoFinal))
@@ -1292,6 +1726,7 @@ try {
         if (typeof cb === "function") cb({ ok: false, error: "identidad-ocupada" })
         return
       }
+      if (socket.data.camaraCodigo && salaCam(socket.data.camaraCodigo) !== room) socket.leave(salaCam(socket.data.camaraCodigo))
       socket.data.camaraDispositivo = identidad
       socket.data.camaraCodigo = codigo
       socket.data.camaraRol = "emisor"
@@ -1315,7 +1750,7 @@ try {
       if (codigo && salaCam(codigo) !== salaCam(c)) return
       if (c) {
         socket.broadcast.to(salaCam(c)).emit("camara:par-fin", { de: socket.id, rol: socket.data.camaraRol, dispositivoId: socket.data.camaraDispositivo, intencional: true })
-        socket.leave(salaCam(c)); socket.data.camaraCodigo = null; socket.data.camaraDispositivo = null
+        socket.leave(salaCam(c)); socket.data.camaraCodigo = null; socket.data.camaraDispositivo = null; socket.data.camaraRol = null
       }
     })
 
@@ -1333,7 +1768,9 @@ try {
 
     socket.on("emision:host", ({ codigo } = {}, cb) => {
       const codigoFinal = codigoEmisionSeguro(codigo)
+      if (socket.data.localConfiable !== true) { if (typeof cb === "function") cb({ ok:false, error:"host_solo_local" }); return }
       if (codigoFinal.length < 5) { if (typeof cb === "function") cb({ ok:false, error:"codigo-invalido" }); return }
+      if (socket.data.emisionCodigo && socket.data.emisionCodigo !== codigoFinal) socket.leave(salaEmision(socket.data.emisionCodigo))
       socket.data.emisionRol = "emisor"
       socket.data.emisionCodigo = codigoFinal
       socket.join(salaEmision(codigoFinal))
@@ -1345,6 +1782,7 @@ try {
       const codigoFinal = codigoEmisionSeguro(codigo)
       const emisorId = emisorDeEmision(codigoFinal)
       if (!emisorId) { if (typeof cb === "function") cb({ ok: false, error: "sin-emision" }); return }
+      if (socket.data.emisionCodigo && socket.data.emisionCodigo !== codigoFinal) socket.leave(salaEmision(socket.data.emisionCodigo))
       socket.data.emisionRol = "espectador"
       socket.data.emisionCodigo = codigoFinal
       socket.join(salaEmision(codigoFinal))
@@ -1356,11 +1794,21 @@ try {
     // Señal dirigida a un socket concreto (oferta/respuesta/ICE entre emisor y par).
     socket.on("emision:senal", ({ para, data } = {}) => {
       if (!para || !data) return
-      io.to(para).emit("emision:senal", { data, de: socket.id })
+      const destino = io.sockets.sockets.get(para)
+      const permitido = puedeSenalizarEmision(
+        { rol:socket.data.emisionRol, codigo:socket.data.emisionCodigo },
+        { rol:destino?.data?.emisionRol, codigo:destino?.data?.emisionCodigo },
+      )
+      if (!permitido || !socket.rooms.has(salaEmision(socket.data.emisionCodigo)) || !destino?.rooms?.has(salaEmision(socket.data.emisionCodigo))) return
+      destino.emit("emision:senal", { data, de: socket.id })
     })
 
     socket.on("emision:fin", () => {
-      if (socket.data?.emisionRol === "emisor") socket.broadcast.to(salaEmision(socket.data.emisionCodigo)).emit("emision:fin")
+      const codigo = socket.data?.emisionCodigo
+      if (socket.data?.emisionRol === "emisor" && codigo) socket.broadcast.to(salaEmision(codigo)).emit("emision:fin")
+      if (codigo) socket.leave(salaEmision(codigo))
+      socket.data.emisionRol = null
+      socket.data.emisionCodigo = null
     })
 
     socket.on("disconnect", () => {
@@ -1387,11 +1835,18 @@ try {
     })
   })
 
-  server.listen(port, "0.0.0.0", () => {
-    console.log(`🔥 Socket.IO en puerto ${port}`)
+  return new Promise((resolve, reject) => {
+    let iniciado = false
+    server.on("error", error => {
+      if (!iniciado) reject(error)
+      else console.error(`Servidor de conexión detenido: ${error?.code || error?.message || "error"}`)
+    })
+    server.listen(port, "0.0.0.0", () => {
+      iniciado = true
+      console.log(`🔥 Socket.IO en puerto ${port}`)
+      resolve(server)
+    })
   })
-
-  return server
 }
 
 // ── Ventana principal ─────────────────────────────────────────────────────────
@@ -1404,17 +1859,80 @@ let proyectorWin = null  // ✅ referencia directa a la ventana del proyector (p
 let staticServer = null
 let socketServer = null
 
+ipcMain.handle("soporte:diagnostico", evento => {
+  if (!mainWindow || mainWindow.isDestroyed() || evento.sender !== mainWindow.webContents) {
+    return { ok:false, error:"emisor_no_autorizado" }
+  }
+  return {
+    ok: true,
+    generadoEn: new Date().toISOString(),
+    aplicacion: { version: SELAH_VERSION, empaquetada: app.isPackaged },
+    sistema: {
+      plataforma: process.platform,
+      arquitectura: process.arch,
+      versionSistema: os.release(),
+      memoriaTotalMb: Math.round(os.totalmem() / 1024 / 1024),
+      memoriaLibreMb: Math.round(os.freemem() / 1024 / 1024),
+      encendidoSegundos: Math.round(os.uptime()),
+    },
+    servicios: {
+      web: Boolean(staticServer?.listening),
+      conexionLocal: Boolean(socketServer?.listening),
+      ipLocal: getLocalIP(),
+      transmisionActiva: Boolean(ffmpegProc),
+      encoder: encoderElegido,
+    },
+    eventosElectron: registroOperativo.leerRecientes(100),
+  }
+})
+
+ipcMain.handle("soporte:abrir-carpeta", async evento => {
+  if (!mainWindow || mainWindow.isDestroyed() || evento.sender !== mainWindow.webContents) return { ok:false }
+  const resultado = await shell.openPath(path.dirname(registroOperativo.rutaActual()))
+  return { ok: !resultado, error: resultado || null }
+})
+
 // ── Ventana de progreso de actualización ──────────────────────────────────────
 // ✅ El usuario debe VER que se está actualizando y cuánto falta. Antes todo
 // pasaba invisible y la app se cerraba de golpe.
 let ventanaProgreso = null
+let estadoVentanaActualizacion = {
+  fase: "descargando",
+  version: "",
+  pct: 0,
+  detalle: "Iniciando descarga...",
+  tiempo: ""
+}
+
+function traerVentanaProgresoAlFrente(enfocar = false) {
+  if (!ventanaProgreso || ventanaProgreso.isDestroyed()) return
+  try {
+    if (ventanaProgreso.isMinimized()) ventanaProgreso.restore()
+    if (!ventanaProgreso.isVisible()) ventanaProgreso.show()
+    ventanaProgreso.setAlwaysOnTop(true, "floating")
+    ventanaProgreso.moveTop()
+    if (enfocar) ventanaProgreso.focus()
+  } catch (e) {}
+}
+
+function aplicarEstadoVentanaProgreso() {
+  if (!ventanaProgreso || ventanaProgreso.isDestroyed()) return
+  ventanaProgreso.webContents
+    .executeJavaScript(`window.renderEstadoActualizacion && window.renderEstadoActualizacion(${JSON.stringify(estadoVentanaActualizacion)})`)
+    .catch(() => {})
+}
 
 function mostrarVentanaProgreso(version) {
-  if (ventanaProgreso && !ventanaProgreso.isDestroyed()) return ventanaProgreso
+  if (version) estadoVentanaActualizacion.version = version
+  if (ventanaProgreso && !ventanaProgreso.isDestroyed()) {
+    traerVentanaProgresoAlFrente(false)
+    aplicarEstadoVentanaProgreso()
+    return ventanaProgreso
+  }
   ventanaProgreso = new BrowserWindow({
     width: 440, height: 200,
     resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
-    alwaysOnTop: true, frame: false, backgroundColor: "#0b1220", show: false,
+    closable: false, alwaysOnTop: true, frame: false, backgroundColor: "#0b1220", show: true,
     skipTaskbar: false, title: "Actualizando Selah Live",
     webPreferences: { contextIsolation: true, nodeIntegration: false }
   })
@@ -1431,40 +1949,46 @@ function mostrarVentanaProgreso(version) {
   .row{display:flex;justify-content:space-between;margin-top:10px;font-size:12px;opacity:.75}
   .pct{font-weight:800;opacity:1}
 </style>
-<div class="t">⬇️ Descargando actualización${version ? " " + version : ""}</div>
+<div class="t">⬇️ Descargando actualización</div>
 <div class="s">Selah Live se reiniciará solo al terminar. No cierres la aplicación.</div>
 <div class="bar"><div class="fill" id="f"></div></div>
 <div class="row"><span id="d">Iniciando descarga...</span><span class="pct" id="p">0%</span></div>
 <div class="row"><span id="t2"></span><span></span></div>
 <script>
-  window.setProgreso = function(pct, detalle, tiempo){
-    document.getElementById('f').style.width = pct + '%'
-    document.getElementById('p').textContent = pct + '%'
-    document.getElementById('d').textContent = detalle || ''
-    document.getElementById('t2').textContent = tiempo || ''
-  }
-  window.setInstalando = function(){
-    document.querySelector('.t').textContent = '⚙️ Instalando actualización'
-    document.querySelector('.s').textContent = 'Esto toma unos segundos. Selah Live se abrirá sola al terminar.'
-    document.getElementById('f').style.width = '100%'
-    document.getElementById('p').textContent = ''
-    document.getElementById('d').textContent = 'Reemplazando archivos...'
-    document.getElementById('t2').textContent = ''
+  window.renderEstadoActualizacion = function(estado){
+    const instalando = estado.fase === 'instalando'
+    document.querySelector('.t').textContent = instalando
+      ? '⚙️ Instalando actualización'
+      : '⬇️ Descargando actualización' + (estado.version ? ' ' + estado.version : '')
+    document.querySelector('.s').textContent = instalando
+      ? 'Esto toma unos segundos. Selah Live se abrirá sola al terminar.'
+      : 'Puedes seguir viendo el avance aquí. No cierres la aplicación.'
+    document.getElementById('f').style.width = (instalando ? 100 : estado.pct || 0) + '%'
+    document.getElementById('p').textContent = instalando ? '' : (estado.pct || 0) + '%'
+    document.getElementById('d').textContent = instalando ? 'Reemplazando archivos...' : (estado.detalle || '')
+    document.getElementById('t2').textContent = instalando ? '' : (estado.tiempo || '')
   }
 </script>`
 
   ventanaProgreso.loadURL("data:text/html;charset=utf-8," + encodeURIComponent(html))
-  ventanaProgreso.once("ready-to-show", () => {
-    if (ventanaProgreso && !ventanaProgreso.isDestroyed()) ventanaProgreso.show()
+  ventanaProgreso.webContents.once("did-finish-load", () => {
+    aplicarEstadoVentanaProgreso()
+    traerVentanaProgresoAlFrente(true)
   })
+  traerVentanaProgresoAlFrente(true)
   return ventanaProgreso
 }
 
 function actualizarProgreso(pct, detalle, tiempo) {
-  if (!ventanaProgreso || ventanaProgreso.isDestroyed()) return
-  ventanaProgreso.webContents
-    .executeJavaScript(`window.setProgreso(${pct}, ${JSON.stringify(detalle || "")}, ${JSON.stringify(tiempo || "")})`)
-    .catch(() => {})
+  estadoVentanaActualizacion = {
+    ...estadoVentanaActualizacion,
+    fase: "descargando",
+    pct: Math.max(0, Math.min(100, Number(pct) || 0)),
+    detalle: detalle || "",
+    tiempo: tiempo || ""
+  }
+  mostrarVentanaProgreso(estadoVentanaActualizacion.version)
+  aplicarEstadoVentanaProgreso()
 }
 
 function cerrarVentanaProgreso() {
@@ -1472,6 +1996,13 @@ function cerrarVentanaProgreso() {
     if (ventanaProgreso && !ventanaProgreso.isDestroyed()) ventanaProgreso.destroy()
   } catch (e) {}
   ventanaProgreso = null
+  estadoVentanaActualizacion = {
+    fase: "descargando",
+    version: "",
+    pct: 0,
+    detalle: "Iniciando descarga...",
+    tiempo: ""
+  }
   try { mainWindow && !mainWindow.isDestroyed() && mainWindow.setProgressBar(-1) } catch (e) {}
 }
 
@@ -1495,6 +2026,15 @@ function createWindow() {
       backgroundThrottling: false,
     },
     show: false, // Esperar a que esté listo para mostrar
+  })
+  mainWindow.on("unresponsive", () => registroOperativo.registrar("ventana_no_responde", { ventana:"principal" }, "critico"))
+  mainWindow.on("responsive", () => registroOperativo.registrar("ventana_recuperada", { ventana:"principal" }, "info"))
+  mainWindow.webContents.on("did-fail-load", (_evento, codigo, descripcion, url, principal) => {
+    if (!principal) return
+    registroOperativo.registrar("pantalla_no_cargo", {
+      codigo, descripcion,
+      ruta: (() => { try { return new URL(url).pathname } catch { return "" } })(),
+    }, "error")
   })
 
   // ✅ Permitir cámara y micrófono para la Transmisión en vivo. Sin esto,
@@ -1609,21 +2149,52 @@ function createWindow() {
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
+  registroOperativo.registrar("aplicacion_iniciada", { version:SELAH_VERSION, empaquetada:app.isPackaged }, "info")
   if (process.defaultApp && process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient("selahlive", process.execPath, [path.resolve(process.argv[1])])
+    const args = [path.resolve(process.argv[1])]
+    protocoloSelahRegistrado = app.setAsDefaultProtocolClient("selahlive", process.execPath, args) ||
+      app.isDefaultProtocolClient("selahlive", process.execPath, args)
   } else {
-    app.setAsDefaultProtocolClient("selahlive")
+    protocoloSelahRegistrado = app.setAsDefaultProtocolClient("selahlive") || app.isDefaultProtocolClient("selahlive")
   }
+  console.log(protocoloSelahRegistrado ? "✅ Retorno de login registrado" : "⚠️ No se pudo registrar el retorno de login")
   const outDir = path.join(__dirname, "../out")
 
   console.log("🚀 Iniciando Selah Live...")
-  staticServer = await startStaticServer(outDir, 3000)
-  socketServer = startSocketServer(4000)
+  try {
+    staticServer = await startStaticServer(outDir, 3000)
+    socketServer = await startSocketServer(4000)
+  } catch (error) {
+    registroOperativo.registrar("servicios_internos_no_iniciaron", { error }, "critico")
+    try { staticServer?.close() } catch {}
+    staticServer = null
+    const puertoOcupado = error?.code === "EADDRINUSE"
+    console.error(puertoOcupado ? "Selah Live ya estaba abierto." : `No se pudo iniciar Selah Live: ${error?.code || error?.message || "error"}`)
+    await dialog.showMessageBox({
+      type: puertoOcupado ? "info" : "error",
+      title: puertoOcupado ? "Selah Live ya está abierto" : "No se pudo iniciar Selah Live",
+      message: puertoOcupado
+        ? "Ya existe otra ventana de Selah Live funcionando en este computador."
+        : "Selah Live no pudo iniciar sus servicios internos.",
+      detail: puertoOcupado
+        ? "Usa la ventana que ya estaba abierta. Si estabas probando el modo de desarrollo, primero cierra la versión instalada."
+        : "Cierra Selah Live, vuelve a abrirlo y revisa el registro de diagnóstico si el problema continúa.",
+      buttons: ["Entendido"],
+    })
+    app.quit()
+    return
+  }
 
   const ip = getLocalIP()
+  registroOperativo.registrar("servicios_internos_listos", { web:3000, conexion:4000, ip }, "info")
   console.log(`📡 IP local: ${ip}`)
 
   createWindow()
+  // Windows entrega el protocolo en argv cuando Selah estaba cerrada. Antes
+  // solo se atendía second-instance, así que Google abría la app pero esta
+  // volvía al login. La autorización pendiente persiste diez minutos y permite
+  // completar exactamente ese retorno sin aceptar enlaces espontáneos.
+  if (enlaceOAuthInicial) recibirCallbackOAuth(enlaceOAuthInicial)
 
   // ── Atajos de teclado globales ────────────────────────────────────────────
   const { globalShortcut } = require("electron")
@@ -1719,6 +2290,13 @@ app.whenReady().then(async () => {
       // ✅ Ventana de progreso visible: el usuario tiene que SABER que se está
       // actualizando y cuánto falta. Antes la descarga era invisible y la app
       // simplemente se cerraba de golpe, lo que asusta.
+      estadoVentanaActualizacion = {
+        fase: "descargando",
+        version: info?.version || "",
+        pct: 0,
+        detalle: "Iniciando descarga...",
+        tiempo: ""
+      }
       mostrarVentanaProgreso(info?.version || "")
     })
 
@@ -1760,8 +2338,15 @@ app.whenReady().then(async () => {
           // ✅ Mostrar "Instalando..." mientras corre el instalador, para que el
           // usuario sepa qué está pasando y no crea que la app se colgó.
           try {
-            const v = mostrarVentanaProgreso("")
-            v.webContents.executeJavaScript("window.setInstalando()").catch(() => {})
+            estadoVentanaActualizacion = {
+              fase: "instalando",
+              version: info?.version || "",
+              pct: 100,
+              detalle: "Reemplazando archivos...",
+              tiempo: ""
+            }
+            mostrarVentanaProgreso(info?.version || "")
+            aplicarEstadoVentanaProgreso()
           } catch (e) {}
           // ✅ Cierre limpio antes de instalar. La causa raíz del "archivo en
           // uso": los servidores embebidos (3000/4000) mantenían VIVO el proceso

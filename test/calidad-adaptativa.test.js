@@ -1,6 +1,6 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { CalidadAdaptativa, medirEnvio, medirRecepcion } = require('../lib/calidadAdaptativa.ts')
+const { CalidadAdaptativa, medirEnvio, medirRecepcion, estadoRecepcionMovil } = require('../lib/calidadAdaptativa.ts')
 
 test('un bajón aislado no reduce calidad; tres limitaciones sostenidas sí', () => {
   const c = new CalidadAdaptativa()
@@ -71,4 +71,19 @@ test('recepción sin cuadros alerta sin atribuir falsamente el fallo a internet'
   const b = { ...a, timestamp: 6000 }
   assert.match(medirRecepcion(b, a).aviso, /No llegan cuadros/)
   assert.equal(medirRecepcion(b, a).bufferMs, null)
+})
+
+test('el retorno del PC reduce calidad aunque Chromium no marque bandwidth', () => {
+  const c = new CalidadAdaptativa()
+  const atrasada = { fps: 11, bufferMs: 7709 }
+  assert.equal(c.observar(3000, 20, 'none', atrasada), null)
+  assert.equal(c.observar(6000, 20, 'none', atrasada), null)
+  assert.equal(c.observar(9000, 20, 'none', atrasada), 1)
+})
+
+test('la recepción crítica bloquea salida y la estable la permite', () => {
+  assert.equal(estadoRecepcionMovil(14, 7709).nivel, 'critico')
+  assert.equal(estadoRecepcionMovil(11, null).nivel, 'critico')
+  assert.equal(estadoRecepcionMovil(18, 300).nivel, 'advertencia')
+  assert.equal(estadoRecepcionMovil(28, 80).nivel, 'estable')
 })

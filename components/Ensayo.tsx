@@ -9,6 +9,8 @@ import { useRef, useState } from "react"
 import { improvisar } from "@/lib/improvisacion"
 import type { Metronomo } from "@/components/useMetronomo"
 
+type VentanaAudio = Window & { webkitAudioContext?: typeof AudioContext }
+
 const AZUL = "#3b82f6"
 const AMBAR = "#fbbf24"
 
@@ -20,7 +22,8 @@ export default function Ensayo({ metro, tono, pasos = 0, americano = false }:
   const ctxRef = useRef<AudioContext | null>(null)
   const getCtx = (): AudioContext => {
     if (!ctxRef.current) {
-      const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext
+      const Ctx = window.AudioContext || (window as VentanaAudio).webkitAudioContext
+      if (!Ctx) throw new Error("Web Audio no está disponible en este dispositivo")
       ctxRef.current = new Ctx()
     }
     try { ctxRef.current!.resume?.() } catch {}

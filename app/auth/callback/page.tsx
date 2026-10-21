@@ -5,42 +5,64 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { navegarSPA } from "@/lib/navegar"
 import { conTimeout } from "@/lib/timeout"
+import { establecerSesionDesdeUrl } from "@/lib/authCallback"
 
 export default function CallbackPage() {
   const router = useRouter()
-  const [estado, setEstado] = useState<"procesando" | "error">("procesando")
+  const [estado, setEstado] = useState<"procesando" | "entregado" | "error">("procesando")
   const [mensajeError, setMensajeError] = useState("")
 
   
 useEffect(() => {
   let activo = true
 
-  const completarLogin = async (hash: string) => {
-    try {
-      if (!hash.includes('access_token')) return
-      const params = new URLSearchParams(hash.replace('#', ''))
-      const access_token = params.get('access_token')
-      const refresh_token = params.get('refresh_token')
-      if (!access_token || !refresh_token) { setEstado('error'); setMensajeError('Link inválido.'); return }
-      const { error } = await supabase.auth.setSession({ access_token, refresh_token })
-      if (error) { setEstado('error'); setMensajeError('No se pudo iniciar sesión.'); return }
-      navegarSPA(router, '/', { replace: true })
-    } catch { setEstado('error'); setMensajeError('Error inesperado.') }
-  }
-
   const revisar = async () => {
-    // Web normal
-    if (window.location.hash.includes('access_token')) {
-      await completarLogin(window.location.hash)
+    // Web/Electron: admite tanto implicit (#access_token) como PKCE (?code).
+    // APK: DeepLinkHandler puede haber guardado el esquema propio completo.
+    const deepLinkUrl = sessionStorage.getItem("deepLinkUrl")
+    if (deepLinkUrl) sessionStorage.removeItem("deepLinkUrl")
+    const url = deepLinkUrl || window.location.href
+
+    // Electron autentica con el navegador DEL SISTEMA (requisito de Google),
+    // pero el resultado debe terminar dentro del launcher. Cuando este callback
+    // se abre en localhost desde Edge/Chrome, entregamos la URL completa al
+    // servidor loopback de Selah; el proceso principal valida el nonce y carga
+    // el mismo callback dentro de Electron, donde queda persistida la sesión.
+    const esNavegadorExterno = !navigator.userAgent.includes("Electron") &&
+      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+    const nonce = new URLSearchParams(window.location.search).get("selah_nonce")
+    if (esNavegadorExterno && nonce) {
+      try {
+        const respuesta = await fetch("/oauth/entregar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+          cache: "no-store",
+        })
+        if (!activo) return
+        if (respuesta.ok) {
+          setEstado("entregado")
+          setTimeout(() => window.close(), 500)
+          return
+        }
+      } catch { /* mostrar error claro abajo */ }
+      setEstado("error")
+      setMensajeError("Selah no pudo recibir el acceso. Confirma que la aplicación siga abierta e intenta nuevamente.")
       return
     }
 
-    // APK — leer URL guardada por DeepLinkHandler
-    const deepLinkUrl = sessionStorage.getItem('deepLinkUrl')
-    if (deepLinkUrl) {
-      sessionStorage.removeItem('deepLinkUrl')
-      const hash = deepLinkUrl.includes('#') ? '#' + deepLinkUrl.split('#')[1] : ''
-      await completarLogin(hash)
+    const tieneDatos = /[?#&](?:access_token|code)=/.test(url)
+    if (tieneDatos) {
+      const resultadoSesion = await establecerSesionDesdeUrl(url)
+      if (!activo) return
+      if (resultadoSesion === "ok") {
+        navegarSPA(router, "/", { replace: true })
+        return
+      }
+      setEstado("error")
+      setMensajeError(resultadoSesion === "timeout"
+        ? "Google respondió, pero la conexión tardó demasiado. Intenta nuevamente."
+        : "Google respondió, pero no se pudo establecer la sesión.")
       return
     }
 
@@ -62,6 +84,20 @@ useEffect(() => {
   revisar()
   return () => { activo = false }
 }, [router])
+
+  if (estado === "entregado") {
+    return (
+      <div style={styles.root}>
+        <div style={styles.card}>
+          <div style={{ fontSize: 42, marginBottom: 14 }}>✅</div>
+          <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>Acceso enviado a Selah</div>
+          <div style={{ opacity: 0.58, fontSize: 14, lineHeight: 1.5 }}>
+            Selah Live continuará automáticamente. Ya puedes cerrar esta pestaña.
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   // ── UI procesando ─────────────────────────────────────────────────────────
   if (estado === "procesando") {

@@ -116,7 +116,7 @@ export default function AyudaBotones() {
       const guardada = localStorage.getItem("selah-ayudas-contextuales")
       // En pantallas táctiles se prioriza una interfaz limpia. En escritorio,
       // la ayuda queda disponible hasta que el usuario decida ocultarla.
-      const tactil = !!(window as any).Capacitor || window.matchMedia("(pointer: coarse)").matches
+      const tactil = Boolean((window as Window & { Capacitor?: object }).Capacitor) || window.matchMedia("(pointer: coarse)").matches
       setHabilitada(guardada === null ? !tactil : guardada === "1")
     }
     leerPreferencia()
@@ -132,8 +132,8 @@ export default function AyudaBotones() {
     if (!habilitada) {
       if (timer.current) clearTimeout(timer.current)
       timer.current = null
-      setAyuda(null)
-      return
+      const id = setTimeout(() => setAyuda(null), 0)
+      return () => clearTimeout(id)
     }
     const ocultar = () => {
       if (timer.current) clearTimeout(timer.current)

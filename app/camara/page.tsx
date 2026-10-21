@@ -18,8 +18,23 @@ import { CalidadAdaptativa, medirEnvio, PERFILES_ENVIO, type MuestraEnvio } from
 import { laboratorioNativoDisponible } from "@/lib/camaraNativaLab"
 import { identidadCamara, accionFinCamara } from "@/lib/identidadCamara"
 import { avisoCamaraPC, type EstadoCamaraPC } from "@/lib/estadoCamaraPC"
+import RequierePlan from "@/components/RequierePlan"
+import GuiaIncidente from "@/components/ui/GuiaIncidente"
 
 type Estado = "abriendo" | "listo" | "conectando" | "conectado" | "error"
+interface RespuestaUnionCamara { ok?: boolean; error?: string; hostId?: string }
+interface DatosSenalCamara {
+  tipo?: "answer" | "ice" | "estado-pc"
+  sdp?: RTCSessionDescriptionInit
+  candidate?: RTCIceCandidateInit
+  video?: boolean | null
+  grabacion?: EstadoCamaraPC["grabacion"]
+  fpsRecepcion?: number
+  bufferRecepcionMs?: number | null
+}
+interface EventoSenalCamara { data?: DatosSenalCamara; de?: string; rol?: string }
+const nombreError = (error: unknown) => error instanceof Error || error instanceof DOMException ? error.name : "?"
+const mensajeError = (error: unknown) => error instanceof Error ? error.message : String(error || "")
 
 // Audio en ALTA FIDELIDAD (música): sin procesamiento de voz (echo/ruido/AGC), que
 // arruina cantos e instrumentos. Estéreo y 48 kHz si el equipo los da.
@@ -34,7 +49,11 @@ const restriccionesVideo = (calidad: CalidadCamara): MediaTrackConstraints => ({
   frameRate: { ideal: 30, max: 30 },
 })
 
-export default function CamaraMovil() {
+export default function CamaraMovilPage() {
+  return <RequierePlan funcion="Cámara móvil para transmisión" capacidad="premium"><CamaraMovil /></RequierePlan>
+}
+
+function CamaraMovil() {
   const router = useRouter()
   const [estado, setEstado] = useState<Estado>("abriendo")
   const [estadoPC, setEstadoPC] = useState<EstadoCamaraPC | null>(null)
@@ -72,6 +91,7 @@ export default function CamaraMovil() {
   const codigoRef = useRef("")
   const hostIdRef = useRef("")
   const identidadRef = useRef("")
+  const retornoPCRef = useRef<{ fps: number; bufferMs: number | null; recibido: number } | null>(null)
   useEffect(() => { codigoRef.current = codigo }, [codigo])
 
   // Reconexión automática: recordamos que el usuario QUIERE estar conectado, para
@@ -79,7 +99,7 @@ export default function CamaraMovil() {
   // código. reconectandoRef evita apilar reintentos; reintentoTimerRef los agenda.
   const quiereConectadoRef = useRef(false)
   const reconectandoRef = useRef(false)
-  const reintentoTimerRef = useRef<any>(0)
+  const reintentoTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const descubriendoServidorRef = useRef(false)
   const ultimoDescubrimientoRef = useRef(0)
   const ultimoLogConexRef = useRef(0)   // throttle del log de errores de conexión
@@ -131,15 +151,15 @@ export default function CamaraMovil() {
       // Algunos equipos publican DOS cámaras frontales; probamos ambas, no solo
       // la primera (que puede ser un sensor auxiliar no abrible por WebView).
       try { return await gUM({ deviceId: { exact: candidata.deviceId } }) }
-      catch (e: any) {
-        errs.push(`${candidata.label || "directa"}=` + (e?.name || "?"))
+      catch (e: unknown) {
+        errs.push(`${candidata.label || "directa"}=` + nombreError(e))
         await new Promise(r => setTimeout(r, 500))
       }
     }
-    try { return await gUM({ facingMode: { exact: modo } }) } catch (e: any) { errs.push("exact=" + (e?.name || "?")) }
+    try { return await gUM({ facingMode: { exact: modo } }) } catch (e: unknown) { errs.push("exact=" + nombreError(e)) }
     // No aceptar silenciosamente la trasera cuando se pidió la frontal.
     if (!candidatas.length && modo === "environment") {
-      try { return await gUM({ facingMode: modo, ...vBase }) } catch (e: any) { errs.push("suave=" + (e?.name || "?")) }
+      try { return await gUM({ facingMode: modo, ...vBase }) } catch (e: unknown) { errs.push("suave=" + nombreError(e)) }
     }
     // Fallback definitivo: elegir por deviceId.
     const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput")
@@ -151,8 +171,8 @@ export default function CamaraMovil() {
     const lista = cams.map(c => c.label || "(sin nombre)").join(" | ")
     if (!elegida) { setDiag(`0 cámaras · ${errs.join(" ")}`); throw new Error("sin-camaras") }
     try { return await gUM({ deviceId: { exact: elegida.deviceId } }) }
-    catch (e: any) {
-      errs.push("id=" + (e?.name || "?"))
+    catch (e: unknown) {
+      errs.push("id=" + nombreError(e))
       const d = `${cams.length} cám: ${lista} · ${errs.join(" ")}`
       setDiag(d)
       logError(`No se pudo abrir la cámara (${modo}): ${d}`, { tipo: "general", pagina: "/camara" })
@@ -290,12 +310,14 @@ export default function CamaraMovil() {
     }
   }
 
+  /* eslint-disable react-hooks/exhaustive-deps -- montaje único: la captura usa refs vigentes y el cleanup invalida cualquier permiso tardío. */
   useEffect(() => {
     montadoRef.current = true
     cicloCapturaRef.current++
     void abrirCamara("environment", true)
     return () => { montadoRef.current = false; cicloCapturaRef.current++ }
   }, [])
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   const voltear = async () => {
     if (aperturaRef.current) return
@@ -325,7 +347,7 @@ export default function CamaraMovil() {
       if (t.kind === "audio") audioSenderRef.current = snd
       if (t.kind === "video") {
         videoSenderRef.current = snd
-        const p: any = snd.getParameters()
+        const p = snd.getParameters()
         p.degradationPreference = "maintain-framerate"
         p.encodings = p.encodings?.length ? p.encodings : [{}]
         p.encodings[0].maxBitrate = calidadRef.current === "4k" ? 20_000_000 : 8_000_000
@@ -393,7 +415,7 @@ export default function CamaraMovil() {
     // En la APK (Capacitor) la página está empaquetada → window.location es
     // "localhost"; usamos el servidor configurado (IP del PC). En navegador
     // servido por el PC, usamos el host del propio URL.
-    const esApp = typeof window !== "undefined" && !!(window as any).Capacitor
+    const esApp = typeof window !== "undefined" && !!(window as Window & { Capacitor?: object }).Capacitor
     const url = esApp ? getSocketUrl() : `http://${window.location.hostname}:4000`
     const socket = io(url, { transports: ["websocket", "polling"], forceNew: true, reconnection: false, timeout: 5000 })
     socketRef.current = socket
@@ -403,7 +425,7 @@ export default function CamaraMovil() {
         try { identidadRef.current = identidadCamara(localStorage, () => crypto.randomUUID()) }
         catch { identidadRef.current = "" } // APK anterior o contexto sin crypto: compatibilidad por socket.
       }
-      socket.emit("camara:unir", { codigo: cod, dispositivoId: identidadRef.current }, (resp: any) => {
+      socket.emit("camara:unir", { codigo: cod, dispositivoId: identidadRef.current }, (resp: RespuestaUnionCamara) => {
         if (!resp?.ok) {
           estableciendoRef.current = false
           if (resp?.error === "identidad-ocupada") {
@@ -422,16 +444,20 @@ export default function CamaraMovil() {
         setError(""); iniciarWebRTC(socket)
       })
     })
-    socket.on("camara:senal", async ({ data, de, rol }: any) => {
+    socket.on("camara:senal", async ({ data, de, rol }: EventoSenalCamara) => {
       if (socket !== socketRef.current || de !== hostIdRef.current) return
       if (data?.tipo === "estado-pc") {
-        if (rol !== "host" || ![true, false, null].includes(data.video) || !["activa", "detenida", "sin-datos", "error", "desconocida"].includes(data.grabacion)) return
+        if (rol !== "host" || data.video === undefined || !data.grabacion || !new Set<string>(["activa", "detenida", "sin-datos", "error", "desconocida"]).has(data.grabacion)) return
         setEstadoPC({ recibido: Date.now(), video: data.video, grabacion: data.grabacion })
+        if (typeof data.fpsRecepcion === "number" && Number.isFinite(data.fpsRecepcion) && (data.bufferRecepcionMs === null || (typeof data.bufferRecepcionMs === "number" && Number.isFinite(data.bufferRecepcionMs)))) {
+          retornoPCRef.current = { fps: Math.max(0, Number(data.fpsRecepcion)), bufferMs: data.bufferRecepcionMs === null ? null : Math.max(0, Number(data.bufferRecepcionMs)), recibido: Date.now() }
+        }
         return
       }
       const pc = pcRef.current; if (!pc || !data) return
       try {
         if (data.tipo === "answer") {
+          if (!data.sdp) throw new Error("La respuesta WebRTC no contiene SDP.")
           await pc.setRemoteDescription(data.sdp)
           const pendientes = icePendienteRef.current.splice(0)
           for (const candidate of pendientes) await pc.addIceCandidate(candidate)
@@ -439,8 +465,8 @@ export default function CamaraMovil() {
           if (pc.remoteDescription) await pc.addIceCandidate(data.candidate)
           else icePendienteRef.current.push(data.candidate)
         }
-      } catch (e: any) {
-        logConex(`WebRTC celular: señal ${data?.tipo || "desconocida"} falló: ${e?.message || e}`)
+      } catch (e: unknown) {
+        logConex(`WebRTC celular: señal ${data?.tipo || "desconocida"} falló: ${mensajeError(e)}`)
       }
     })
     // El PC cerró la cámara A PROPÓSITO → dejar de reintentar.
@@ -453,9 +479,9 @@ export default function CamaraMovil() {
     })
     // Caídas de red / socket → reintentar mientras el usuario quiera estar conectado.
     socket.on("disconnect", () => { if (quiereConectadoRef.current) programarReconexion() })
-    socket.on("connect_error", async (e: any) => {
+    socket.on("connect_error", async (e: Error) => {
       estableciendoRef.current = false
-      logConex(`connect_error a ${url}: ${e?.message || e}`)
+      logConex(`connect_error a ${url}: ${mensajeError(e)}`)
       if (!quiereConectadoRef.current) return
 
       // Una IP manual puede ser la del router/repetidor y no la del PC. Si no
@@ -511,9 +537,10 @@ export default function CamaraMovil() {
   }
 
   // Mantener la pantalla encendida y RECONECTAR al volver a primer plano.
+  /* eslint-disable react-hooks/exhaustive-deps -- listener único; programarReconexion opera sobre refs y debe conservarse al remontar visibilidad. */
   useEffect(() => {
-    let wl: any
-    const pedirWake = async () => { try { wl = await (navigator as any).wakeLock?.request("screen") } catch {} }
+    let wl: WakeLockSentinel | undefined
+    const pedirWake = async () => { try { wl = await navigator.wakeLock?.request("screen") } catch {} }
     pedirWake()
     const onVis = () => {
       if (document.visibilityState !== "visible") return
@@ -527,6 +554,7 @@ export default function CamaraMovil() {
     document.addEventListener("visibilitychange", onVis)
     return () => { document.removeEventListener("visibilitychange", onVis); try { wl?.release() } catch {} }
   }, [])
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   // Limpiar al salir.
   useEffect(() => () => {
@@ -552,7 +580,7 @@ export default function CamaraMovil() {
       ocupado = true
       try {
         if (pc !== enlace || pista !== videoTrackRef.current) {
-          if (pc !== enlace) { adaptador = new CalidadAdaptativa(); setAjusteAutomatico("") }
+          if (pc !== enlace) { adaptador = new CalidadAdaptativa(); retornoPCRef.current = null; setAjusteAutomatico("") }
           enlace = pc; pista = videoTrackRef.current; anterior = null
         }
         const stats = await pc.getStats()
@@ -568,7 +596,9 @@ export default function CamaraMovil() {
             const sender = videoSenderRef.current
             if (calidadRef.current === "auto" && sender && sender.track === pista) {
               const ahora = performance.now()
-              const nivel = adaptador.observar(ahora, fps, s.qualityLimitationReason)
+              const retorno = retornoPCRef.current
+              const vigente = retorno && Date.now() - retorno.recibido < 12_000 ? { fps: retorno.fps, bufferMs: retorno.bufferMs } : null
+              const nivel = adaptador.observar(ahora, fps, s.qualityLimitationReason, vigente)
               if (nivel !== null) {
                 const perfil = PERFILES_ENVIO[nivel]
                 const parametros = sender.getParameters()
@@ -643,7 +673,7 @@ export default function CamaraMovil() {
         </label>
         {envioReal && <div style={{ fontSize:12, color:"#bfdbfe" }}>{envioReal}</div>}
         {calidad === "auto" && ajusteAutomatico && <div role="status" style={{ fontSize:12, color:"#fde68a" }}>{ajusteAutomatico}</div>}
-        {error && <div style={{ background: "rgba(220,38,38,0.85)", borderRadius: 12, padding: "10px 14px", fontSize: 13.5, fontWeight: 600 }}>⚠️ {error}</div>}
+        {error && <GuiaIncidente mensaje={error} contexto={/ip|red|servidor|señalización/i.test(error) ? "conexion" : "camara"} compacto />}
         {diag && <div style={{ background: "rgba(0,0,0,0.55)", borderRadius: 10, padding: "8px 12px", fontSize: 11, fontFamily: "monospace", color: "#fca5a5", wordBreak: "break-word" }}>🔧 {diag}</div>}
 
         {!conectado && (

@@ -10,7 +10,7 @@ const servidor = readFileSync("lib/servidor.ts", "utf8")
 
 test("Electron abre la sala de cámara en su servidor local y confirma el registro", () => {
   assert.match(transmision, /io\("http:\/\/127\.0\.0\.1:4000"/)
-  assert.match(transmision, /socket\.emit\("camara:host", \{ codigo \}, \(resp: any\) =>/)
+  assert.match(transmision, /socket\.emit\("camara:host", \{ codigo \}, \(resp:/)
   assert.match(electron, /socket\.on\("camara:host", \(\{ codigo \} = \{\}, cb\) =>/)
   assert.match(electron, /cb\(\{ ok: true, codigo: codigoFinal \}\)/)
   assert.match(transmision, /Abriendo sala segura…/)
@@ -45,6 +45,35 @@ test("la transmisión evita comprimir dos veces con el mismo bitrate bajo", () =
   assert.match(transmision, /videoBitsPerSecond: bitrateCaptura\(bitrateRef\.current\) \* 1000/)
   assert.match(electron, /"-rate_control", "cbr", "-scenario", "live_streaming"/)
   assert.match(electron, /"-b:a", "160k", "-ar", "48000"/)
+})
+
+test("Windows prioriza el encoder validado en Full HD y deja QSV como respaldo", () => {
+  assert.match(electron, /for \(const enc of \["h264_mf", "h264_qsv", "libx264"\]\)/)
+  assert.match(electron, /testsrc=size=1920x1080:rate=30/)
+  assert.match(electron, /cuadros >= 55 && velocidad >= 0\.95/)
+  assert.match(electron, /opcionesVideoEncoder\(enc, 6000\)/)
+  assert.match(electron, /const video = opcionesVideoEncoder\(encoder, kbps\)/)
+})
+
+test("Revisar salida aprueba el motor Full HD y el destino antes de habilitar Facebook", () => {
+  const preload = readFileSync("electron/preload.js", "utf8")
+  assert.match(electron, /ipcMain\.handle\("transmision:preparar"/)
+  assert.match(electron, /ipcMain\.handle\("transmision:probar-destinos"/)
+  assert.match(electron, /\["h264_mf", "h264_qsv", "libx264"\]/)
+  assert.match(preload, /preparar: \(\) => ipcRenderer\.invoke\("transmision:preparar"\)/)
+  assert.match(preload, /probarDestinos: \(urls\) => ipcRenderer\.invoke\("transmision:probar-destinos", urls\)/)
+  assert.match(transmision, /nombre: "Motor Full HD"/)
+  assert.match(transmision, /nombre: "Acceso al servidor"/)
+  assert.match(transmision, /motorPreflight\.estado !== "ok"/)
+  assert.match(transmision, /redPreflight\.estado !== "ok"/)
+  assert.match(transmision, /Comprobando equipo y destino/)
+  assert.match(transmision, /revisionRedRef\.current === revisionRed/)
+})
+
+test("el cierre de FFmpeg entrega el diagnóstico final directamente al operador", () => {
+  assert.match(electron, /diagnostico:\s*final\.diagnostico/)
+  assert.match(electron, /finTipo:\s*final\.finTipo/)
+  assert.match(transmision, /setErrorTx\(d\?\.diagnostico\s*\|\|\s*d\?\.error/)
 })
 
 test("la cadena de video conserva detalle Full HD y registra la fuente real", () => {
@@ -134,7 +163,8 @@ test("la reconexión RTMPS espera a que Facebook libere la sesión anterior", ()
 test("los fragmentos de transmisión mantienen orden y la ventana separada recibe eventos", () => {
   assert.match(transmision, /new ColaTransmision/)
   assert.match(transmision, /colaChunks\.agregar\(blob.size, async \(\) =>/)
-  assert.match(transmision, /await tx\.enviarChunkConfirmado\(res.sesionId, buf\)/)
+  assert.match(transmision, /const sesionId = res\.sesionId/)
+  assert.match(transmision, /await tx\.enviarChunkConfirmado\(sesionId, buf\)/)
   assert.match(electron, /sesion.id !== sesionId/)
   assert.match(electron, /BrowserWindow\.getAllWindows\(\)/)
   assert.match(electron, /webContents\.getURL\(\)\.includes\("\/en-vivo"\)/)

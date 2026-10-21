@@ -37,7 +37,8 @@ test("las acciones rápidas conservan el contexto operativo", () => {
   assert.match(centro, /Espera con logo/)
   assert.match(control, /volverCentroTrasRevision/)
   assert.match(control, /Seguir editando/)
-  assert.match(control, /logoEsperaUrl\.trim\(\) \? proyectarPantallaLogo\(\) : proyectarPantallaEspera\(\)/)
+  assert.match(control, /if \(logoEsperaUrl\.trim\(\)\) proyectarPantallaLogo\(\)/)
+  assert.match(control, /else proyectarPantallaEspera\(\)/)
 })
 
 test("Control advierte cambios pendientes y permite guardarlos con Ctrl S", () => {
@@ -109,7 +110,7 @@ test("el buscador reconoce comandos operativos escritos", () => {
 
 test("Enter proyecta y Shift Enter agrega contenido a la lista", () => {
   assert.match(centro, /const agregarSeleccion/)
-  assert.match(centro, /e\.shiftKey \? agregarSeleccion\(\)/)
+  assert.match(centro, /if \(e\.shiftKey\) agregarSeleccion\(\)/)
   assert.match(centro, /agregar:\(\) => onRecurso\(r, true\)/)
   assert.match(centro, /agregar:\(\) => onAgregar\(c\)/)
   assert.match(centro, /Shift\+↵ agregar a lista/)
