@@ -15,7 +15,7 @@ const run = (cmd) => { console.log("\n▶ " + cmd); execSync(cmd, { stdio: "inhe
 
 console.log(`\n📦 Bundle OTA (web) · versión ${version}`)
 if (!sinBuild) run("npm run build")
-run(`npx --yes @capgo/cli@8.51.14 bundle zip ${appId} --path out --name bundle.zip`)
+run(`npx --yes @capgo/cli@8.91.0 bundle zip ${appId} --path out --name bundle.zip`)
 
 console.log(`\n✅ Listo: bundle.zip  (v${version})`)
 console.log('→ Súbelo al release de GitHub como asset con el nombre "bundle.zip".')
