@@ -10,7 +10,7 @@ type VentanaSelah = Window & {
   Capacitor?: object
   oauthElectron?: {
     abrirGoogle?: (url: string) => Promise<{ ok?: boolean; error?: string }>
-    prepararRetorno?: () => Promise<{ ok?: boolean; error?: string }>
+    prepararRetorno?: (tipo?: "google" | "enlace") => Promise<{ ok?: boolean; error?: string; redirectTo?: string }>
     diagnostico?: (evento: string, codigo?: string) => void
   }
 }
@@ -29,6 +29,7 @@ function LoginContent() {
   const [modoCorreo, setModoCorreo] = useState<"password" | "link">("link")
   const [enviado, setEnviado] = useState(false)
   const [cargando, setCargando] = useState(false)
+  const [esperandoGoogle, setEsperandoGoogle] = useState(false)
   const [error, setError] = useState("")
   const [isApk, setIsApk] = useState(false)
 
@@ -55,6 +56,7 @@ function LoginContent() {
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((evento, sesion) => {
       if ((evento === "SIGNED_IN" || evento === "INITIAL_SESSION") && sesion) {
+        diagnosticarElectron("sesion-recibida")
         window.location.replace("/")
       }
     })
@@ -107,15 +109,28 @@ function LoginContent() {
   }
 
   const loginGoogle = async () => {
-    setError(""); setCargando(true)
+    setError(""); setEsperandoGoogle(false); setCargando(true)
     const isCapacitor = esCapacitor()
     const isElectron  = navigator.userAgent.includes("Electron")
+    let redirectElectron = ""
     try {
       if (isElectron) diagnosticarElectron("google-iniciado")
+      // Registrar el retorno ANTES de pedir la URL a Supabase. Además de ser
+      // el orden correcto para una app de escritorio, evita una carrera en la
+      // que el navegador alcanza a abrirse pero Windows devuelve el callback
+      // antes de que Electron lo marque como esperado.
+      if (isElectron) {
+        const preparado = await (window as VentanaSelah).oauthElectron?.prepararRetorno?.("google")
+        if (!preparado?.ok) {
+          throw new Error(preparado?.error || "No se pudo preparar el regreso a Selah.")
+        }
+        redirectElectron = preparado.redirectTo || ""
+        diagnosticarElectron("retorno-preparado")
+      }
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: getRedirectUrl(),
+          redirectTo: redirectElectron || getRedirectUrl(),
           // ✅ skipBrowserRedirect solo en APK — en Electron y web manejamos la redirección nosotros
           skipBrowserRedirect: isCapacitor || isElectron,
           // ✅ Sin esto, Google reutiliza en silencio la última cuenta con
@@ -146,6 +161,7 @@ function LoginContent() {
         if (!resultado?.ok) throw new Error(resultado?.error || "No se pudo abrir Google.")
         diagnosticarElectron("google-navegador-abierto")
         setCargando(false)
+        setEsperandoGoogle(true)
       } else {
         // Web: ídem
         window.location.href = data.url
@@ -153,6 +169,7 @@ function LoginContent() {
     } catch (error: unknown) {
       if (isElectron) diagnosticarElectron("google-error", error instanceof Error ? error.name : "desconocido")
       setError(error instanceof Error ? error.message : "Error al iniciar sesión")
+      setEsperandoGoogle(false)
       setCargando(false)
     }
   }
@@ -163,7 +180,7 @@ function LoginContent() {
     setError(""); setCargando(true)
     diagnosticarElectron("enlace-iniciado")
     if (navigator.userAgent.includes("Electron")) {
-      const preparado = await (window as VentanaSelah).oauthElectron?.prepararRetorno?.()
+      const preparado = await (window as VentanaSelah).oauthElectron?.prepararRetorno?.("enlace")
       if (!preparado?.ok) {
         setError(preparado?.error || "No se pudo preparar el regreso a Selah. Reinicia la aplicación e intenta nuevamente.")
         setCargando(false)
@@ -271,6 +288,10 @@ function LoginContent() {
             <GoogleIcon />
             {cargando ? "Abriendo..." : "Continuar con Google"}
           </button>
+          {esperandoGoogle && <div style={s.googleEspera}>
+            <strong style={{ display:"block", color:"#bfdbfe", marginBottom:4 }}>Google está esperando tu confirmación</strong>
+            Elige tu cuenta en el navegador. Al terminar, Selah volverá al frente e ingresará automáticamente.
+          </div>}
           <div style={s.divider}><div style={s.dividerLine}/><span style={s.dividerText}>o</span><div style={s.dividerLine}/></div>
           <div style={s.modosCorreo} role="tablist" aria-label="Forma de acceso por correo">
             <button type="button" role="tab" aria-selected={modoCorreo === "link"}
@@ -344,6 +365,7 @@ const s: Record<string, React.CSSProperties> = {
   label:{display:"block",fontSize:11,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase" as const,color:"rgba(240,244,255,0.45)",marginBottom:7},
   input:{width:"100%",padding:"13px 14px",background:"#0a1525",color:"white",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,fontSize:16,outline:"none",boxSizing:"border-box" as const},
   errorBox:{background:"rgba(239,68,68,0.10)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:10,padding:"10px 14px",fontSize:13,color:"#fca5a5",marginBottom:12,lineHeight:1.5},
+  googleEspera:{marginTop:10,background:"rgba(59,130,246,0.10)",border:"1px solid rgba(96,165,250,0.26)",borderRadius:10,padding:"10px 12px",fontSize:12,color:"rgba(219,234,254,0.72)",lineHeight:1.5,textAlign:"left" as const},
   btnGoogle:{width:"100%",padding:"13px 16px",background:"white",color:"#1a1a2e",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10},
   btnPrimary:{width:"100%",padding:"13px 16px",background:"linear-gradient(135deg,#3b82f6,#6366f1)",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:700,boxShadow:"0 8px 24px rgba(59,130,246,0.22)"},
   btnSecondary:{padding:"11px 22px",background:"rgba(255,255,255,0.07)",color:"white",border:"1px solid rgba(255,255,255,0.10)",borderRadius:12,fontSize:14,fontWeight:600,cursor:"pointer"},

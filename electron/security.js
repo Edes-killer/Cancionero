@@ -51,4 +51,28 @@ function destinoCallbackOAuth(valor) {
   } catch { return null }
 }
 
-module.exports = { rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb, esAutorizacionSupabase, destinoCallbackOAuth }
+// OAuth de escritorio usa el navegador del sistema, pero vuelve por el
+// servidor loopback de Selah. Solo aceptamos el callback exacto en localhost;
+// nunca una URL remota ni otra ruta del servidor interno.
+function destinoCallbackOAuthLocal(valor) {
+  try {
+    const u = new URL(valor)
+    const loopback = u.protocol === "http:" &&
+      (u.hostname === "localhost" || u.hostname === "127.0.0.1") &&
+      u.port === "3000"
+    if (!loopback || u.pathname.replace(/\/$/, "") !== "/auth/callback") return null
+
+    const parametros = new URLSearchParams(u.hash.slice(1))
+    const tieneTokens = parametros.get("access_token") && parametros.get("refresh_token")
+    const tieneCodigo = Boolean(u.searchParams.get("code"))
+    const tieneError = Boolean(u.searchParams.get("error") || parametros.get("error"))
+    if (!tieneTokens && !tieneCodigo && !tieneError) return null
+
+    return {
+      nonce: u.searchParams.get("selah_nonce") || "",
+      destino: `http://localhost:3000/auth/callback/${u.search}${u.hash}`,
+    }
+  } catch { return null }
+}
+
+module.exports = { rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb, esAutorizacionSupabase, destinoCallbackOAuth, destinoCallbackOAuthLocal }

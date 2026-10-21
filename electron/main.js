@@ -9,8 +9,9 @@ try { require("dotenv").config() } catch(e) {}
 const { app, BrowserWindow, shell, Menu, ipcMain, dialog, session, desktopCapturer } = require("electron")
 const path = require("path")
 const http = require("http")
+const crypto = require("crypto")
 const { Server } = require("socket.io")
-const { rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb, esAutorizacionSupabase, destinoCallbackOAuth } = require("./security")
+const { rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb, esAutorizacionSupabase, destinoCallbackOAuth, destinoCallbackOAuthLocal } = require("./security")
 const fs = require("fs")
 const net = require("net")
 const os = require("os")
@@ -692,6 +693,7 @@ if (!gotTheLock) {
 // Google OAuth corre en el navegador del sistema. La ventana principal nunca
 // navega a Google y solo acepta el enlace de regreso mientras espera un login.
 let oauthPendienteHasta = 0
+let oauthPendienteNonce = ""
 let protocoloSelahRegistrado = false
 function rutaOAuthPendiente() {
   try { return path.join(app.getPath("userData"), "oauth-pendiente.json") }
@@ -699,26 +701,51 @@ function rutaOAuthPendiente() {
 }
 function guardarOAuthPendiente() {
   oauthPendienteHasta = Date.now() + 10 * 60 * 1000
+  oauthPendienteNonce = crypto.randomBytes(24).toString("hex")
   const ruta = rutaOAuthPendiente()
-  if (!ruta) return
-  try { fs.writeFileSync(ruta, JSON.stringify({ expira: oauthPendienteHasta }), { encoding: "utf8", mode: 0o600 }) }
+  if (!ruta) return oauthPendienteNonce
+  try { fs.writeFileSync(ruta, JSON.stringify({ expira: oauthPendienteHasta, nonce: oauthPendienteNonce }), { encoding: "utf8", mode: 0o600 }) }
   catch (e) { console.error("No se pudo guardar el retorno de Google:", e?.message) }
+  return oauthPendienteNonce
 }
-function oauthPendienteVigente() {
-  if (Date.now() <= oauthPendienteHasta) return true
+function oauthPendienteVigente(nonce = "") {
+  if (Date.now() <= oauthPendienteHasta) {
+    return !nonce || (oauthPendienteNonce && nonce === oauthPendienteNonce)
+  }
   const ruta = rutaOAuthPendiente()
   if (!ruta) return false
   try {
-    const expira = Number(JSON.parse(fs.readFileSync(ruta, "utf8"))?.expira || 0)
-    if (Date.now() <= expira) { oauthPendienteHasta = expira; return true }
+    const guardado = JSON.parse(fs.readFileSync(ruta, "utf8")) || {}
+    const expira = Number(guardado.expira || 0)
+    if (Date.now() <= expira) {
+      oauthPendienteHasta = expira
+      oauthPendienteNonce = typeof guardado.nonce === "string" ? guardado.nonce : ""
+      return !nonce || (oauthPendienteNonce && nonce === oauthPendienteNonce)
+    }
   } catch (e) {}
   try { fs.unlinkSync(ruta) } catch (e) {}
   return false
 }
 function limpiarOAuthPendiente() {
   oauthPendienteHasta = 0
+  oauthPendienteNonce = ""
   const ruta = rutaOAuthPendiente()
   if (ruta) try { fs.unlinkSync(ruta) } catch (e) {}
+}
+function recibirCallbackOAuthLocal(valor) {
+  const callback = destinoCallbackOAuthLocal(valor)
+  if (!callback || !oauthPendienteVigente(callback.nonce)) {
+    console.warn("⚠️ Login: retorno local rechazado")
+    return false
+  }
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+  console.log("🔐 Login: retorno local recibido desde el navegador")
+  limpiarOAuthPendiente()
+  mainWindow.loadURL(callback.destino)
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+  return true
 }
 function recibirCallbackOAuth(valor) {
   console.log("🔐 Login: retorno recibido desde el navegador o correo")
@@ -752,11 +779,8 @@ ipcMain.handle("oauth:abrir-google", async (evento, url) => {
   if (!mainWindow || evento.sender !== mainWindow.webContents || !esAutorizacionSupabase(url)) {
     return { ok: false, error: "No se pudo validar el enlace de Google." }
   }
-  if (!protocoloSelahRegistrado) {
-    return { ok: false, error: "Windows no pudo registrar el regreso a Selah. Reinicia la aplicación o usa correo y contraseña." }
-  }
   try {
-    guardarOAuthPendiente()
+    if (!oauthPendienteVigente()) guardarOAuthPendiente()
     await shell.openExternal(url)
     return { ok: true }
   } catch {
@@ -765,11 +789,16 @@ ipcMain.handle("oauth:abrir-google", async (evento, url) => {
   }
 })
 
-ipcMain.handle("oauth:preparar-retorno", async (evento) => {
+ipcMain.handle("oauth:preparar-retorno", async (evento, tipo) => {
   if (!mainWindow || evento.sender !== mainWindow.webContents) return { ok: false }
-  if (!protocoloSelahRegistrado) return { ok: false, error: "Windows no registró el enlace de regreso a Selah." }
-  guardarOAuthPendiente()
-  return { ok: true }
+  if (tipo !== "google" && !protocoloSelahRegistrado) {
+    return { ok: false, error: "Windows no registró el enlace de regreso a Selah." }
+  }
+  const nonce = guardarOAuthPendiente()
+  return {
+    ok: true,
+    redirectTo: `http://localhost:3000/auth/callback/?selah_nonce=${encodeURIComponent(nonce)}`,
+  }
 })
 
 // Diagnóstico mínimo y sin datos personales: permite que la consola principal
@@ -847,6 +876,42 @@ const MIME = {
 function startStaticServer(outDir, port) {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
+      // Puente OAuth loopback: el navegador del sistema recibe el callback de
+      // Supabase y entrega su URL completa (incluido el fragmento) al proceso
+      // Electron. Solo se acepta desde este mismo computador, con nonce
+      // temporal y mientras existe un inicio de sesión pendiente.
+      if (req.url?.startsWith("/oauth/entregar") && req.method === "POST") {
+        const remoto = req.socket.remoteAddress || ""
+        const esLocal = remoto === "127.0.0.1" || remoto === "::1" || remoto === "::ffff:127.0.0.1"
+        if (!esLocal) { res.writeHead(403); res.end(); return }
+        const trozos = []
+        let bytes = 0, excedido = false
+        req.on("data", trozo => {
+          if (excedido) return
+          bytes += trozo.length
+          if (bytes > 32 * 1024) {
+            excedido = true
+            res.writeHead(413, { "Content-Type": "application/json" })
+            res.end(JSON.stringify({ ok: false }))
+            return
+          }
+          trozos.push(trozo)
+        })
+        req.on("end", () => {
+          if (excedido) return
+          try {
+            const datos = JSON.parse(Buffer.concat(trozos).toString("utf8"))
+            const ok = recibirCallbackOAuthLocal(typeof datos?.url === "string" ? datos.url : "")
+            res.writeHead(ok ? 200 : 403, { "Content-Type": "application/json", "Cache-Control": "no-store" })
+            res.end(JSON.stringify({ ok }))
+          } catch {
+            res.writeHead(400, { "Content-Type": "application/json" })
+            res.end(JSON.stringify({ ok: false }))
+          }
+        })
+        return
+      }
+
       // Limpiar query strings y hash
       let urlPath
       try { urlPath = decodeURIComponent(req.url.split("?")[0].split("#")[0]) }
