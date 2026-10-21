@@ -1,7 +1,7 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
 const path = require("node:path")
-const { rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb, esAutorizacionSupabase, destinoCallbackOAuth } = require("../electron/security")
+const { rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb, esAutorizacionSupabase, destinoCallbackOAuth, destinoCallbackOAuthLocal } = require("../electron/security")
 const { EventEmitter } = require("node:events")
 const { protegerSalida } = require("../electron/safe-output")
 const fs = require("node:fs")
@@ -38,6 +38,15 @@ test("Google se abre fuera de Electron y el callback solo vuelve a una ruta inte
   assert.equal(destinoCallbackOAuth("https://evil.cl/#access_token=abc&refresh_token=def"), null)
   assert.equal(destinoCallbackOAuth("selahlive://auth/callback?code=codigo%20pkce"), "http://localhost:3000/auth/callback/?code=codigo%20pkce")
   assert.equal(destinoCallbackOAuth("selahlive://auth/callback#error=access_denied"), "http://localhost:3000/login/?error=oauth&detalle=access_denied")
+  assert.deepEqual(
+    destinoCallbackOAuthLocal("http://localhost:3000/auth/callback/?selah_nonce=unico#access_token=abc&refresh_token=def"),
+    {
+      nonce: "unico",
+      destino: "http://localhost:3000/auth/callback/?selah_nonce=unico#access_token=abc&refresh_token=def",
+    },
+  )
+  assert.equal(destinoCallbackOAuthLocal("https://evil.cl/auth/callback/?selah_nonce=unico#access_token=abc&refresh_token=def"), null)
+  assert.equal(destinoCallbackOAuthLocal("http://localhost:3000/otra/?selah_nonce=unico#access_token=abc&refresh_token=def"), null)
   const login = fs.readFileSync("app/login/page.tsx", "utf8")
   const main = fs.readFileSync("electron/main.js", "utf8")
   const preload = fs.readFileSync("electron/preload.js", "utf8")
@@ -49,10 +58,13 @@ test("Google se abre fuera de Electron y el callback solo vuelve a una ruta inte
   assert.match(main, /oauth-pendiente\.json/)
   assert.match(main, /let protocoloSelahRegistrado = false/)
   assert.match(main, /app\.isDefaultProtocolClient\("selahlive"/)
-  assert.match(main, /if \(!protocoloSelahRegistrado\)/)
+  assert.match(main, /tipo !== "google" && !protocoloSelahRegistrado/)
+  assert.match(main, /redirectTo: `http:\/\/localhost:3000\/auth\/callback\/\?selah_nonce=/)
+  assert.match(main, /req\.url\?\.startsWith\("\/oauth\/entregar"\)/)
+  assert.match(main, /crypto\.randomBytes\(24\)/)
   assert.match(main, /if \(enlaceOAuthInicial\) recibirCallbackOAuth\(enlaceOAuthInicial\)/)
   assert.match(main, /ipcMain\.handle\("oauth:preparar-retorno"/)
-  assert.match(preload, /prepararRetorno: \(\) => ipcRenderer\.invoke\("oauth:preparar-retorno"\)/)
+  assert.match(preload, /prepararRetorno: \(tipo\) => ipcRenderer\.invoke\("oauth:preparar-retorno", tipo\)/)
   assert.match(preload, /diagnostico: \(evento, codigo\) => ipcRenderer\.send\("auth:diagnostico"/)
   assert.match(main, /ipcMain\.on\("auth:diagnostico"/)
   assert.match(main, /replace\(\/\[\^a-z0-9_-\]\//)
@@ -60,6 +72,7 @@ test("Google se abre fuera de Electron y el callback solo vuelve a una ruta inte
   assert.match(main, /Selah Live ya está abierto/)
   assert.match(main, /mainWindow\.isMinimized\(\)/)
   assert.match(login, /prepararRetorno/)
+  assert.match(login, /prepararRetorno\?\.\("google"\)/)
   assert.match(login, /navigator\.userAgent\.includes\("Electron"\)\) return "selahlive:\/\/auth\/callback"/)
 })
 
