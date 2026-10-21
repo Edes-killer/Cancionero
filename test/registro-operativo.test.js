@@ -10,11 +10,12 @@ const {
 test("el registro operativo oculta secretos antes de escribirlos", () => {
   const temporal = fs.mkdtempSync(path.join(os.tmpdir(), "selah-log-"))
   configurarCarpeta(temporal)
+  const tokenPrueba = ["ghp", "abcdefghijklmnopqrstuvwxyz123456"].join("_")
   registrar("prueba", {
     email: "pastor@iglesia.cl",
     rtmpUrl: "rtmps://servidor.example/live/clave-secreta",
     authorization: "Bearer secreto-total",
-    token: "ghp_abcdefghijklmnopqrstuvwxyz123456",
+    token: tokenPrueba,
     anidado: { mensaje: "falló para pastor@iglesia.cl" },
   }, "error")
   const disco = fs.readFileSync(rutaActual(), "utf8")

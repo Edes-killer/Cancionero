@@ -19,6 +19,7 @@ import { laboratorioNativoDisponible } from "@/lib/camaraNativaLab"
 import { identidadCamara, accionFinCamara } from "@/lib/identidadCamara"
 import { avisoCamaraPC, type EstadoCamaraPC } from "@/lib/estadoCamaraPC"
 import RequierePremium from "@/components/RequierePremium"
+import GuiaIncidente from "@/components/ui/GuiaIncidente"
 
 type Estado = "abriendo" | "listo" | "conectando" | "conectado" | "error"
 interface RespuestaUnionCamara { ok?: boolean; error?: string; hostId?: string }
@@ -672,7 +673,7 @@ function CamaraMovil() {
         </label>
         {envioReal && <div style={{ fontSize:12, color:"#bfdbfe" }}>{envioReal}</div>}
         {calidad === "auto" && ajusteAutomatico && <div role="status" style={{ fontSize:12, color:"#fde68a" }}>{ajusteAutomatico}</div>}
-        {error && <div style={{ background: "rgba(220,38,38,0.85)", borderRadius: 12, padding: "10px 14px", fontSize: 13.5, fontWeight: 600 }}>⚠️ {error}</div>}
+        {error && <GuiaIncidente mensaje={error} contexto={/ip|red|servidor|señalización/i.test(error) ? "conexion" : "camara"} compacto />}
         {diag && <div style={{ background: "rgba(0,0,0,0.55)", borderRadius: 10, padding: "8px 12px", fontSize: 11, fontFamily: "monospace", color: "#fca5a5", wordBreak: "break-word" }}>🔧 {diag}</div>}
 
         {!conectado && (

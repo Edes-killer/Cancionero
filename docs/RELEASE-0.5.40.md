@@ -48,7 +48,7 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 - `npm run qa:release`: 14 comprobaciones obligatorias, incluida la recuperación real de un destino local y trazabilidad del build.
 - GitHub repite esa misma compuerta en Windows para cada solicitud de integración y cada
   cambio de `main`; no usa credenciales ni publica artefactos ni duplica trabajos por rama.
-- 160/160 pruebas automatizadas y 26/26 escenarios del laboratorio LAN aprobados.
+- 163/163 pruebas automatizadas y 26/26 escenarios del laboratorio LAN aprobados.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
 - Auditoría de producción: cero vulnerabilidades conocidas. En herramientas quedan dos
@@ -88,6 +88,8 @@ activar SmartScreen. Evidencia y estado: [EMPAQUETADO-0.5.40.md](EMPAQUETADO-0.5
 - Configuración prepara un informe único con los eventos web y del proceso de escritorio.
 - Electron registra cierres inesperados, ventanas sin respuesta, fallos de carga y servicios internos que no iniciaron.
 - Antes de guardar o exportar se ocultan tokens, contraseñas, correos, claves y destinos RTMP.
+- Los errores de transmisión y cámara ya no muestran solo el texto técnico: identifican plataforma, permisos, fuente ocupada, imagen interrumpida, audio, motor o red y entregan una acción segura.
+- Cada aviso aclara qué configuración o servicio se conserva, evitando que el operador cierre todo por reflejo.
 
 ## Prueba corta en iglesia
 

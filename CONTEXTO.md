@@ -11,7 +11,7 @@ el release ni marcarlo `Latest` antes de completar la prueba corta en la iglesia
 
 **Estado verificable de v0.5.40:** login real con Google aprobado en Electron mediante
 callback loopback protegido por nonce; `npm run qa:release` aprobó 14/14 compuertas,
-160/160 pruebas y el laboratorio LAN hostil aprobó 26/26 escenarios. Los binarios descritos
+163/163 pruebas y el laboratorio LAN hostil aprobó 26/26 escenarios. Los binarios descritos
 en `docs/EMPAQUETADO-0.5.40.md` son evidencia histórica anterior a los cambios de planes y
 seguridad LAN del 21 de octubre: deben reconstruirse y volver a verificarse antes de publicar.
 El instalador Windows continúa sin certificado Authenticode comercial.
@@ -522,6 +522,7 @@ La receta operativa completa vive en `COMO-PUBLICAR.md`. El instalador queda en
 - Electron conserva un registro rotativo de inicios, servicios internos, fallos de carga, procesos caídos y ventanas sin respuesta.
 - El saneamiento es obligatorio antes de persistir o exportar: oculta tokens, contraseñas, correos, claves y URLs RTMP.
 - No se incorporó telemetría externa: los datos permanecen en el equipo o en la tabla existente `errores_log` de la iglesia.
+- `lib/incidentes.ts` traduce fallos de plataforma, medios, fuente, audio, motor y red a una explicación operativa estable. `GuiaIncidente` se usa en Transmisión y Cámara para indicar causa probable, siguiente acción y qué sigue a salvo.
 
 ## 12. Variables de entorno (`.env.local`)
 

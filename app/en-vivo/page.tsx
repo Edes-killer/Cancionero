@@ -31,6 +31,7 @@ import { cargarConfiguracionNube, guardarConfiguracionNube, permiteConfiguracion
 import { crearInformeTransmision } from "@/lib/informeTransmision"
 import type { Parte } from "@/lib/modelosCulto"
 import RequierePremium from "@/components/RequierePremium"
+import GuiaIncidente from "@/components/ui/GuiaIncidente"
 
 type Escena = "camara" | "camara-letra" | "letra" | "espera"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
@@ -2096,8 +2097,9 @@ function EnVivoPremium() {
               ) : (
                 <>
                   <div style={{ fontSize: 30 }}>📷</div>
-                  <div style={{ color: "#fca5a5", fontSize: 14, maxWidth: 420 }}>{errorCam}</div>
-                  <button onClick={reintentar} style={botonBase({ background: C.azul, color: "#fff" })}>Reintentar</button>
+                  <div style={{ width:"min(520px,100%)" }}>
+                    <GuiaIncidente mensaje={errorCam || "No se pudo abrir la cámara."} contexto="camara" onReintentar={reintentar} />
+                  </div>
                 </>
               )}
             </div>
@@ -2758,8 +2760,8 @@ function EnVivoPremium() {
           )}
 
           {errorTx && (
-            <div style={{ marginTop: 14, background: "rgba(220,38,38,.1)", border: "1px solid rgba(220,38,38,.3)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "#fca5a5", wordBreak: "break-word" }}>
-              ⚠️ {errorTx}
+            <div style={{ marginTop: 14 }}>
+              <GuiaIncidente mensaje={errorTx} contexto="transmision" onReintentar={() => setPreflightAbierto(true)} textoReintentar="Revisar salida" />
             </div>
           )}
 
