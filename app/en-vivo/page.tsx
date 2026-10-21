@@ -30,7 +30,8 @@ import { ColaTransmision } from "@/lib/colaTransmision"
 import { cargarConfiguracionNube, guardarConfiguracionNube, permiteConfiguracionNube, type ConfiguracionTransmisionNube } from "@/lib/configuracionNube"
 import { crearInformeTransmision } from "@/lib/informeTransmision"
 import type { Parte } from "@/lib/modelosCulto"
-import RequierePremium from "@/components/RequierePremium"
+import RequierePlan from "@/components/RequierePlan"
+import { permiteCamaraMovil } from "@/lib/planes"
 import GuiaIncidente from "@/components/ui/GuiaIncidente"
 import { explicarErrorDestino } from "@/lib/incidentes"
 
@@ -240,7 +241,7 @@ const transmisionElectron = (): TransmisionElectron | undefined =>
   (window as Window & { transmision?: TransmisionElectron }).transmision
 
 export default function EnVivoPage() {
-  return <RequierePremium funcion="Transmisión en vivo"><EnVivoPremium /></RequierePremium>
+  return <RequierePlan funcion="Transmisión en vivo"><EnVivoPremium /></RequierePlan>
 }
 
 function EnVivoPremium() {
@@ -359,6 +360,16 @@ function EnVivoPremium() {
   // Datos de la iglesia (logo + nombre) desde la configuración, no del socket:
   // así el logo nuevo que subes en Config se refleja al tiro.
   const { logoUrl: logoIglesia, nombreIglesia, iglesiaId, plan } = useApp()
+  const esPremium = permiteCamaraMovil(plan)
+  useEffect(() => {
+    if (esPremium) return
+    // Una selección Premium guardada en este equipo no debe quedar activa si
+    // la iglesia vuelve a Pro.
+    setCamara2Id("")
+    setCamaraActiva(1)
+    if (esFuenteCelular(camaraId)) setCamaraId("")
+    if (esFuenteCelular(microId)) setMicroId("")
+  }, [esPremium, camaraId, microId])
 
   // Contenido que se está proyectando (espejo por socket)
   const [titulo, setTitulo] = useState("")
@@ -386,12 +397,30 @@ function EnVivoPremium() {
     custom: { activo: false, valor: "" },
   })
   useEffect(() => {
-    try { const g = localStorage.getItem("en-vivo-destinos"); if (g) setDestinos(d => ({ ...d, ...JSON.parse(g) })) } catch {}
-  }, [])
+    try {
+      const g = localStorage.getItem("en-vivo-destinos")
+      if (!g) return
+      setDestinos(d => {
+        const next = { ...d, ...JSON.parse(g) } as typeof d
+        if (esPremium) return next
+        const primero = PLATAFORMAS.find(p => next[p.key]?.activo)?.key
+        return Object.fromEntries(Object.entries(next).map(([key, value]) => [key, { ...value, activo: key === primero }])) as typeof d
+      })
+    } catch {}
+  }, [esPremium])
   const revisionRedRef = useRef(0)
   const setDestino = (k: DestKey, patch: Partial<{ activo: boolean; valor: string }>) => {
     revisionRedRef.current += 1
-    setDestinos(prev => { const next = { ...prev, [k]: { ...prev[k], ...patch } }; try { localStorage.setItem("en-vivo-destinos", JSON.stringify(next)) } catch {}; return next })
+    setDestinos(prev => {
+      let next = { ...prev, [k]: { ...prev[k], ...patch } }
+      // Pro transmite a una plataforma por vez. Premium conserva la salida
+      // simultánea: al activar otra en Pro, se desactiva la anterior.
+      if (!esPremium && patch.activo) {
+        next = Object.fromEntries(Object.entries(next).map(([key, value]) => [key, { ...value, activo: key === k }])) as typeof next
+      }
+      try { localStorage.setItem("en-vivo-destinos", JSON.stringify(next)) } catch {}
+      return next
+    })
   }
   const [txEstado, setTxEstado] = useState<"idle" | "conectando" | "vivo" | "reconectando" | "error">("idle")
   const [preflightAbierto, setPreflightAbierto] = useState(false)
@@ -1339,7 +1368,7 @@ function EnVivoPremium() {
     if (!destinos[p.key].activo) return []
     const url = urlDeDestino(p.key, destinos[p.key].valor)
     return url ? [{ id:p.key, nombre:p.nombre, url }] : []
-  })
+  }).slice(0, esPremium ? undefined : 1)
   const construirUrls = (): string[] => construirDestinos().map(destino => destino.url)
 
   // ¿Hay alguna fuente de video alimentando el lienzo? Puede ser la cámara del PC,
@@ -2265,14 +2294,14 @@ function EnVivoPremium() {
                 {celulares.map(c => <option key={c.id} value={CELULAR_PREFIJO + c.id}>📱 {c.nombre}{phoneStreamsRef.current.has(c.id) ? "" : " · desconectado"}</option>)}
               </select>
             </label>
-            <label style={{ fontSize: 12.5, color: C.tenue }}>
+            {esPremium ? <label style={{ fontSize: 12.5, color: C.tenue }}>
               📱 Cámara 2 (opcional)
               <select value={camara2Id} onChange={e => setCamara2Id(e.target.value)} style={selectEstilo}>
                 <option value="">(ninguna)</option>
                 {camaras.filter(c => c.id !== camaraId).map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
                 {celulares.filter(c => camaraId !== CELULAR_PREFIJO + c.id).map(c => <option key={c.id} value={CELULAR_PREFIJO + c.id}>📱 {c.nombre}{phoneStreamsRef.current.has(c.id) ? "" : " · desconectado"}</option>)}
               </select>
-            </label>
+            </label> : <div style={{ padding:"10px 12px", borderRadius:10, border:"1px solid rgba(245,158,11,.22)", background:"rgba(245,158,11,.07)", color:"#fcd34d", fontSize:12, lineHeight:1.4 }}><strong>Premium:</strong> segunda cámara y composición simultánea.</div>}
             <label style={{ fontSize: 12.5, color: C.tenue, gridColumn: "1 / -1" }}>
               🎙️ Micrófono / entrada de audio
               <select value={microId} onChange={e => setMicroId(e.target.value)} style={selectEstilo}>
@@ -2400,7 +2429,7 @@ function EnVivoPremium() {
             </div>
 
             {/* Usar el celular como cámara (WebRTC por la LAN) */}
-            <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.borde}` }}>
+            {esPremium ? <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.borde}` }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                 <div style={{ flex: 1, minWidth: 180 }}>
                   <div style={{ fontSize: 14, fontWeight: 700 }}>📱 Usar celular como cámara</div>
@@ -2412,7 +2441,7 @@ function EnVivoPremium() {
               </div>
               {celularOn && <div style={{ fontSize: 11.5, color: "#4ade80", marginTop: 8, fontWeight: 700 }}>● Celular conectado como cámara</div>}
               {!esEscritorio && <div style={{ fontSize: 11.5, color: C.tenue, marginTop: 8 }}>Disponible solo en la app de escritorio.</div>}
-            </div>
+            </div> : <div style={{ marginTop:14, padding:"12px 14px", borderTop:`1px solid ${C.borde}`, color:"#fcd34d", fontSize:12.5 }}><strong>Premium:</strong> conecta celulares como cámaras inalámbricas adicionales.</div>}
         </Seccion>
 
         {/* Mensaje en vivo */}
@@ -2696,7 +2725,7 @@ function EnVivoPremium() {
                 </div>
                 <button style={{ ...botonBase({ padding: "7px 10px" }), marginTop: 9 }} onClick={() => transmisionElectron()?.abrirCarpetaGrabaciones?.()}>Abrir carpeta sin modificar archivos</button>
               </div>}
-              <div style={{ fontSize: 12, color: C.tenue, marginBottom: 12 }}>Activa una o varias plataformas — se transmite a todas a la vez (necesitas buena subida de internet).</div>
+              <div style={{ fontSize: 12, color: C.tenue, marginBottom: 12 }}>{esPremium ? "Activa una o varias plataformas — se transmite a todas a la vez (necesitas buena subida de internet)." : "Elige una plataforma para transmitir. La salida simultánea a varias plataformas pertenece a Premium."}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
                 {PLATAFORMAS.map(p => {
                   const d = destinos[p.key]

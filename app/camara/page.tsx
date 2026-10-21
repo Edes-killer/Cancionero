@@ -18,7 +18,7 @@ import { CalidadAdaptativa, medirEnvio, PERFILES_ENVIO, type MuestraEnvio } from
 import { laboratorioNativoDisponible } from "@/lib/camaraNativaLab"
 import { identidadCamara, accionFinCamara } from "@/lib/identidadCamara"
 import { avisoCamaraPC, type EstadoCamaraPC } from "@/lib/estadoCamaraPC"
-import RequierePremium from "@/components/RequierePremium"
+import RequierePlan from "@/components/RequierePlan"
 import GuiaIncidente from "@/components/ui/GuiaIncidente"
 
 type Estado = "abriendo" | "listo" | "conectando" | "conectado" | "error"
@@ -50,7 +50,7 @@ const restriccionesVideo = (calidad: CalidadCamara): MediaTrackConstraints => ({
 })
 
 export default function CamaraMovilPage() {
-  return <RequierePremium funcion="Cámara móvil para transmisión"><CamaraMovil /></RequierePremium>
+  return <RequierePlan funcion="Cámara móvil para transmisión" capacidad="premium"><CamaraMovil /></RequierePlan>
 }
 
 function CamaraMovil() {

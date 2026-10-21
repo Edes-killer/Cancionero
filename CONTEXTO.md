@@ -462,7 +462,7 @@ La receta operativa completa vive en `COMO-PUBLICAR.md`. El instalador queda en
 
 ### Candidata v0.5.40 — código y artefactos verificados
 
-- Los planes pasan de insignias visuales a permisos coherentes: Transmisión, OBS y Cámara móvil montan solo en Premium; la cámara desaparece del Inicio/menú de APK fuera de ese plan y la sincronización de apariencia sigue disponible desde Pro.
+- Los planes pasan de insignias visuales a permisos coherentes: Pro incluye transmisión nativa con una cámara y un destino; Premium añade multicámara, cámara móvil, salida simultánea y OBS. La cámara desaparece del Inicio/menú de APK fuera de Premium y la sincronización de apariencia está disponible desde Pro.
 - `20261021_planes_autoritativos.sql` protege `iglesias.plan` contra autoascensos y aplica en Postgres los cupos Gratis de 200 canciones activas, 15 usuarios, 10 imágenes y 1 video en nube, con bloqueos para operaciones concurrentes. También restringe la escritura de configuración compartida a Pro/Premium. Esta migración debe aplicarse en Supabase antes de probar los planes como producto.
 - El plan validado se guarda por iglesia para mantener el acceso correcto al iniciar temporalmente sin red, pero Supabase lo reemplaza al responder. La landing ya no promete capacidades de nube, multisede o soporte que todavía no se miden o entregan.
 - Modelos compartidos de canción, partes, fondos e ítems de culto extraídos a `lib/modelosCulto.ts` para reducir duplicación y reemplazar `any` progresivamente.

@@ -7,7 +7,7 @@ import { useEffect, useState } from "react"
 import { useApp } from "@/context/AppContext"
 import { getRolEnIglesia, limpiarIglesiaActivaId } from "@/lib/getIglesia"
 import { navegarSPA, normalizarRuta } from "@/lib/navegar"
-import { permiteCamaraMovil } from "@/lib/planes"
+import { permiteCamaraMovil, permiteTransmision } from "@/lib/planes"
 
 const ROLES_INFO: Record<string, { icon: string; label: string }> = {
   admin:  { icon: "👑", label: "Administrador" },
@@ -21,7 +21,7 @@ const LINKS: LinkNavegacion[] = [
   { href: "/",              label: "Inicio",    icon: "⌂", ayuda:"Vuelve al resumen y los accesos principales." },
   { href: "/canciones",     label: "Canciones", icon: "🎵", ayuda:"Administra letras, tonos, acordes y el repertorio." },
   { href: "/control",       label: "Control",   icon: "🎛️", ayuda:"Prepara y opera la proyección del culto." },
-  { href: "/en-vivo",       label: "Transmitir", icon: "🎥", ayuda:"Abre la consola de transmisión en vivo de tu iglesia. Función Premium.", soloLider: true },
+  { href: "/en-vivo",       label: "Transmitir", icon: "🎥", ayuda:"Abre la consola de transmisión en vivo de tu iglesia. Disponible desde Pro.", soloLider: true },
   { href: "/camara",        label: "Cámara",    icon: "📷", ayuda:"Usa este celular como cámara para la transmisión.", soloLider: true },
   { href: "/configuracion", label: "Ajustes",   icon: "⚙️", ayuda:"Configura la iglesia, dispositivos, red y preferencias." },
 ]
@@ -206,7 +206,7 @@ export default function Navbar() {
                     whiteSpace: "nowrap"
                   }}>
                     <span style={{ fontSize: 13 }}>{icon}</span>{label}
-                    {href === "/en-vivo" && plan !== "premium" && <span title="Función del plan Premium" style={{ fontSize:10, color:"#fbbf24" }}>★</span>}
+                    {href === "/en-vivo" && !permiteTransmision(plan) && <span title="Disponible desde el plan Pro" style={{ fontSize:10, color:"#fbbf24" }}>★</span>}
                   </Link>
                 )
               })}
@@ -333,7 +333,7 @@ export default function Navbar() {
                   }}
                 >
                   <span>{icon}</span>{label}
-                  {href === "/en-vivo" && plan !== "premium" && <span style={{ fontSize:11, color:"#fbbf24" }}>Premium</span>}
+                  {href === "/en-vivo" && !permiteTransmision(plan) && <span style={{ fontSize:11, color:"#fbbf24" }}>Pro</span>}
                 </Link>
               )
             })}

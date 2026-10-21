@@ -344,7 +344,7 @@ export default function Bienvenido() {
             <div style={{ fontSize: 36, fontWeight: 900, letterSpacing: "-.03em", marginBottom: 4 }}>
               $4.900<span style={{ fontSize: 15, fontWeight: 600, color: C.tenue }}> /mes</span>
             </div>
-            <div style={{ fontSize: 13, color: C.tenue, marginBottom: 18 }}>Para la iglesia que creció.</div>
+            <div style={{ fontSize: 13, color: C.tenue, marginBottom: 18 }}>Para la iglesia que proyecta y transmite.</div>
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
               {[
                 "Todo lo del plan Gratis",
@@ -354,6 +354,7 @@ export default function Bienvenido() {
                 "Apariencia de Control compartida entre equipos",
                 "Historial y estadísticas completos",
                 "Preparación desde PC o celular",
+                "Transmisión nativa con una cámara y un destino",
               ].map(x => (
                 <li key={x} style={{ display: "flex", gap: 10, fontSize: 14, color: C.suave, lineHeight: 1.4 }}>
                   <span style={{ color: C.azul, fontWeight: 900 }}>✓</span>{x}
@@ -382,11 +383,11 @@ export default function Bienvenido() {
             <div style={{ fontSize: 36, fontWeight: 900, letterSpacing: "-.03em", marginBottom: 4, color: C.suave }}>
               $9.900<span style={{ fontSize: 15, fontWeight: 600, color: C.tenue }}> /mes</span>
             </div>
-            <div style={{ fontSize: 13, color: C.tenue, marginBottom: 18 }}>Para la iglesia que transmite.</div>
+            <div style={{ fontSize: 13, color: C.tenue, marginBottom: 18 }}>Para producciones multicámara y equipos avanzados.</div>
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
               {[
                 "Todo lo del plan Pro",
-                "🎥 Transmisión nativa multicámara, sin OBS",
+                "🎥 Multicámara y salida simultánea a varias plataformas",
                 "Celulares como cámaras adicionales",
                 "Overlays en vivo con tu logo y banners",
                 "Grabación local y diagnósticos de emisión",

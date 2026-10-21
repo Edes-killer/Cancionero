@@ -7,7 +7,7 @@ import {
   GestorOBS, leerConfigOBS, guardarConfigOBS, CONFIG_OBS_DEFAULT,
   type ConfigOBS, type EstadoOBS,
 } from "@/lib/obs"
-import RequierePremium from "@/components/RequierePremium"
+import RequierePlan from "@/components/RequierePlan"
 
 const C = {
   fondo: "#060d1a", panel: "#111b2e", panel2: "#0d1626",
@@ -17,7 +17,7 @@ const C = {
 }
 
 export default function TransmisionPage() {
-  return <RequierePremium funcion="Integración avanzada con OBS"><TransmisionPremium /></RequierePremium>
+  return <RequierePlan funcion="Integración avanzada con OBS" capacidad="premium"><TransmisionPremium /></RequierePlan>
 }
 
 function TransmisionPremium() {

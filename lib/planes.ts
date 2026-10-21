@@ -47,7 +47,7 @@ export function permiteConfiguracionCompartida(plan?: string | null): boolean {
 }
 
 export function permiteTransmision(plan?: string | null): boolean {
-  return plan === "premium"
+  return plan === "pro" || plan === "premium"
 }
 
 export function permiteCamaraMovil(plan?: string | null): boolean {
