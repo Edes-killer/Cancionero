@@ -6,6 +6,7 @@ import { getIglesiaId } from "@/lib/getIglesia"
 import { conTimeout } from "@/lib/timeout"
 import { getCancelacionesCache, setCancelacionesCache, supabaseProbablementeCaido, marcarSupabaseCaido, marcarSupabaseOk } from "@/lib/cache"
 import type { Cancion } from "@/lib/modelosCulto"
+import { esPlanValido } from "@/lib/planes"
 
 interface AppContextType {
   session: Session | null
@@ -238,26 +239,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!igId) { setListo(true); return }
       setIglesiaId(igId)
 
+      // El plan se conserva por iglesia para que Premium no desaparezca por un
+      // instante cuando se abre la app sin red. Supabase sigue siendo la fuente
+      // autoritativa y reemplaza este valor apenas responde.
+      try {
+        const planGuardado = localStorage.getItem(`selah-plan-${igId}`)
+        if (esPlanValido(planGuardado)) setPlan(planGuardado)
+      } catch {}
+
       // ✅ Cargar canciones SIEMPRE, independiente de si iglesias falla
       console.log("🚀 AppContext: iniciando carga de canciones para iglesia", igId)
       cargarCanciones(igId)
 
-      // Iglesia (nombre/logo) en paralelo — si falla no bloquea las canciones
-      Promise.resolve(
-        supabase.from("iglesias")
-          .select("nombre, logo_url, localidad, pin_sala, plan")
-          .eq("id", igId).single()
-      ).then(({ data, error }) => {
-          if (!error && data) {
-            setNombreIglesia(data.nombre || "")
-            setLogoUrl(data.logo_url || "")
-            setLocalidad(data.localidad || "")
-            setPinSala(data.pin_sala || null)
-            setPlan(data.plan || "gratis")
-            if (data.pin_sala) localStorage.setItem("selah-sala-pin", data.pin_sala)
-            else localStorage.removeItem("selah-sala-pin")
-          }
-        }).catch(() => {})
+      // Esperar el plan antes de declarar listo evita mostrar por un instante
+      // el bloqueo Gratis a una iglesia Premium recién iniciada.
+      const resultadoIglesia = await conTimeout(
+        Promise.resolve(
+          supabase.from("iglesias")
+            .select("nombre, logo_url, localidad, pin_sala, plan")
+            .eq("id", igId).single()
+        ),
+        5000,
+      )
+      if (resultadoIglesia !== "timeout") {
+        const { data, error } = resultadoIglesia
+        if (!error && data) {
+          setNombreIglesia(data.nombre || "")
+          setLogoUrl(data.logo_url || "")
+          setLocalidad(data.localidad || "")
+          setPinSala(data.pin_sala || null)
+          const planActual = esPlanValido(data.plan) ? data.plan : "gratis"
+          setPlan(planActual)
+          try { localStorage.setItem(`selah-plan-${igId}`, planActual) } catch {}
+          if (data.pin_sala) localStorage.setItem("selah-sala-pin", data.pin_sala)
+          else localStorage.removeItem("selah-sala-pin")
+        }
+      }
 
       yaCargadoRef.current = true
       setListo(true)
@@ -277,6 +294,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setNombreIglesia("")
     setLogoUrl("")
     setLocalidad("")
+    setPlan("gratis")
     setPinSala(null)
     setDesdeCache(false)
     setCanciones([])

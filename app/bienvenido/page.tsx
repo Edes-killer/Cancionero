@@ -245,7 +245,7 @@ export default function Bienvenido() {
       </section>
 
       {/* ── Funciones ── */}
-      <section style={{ ...contenedor, padding: "78px 24px" }}>
+      <section id="planes" style={{ ...contenedor, padding: "78px 24px", scrollMarginTop: 24 }}>
         <h2 style={{ fontSize: "clamp(25px, 3.3vw, 36px)", fontWeight: 900, letterSpacing: "-.025em", margin: "0 0 12px", textAlign: "center" }}>
           Todo lo que el domingo necesita
         </h2>
@@ -347,13 +347,13 @@ export default function Bienvenido() {
             <div style={{ fontSize: 13, color: C.tenue, marginBottom: 18 }}>Para la iglesia que creció.</div>
             <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
               {[
-                "Todo lo del plan Gratis, sin límites",
-                "Canciones y cultos ilimitados",
+                "Todo lo del plan Gratis",
+                "Canciones propias ilimitadas",
                 "Usuarios ilimitados",
-                "2 GB de multimedia en la nube",
+                "Galería en nube ampliada",
+                "Apariencia de Control compartida entre equipos",
                 "Historial y estadísticas completos",
-                "Respaldo automático",
-                "Soporte prioritario",
+                "Preparación desde PC o celular",
               ].map(x => (
                 <li key={x} style={{ display: "flex", gap: 10, fontSize: 14, color: C.suave, lineHeight: 1.4 }}>
                   <span style={{ color: C.azul, fontWeight: 900 }}>✓</span>{x}
@@ -377,7 +377,7 @@ export default function Bienvenido() {
               <span style={{
                 fontSize: 10.5, fontWeight: 800, padding: "3px 9px", borderRadius: 99,
                 background: "rgba(245,185,63,.13)", color: C.luz, border: "1px solid rgba(245,185,63,.3)",
-              }}>PRÓXIMAMENTE</span>
+              }}>ACCESO PILOTO</span>
             </div>
             <div style={{ fontSize: 36, fontWeight: 900, letterSpacing: "-.03em", marginBottom: 4, color: C.suave }}>
               $9.900<span style={{ fontSize: 15, fontWeight: 600, color: C.tenue }}> /mes</span>
@@ -387,10 +387,10 @@ export default function Bienvenido() {
               {[
                 "Todo lo del plan Pro",
                 "🎥 Transmisión nativa multicámara, sin OBS",
+                "Celulares como cámaras adicionales",
                 "Overlays en vivo con tu logo y banners",
-                "Multi-sede en una sola cuenta",
-                "10 GB de multimedia en la nube",
-                "Soporte dedicado",
+                "Grabación local y diagnósticos de emisión",
+                "Diseño de transmisión compartido entre equipos",
               ].map(x => (
                 <li key={x} style={{ display: "flex", gap: 10, fontSize: 14, color: C.suave, lineHeight: 1.4 }}>
                   <span style={{ color: C.luz, fontWeight: 900 }}>✓</span>{x}
@@ -400,7 +400,7 @@ export default function Bienvenido() {
             <div style={{
               textAlign: "center", marginTop: 24, padding: "13px", borderRadius: 11,
               border: `1px solid ${C.borde}`, color: C.tenue, fontWeight: 700, fontSize: 14.5,
-            }}>En desarrollo</div>
+            }}>Escríbenos para participar</div>
           </div>
         </div>
       </section>

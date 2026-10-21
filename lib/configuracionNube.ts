@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase"
+import { permiteConfiguracionCompartida } from "@/lib/planes"
 
 export type AmbitoConfiguracionNube = "control" | "transmision"
 
@@ -41,7 +42,7 @@ export interface ConfiguracionTransmisionNube {
 }
 
 export function permiteConfiguracionNube(plan?: string | null): boolean {
-  return plan === "pro" || plan === "premium"
+  return permiteConfiguracionCompartida(plan)
 }
 
 export async function cargarConfiguracionNube<T>(

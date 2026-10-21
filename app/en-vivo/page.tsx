@@ -30,6 +30,7 @@ import { ColaTransmision } from "@/lib/colaTransmision"
 import { cargarConfiguracionNube, guardarConfiguracionNube, permiteConfiguracionNube, type ConfiguracionTransmisionNube } from "@/lib/configuracionNube"
 import { crearInformeTransmision } from "@/lib/informeTransmision"
 import type { Parte } from "@/lib/modelosCulto"
+import RequierePremium from "@/components/RequierePremium"
 
 type Escena = "camara" | "camara-letra" | "letra" | "espera"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
@@ -236,6 +237,10 @@ const transmisionElectron = (): TransmisionElectron | undefined =>
   (window as Window & { transmision?: TransmisionElectron }).transmision
 
 export default function EnVivoPage() {
+  return <RequierePremium funcion="Transmisión en vivo"><EnVivoPremium /></RequierePremium>
+}
+
+function EnVivoPremium() {
   const router = useRouter()
 
   const [camaras, setCamaras] = useState<Disp[]>([])

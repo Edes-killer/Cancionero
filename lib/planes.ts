@@ -35,3 +35,21 @@ export function nombrePlan(plan?: string | null): string {
 export function esIlimitado(n: number): boolean {
   return !Number.isFinite(n)
 }
+
+export function esPlanValido(plan?: string | null): plan is Plan {
+  return plan === "gratis" || plan === "pro" || plan === "premium"
+}
+
+// Capacidades comerciales. Mantener estas reglas en un solo lugar evita que
+// Inicio, el menú y las páginas protegidas terminen ofreciendo planes distintos.
+export function permiteConfiguracionCompartida(plan?: string | null): boolean {
+  return plan === "pro" || plan === "premium"
+}
+
+export function permiteTransmision(plan?: string | null): boolean {
+  return plan === "premium"
+}
+
+export function permiteCamaraMovil(plan?: string | null): boolean {
+  return plan === "premium"
+}

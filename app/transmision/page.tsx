@@ -7,6 +7,7 @@ import {
   GestorOBS, leerConfigOBS, guardarConfigOBS, CONFIG_OBS_DEFAULT,
   type ConfigOBS, type EstadoOBS,
 } from "@/lib/obs"
+import RequierePremium from "@/components/RequierePremium"
 
 const C = {
   fondo: "#060d1a", panel: "#111b2e", panel2: "#0d1626",
@@ -16,6 +17,10 @@ const C = {
 }
 
 export default function TransmisionPage() {
+  return <RequierePremium funcion="Integración avanzada con OBS"><TransmisionPremium /></RequierePremium>
+}
+
+function TransmisionPremium() {
   const router = useRouter()
   const [cfg, setCfg] = useState<ConfigOBS>(CONFIG_OBS_DEFAULT)
   const [estado, setEstado] = useState<EstadoOBS>({

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react"
 import { useApp } from "@/context/AppContext"
 import { getRolEnIglesia, limpiarIglesiaActivaId } from "@/lib/getIglesia"
 import { navegarSPA, normalizarRuta } from "@/lib/navegar"
+import { permiteCamaraMovil } from "@/lib/planes"
 
 const ROLES_INFO: Record<string, { icon: string; label: string }> = {
   admin:  { icon: "👑", label: "Administrador" },
@@ -130,7 +131,7 @@ export default function Navbar() {
   // Config: solo admin. Cámara (transmisión): solo admin/líder (los músicos no
   // la ven). Mientras no se sabe el rol se muestran; el AuthProvider igual bloquea.
   const linksVisibles = LINKS.filter(l =>
-    l.href === "/camara" ? (esApp && (rol === null || rol === "admin" || rol === "lider"))
+    l.href === "/camara" ? (esApp && permiteCamaraMovil(plan) && (rol === null || rol === "admin" || rol === "lider"))
     : l.href === "/configuracion" ? (rol === null || rol === "admin")
     : l.soloLider ? (rol === null || rol === "admin" || rol === "lider")
     : true
