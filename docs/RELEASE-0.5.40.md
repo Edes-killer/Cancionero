@@ -27,8 +27,9 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
   velocidad y tiempo restante; si Windows la oculta, Selah la restaura y muestra luego
   claramente la etapa de instalación.
 - El escritorio permite entrar directamente con correo y contraseña, sin abrir un navegador.
-- El acceso con Google continúa en el navegador seguro del sistema, pero ahora regresa a
-  Selah aunque la aplicación estuviera cerrada o Windows haya iniciado una instancia nueva.
+- El acceso con Google continúa en el navegador seguro del sistema —requisito de Google—,
+  pero ahora vuelve por un callback local con nonce de un solo uso y entrega la sesión
+  directamente al launcher, sin depender de que el navegador abra un protocolo personalizado.
 - Los enlaces de acceso por correo también regresan a Selah en vez de quedarse en localhost.
 - El login prioriza el enlace sin contraseña para las cuentas históricas creadas con Google,
   separa claramente ambos métodos y muestra el código seguro del rechazo sin registrar correo,
@@ -57,6 +58,8 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 - `npm run qa:captura` sostuvo 60 segundos de captura H264/Opus y entregó 1800/1800
   cuadros a FFmpeg, sin avisos de tiempo ni cola acumulada.
 - `npm run qa:eficiencia -- 30` compara el codificador de Windows con el fallback por software sin usar Internet ni credenciales.
+- El acceso real con Google fue completado en Electron: el proceso registró inicio, retorno
+  local, sesión válida y conexión posterior a Inicio, sin registrar correo ni tokens.
 
 ## Empaquetado seguro
 
@@ -68,8 +71,8 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 
 Esto no certifica cámaras, micrófonos, WiFi, sincronía labial ni Facebook reales.
 
-El APK release y el instalador NSIS de la primera candidata fueron generados localmente, pero
-quedaron obsoletos después de los arreglos de acceso. Deben reconstruirse desde el commit final.
+El APK release y el instalador NSIS deben reconstruirse desde el commit final después de estas
+notas; `qa:artefactos` rechazará automáticamente cualquier binario de un commit anterior.
 La APK conserva firma v2; el instalador Windows todavía no tiene firma Authenticode y puede
 activar SmartScreen. Evidencia y estado: [EMPAQUETADO-0.5.40.md](EMPAQUETADO-0.5.40.md).
 

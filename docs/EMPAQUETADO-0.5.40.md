@@ -3,9 +3,10 @@
 Fecha: 30 de septiembre de 2026. Esta evidencia corresponde a la candidata de prueba,
 no certifica todavía el funcionamiento físico en la iglesia.
 
-> Estado actual: estos binarios provienen del commit `3f58247`. Los arreglos posteriores de
-> acceso y doble apertura los dejaron obsoletos; `qa:artefactos` los rechazará frente al HEAD
-> actual. Deben reconstruirse con `npm run candidata:build` después de validar el login real.
+> Estado de cierre: el login real con Google ya fue validado mediante el callback loopback
+> protegido por nonce. Los binarios finales se generan después de confirmar este documento;
+> su commit, tamaño y SHA-256 quedan en `dist-electron/artefactos-0.5.40.json` y son verificados
+> por `qa:artefactos` antes de cualquier publicación.
 
 ## Android
 
