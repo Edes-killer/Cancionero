@@ -44,6 +44,9 @@ interface RegistroError {
   creado_en: string
   detalle?: unknown
   _local?: boolean
+  nivel?: "info" | "advertencia" | "error" | "critico"
+  sesionId?: string
+  operacionId?: string
 }
 
 interface Invitacion {
@@ -85,6 +88,10 @@ interface VentanaConfiguracion extends Window {
   transmision?: {
     infoRedCamara?(): Promise<ResultadoRedCamara>
   }
+  soporteSelah?: {
+    diagnostico?(): Promise<unknown>
+    abrirCarpeta?(): Promise<unknown>
+  }
   electron?: {
     ipcRenderer?: {
       send(canal: string): void
@@ -100,6 +107,9 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
   const [abierto, setAbierto] = useState(false)
   const [cargando, setCargando] = useState(false)
   const [filtroTipo, setFiltroTipo] = useState("")
+  const [preparando, setPreparando] = useState(false)
+  const [codigoSoporte, setCodigoSoporte] = useState("")
+  const soporteElectron = typeof window !== "undefined" ? (window as VentanaConfiguracion).soporteSelah : undefined
 
   const cargar = useCallback(async () => {
     setCargando(true)
@@ -107,7 +117,8 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
     const { getLocalLog } = await import("@/lib/Errorlogger")
     let locales = getLocalLog().map((e, i) => ({
       id: "local-" + e.ts + "-" + i, tipo: e.tipo, mensaje: e.mensaje, pagina: e.pagina,
-      plataforma: e.plataforma, version: null, creado_en: new Date(e.ts).toISOString(), detalle: e.detalle, _local: true,
+      plataforma: e.plataforma, version: e.version || null, creado_en: new Date(e.ts).toISOString(), detalle: e.detalle,
+      nivel: e.nivel || "error", sesionId: e.sesionId, operacionId: e.operacionId, _local: true,
     }))
     if (filtroTipo) locales = locales.filter(e => e.tipo === filtroTipo)
     // 2) Registro CENTRAL (Supabase), si se puede.
@@ -121,7 +132,17 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
         .limit(50)
       if (filtroTipo) q = q.eq("tipo", filtroTipo)
       const { data } = await q
-      remotos = (data || []) as RegistroError[]
+      remotos = ((data || []) as RegistroError[]).map(e => {
+        const detalle = e.detalle && typeof e.detalle === "object" ? e.detalle as Record<string, unknown> : null
+        const meta = detalle?.meta && typeof detalle.meta === "object" ? detalle.meta as Record<string, unknown> : null
+        return {
+          ...e,
+          nivel: ["info", "advertencia", "error", "critico"].includes(String(meta?.nivel))
+            ? meta?.nivel as RegistroError["nivel"] : "error",
+          sesionId: typeof meta?.sesion_id === "string" ? meta.sesion_id : undefined,
+          operacionId: typeof meta?.operacion_id === "string" ? meta.operacion_id : undefined,
+        }
+      })
     } catch {}
     const todo = [...locales, ...remotos].sort((a, b) => new Date(b.creado_en).getTime() - new Date(a.creado_en).getTime())
     setErrores(todo)
@@ -138,18 +159,40 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
     setErrores([])
   }
 
-  const descargarInforme = () => {
-    const contenido = JSON.stringify({
-      producto: "Selah Live",
-      generado_en: new Date().toISOString(),
-      navegador: typeof navigator !== "undefined" ? navigator.userAgent : "",
-      errores,
-    }, null, 2)
-    const url = URL.createObjectURL(new Blob([contenido], { type: "application/json;charset=utf-8" }))
-    const a = document.createElement("a")
-    a.href = url; a.download = `selah-diagnostico-${new Date().toISOString().slice(0, 10)}.json`
-    document.body.appendChild(a); a.click(); a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  const descargarInforme = async () => {
+    setPreparando(true)
+    try {
+      const { obtenerInfoBuild, obtenerSesionSoporte, sanitizarParaLog } = await import("@/lib/observabilidad")
+      const build = await obtenerInfoBuild()
+      const sesion = obtenerSesionSoporte()
+      let electron: unknown = null
+      try { electron = await (window as VentanaConfiguracion).soporteSelah?.diagnostico?.() || null } catch {}
+      const porNivel = errores.reduce<Record<string, number>>((acc, e) => {
+        acc[e.nivel || "error"] = (acc[e.nivel || "error"] || 0) + 1
+        return acc
+      }, {})
+      const informe = sanitizarParaLog({
+        esquema: 2,
+        producto: "Selah Live",
+        codigo_soporte: sesion,
+        generado_en: new Date().toISOString(),
+        build,
+        dispositivo: {
+          idioma: typeof navigator !== "undefined" ? navigator.language : "",
+          conectadoInternet: typeof navigator !== "undefined" ? navigator.onLine : null,
+        },
+        resumen: { total: errores.length, porNivel },
+        electron,
+        registros: errores,
+      })
+      const contenido = JSON.stringify(informe, null, 2)
+      const url = URL.createObjectURL(new Blob([contenido], { type: "application/json;charset=utf-8" }))
+      const a = document.createElement("a")
+      a.href = url; a.download = `selah-soporte-${sesion}-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a); a.click(); a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      setCodigoSoporte(sesion)
+    } finally { setPreparando(false) }
   }
 
   const colorTipo: Record<string, string> = {
@@ -162,7 +205,10 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
     <div style={cardStyle}>
       {ConfirmUI}
       <div onClick={() => setAbierto(v => !v)} style={{ cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom: abierto ? 14 : 0 }}>
-        <h2 style={{ margin:0, fontSize:18, fontWeight:800 }}>🪵 Log de errores</h2>
+        <div>
+          <h2 style={{ margin:0, fontSize:18, fontWeight:800 }}>🛟 Diagnóstico y soporte</h2>
+          {!abierto && <div style={{ fontSize:11, opacity:.45, marginTop:3 }}>Prepara evidencia segura si algo falla</div>}
+        </div>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           {errores.length > 0 && <span style={{ fontSize:11, background:"rgba(239,68,68,0.2)", color:"#fca5a5", padding:"2px 8px", borderRadius:6, fontWeight:700 }}>{errores.length}</span>}
           <span style={{ opacity:0.4, fontSize:14 }}>{abierto ? "▲" : "▼"}</span>
@@ -171,6 +217,21 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
 
       {abierto && (
         <div>
+          <div style={{ padding:"12px 14px", borderRadius:12, marginBottom:12, background:"rgba(59,130,246,.08)", border:"1px solid rgba(96,165,250,.18)" }}>
+            <div style={{ fontSize:13, fontWeight:800, marginBottom:4 }}>Informe listo para soporte</div>
+            <div style={{ fontSize:11, opacity:.6, lineHeight:1.5, marginBottom:10 }}>
+              Incluye versión, estado del equipo y últimos eventos. Las claves, tokens, correos y destinos de transmisión se ocultan automáticamente.
+            </div>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              <button onClick={descargarInforme} disabled={preparando} style={{ padding:"8px 12px", borderRadius:8, fontSize:12, fontWeight:800, cursor:preparando ? "wait" : "pointer", border:"1px solid rgba(96,165,250,.35)", background:"rgba(59,130,246,.16)", color:"#bfdbfe" }}>
+                {preparando ? "Preparando…" : "⬇ Preparar informe de soporte"}
+              </button>
+              {soporteElectron?.abrirCarpeta && <button onClick={() => void soporteElectron.abrirCarpeta?.()} style={{ padding:"8px 12px", borderRadius:8, fontSize:12, fontWeight:700, cursor:"pointer", border:"1px solid rgba(255,255,255,.12)", background:"rgba(255,255,255,.05)", color:"white" }}>
+                📁 Abrir registros del PC
+              </button>}
+            </div>
+            {codigoSoporte && <div style={{ marginTop:9, fontSize:11, color:"#93c5fd" }}>Código de soporte: <b>{codigoSoporte}</b></div>}
+          </div>
           {/* Filtros */}
           <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
             {["", "socket", "supabase", "proyeccion", "biblia", "imagen", "general"].map(t => (
@@ -186,9 +247,6 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
             <button onClick={borrarTodos} style={{ marginLeft:"auto", padding:"3px 10px", borderRadius:6, fontSize:11, fontWeight:700, cursor:"pointer", border:"1px solid rgba(239,68,68,0.3)", background:"rgba(239,68,68,0.08)", color:"#fca5a5" }}>
               🗑 Borrar todo
             </button>
-            <button onClick={descargarInforme} disabled={errores.length === 0} style={{ padding:"3px 10px", borderRadius:6, fontSize:11, fontWeight:700, cursor:errores.length ? "pointer" : "default", border:"1px solid rgba(96,165,250,0.3)", background:"rgba(59,130,246,0.08)", color:"#93c5fd", opacity:errores.length ? 1 : .45 }}>
-              ⬇ Descargar informe
-            </button>
           </div>
 
           {cargando ? (
@@ -200,6 +258,7 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
               {errores.map(e => (
                 <div key={e.id} style={{ padding:"10px 12px", borderRadius:10, background:"rgba(255,255,255,0.03)", border:`1px solid ${colorTipo[e.tipo] || "rgba(255,255,255,0.06)"}20` }}>
                   <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                    <span style={{ fontSize:9, fontWeight:900, textTransform:"uppercase", color:e.nivel === "critico" ? "#fca5a5" : e.nivel === "advertencia" ? "#fcd34d" : "#cbd5e1" }}>{e.nivel || "error"}</span>
                     <span style={{ fontSize:10, fontWeight:800, padding:"2px 6px", borderRadius:4, background:`${colorTipo[e.tipo] || "rgba(255,255,255,0.1)"}25`, color: colorTipo[e.tipo] || "rgba(255,255,255,0.5)" }}>
                       {e.tipo}
                     </span>
@@ -212,6 +271,7 @@ function ErrorLog({ iglesiaId }: { iglesiaId: string }) {
                   <div style={{ fontSize:10, opacity:0.3 }}>
                     {e.plataforma} {e.version && `· v${e.version}`} {e._local && "· local"}
                   </div>
+                  {e.sesionId && <div style={{ fontSize:9.5, opacity:.28, marginTop:2 }}>Sesión {e.sesionId}{e.operacionId ? ` · ${e.operacionId}` : ""}</div>}
                   {e.detalle != null && <details style={{ marginTop:5 }}>
                     <summary style={{ fontSize:10, opacity:.55, cursor:"pointer" }}>Ver detalle técnico</summary>
                     <pre style={{ margin:"6px 0 0", whiteSpace:"pre-wrap", wordBreak:"break-word", fontSize:9.5, opacity:.55 }}>{JSON.stringify(e.detalle, null, 2)}</pre>

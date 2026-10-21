@@ -11,7 +11,7 @@ el release ni marcarlo `Latest` antes de completar la prueba corta en la iglesia
 
 **Estado verificable de v0.5.40:** login real con Google aprobado en Electron mediante
 callback loopback protegido por nonce; `npm run qa:release` aprobó 14/14 compuertas,
-157/157 pruebas y el laboratorio LAN hostil aprobó 26/26 escenarios. Los binarios descritos
+160/160 pruebas y el laboratorio LAN hostil aprobó 26/26 escenarios. Los binarios descritos
 en `docs/EMPAQUETADO-0.5.40.md` son evidencia histórica anterior a los cambios de planes y
 seguridad LAN del 21 de octubre: deben reconstruirse y volver a verificarse antes de publicar.
 El instalador Windows continúa sin certificado Authenticode comercial.
@@ -47,7 +47,7 @@ iglesia. No declarar v0.5.40 estable solo porque compile o pase QA automatizado.
 | Backend datos | Supabase (PostgreSQL + RLS + Storage) |
 | Tiempo real | Socket.IO 4.8 (servidor integrado en `electron/main.js`, puerto 4000) |
 | Mobile | Capacitor 8.5.3 → APK Android |
-| Desktop | Electron 42.11.0 + electron-updater 6.8 (auto-update desde GitHub Releases) |
+| Desktop | Electron 42.11.3 + electron-updater 6.8 (auto-update desde GitHub Releases) |
 | Streaming | `ffmpeg-static` 5.3 (empaquetado) → RTMP; `obs-websocket-js` 5 (modo OBS avanzado opcional) |
 | Otros | jszip (importar PPT a canciones), docx, qrcode, jsonwebtoken, dotenv |
 
@@ -514,6 +514,14 @@ La receta operativa completa vive en `COMO-PUBLICAR.md`. El instalador queda en
 - [ ] Web "Moradora de Sion" (proyecto paralelo: landing carta de presentación de la iglesia).
 
 ---
+
+## 11.9 Observabilidad y soporte (v0.5.40)
+
+- Los errores locales incluyen código de sesión, gravedad, versión y operación para reconstruir un incidente completo.
+- Configuración → Diagnóstico y soporte exporta un informe unificado con los registros del cliente y los eventos operativos de Electron.
+- Electron conserva un registro rotativo de inicios, servicios internos, fallos de carga, procesos caídos y ventanas sin respuesta.
+- El saneamiento es obligatorio antes de persistir o exportar: oculta tokens, contraseñas, correos, claves y URLs RTMP.
+- No se incorporó telemetría externa: los datos permanecen en el equipo o en la tabla existente `errores_log` de la iglesia.
 
 ## 12. Variables de entorno (`.env.local`)
 

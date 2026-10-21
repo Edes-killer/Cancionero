@@ -48,7 +48,7 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 - `npm run qa:release`: 14 comprobaciones obligatorias, incluida la recuperación real de un destino local y trazabilidad del build.
 - GitHub repite esa misma compuerta en Windows para cada solicitud de integración y cada
   cambio de `main`; no usa credenciales ni publica artefactos ni duplica trabajos por rama.
-- 157/157 pruebas automatizadas y 26/26 escenarios del laboratorio LAN aprobados.
+- 160/160 pruebas automatizadas y 26/26 escenarios del laboratorio LAN aprobados.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
 - Auditoría de producción: cero vulnerabilidades conocidas. En herramientas quedan dos
@@ -80,6 +80,14 @@ El APK release y el instalador NSIS deben reconstruirse desde el commit final de
 notas; `qa:artefactos` rechazará automáticamente cualquier binario de un commit anterior.
 La APK conserva firma v2; el instalador Windows todavía no tiene firma Authenticode y puede
 activar SmartScreen. Evidencia y estado: [EMPAQUETADO-0.5.40.md](EMPAQUETADO-0.5.40.md).
+
+## Diagnóstico y soporte
+
+- Cada error queda asociado a una sesión de soporte, nivel de gravedad, versión y operación.
+- Los errores repetidos en pocos segundos se agrupan para evitar registros ruidosos.
+- Configuración prepara un informe único con los eventos web y del proceso de escritorio.
+- Electron registra cierres inesperados, ventanas sin respuesta, fallos de carga y servicios internos que no iniciaron.
+- Antes de guardar o exportar se ocultan tokens, contraseñas, correos, claves y destinos RTMP.
 
 ## Prueba corta en iglesia
 

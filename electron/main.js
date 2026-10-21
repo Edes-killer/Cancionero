@@ -7,6 +7,7 @@ protegerSalida(process.stderr)
 
 try { require("dotenv").config() } catch(e) {}
 const { app, BrowserWindow, shell, Menu, ipcMain, dialog, session, desktopCapturer } = require("electron")
+const registroOperativo = require("./registro-operativo")
 const path = require("path")
 const http = require("http")
 const crypto = require("crypto")
@@ -27,6 +28,29 @@ const { SeguimientoDestinos } = require("./estado-destinos")
 const { escribirFragmento } = require("./escritura-transmision")
 const { evaluarEspacioGrabacion } = require("./espacio-grabacion")
 const { buscarGrabacionesPendientes, crearPlanRecuperacion } = require("./grabaciones-pendientes")
+
+try { registroOperativo.configurarCarpeta(app.getPath("userData")) } catch {}
+process.on("uncaughtExceptionMonitor", error => {
+  registroOperativo.registrar("excepcion_no_controlada", { error }, "critico")
+})
+process.on("unhandledRejection", razon => {
+  registroOperativo.registrar("promesa_no_controlada", { error: razon }, "error")
+})
+app.on("render-process-gone", (_evento, webContents, detalles) => {
+  registroOperativo.registrar("proceso_ventana_finalizado", {
+    razon: detalles?.reason,
+    codigo: detalles?.exitCode,
+    ruta: (() => { try { return new URL(webContents.getURL()).pathname } catch { return "" } })(),
+  }, detalles?.reason === "clean-exit" ? "info" : "critico")
+})
+app.on("child-process-gone", (_evento, detalles) => {
+  registroOperativo.registrar("proceso_auxiliar_finalizado", {
+    tipo: detalles?.type,
+    razon: detalles?.reason,
+    codigo: detalles?.exitCode,
+    servicio: detalles?.serviceName,
+  }, detalles?.reason === "clean-exit" ? "info" : "error")
+})
 
 // ── Transmisión en vivo (Incremento 2): canvas+audio (webm) → ffmpeg → RTMP ──
 // ffmpeg va empaquetado (ffmpeg-static). En la app empaquetada el binario se
@@ -1829,6 +1853,39 @@ let proyectorWin = null  // ✅ referencia directa a la ventana del proyector (p
 let staticServer = null
 let socketServer = null
 
+ipcMain.handle("soporte:diagnostico", evento => {
+  if (!mainWindow || mainWindow.isDestroyed() || evento.sender !== mainWindow.webContents) {
+    return { ok:false, error:"emisor_no_autorizado" }
+  }
+  return {
+    ok: true,
+    generadoEn: new Date().toISOString(),
+    aplicacion: { version: SELAH_VERSION, empaquetada: app.isPackaged },
+    sistema: {
+      plataforma: process.platform,
+      arquitectura: process.arch,
+      versionSistema: os.release(),
+      memoriaTotalMb: Math.round(os.totalmem() / 1024 / 1024),
+      memoriaLibreMb: Math.round(os.freemem() / 1024 / 1024),
+      encendidoSegundos: Math.round(os.uptime()),
+    },
+    servicios: {
+      web: Boolean(staticServer?.listening),
+      conexionLocal: Boolean(socketServer?.listening),
+      ipLocal: getLocalIP(),
+      transmisionActiva: Boolean(ffmpegProc),
+      encoder: encoderElegido,
+    },
+    eventosElectron: registroOperativo.leerRecientes(100),
+  }
+})
+
+ipcMain.handle("soporte:abrir-carpeta", async evento => {
+  if (!mainWindow || mainWindow.isDestroyed() || evento.sender !== mainWindow.webContents) return { ok:false }
+  const resultado = await shell.openPath(path.dirname(registroOperativo.rutaActual()))
+  return { ok: !resultado, error: resultado || null }
+})
+
 // ── Ventana de progreso de actualización ──────────────────────────────────────
 // ✅ El usuario debe VER que se está actualizando y cuánto falta. Antes todo
 // pasaba invisible y la app se cerraba de golpe.
@@ -1964,6 +2021,15 @@ function createWindow() {
     },
     show: false, // Esperar a que esté listo para mostrar
   })
+  mainWindow.on("unresponsive", () => registroOperativo.registrar("ventana_no_responde", { ventana:"principal" }, "critico"))
+  mainWindow.on("responsive", () => registroOperativo.registrar("ventana_recuperada", { ventana:"principal" }, "info"))
+  mainWindow.webContents.on("did-fail-load", (_evento, codigo, descripcion, url, principal) => {
+    if (!principal) return
+    registroOperativo.registrar("pantalla_no_cargo", {
+      codigo, descripcion,
+      ruta: (() => { try { return new URL(url).pathname } catch { return "" } })(),
+    }, "error")
+  })
 
   // ✅ Permitir cámara y micrófono para la Transmisión en vivo. Sin esto,
   // getUserMedia queda bloqueado en la app empaquetada y la cámara no abre.
@@ -2077,6 +2143,7 @@ function createWindow() {
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
+  registroOperativo.registrar("aplicacion_iniciada", { version:SELAH_VERSION, empaquetada:app.isPackaged }, "info")
   if (process.defaultApp && process.argv.length >= 2) {
     const args = [path.resolve(process.argv[1])]
     protocoloSelahRegistrado = app.setAsDefaultProtocolClient("selahlive", process.execPath, args) ||
@@ -2092,6 +2159,7 @@ app.whenReady().then(async () => {
     staticServer = await startStaticServer(outDir, 3000)
     socketServer = await startSocketServer(4000)
   } catch (error) {
+    registroOperativo.registrar("servicios_internos_no_iniciaron", { error }, "critico")
     try { staticServer?.close() } catch {}
     staticServer = null
     const puertoOcupado = error?.code === "EADDRINUSE"
@@ -2112,6 +2180,7 @@ app.whenReady().then(async () => {
   }
 
   const ip = getLocalIP()
+  registroOperativo.registrar("servicios_internos_listos", { web:3000, conexion:4000, ip }, "info")
   console.log(`📡 IP local: ${ip}`)
 
   createWindow()

@@ -13,6 +13,11 @@ contextBridge.exposeInMainWorld("seguridadLocal", {
   registrarPinSala: (sala, pin) => ipcRenderer.invoke("seguridad:registrar-pin-sala", { sala, pin }),
 })
 
+contextBridge.exposeInMainWorld("soporteSelah", {
+  diagnostico: () => ipcRenderer.invoke("soporte:diagnostico"),
+  abrirCarpeta: () => ipcRenderer.invoke("soporte:abrir-carpeta"),
+})
+
 contextBridge.exposeInMainWorld("oauthElectron", {
   abrirGoogle: (url) => ipcRenderer.invoke("oauth:abrir-google", url),
   prepararRetorno: (tipo) => ipcRenderer.invoke("oauth:preparar-retorno", tipo),
