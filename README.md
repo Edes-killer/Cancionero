@@ -13,7 +13,7 @@ Corre desde el mismo código estático como **web** (Vercel), **APK** (Capacitor
 ```bash
 npm run dev            # desarrollo web (localhost:3000)
 npm run electron:dev   # app de escritorio (para probar transmisión, grabación, etc.)
-node server/index.js   # hub Socket.IO + API Biblia (puerto 4000)
+node app/server/index.js # hub standalone opcional; Electron ya incluye el puerto 4000
 ```
 
 ## Documentación
@@ -22,7 +22,8 @@ node server/index.js   # hub Socket.IO + API Biblia (puerto 4000)
 arquitectura, subsistemas (incluido el módulo de Transmisión Tier 1-3 e importar PowerPoint), modelo de
 datos, IPC de Electron, patrones críticos y la receta de despliegue/release.
 
-Léelo antes de tocar el código: ahí está todo lo que no es obvio del repo.
+Léelo antes de tocar el código: es la fuente única de verdad del diseño y del estado de cada candidata.
+La evidencia operativa de v0.5.40 está en [`docs/RELEASE-0.5.40.md`](./docs/RELEASE-0.5.40.md).
 
 ---
 

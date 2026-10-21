@@ -1,20 +1,25 @@
 # Selah Live — Documento de Diseño (SDD) y Contexto de Desarrollo
 
-> Versión del documento: 2026-09-24 · Estable publicada: **v0.5.37** · Próxima línea de trabajo: v0.5.38.
+> Versión del documento: 2026-10-20 · Estable publicada: **v0.5.39** · Candidata: **v0.5.40**.
 
-La versión 0.5.37 está publicada como Latest con instalador de Windows, APK firmado y
-paquete OTA. La migración `20260924_configuraciones_iglesia.sql` fue aplicada sin errores:
-la apariencia de Control y Transmisión se sincroniza en nube para Pro/Premium. No se
-sincronizan claves RTMP, cámaras, micrófonos, niveles ni retardos porque dependen del equipo.
+La versión pública continúa siendo v0.5.39. La candidata v0.5.40 está en la rama
+`codex/release-0.5.40` y en la [PR #2](https://github.com/Edes-killer/Cancionero/pull/2),
+todavía como borrador. El último commit funcional empaquetado y verificado es
+`0fde8b55d935a430403b06623a598484ec0fc841`; los cambios documentales posteriores no
+modifican el runtime, pero igualmente obligan a reconstruir antes de publicar. No crear
+el release ni marcarlo `Latest` antes de completar la prueba corta en la iglesia.
 
-**Estado posterior al ensayo del 22/09:** la candidata 0.5.35 falló en terreno.
-El timeout fijo de escritura de 5 s introdujo reinicios; se reemplazó en código por
-vigilancia de progreso y se bloqueó la reconexión automática por atasco local. Un
-ensayo MediaRecorder reprodujo regresiones DTS de audio; se corrigió el síntoma de
-arranque con numeración por muestras después del remuestreo. La 0.5.36 incorporó estas
-reparaciones y la 0.5.37 las conserva. Evidencia, límites y próximos ensayos en
-`docs/QA-DIAGNOSTICO-TRANSMISION.md`; publicar el software no reemplaza la validación
-física de Facebook, WiFi, cámaras y sincronía labial en la iglesia.
+**Estado verificable de v0.5.40:** login real con Google aprobado en Electron mediante
+callback loopback protegido por nonce; `npm run qa:release` aprobó 14/14 compuertas y
+149/149 pruebas; GitHub Actions aprobó el mismo commit. El APK firmado y el instalador
+Windows fueron reconstruidos desde ese commit y `qa:artefactos` confirmó versión,
+procedencia limpia y hashes. El único aviso de empaquetado es que Windows continúa sin
+certificado Authenticode comercial. Evidencia y prueba física: `docs/RELEASE-0.5.40.md`
+y `docs/EMPAQUETADO-0.5.40.md`.
+
+La transmisión mejoró a partir de los fallos de terreno de v0.5.35–v0.5.39, pero ninguna
+prueba sintética reemplaza validar Facebook/RTMPS, WiFi, cámaras y sincronía labial en la
+iglesia. No declarar v0.5.40 estable solo porque compile o pase QA automatizado.
 
 ---
 
@@ -38,12 +43,12 @@ física de Facebook, WiFi, cámaras y sincronía labial en la iglesia.
 
 | Capa | Tecnología |
 |------|-----------|
-| Frontend | Next.js 16 (App Router) + React 19 + TypeScript, `output: "export"` (estático) |
+| Frontend | Next.js 16.3.8 (App Router) + React 19 + TypeScript, `output: "export"` (estático) |
 | Estilos | Estilos inline + Tailwind 4 (PostCSS) |
 | Backend datos | Supabase (PostgreSQL + RLS + Storage) |
 | Tiempo real | Socket.IO 4.8 (servidor integrado en `electron/main.js`, puerto 4000) |
-| Mobile | Capacitor 8 → APK Android |
-| Desktop | Electron 42 + electron-updater 6.8 (auto-update desde GitHub Releases) |
+| Mobile | Capacitor 8.5.3 → APK Android |
+| Desktop | Electron 42.11.0 + electron-updater 6.8 (auto-update desde GitHub Releases) |
 | Streaming | `ffmpeg-static` 5.3 (empaquetado) → RTMP; `obs-websocket-js` 5 (modo OBS avanzado opcional) |
 | Otros | jszip (importar PPT a canciones), docx, qrcode, jsonwebtoken, dotenv |
 
@@ -101,8 +106,13 @@ context/AppContext.tsx      → Estado global: session, iglesia, canciones, pinS
 lib/                        → cache.ts (IndexedDB), biblia.ts, getIglesia.ts, servidor.ts, timeout.ts
 electron/
   main.js                   → Servidor estático + Socket.IO + ffmpeg + grabación + pantalla + PPT + updater
-  preload.js                → Bridges: window.transmision, window.powerpoint, window.electron
+  preload.js                → Bridges: transmisión, PowerPoint, Electron y OAuth seguro
+  security.js               → Validación de rutas, enlaces externos y callbacks OAuth
   installer.nsh             → Hook NSIS (fix de desinstalación en auto-update)
+app/server/index.js         → Hub Socket.IO standalone opcional; Electron NO depende de este proceso
+scripts/                    → QA, builds trazables, APK/OTA y validación de artefactos
+docs/RELEASE-0.5.40.md      → Estado, criterios y flujo corto de prueba física
+docs/EMPAQUETADO-0.5.40.md  → Evidencia de firma, procedencia y límites de distribución
 data/biblia/                → Biblia local en .js por libro
 electron-builder.json       → publish github (owner Edes-killer, repo Cancionero), output dist-electron
 capacitor.config.ts         → webDir: "out"
@@ -232,19 +242,35 @@ Dos motores por PowerShell desde `main.js`:
 Las imágenes se suben a la galería reusando `subirImagen`. Nunca se muestran stack traces crudos.
 
 ### 6.6 Biblia
-Endpoint `/api/biblia/buscar` servido por `server/index.js` (Node), leyendo `data/biblia/procesados/*.js`.
-El cliente SIEMPRE llama a `http://{hostname}:4000/api/biblia/buscar` (las API routes de Next NO corren en
-estático/APK/Electron).
+Endpoint `/api/biblia/buscar` servido por el servidor Socket.IO integrado en `electron/main.js`, usando
+la lógica compartida de `lib/biblia-server.js`. `app/server/index.js` ofrece la misma API cuando se inicia
+el hub standalone. El cliente SIEMPRE llama a `http://{hostname}:4000/api/biblia/buscar`: las API routes
+de Next no existen en el export estático usado por APK/Electron.
 
 ### 6.7 Auth, roles y PIN · 6.8 Onboarding + Dashboard · 6.9 Landing pública
 Ver §5 (roles) y `components/AuthProvider.tsx`. Dashboard con stats, último culto, top cantadas. Landing
 `/bienvenido` es pública (marketing) y es el destino del visitante anónimo en la web (en la app va a `/login`).
 
+**Login de escritorio (v0.5.40):** Google exige usar el navegador seguro del sistema; no intentar
+incrustarlo en un `BrowserWindow` de Electron porque Google bloquea los user-agents embebidos. Antes
+de abrir Google, Electron crea un nonce aleatorio con diez minutos de vigencia. Supabase vuelve a
+`http://localhost:3000/auth/callback/?selah_nonce=...`; la página externa entrega la URL completa al
+endpoint loopback `POST /oauth/entregar`. El proceso principal solo acepta loopback, la ruta exacta,
+un cuerpo acotado y el nonce pendiente, y carga el callback dentro del launcher para persistir la sesión.
+El esquema `selahlive://auth/callback` se conserva como respaldo y para enlaces por correo. Nunca
+registrar correo, contraseña, URL de callback, access token ni refresh token en consola o Supabase.
+
+El acceso principal por correo es **Sin contraseña** (magic link), porque muchas cuentas históricas
+fueron creadas con Google y no poseen contraseña de Selah. “Con contraseña” acepta únicamente una
+contraseña configurada en Selah; nunca la contraseña de Gmail.
+
 ---
 
 ## 7. IPC de Electron (main ↔ renderer)
 
-**Bridges (preload):** `window.transmision`, `window.powerpoint`, `window.electron`.
+**Bridges (preload):** `window.transmision`, `window.powerpoint`, `window.electron` y
+`window.oauthElectron`. El puente OAuth solo prepara un retorno temporal, abre una URL de autorización
+Supabase validada y emite diagnósticos sin datos personales.
 
 | Canal (invoke/handle) | Qué hace |
 |---|---|
@@ -255,6 +281,8 @@ Ver §5 (roles) y `components/AuthProvider.tsx`. Dashboard con stats, último cu
 | `grabacion:iniciar/chunk/nuevoSegmento/detener/abrirCarpeta` | Grabación local (segmentos → remux/concat a mp4) |
 | `pantalla:fuentes` | `desktopCapturer.getSources` (pantallas + ventanas, con miniatura) |
 | `ppt:elegir / ppt:imagenes / ppt:diapositivas` | Importador PowerPoint (diálogo + Expand-Archive / COM) |
+| `oauth:preparar-retorno` | Genera nonce temporal y callback loopback para Google |
+| `oauth:abrir-google` | Abre únicamente la autorización Google del proyecto Supabase en el navegador del sistema |
 
 **Eventos (main → renderer):** `transmision:estado` (incluye `inesperado`), `transmision:log`,
 `transmision:stats`, `grabacion:listo`.
@@ -271,11 +299,15 @@ Ver §5 (roles) y `components/AuthProvider.tsx`. Dashboard con stats, último cu
 npm run dev                 # Desarrollo web (localhost:3000)
 npm run build               # Build estático → out/
 npm run electron:dev        # build + abrir la app de escritorio (para probar transmisión, etc.)
-node server/index.js        # Socket.IO + Biblia standalone (puerto 4000)
+node app/server/index.js    # Hub standalone opcional; Electron ya trae su propio puerto 4000
 
 # APK Android
-npm run build && npx cap sync
-cd android && gradlew assembleDebug   # → android/app/build/outputs/apk/debug/app-debug.apk
+npm run apk:debug           # → selah-live-debug.apk
+npm run apk                 # → selah-live.apk firmado para distribución
+
+# Candidata verificable, SIN publicar
+npm run candidata:build     # QA + NSIS + APK + procedencia/firma/hashes
+npm run qa:candidata        # repite QA y valida artefactos ya construidos
 ```
 
 ---
@@ -287,28 +319,35 @@ Push a `main` → Vercel publica el estático en https://selah-live.vercel.app. 
 ahí (usado en los links de invitación).
 
 ### 9.2 APK Android
-Copiar cambios → clean build si el APK trae código viejo (`rmdir /s /q .next out
-android\app\src\main\assets\public`) → `npm run build && npx cap sync` → `gradlew assembleDebug` →
-desinstalar la versión previa antes de instalar.
+`npm run apk:debug` genera la APK de laboratorio; `npm run apk` genera `selah-live.apk` release con
+la firma histórica. No cambiar ni regenerar el keystore: Android rechazará la actualización si cambia
+el certificado. El aviso de versión consulta GitHub Releases y la descarga directa usa el asset exacto
+`selah-live.apk`. El paquete OTA se prepara con `npm run ota`; no reemplaza la APK cuando hay cambios
+nativos, de permisos o plugins Capacitor.
 
 ### 9.3 Release de escritorio (Electron, auto-update)  ← receta probada
-1. Subir `version` en `package.json` + commit `chore(release): x.y.z — ...` en `main`.
-2. En **PowerShell** (una vez por PC): `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force`
-   (si no, `npm` falla con "npm.ps1 ejecución deshabilitada"; alternativa: usar `npm.cmd`).
-3. `$env:GH_TOKEN = "<PAT classic, scope repo>"` — **los tokens vencen; regenerar en github.com/settings/tokens**.
-   (En cmd sería `set GH_TOKEN=<token>` sin comillas.)
-4. `npm run electron:build:win` → build + `electron-builder --win --publish always`.
-5. `git push origin main`.
-El instalador queda en `dist-electron/Selah Live Setup x.y.z.exe` (~190 MB). El build ocurre ANTES de
-publicar: si solo falla el publish (token), el `.exe` igual queda hecho. El fix del error NSIS de
-desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
+1. Desarrollar en rama, ejecutar `npm run qa:release` y completar la prueba física correspondiente.
+2. Ejecutar `npm run candidata:build`: construye localmente sin publicar y bloquea binarios de otro
+   commit, builds sucios, APK con firma distinta o versiones incoherentes.
+3. Dejar GitHub Actions verde, marcar la PR lista e integrarla a `main`.
+4. Desde el commit definitivo de `main`, reconstruir la candidata para que la procedencia embebida
+   coincida con lo publicado.
+5. El operador carga `GH_TOKEN` únicamente en el entorno de la terminal —nunca en `.env`, código,
+   logs ni chat— y ejecuta `npm run electron:build:win`; electron-builder crea un release borrador.
+6. Subir `selah-live.apk` y, cuando corresponda, el paquete OTA. Revisar notas, hashes y assets antes
+   de publicar el borrador como `Latest`.
+
+La receta operativa completa vive en `COMO-PUBLICAR.md`. El instalador queda en
+`dist-electron/Selah Live Setup x.y.z.exe`. El fix NSIS de actualización está en
+`electron/installer.nsh` (`customUnInstallCheck`). Construir y publicar son pasos separados a propósito.
 
 ---
 
 ## 10. Patrones y principios críticos (NO REGRESAR)
 
 ```
-1. pinesPorSala/estado a nivel de módulo en server/index.js (NO dentro de io.on("connection")).
+1. `pinesPorSala`, estado, listas y presencia viven a nivel de módulo en `electron/main.js`; el hub
+   standalone de `app/server/index.js` debe conservar las mismas reglas (NO dentro de `io.on`).
 2. cargarCanciones(iglesiaId) requiere iglesiaId EXPLÍCITO.
 3. La Biblia SIEMPRE llama al servidor 4000 (las API routes de Next no corren en estático/APK/Electron).
 4. socketConectado inicia en null (no false) para distinguir "nunca conectó".
@@ -319,6 +358,12 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 8. Transmisión: un solo encode (los chunks se reparten a ffmpeg y a disco) para no ahogar PCs modestos.
 9. getUserMedia con constraints de limpieza de audio; aplicar cambios en vivo con applyConstraints (sin
    reiniciar la cámara).
+10. Google OAuth de escritorio SIEMPRE usa navegador del sistema + callback loopback con nonce. No cargar
+    Google dentro de Electron ni aceptar callbacks remotos, rutas alternativas o retornos no pendientes.
+11. Un artefacto solo pertenece a una versión si `qa:artefactos` confirma versión, commit, árbol limpio,
+    firma Android y manifiesto. Cualquier commit posterior obliga a reconstruirlo.
+12. No publicar directamente durante el desarrollo: `candidata:build` primero; merge y publicación después
+    de la prueba física.
 ```
 
 ---
@@ -327,11 +372,19 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 
 ### Deuda técnica verificada
 
-- Al iniciar v0.5.40, `npm run lint` reportaba 546 hallazgos heredados (407 errores y 139 advertencias). La primera tanda dejó 524 (386 errores y 138 advertencias), concentrados todavía en Control, Transmisión, Canciones y Proyectar. Deben corregirse por módulos y con pruebas, nunca mediante un reemplazo masivo antes de un culto.
-- Transmisión ya no tiene errores de lint: se tiparon el puente Electron, eventos FFmpeg, contenido proyectado, WebRTC y resultados de grabación. El total global bajó a 442 hallazgos (310 errores y 132 advertencias); la deuda restante sigue en otros módulos y no se considera resuelta.
-- Cámara móvil también pasa lint estricto: se tiparon apertura de sensores, RTP, señalización, estado del PC, Wake Lock y temporizadores. El total global quedó en 426 hallazgos (297 errores y 129 advertencias).
-- Auditoría de dependencias de v0.5.40: producción y herramientas quedaron en 0 vulnerabilidades conocidas según `npm audit`; se actualizaron solamente versiones transitivas compatibles de `fast-uri` y `undici` en el lockfile.
-- Dividir `app/control/page.tsx` y `app/en-vivo/page.tsx` en componentes y hooks más pequeños después de estabilizar la rama 0.5.x.
+- `npm run lint` y el gate crítico están limpios: cero errores y cero advertencias. No reintroducir
+  excepciones globales para acelerar una entrega.
+- Dependencias de producción: cero vulnerabilidades conocidas. En herramientas de desarrollo permanecen
+  dos avisos transitivos sin versión corregida publicada (`braces`, fuente npm 1240992, y `sprintf-js`,
+  fuente npm 1241202). `qa-auditoria-herramientas.cjs` permite solo esos IDs y bloquea cualquier alerta
+  nueva o crítica; retirarlos apenas exista una actualización compatible.
+- Dividir `app/control/page.tsx` y `app/en-vivo/page.tsx` en componentes y hooks más pequeños después de
+  estabilizar la rama 0.5.x. Es deuda de mantenibilidad, no un cambio para hacer antes de un culto.
+- El instalador Windows no posee certificado Authenticode comercial. La candidata es funcional, pero
+  SmartScreen puede advertir al usuario; resolver antes de una distribución comercial amplia.
+- CameraX continúa como laboratorio debug. No anunciar cámara frontal nativa ni reemplazar el flujo
+  WebRTC de producción hasta validarlo en varios fabricantes Android.
+- Faltan prueba física RTMPS/Facebook, ensayo continuo de 1–2 horas y recuperación real de un destino.
 
 ### Entregado en v0.5.27
 
@@ -396,7 +449,7 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - Si otro equipo elimina el culto abierto, su contenido se conserva localmente como borrador recuperable.
 - `lib/conflictoCulto.ts` concentra estas decisiones en funciones puras y `test/conflictoCulto.test.js` valida sus escenarios críticos por comportamiento.
 
-### En desarrollo para v0.5.40
+### Candidata v0.5.40 — código y artefactos verificados
 
 - Modelos compartidos de canción, partes, fondos e ítems de culto extraídos a `lib/modelosCulto.ts` para reducir duplicación y reemplazar `any` progresivamente.
 - Actualizador OTA, tema visual, recorridos, afinador, metrónomo, caché, registro de errores y cliente Supabase pasan lint estricto sin desactivar reglas.
@@ -405,7 +458,7 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - Al terminar una emisión se conserva un informe descargable con duración, calidad, destinos por nombre, reconexiones, cuadros caídos, respaldo local y diagnóstico final. Se eliminan direcciones RTMP antes de persistirlo.
 - El diagnóstico terminal conserva la causa real aunque FFmpeg cierre con código nulo: atasco de entrada, conexión del destino, motor u operador. La marca de cierre intencional es por sesión y no afecta una reconexión posterior.
 - Si Selah o el PC se cierran durante una grabación, Transmisión detecta los segmentos MKV restantes y permite reconstruir un MP4. Los originales solo se eliminan después de verificar una salida no vacía; las grabaciones activas o en conversión nunca se ofrecen como pendientes.
-- El gate `npm run qa:release` ejecuta 14 comprobaciones obligatorias: diff, 147 pruebas automatizadas, build web/TypeScript, lint estricto de transmisión/cámara/conexiones, auditoría de dependencias de producción, auditoría de herramientas de compilación, sintaxis de los módulos críticos de Electron, benchmark, trazabilidad de build, recuperación independiente de destinos y verificador de artefactos. Ambas auditorías quedaron en 0 vulnerabilidades conocidas.
+- El gate `npm run qa:release` ejecuta 14 comprobaciones obligatorias: diff, 149 pruebas automatizadas, build web/TypeScript, lint estricto de transmisión/cámara/conexiones, auditoría de producción, auditoría controlada de herramientas, sintaxis de módulos críticos de Electron, benchmark, trazabilidad, recuperación independiente de destinos y verificador de artefactos. Producción está en cero vulnerabilidades; herramientas permiten solo dos avisos transitivos conocidos sin parche y bloquean cualquier otro.
 - Después de empaquetar, `npm run qa:candidata` encadena el gate completo con la validación real de APK/NSIS; `npm run qa:publicar` repite ese flujo en modo estricto y exige Authenticode válido en Windows.
 - Cada `npm run build` genera `build-info.json` con versión, commit Git y estado de cambios rastreados. El dato se incorpora a `assets/public/` en APK y `out/` dentro de `app.asar` en Electron; el verificador rechaza artefactos de otro commit o construidos con cambios sin confirmar.
 - El benchmark Full HD de 30 segundos completó 900/900 cuadros tanto con `h264_mf` como con `libx264`, a 31 fps, velocidad 1.03x, sin cola ni avisos temporales. Esto valida el codificador aislado, no cámaras/WiFi reales.
@@ -418,17 +471,24 @@ desinstalación está en `electron/installer.nsh` (`customUnInstallCheck`).
 - Músicos también forma parte del gate crítico: repertorio, partes, estado en vivo, Socket.IO y Supabase Realtime quedaron tipados y sin hallazgos de lint.
 - Proyectar quedó incluido en el mismo gate: eventos, fondos, Biblia, precarga y sockets tienen tipos explícitos; la cuenta regresiva dejó de calcular tiempo impuro durante render y se actualiza mediante estado.
 - Login, autorización, Navbar y aviso APK se sumaron al gate: se tiparon puentes de Electron/Capacitor, respuesta de versiones y cambios de sesión, manteniendo las restricciones por rol.
+- El acceso real con Google quedó validado en Electron. Google abre en el navegador del sistema y vuelve
+  al launcher mediante `POST /oauth/entregar`; el proceso exige origen loopback, ruta exacta, cuerpo
+  acotado, autorización pendiente y nonce de un solo uso. La prueba real registró el retorno, creó la
+  sesión y conectó Inicio a la sala sin imprimir correo ni tokens.
 - El contexto global usa ahora los modelos compartidos de canción y el tipo real de sesión de Supabase; caché, paginación y registro global de errores quedaron sin `any`.
 - Inicio quedó tipado de extremo a extremo: selector de iglesias, estadísticas, accesos por rol y detección de APK forman parte del lint crítico y compilan sin excepciones silenciosas.
 - Configuración también forma parte del gate: miembros, invitaciones, log, QR, firewall y diagnóstico de red usan contratos explícitos; se corrigieron dependencias de carga y la detección de plataforma posterior a la hidratación.
 - Historial quedó tipado para cultos, proyecciones y estadísticas; su carga inicial evita efectos sin dependencias y también está protegida por el lint crítico.
 - Unión, configuración del servidor, onboarding, emisión directa, laboratorios y componentes de ayuda/editor quedaron sin deuda de lint. El editor libera listeners de puntero al terminar o desmontarse, y los flujos diferidos ya no mutan estado directamente durante los efectos.
 - Control quedó sin errores ni advertencias de lint: se tiparon listas, cultos, Biblia, galería, PowerPoint, estados especiales y el monitor de proyección, y se retiró un bloque grande de estilos muertos. La persistencia de lo proyectado se separó de los refs de navegación; las tareas asíncronas usan eventos de efecto para leer el estado vigente sin duplicar sockets, consultas ni emisiones. Control ya forma parte del lint crítico obligatorio.
-- La candidata 0.5.40 empaqueta en Android y Windows. La APK release tiene firma v2 válida con el certificado histórico de Selah; el instalador NSIS se genera correctamente pero continúa sin Authenticode, por lo que una distribución comercial debe incorporar un certificado de firma de código antes de prometer una instalación sin advertencias de SmartScreen.
+- La candidata funcional fue construida desde `0fde8b55d935a430403b06623a598484ec0fc841` con árbol rastreado limpio. APK: 7.634.626 bytes, SHA-256 `71B0F2111C6016CF5E883EBB6DF096443230C38964F780E98BF10F9BE55E5D8F`, firma v2 histórica válida. Windows: 221.178.004 bytes, SHA-256 `D52B542EBBB307185FAAD88667766F28AF1D37DA8EDFDE3F611176D38027D2E3`, Authenticode `NotSigned`. No se subieron ni publicaron estos binarios; tras integrar documentación o cualquier otro commit, el empaquetado final debe repetirse desde `main`.
 - Los módulos CommonJS del servidor web y Biblia declaran explícitamente su formato, no conservan excepciones sin usar y pasan tanto ESLint como `node --check`.
 
-- [ ] Dividir `control/page.tsx` (~5500 líneas) en componentes (refactor diferido, riesgoso).
-- [ ] Reemplazar `any` por interfaces (`Cancion`, `Parte`, `ItemLista`).
+- [ ] Completar la prueba corta de v0.5.40 en la iglesia antes de integrar/publicar.
+- [ ] Ejecutar una prueba de transmisión/grabación de 1–2 horas con hardware y red reales.
+- [ ] Adquirir y configurar certificado Authenticode para Windows.
+- [ ] Dividir `control/page.tsx` y `en-vivo/page.tsx` en componentes (refactor diferido, riesgoso).
+- [ ] Continuar reemplazando tipos locales heredados por los modelos compartidos de culto.
 - [x] Galería con carpetas y metadatos sincronizados por iglesia.
 - [ ] Transmisión: de mi lista OBS quedan cosas menores descartadas por no ser para iglesias (atajos de
       teclado, chroma key, modo estudio).
@@ -498,9 +558,15 @@ completo tras reiniciar escritorio ni conserva identidad después de borrar dato
 1. Se edita el código directamente en `/app`, `/electron`, etc. (ya NO existe el viejo flujo de "copiar
    outputs antes del build").
 2. Las API routes de Next (`/api/...`) no corren en APK ni Electron → la Biblia usa el server 4000.
-3. `server/index.js` es crítico: si falla, la proyección en tiempo real no funciona.
+3. En Electron, el servidor crítico está integrado en `electron/main.js` (puertos 3000/4000). El
+   proceso opcional standalone es `app/server/index.js`; no ejecutar ambos sobre el mismo puerto.
 4. Transmisión, grabación, compartir pantalla e importar PPT son **solo escritorio** (Electron): en la web
    muestran aviso "solo app de escritorio".
 5. El himnario del usuario es todo `.ppt` antiguo → para importarlo usar "Diapositivas completas".
 6. Al cerrar un release, actualizar la versión de este documento (arriba) y su §6/§7 si cambió el diseño.
+7. Google OAuth de escritorio no se incrusta en Electron. Si deja de volver, revisar en orden:
+   `google-iniciado` → `retorno-preparado` → `retorno local recibido` → sesión/Inicio, sin imprimir URLs
+   ni credenciales.
+8. `.moradora-update/` pertenece al proyecto paralelo de la iglesia y no forma parte de Selah; mantenerla
+   fuera de commits y artefactos salvo solicitud explícita.
 ```
