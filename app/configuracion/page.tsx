@@ -1450,17 +1450,28 @@ export default function ConfiguracionPage() {
           </div>
           <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ fontSize: 13, opacity: 0.6, lineHeight: 1.5 }}>
-              Solo dispositivos con este PIN podrán controlar el proyector. Déjalo vacío para no usar PIN.
+              El escritorio registra este PIN y solo los dispositivos que lo conozcan podrán controlar el proyector. Para usar Control desde el celular, configura entre 4 y 6 dígitos.
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <input type="number" placeholder="Ej: 1234" value={pinSala}
                 onChange={e => { setPinSala(e.target.value.slice(0, 6)); setPinGuardado(false) }}
+                inputMode="numeric" minLength={4} maxLength={6}
                 style={{ ...inputStyle, flex: 1, fontSize: 18, fontWeight: 700, letterSpacing: 8 }}
               />
               <button onClick={async () => {
-                  await supabase.from("iglesias").update({ pin_sala: pinSala || null }).eq("id", iglesiaId)
+                  if (pinSala && !/^\d{4,6}$/.test(pinSala)) {
+                    mostrarFlash("El PIN debe tener entre 4 y 6 dígitos.", "error")
+                    return
+                  }
+                  const { error } = await supabase.from("iglesias").update({ pin_sala: pinSala || null }).eq("id", iglesiaId)
+                  if (error) {
+                    mostrarFlash(`No se pudo guardar el PIN: ${error.message}`, "error")
+                    return
+                  }
                   if (pinSala) localStorage.setItem("selah-sala-pin", pinSala)
                   else localStorage.removeItem("selah-sala-pin")
+                  const seguridad = (window as Window & { seguridadLocal?: { registrarPinSala?: (sala:string, pin:string|null) => Promise<unknown> } }).seguridadLocal
+                  if (iglesiaId) await seguridad?.registrarPinSala?.(iglesiaId, pinSala || null)
                   setPinGuardado(true)
                 }}
                 style={{ ...btnPrincipal, flexShrink: 0, background: pinGuardado ? "rgba(34,197,94,0.2)" : undefined, color: pinGuardado ? "#4ade80" : undefined }}>
@@ -1469,8 +1480,14 @@ export default function ConfiguracionPage() {
             </div>
             {pinSala && (
               <button onClick={async () => {
+                  const { error } = await supabase.from("iglesias").update({ pin_sala: null }).eq("id", iglesiaId)
+                  if (error) {
+                    mostrarFlash(`No se pudo quitar el PIN: ${error.message}`, "error")
+                    return
+                  }
                   setPinSala(""); localStorage.removeItem("selah-sala-pin")
-                  await supabase.from("iglesias").update({ pin_sala: null }).eq("id", iglesiaId)
+                  const seguridad = (window as Window & { seguridadLocal?: { registrarPinSala?: (sala:string, pin:string|null) => Promise<unknown> } }).seguridadLocal
+                  if (iglesiaId) await seguridad?.registrarPinSala?.(iglesiaId, null)
                   setPinGuardado(false)
                 }}
                 style={{ alignSelf: "flex-start", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", color: "#fca5a5", fontSize: 12, cursor: "pointer" }}>

@@ -400,8 +400,14 @@ export default function CancionesPage() {
       try {
         if (!salaRef.current) salaRef.current = iglesiaIdCtx || (await getIglesiaId()) || "global"
         const pin = await getPinSalaCached(salaRef.current)
-        s.emit("unirse-sala", { sala: salaRef.current, pantalla: "canciones", pin })
-        setSocketConectado(true)
+        s.timeout(3000).emit("unirse-sala", { sala: salaRef.current, pantalla: "canciones", pin },
+          (error: Error | null, respuesta: { ok?: boolean; error?: string }) => {
+            const unido = !error && !!respuesta?.ok
+            setSocketConectado(unido)
+            if (!unido && respuesta?.error === "pin_no_configurado") {
+              setTimeout(() => { if (s.connected) { s.disconnect(); s.connect() } }, 3000)
+            }
+          })
       } catch (err) {
         if (process.env.NODE_ENV === "development") console.error("❌ canciones socket connect:", err)
       }

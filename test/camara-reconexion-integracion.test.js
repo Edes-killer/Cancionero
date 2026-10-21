@@ -17,7 +17,12 @@ test('Socket.IO: identidad conservada, aviso de desconexión correcto y duplicad
   const http = createServer()
   const io = new Server(http)
   const clientes = []
-  io.on('connection', s => instalar(s, io))
+  io.on('connection', s => {
+    // El host real vive en Electron/loopback; el laboratorio efímero replica
+    // explícitamente esa identidad de confianza antes de instalar handlers.
+    s.data.localConfiable = true
+    instalar(s, io)
+  })
   await new Promise(r => http.listen(0, '127.0.0.1', r))
   const conectar = async () => {
     const c = cliente(`http://127.0.0.1:${http.address().port}`, { transports:['websocket'], reconnection:false })

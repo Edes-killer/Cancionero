@@ -1,7 +1,12 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
 const path = require("node:path")
-const { rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb, esAutorizacionSupabase, destinoCallbackOAuth, destinoCallbackOAuthLocal } = require("../electron/security")
+const {
+  rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb,
+  esAutorizacionSupabase, destinoCallbackOAuth, destinoCallbackOAuthLocal, esOrigenServidorSelah,
+  normalizarDireccionRed, esDireccionLoopback, pantallaSelahValida,
+  salaSelahValida, pinSalaValido, pinSalaCoincide, puedeSenalizarEmision,
+} = require("../electron/security")
 const { EventEmitter } = require("node:events")
 const { protegerSalida } = require("../electron/safe-output")
 const fs = require("node:fs")
@@ -18,6 +23,41 @@ test("la galería rechaza rutas y extensiones ajenas", () => {
   assert.equal(nombreArchivoSeguro("logo.webp", media), "logo.webp")
   assert.equal(nombreArchivoSeguro("../logo.webp", media), null)
   assert.equal(nombreArchivoSeguro("script.exe", media), null)
+})
+
+test("la seguridad LAN distingue el escritorio local de otros equipos", () => {
+  assert.equal(normalizarDireccionRed("::ffff:127.0.0.1"), "127.0.0.1")
+  assert.equal(esDireccionLoopback("::1"), true)
+  assert.equal(esDireccionLoopback("127.0.0.1"), true)
+  assert.equal(esDireccionLoopback("192.168.1.20"), false)
+  assert.equal(esOrigenServidorSelah("http://localhost:3000/control/"), true)
+  assert.equal(esOrigenServidorSelah("http://127.0.0.1:3000/"), true)
+  assert.equal(esOrigenServidorSelah("http://localhost:9999/"), false)
+  assert.equal(esOrigenServidorSelah("https://sitio-malicioso.example/"), false)
+})
+
+test("las salas, pantallas y PIN se validan antes de autorizar", () => {
+  assert.equal(pantallaSelahValida("control"), true)
+  assert.equal(pantallaSelahValida("administrador"), false)
+  assert.equal(salaSelahValida("cb7db0f2-7e9a-4cb7-bdfb-2bdd57ca1630"), true)
+  assert.equal(salaSelahValida("../otra"), false)
+  assert.equal(pinSalaValido("7391"), true)
+  assert.equal(pinSalaValido("12x4"), false)
+  assert.equal(pinSalaCoincide("7391", "7391"), true)
+  assert.equal(pinSalaCoincide("7391", "0000"), false)
+})
+
+test("la señal WebRTC directa solo circula entre pares de la misma emisión", () => {
+  assert.equal(puedeSenalizarEmision({ rol:"emisor", codigo:"ABC123" }, { rol:"espectador", codigo:"ABC123" }), true)
+  assert.equal(puedeSenalizarEmision({ rol:"espectador", codigo:"ABC123" }, { rol:"emisor", codigo:"ABC123" }), true)
+  assert.equal(puedeSenalizarEmision({ rol:"espectador", codigo:"OTRA" }, { rol:"emisor", codigo:"ABC123" }), false)
+  assert.equal(puedeSenalizarEmision({ rol:"espectador", codigo:"ABC123" }, { rol:"espectador", codigo:"ABC123" }), false)
+})
+
+test("Electron ignora una IP remota guardada y usa su servidor loopback", () => {
+  const servidor = fs.readFileSync("lib/servidor.ts", "utf8")
+  assert.match(servidor, /navigator\.userAgent\.includes\("Electron"\)\) return "http:\/\/127\.0\.0\.1:4000"/)
+  assert.ok(servidor.indexOf('navigator.userAgent.includes("Electron")') < servidor.indexOf("NEXT_PUBLIC_SOCKET_URL"))
 })
 
 test("Electron solo confía en su origen interno y abre enlaces web", () => {

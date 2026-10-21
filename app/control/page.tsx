@@ -766,7 +766,16 @@ useEffect(() => {
         if (!s.connected) return
         unidoASala = !error && !!respuesta?.ok
         setSocketConectado(unidoASala)
-        if (!unidoASala) logConex(`Servidor rechazó ingreso a la sala: ${respuesta?.error || error?.message || "sin motivo"}`)
+        if (!unidoASala) {
+          const motivo = respuesta?.error || error?.message || "sin motivo"
+          logConex(`Servidor rechazó ingreso a la sala: ${motivo}`)
+          // El APK puede alcanzar el puerto unos segundos antes de que la
+          // pantalla local de Electron registre el PIN. Reintentar la unión
+          // evita exigir una reconexión manual sin relajar la seguridad.
+          if (respuesta?.error === "pin_no_configurado") {
+            setTimeout(() => { if (s.connected) { s.disconnect(); s.connect() } }, 3000)
+          }
+        }
       })
     } catch (err) {
       console.error("❌ Error en connect control:", err)

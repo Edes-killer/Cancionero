@@ -8,6 +8,10 @@ import { getCancelacionesCache, setCancelacionesCache, supabaseProbablementeCaid
 import type { Cancion } from "@/lib/modelosCulto"
 import { esPlanValido } from "@/lib/planes"
 
+type VentanaSeguridadLocal = Window & {
+  seguridadLocal?: { registrarPinSala?: (sala: string, pin: string | null) => Promise<{ ok?: boolean }> }
+}
+
 interface AppContextType {
   session: Session | null
   userId: string | null
@@ -74,6 +78,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // AuthProvider.tsx) para no causar un hydration mismatch. El valor real
   // se sincroniza en el useEffect de abajo, ya en el cliente.
   const [sinConexion, setSinConexion] = useState(false)
+
+  // El proceso principal conserva el PIN autoritativo aunque Electron esté en
+  // Inicio, Configuración o Transmisión. Así el APK puede conectarse sin exigir
+  // que el operador abra primero la pantalla Control.
+  useEffect(() => {
+    if (!listo || !iglesiaId || !navigator.userAgent.includes("Electron")) return
+    void (window as VentanaSeguridadLocal).seguridadLocal?.registrarPinSala?.(iglesiaId, pinSala)
+  }, [iglesiaId, listo, pinSala])
 
   // ✅ AuthProvider es quien decide activar/desactivar el modo sin conexión
   // (escribe en localStorage) — acá solo lo reflejamos para que cualquier
@@ -245,6 +257,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try {
         const planGuardado = localStorage.getItem(`selah-plan-${igId}`)
         if (esPlanValido(planGuardado)) setPlan(planGuardado)
+        const pinGuardado = localStorage.getItem("selah-sala-pin")
+        if (pinGuardado) setPinSala(pinGuardado)
       } catch {}
 
       // ✅ Cargar canciones SIEMPRE, independiente de si iglesias falla

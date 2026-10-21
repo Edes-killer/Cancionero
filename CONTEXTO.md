@@ -1,6 +1,6 @@
 # Selah Live — Documento de Diseño (SDD) y Contexto de Desarrollo
 
-> Versión del documento: 2026-10-20 · Estable publicada: **v0.5.39** · Candidata: **v0.5.40**.
+> Versión del documento: 2026-10-21 · Estable publicada: **v0.5.39** · Candidata: **v0.5.40**.
 
 La versión pública continúa siendo v0.5.39. La candidata v0.5.40 está en la rama
 `codex/release-0.5.40` y en la [PR #2](https://github.com/Edes-killer/Cancionero/pull/2),
@@ -10,12 +10,11 @@ modifican el runtime, pero igualmente obligan a reconstruir antes de publicar. N
 el release ni marcarlo `Latest` antes de completar la prueba corta en la iglesia.
 
 **Estado verificable de v0.5.40:** login real con Google aprobado en Electron mediante
-callback loopback protegido por nonce; `npm run qa:release` aprobó 14/14 compuertas y
-149/149 pruebas; GitHub Actions aprobó el mismo commit. El APK firmado y el instalador
-Windows fueron reconstruidos desde ese commit y `qa:artefactos` confirmó versión,
-procedencia limpia y hashes. El único aviso de empaquetado es que Windows continúa sin
-certificado Authenticode comercial. Evidencia y prueba física: `docs/RELEASE-0.5.40.md`
-y `docs/EMPAQUETADO-0.5.40.md`.
+callback loopback protegido por nonce; `npm run qa:release` aprobó 14/14 compuertas,
+157/157 pruebas y el laboratorio LAN hostil aprobó 26/26 escenarios. Los binarios descritos
+en `docs/EMPAQUETADO-0.5.40.md` son evidencia histórica anterior a los cambios de planes y
+seguridad LAN del 21 de octubre: deben reconstruirse y volver a verificarse antes de publicar.
+El instalador Windows continúa sin certificado Authenticode comercial.
 
 La transmisión mejoró a partir de los fallos de terreno de v0.5.35–v0.5.39, pero ninguna
 prueba sintética reemplaza validar Facebook/RTMPS, WiFi, cámaras y sincronía labial en la
@@ -148,7 +147,9 @@ antiguos defaults UUID, además de una iglesia vacía. Las FK y restricciones de
 validadas contra los datos históricos mediante las migraciones `20260907` a `20260910`.
 
 **Roles (AuthProvider):** admin (todo), líder de alabanza (Control/Canciones/Historial/Transmisión, NO
-Configuración), músico (solo /musicos). PIN de sala opcional (`iglesias.pin_sala`, sincronizado por AppContext).
+Configuración), músico (solo /musicos). El escritorio puede operar localmente sin PIN; Control/Canciones/
+Inicio desde otro dispositivo exigen un PIN de 4–6 dígitos registrado por Electron. El primer equipo remoto
+ya no puede definirlo ni apropiarse de una sala.
 
 ---
 
@@ -260,6 +261,16 @@ un cuerpo acotado y el nonce pendiente, y carga el callback dentro del launcher 
 El esquema `selahlive://auth/callback` se conserva como respaldo y para enlaces por correo. Nunca
 registrar correo, contraseña, URL de callback, access token ni refresh token en consola o Supabase.
 
+**Seguridad LAN (candidata v0.5.40):** Electron siempre conecta a `127.0.0.1:4000`, aunque exista una
+IP antigua en el almacenamiento local. El proceso principal registra el PIN autoritativo desde AppContext
+en cualquier módulo; un cliente de red no puede sembrarlo. Socket.IO valida sala UUID, pantalla, PIN con
+comparación constante, rol por evento y limita intentos fallidos. Proyector, puente nube, host de cámara y
+host de emisión directa son exclusivamente locales. La señal WebRTC dirigida exige roles opuestos y la
+misma sala; al cambiar de código se abandona la anterior. Escritura/borrado de galería local y conversión
+PowerPoint aceptan solo loopback y origen interno. `/ping`, `/info`, Biblia, espectadores y emisores de
+cámara autorizados siguen disponibles por LAN. Alcance: protege frente a otros equipos de la red; malware
+ya ejecutándose en el PC requiere defensas del sistema operativo y firma de código.
+
 El acceso principal por correo es **Sin contraseña** (magic link), porque muchas cuentas históricas
 fueron creadas con Google y no poseen contraseña de Selah. “Con contraseña” acepta únicamente una
 contraseña configurada en Selah; nunca la contraseña de Gmail.
@@ -268,9 +279,10 @@ contraseña configurada en Selah; nunca la contraseña de Gmail.
 
 ## 7. IPC de Electron (main ↔ renderer)
 
-**Bridges (preload):** `window.transmision`, `window.powerpoint`, `window.electron` y
-`window.oauthElectron`. El puente OAuth solo prepara un retorno temporal, abre una URL de autorización
-Supabase validada y emite diagnósticos sin datos personales.
+**Bridges (preload):** `window.transmision`, `window.powerpoint`, `window.electron`,
+`window.oauthElectron` y `window.seguridadLocal`. Este último solo registra o retira el PIN de la iglesia
+desde la ventana principal validada; no expone el valor a la red. El puente OAuth solo prepara un retorno
+temporal, abre una URL de autorización Supabase validada y emite diagnósticos sin datos personales.
 
 | Canal (invoke/handle) | Qué hace |
 |---|---|
@@ -461,7 +473,7 @@ La receta operativa completa vive en `COMO-PUBLICAR.md`. El instalador queda en
 - Al terminar una emisión se conserva un informe descargable con duración, calidad, destinos por nombre, reconexiones, cuadros caídos, respaldo local y diagnóstico final. Se eliminan direcciones RTMP antes de persistirlo.
 - El diagnóstico terminal conserva la causa real aunque FFmpeg cierre con código nulo: atasco de entrada, conexión del destino, motor u operador. La marca de cierre intencional es por sesión y no afecta una reconexión posterior.
 - Si Selah o el PC se cierran durante una grabación, Transmisión detecta los segmentos MKV restantes y permite reconstruir un MP4. Los originales solo se eliminan después de verificar una salida no vacía; las grabaciones activas o en conversión nunca se ofrecen como pendientes.
-- El gate `npm run qa:release` ejecuta 14 comprobaciones obligatorias: diff, 153 pruebas automatizadas, build web/TypeScript, lint estricto de transmisión/cámara/conexiones, auditoría de producción, auditoría controlada de herramientas, sintaxis de módulos críticos de Electron, benchmark, trazabilidad, recuperación independiente de destinos y verificador de artefactos. Producción está en cero vulnerabilidades; herramientas permiten solo dos avisos transitivos conocidos sin parche y bloquean cualquier otro.
+- El gate `npm run qa:release` ejecuta 14 comprobaciones obligatorias: diff, 157 pruebas automatizadas, build web/TypeScript, lint estricto de transmisión/cámara/conexiones, auditoría de producción, auditoría controlada de herramientas, sintaxis de módulos críticos de Electron, benchmark, trazabilidad, recuperación independiente de destinos y verificador de artefactos. Producción está en cero vulnerabilidades; herramientas permiten solo dos avisos transitivos conocidos sin parche y bloquean cualquier otro.
 - Después de empaquetar, `npm run qa:candidata` encadena el gate completo con la validación real de APK/NSIS; `npm run qa:publicar` repite ese flujo en modo estricto y exige Authenticode válido en Windows.
 - Cada `npm run build` genera `build-info.json` con versión, commit Git y estado de cambios rastreados. El dato se incorpora a `assets/public/` en APK y `out/` dentro de `app.asar` en Electron; el verificador rechaza artefactos de otro commit o construidos con cambios sin confirmar.
 - El benchmark Full HD de 30 segundos completó 900/900 cuadros tanto con `h264_mf` como con `libx264`, a 31 fps, velocidad 1.03x, sin cola ni avisos temporales. Esto valida el codificador aislado, no cámaras/WiFi reales.
@@ -470,6 +482,9 @@ La receta operativa completa vive en `COMO-PUBLICAR.md`. El instalador queda en
 - La medición del receptor móvil ya no es solo informativa: el PC devuelve FPS y búfer al celular para alimentar la calidad automática. El preflight bloquea una salida con una fuente móvil seleccionada que esté desconectada, bajo 12 FPS o con al menos 1,5 segundos de búfer; esto responde a la prueba física que llegó a Facebook con 7,7–13 segundos de atraso y cero cuadros útiles en FFmpeg.
 - `Revisar salida` prueba en el PC real los tres motores (`h264_mf`, `h264_qsv`, `libx264`) a Full HD con parámetros de producción y no habilita la confirmación hasta que uno sostenga la carga.
 - El lint global heredado quedó completamente limpio en v0.5.40: `npm run lint` termina con cero errores y cero advertencias, después de corregir los módulos por tandas pequeñas y verificables.
+- La superficie LAN quedó endurecida: 26/26 pruebas hostiles validan PIN, roles, origen web, aislamiento multiiglesia,
+  convergencia, reconexión y señal directa. Una comprobación adicional entrando por la IP LAN confirmó
+  HTTP 403 para archivos locales y rechazo de host de cámara/emisión, proyector y siembra remota del PIN.
 - Canciones quedó incorporado al lint crítico: se tiparon importación PowerPoint, cachés, filtros y respuestas de Supabase, retirando 47 hallazgos sin cambiar su flujo funcional.
 - Músicos también forma parte del gate crítico: repertorio, partes, estado en vivo, Socket.IO y Supabase Realtime quedaron tipados y sin hallazgos de lint.
 - Proyectar quedó incluido en el mismo gate: eventos, fondos, Biblia, precarga y sockets tienen tipos explícitos; la cuenta regresiva dejó de calcular tiempo impuro durante render y se actualiza mediante estado.
@@ -484,7 +499,7 @@ La receta operativa completa vive en `COMO-PUBLICAR.md`. El instalador queda en
 - Historial quedó tipado para cultos, proyecciones y estadísticas; su carga inicial evita efectos sin dependencias y también está protegida por el lint crítico.
 - Unión, configuración del servidor, onboarding, emisión directa, laboratorios y componentes de ayuda/editor quedaron sin deuda de lint. El editor libera listeners de puntero al terminar o desmontarse, y los flujos diferidos ya no mutan estado directamente durante los efectos.
 - Control quedó sin errores ni advertencias de lint: se tiparon listas, cultos, Biblia, galería, PowerPoint, estados especiales y el monitor de proyección, y se retiró un bloque grande de estilos muertos. La persistencia de lo proyectado se separó de los refs de navegación; las tareas asíncronas usan eventos de efecto para leer el estado vigente sin duplicar sockets, consultas ni emisiones. Control ya forma parte del lint crítico obligatorio.
-- La candidata funcional fue construida desde `0fde8b55d935a430403b06623a598484ec0fc841` con árbol rastreado limpio. APK: 7.634.626 bytes, SHA-256 `71B0F2111C6016CF5E883EBB6DF096443230C38964F780E98BF10F9BE55E5D8F`, firma v2 histórica válida. Windows: 221.178.004 bytes, SHA-256 `D52B542EBBB307185FAAD88667766F28AF1D37DA8EDFDE3F611176D38027D2E3`, Authenticode `NotSigned`. No se subieron ni publicaron estos binarios; tras integrar documentación o cualquier otro commit, el empaquetado final debe repetirse desde `main`.
+- Los artefactos construidos desde `0fde8b55d935a430403b06623a598484ec0fc841` quedan como evidencia histórica, no como candidata vigente: son anteriores a planes autoritativos y seguridad LAN. Tras integrar estos cambios, el empaquetado final debe repetirse con árbol limpio y `qa:artefactos` debe registrar nuevos hashes. Authenticode sigue pendiente.
 - Los módulos CommonJS del servidor web y Biblia declaran explícitamente su formato, no conservan excepciones sin usar y pasan tanto ESLint como `node --check`.
 
 - [ ] Completar la prueba corta de v0.5.40 en la iglesia antes de integrar/publicar.

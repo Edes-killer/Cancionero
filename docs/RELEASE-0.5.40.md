@@ -37,13 +37,18 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 - Tipos y validaciones reforzados en Transmisión, Cámara, OBS opcional y conexión.
 - Capacitor Android, Sharp y Source Map actualizados para corregir una vulnerabilidad
   crítica y dos altas publicadas después de preparar la primera candidata.
+- Seguridad LAN reforzada: otro equipo ya no puede definir el PIN inicial, declararse proyector,
+  abrir un host de cámara/emisión ni inyectar señales WebRTC entre salas. Los archivos locales y
+  la conversión PowerPoint solo aceptan solicitudes del escritorio.
+- Electron registra el PIN desde cualquier módulo y siempre usa su loopback; el APK mantiene
+  detección automática y reintenta si alcanza el servidor antes de que termine de iniciar el PC.
 
 ## Evidencia automática
 
 - `npm run qa:release`: 14 comprobaciones obligatorias, incluida la recuperación real de un destino local y trazabilidad del build.
 - GitHub repite esa misma compuerta en Windows para cada solicitud de integración y cada
   cambio de `main`; no usa credenciales ni publica artefactos ni duplica trabajos por rama.
-- 149/149 pruebas automatizadas aprobadas.
+- 157/157 pruebas automatizadas y 26/26 escenarios del laboratorio LAN aprobados.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
 - Auditoría de producción: cero vulnerabilidades conocidas. En herramientas quedan dos

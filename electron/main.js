@@ -11,7 +11,12 @@ const path = require("path")
 const http = require("http")
 const crypto = require("crypto")
 const { Server } = require("socket.io")
-const { rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esEnlaceWeb, esAutorizacionSupabase, destinoCallbackOAuth, destinoCallbackOAuthLocal } = require("./security")
+const {
+  rutaDentroDe, nombreArchivoSeguro, esOrigenInterno, esOrigenServidorSelah, esEnlaceWeb,
+  esAutorizacionSupabase, destinoCallbackOAuth, destinoCallbackOAuthLocal,
+  esDireccionLoopback, pantallaSelahValida, salaSelahValida,
+  pinSalaValido, pinSalaCoincide, puedeSenalizarEmision,
+} = require("./security")
 const fs = require("fs")
 const net = require("net")
 const os = require("os")
@@ -960,6 +965,19 @@ function startStaticServer(outDir, port) {
 // ── Servidor Socket.IO ─────────────────────────────────────────────────────────
 let estadosPorSala = {}
 const pinesPorSala = {}
+const intentosPinPorOrigen = new Map()
+ipcMain.handle("seguridad:registrar-pin-sala", (evento, { sala, pin } = {}) => {
+  if (!mainWindow || mainWindow.isDestroyed() || evento.sender !== mainWindow.webContents) return { ok:false, error:"emisor_no_autorizado" }
+  if (!salaSelahValida(sala)) return { ok:false, error:"sala_invalida" }
+  if (pin == null || pin === "") {
+    delete pinesPorSala[sala]
+    return { ok:true, conPin:false }
+  }
+  const pinFinal = String(pin)
+  if (!pinSalaValido(pinFinal)) return { ok:false, error:"pin_invalido" }
+  pinesPorSala[sala] = pinFinal
+  return { ok:true, conPin:true }
+})
 // ✅ Banner de urgencia: se superpone a lo que sea que esté proyectando sin
 // reemplazarlo, así que se guarda aparte de estadosPorSala. No se persiste
 // a disco -es intencionalmente efímero.
@@ -1020,6 +1038,14 @@ function startSocketServer(port) {
     res.setHeader("Access-Control-Allow-Headers", "Content-Type")
     if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return }
 
+    const exigirSolicitudLocal = () => {
+      const origen = req.headers.origin
+      if (esDireccionLoopback(req.socket?.remoteAddress) && (!origen || esOrigenServidorSelah(origen))) return true
+      res.writeHead(403, { "Content-Type":"application/json" })
+      res.end(JSON.stringify({ error:"solo_escritorio_local" }))
+      return false
+    }
+
     if (req.url?.startsWith("/qr")) {
       const handler = async () => {
         try {
@@ -1047,7 +1073,7 @@ function startSocketServer(port) {
         puerto: 4000,
         app: "selah-live",
         version: SELAH_VERSION,
-        qaProtocol: 6,
+        qaProtocol: 7,
       }))
       return
     }
@@ -1057,12 +1083,13 @@ function startSocketServer(port) {
         ok: true,
         app: "selah-live",
         version: SELAH_VERSION,
-        qaProtocol: 6,
+        qaProtocol: 7,
         puerto: 4000,
       }))
       return
     }
     if (req.url?.startsWith("/api/imagenes/listar")) {
+      if (!exigirSolicitudLocal()) return
       const dir = path.join(app.getPath("userData"), "imagenes")
       if (!fs.existsSync(dir)) { res.writeHead(200, {"Content-Type":"application/json"}); res.end(JSON.stringify({imagenes:[]})); return }
       const archivos = fs.readdirSync(dir).filter(f => /\.(webp|jpg|jpeg|png|gif)$/i.test(f))
@@ -1087,6 +1114,7 @@ function startSocketServer(port) {
     }
 
     if (req.url === "/api/imagenes/eliminar" && req.method === "DELETE") {
+      if (!exigirSolicitudLocal()) return
       let body = ""
       let excedido = false
       req.on("data", c => {
@@ -1122,6 +1150,7 @@ function startSocketServer(port) {
     // por PowerShell. Si no hay PowerPoint instalado o algo falla, responde
     // con error claro y el frontend muestra instrucciones manuales.
     if (req.url === "/api/ppt/convertir" && req.method === "POST") {
+      if (!exigirSolicitudLocal()) return
       const chunksPpt = []
       let bytesPpt = 0, excedidoPpt = false
       req.on("data", c => {
@@ -1217,6 +1246,7 @@ try {
     }
 
     if (req.url === "/api/imagenes/guardar" && req.method === "POST") {
+      if (!exigirSolicitudLocal()) return
       const dir = path.join(app.getPath("userData"), "imagenes")
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
       const chunks = []
@@ -1299,7 +1329,30 @@ try {
     if (sala) io.to(sala).emit("estado-presencia", presenciaSala(sala))
   }
 
+  const claveIntentoPin = (socket, sala) => `${socket.handshake.address || "sin-ip"}|${sala}`
+  const estadoIntentosPin = (socket, sala) => {
+    const clave = claveIntentoPin(socket, sala)
+    const previo = intentosPinPorOrigen.get(clave)
+    if (!previo) return { clave, intentos:0, bloqueadoHasta:0 }
+    if (previo.bloqueadoHasta && previo.bloqueadoHasta <= Date.now()) {
+      intentosPinPorOrigen.delete(clave)
+      return { clave, intentos:0, bloqueadoHasta:0 }
+    }
+    return { clave, ...previo }
+  }
+  const registrarFalloPin = (socket, sala) => {
+    const estado = estadoIntentosPin(socket, sala)
+    const intentos = estado.intentos + 1
+    intentosPinPorOrigen.set(estado.clave, {
+      intentos,
+      bloqueadoHasta: intentos >= 5 ? Date.now() + 30_000 : 0,
+    })
+  }
+  const limpiarFallosPin = (socket, sala) => intentosPinPorOrigen.delete(claveIntentoPin(socket, sala))
+
   io.on("connection", (socket) => {
+    const origen = socket.handshake.headers?.origin
+    socket.data.localConfiable = esDireccionLoopback(socket.handshake.address) && (!origen || esOrigenServidorSelah(origen))
     console.log("📱 Cliente conectado:", socket.id)
 
     // Autorización por evento. Antes un cliente podía unirse como "musicos" y
@@ -1318,18 +1371,69 @@ try {
       next(new Error("accion_no_autorizada"))
     })
 
-    socket.on("unirse-sala", ({ sala, pantalla, pin, puedeAbrirProyector }, callback) => {
+    socket.on("unirse-sala", (datos = {}, callback) => {
+      const { sala, pantalla, pin, puedeAbrirProyector } = datos && typeof datos === "object" ? datos : {}
       const salaFinal = sala || "global"
+      if (!salaSelahValida(salaFinal) || !pantallaSelahValida(pantalla)) {
+        if (typeof callback === "function") callback({ ok:false, error:"solicitud_invalida" })
+        socket.emit("entrada-invalida", { evento:"unirse-sala" })
+        return
+      }
 
-      if (pantalla === "control" || pantalla === "canciones" || pantalla === "inicio") {
-        const pinG = pinesPorSala[salaFinal]
-        if (pinG && String(pin || "") !== String(pinG)) {
-          socket.emit("pin-invalido", { mensaje: "PIN incorrecto. Verifica en configuración." })
-          if (typeof callback === "function") callback({ ok: false, error: "pin_invalido" })
+      const local = socket.data.localConfiable === true
+      if ((pantalla === "proyectar" || pantalla === "en-vivo") && !local) {
+        if (typeof callback === "function") callback({ ok:false, error:"pantalla_solo_local" })
+        return
+      }
+
+      const requierePin = pantalla === "control" || pantalla === "canciones" || pantalla === "inicio"
+      const pinRecibido = String(pin || "")
+      if (requierePin) {
+        const pinGuardado = pinesPorSala[salaFinal]
+        const intentos = estadoIntentosPin(socket, salaFinal)
+        if (!local && intentos.bloqueadoHasta > Date.now()) {
+          socket.emit("pin-invalido", { mensaje:"Demasiados intentos. Espera 30 segundos." })
+          if (typeof callback === "function") callback({ ok:false, error:"pin_bloqueado" })
           return
         }
-        if (!pinG && pin) pinesPorSala[salaFinal] = String(pin)
+
+        // Solo una pantalla que corre dentro de Electron puede registrar o
+        // actualizar el PIN autoritativo. Un celular que llega primero jamás
+        // puede apropiarse de la sala.
+        if (local) {
+          if (!pinGuardado && pinSalaValido(pinRecibido)) {
+            pinesPorSala[salaFinal] = pinRecibido
+          } else if (pinGuardado && !pinSalaCoincide(pinRecibido, pinGuardado)) {
+            socket.emit("pin-invalido", { mensaje:"PIN incorrecto. Verifica en configuración." })
+            if (typeof callback === "function") callback({ ok:false, error:"pin_invalido" })
+            return
+          }
+        } else if (!pinGuardado) {
+          if (typeof callback === "function") callback({ ok:false, error:"pin_no_configurado" })
+          return
+        } else if (!pinSalaCoincide(pinRecibido, pinGuardado)) {
+          registrarFalloPin(socket, salaFinal)
+          socket.emit("pin-invalido", { mensaje:"PIN incorrecto. Verifica en configuración." })
+          if (typeof callback === "function") callback({ ok:false, error:"pin_invalido" })
+          return
+        } else {
+          limpiarFallosPin(socket, salaFinal)
+        }
+      } else if (pantalla === "musicos" && pinesPorSala[salaFinal] && !local && !pinSalaCoincide(pinRecibido, pinesPorSala[salaFinal])) {
+        const intentos = estadoIntentosPin(socket, salaFinal)
+        if (intentos.bloqueadoHasta > Date.now()) {
+          socket.emit("pin-invalido", { mensaje:"Demasiados intentos. Espera 30 segundos." })
+          if (typeof callback === "function") callback({ ok:false, error:"pin_bloqueado" })
+          return
+        }
+        registrarFalloPin(socket, salaFinal)
+        socket.emit("pin-invalido", { mensaje:"PIN incorrecto. Pídeselo al encargado." })
+        if (typeof callback === "function") callback({ ok:false, error:"pin_invalido" })
+        return
       }
+
+      const salaAnterior = socket.data.sala
+      if (salaAnterior && salaAnterior !== salaFinal) socket.leave(salaAnterior)
 
       socket.data.sala = salaFinal
       socket.data.pantalla = pantalla || "desconocida"
@@ -1378,7 +1482,7 @@ try {
     socket.on("bridge-nube", ({ evento, data } = {}) => {
       // Solo el proyector legítimamente suscrito al canal de Supabase actúa
       // como puente. Un cliente LAN cualquiera no puede inyectar eventos.
-      if (socket.data.pantalla === "proyectar" && EVENTOS_PUENTE_NUBE.has(evento)) {
+      if (socket.data.localConfiable === true && socket.data.pantalla === "proyectar" && EVENTOS_PUENTE_NUBE.has(evento)) {
         io.to(salaDe(socket)).emit(evento, data)
       }
     })
@@ -1561,10 +1665,20 @@ try {
 
     socket.on("camara:host", ({ codigo } = {}, cb) => {
       const codigoFinal = String(codigo || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8)
-      if (codigoFinal.length < 4) {
+      if (socket.data.localConfiable !== true) {
+        if (typeof cb === "function") cb({ ok:false, error:"host_solo_local" })
+        return
+      }
+      if (codigoFinal.length < 6) {
         if (typeof cb === "function") cb({ ok: false, error: "codigo-invalido" })
         return
       }
+      const hostExistente = io.sockets.adapter.rooms.get(salaCam(codigoFinal))
+      if (hostExistente && [...hostExistente].some(id => id !== socket.id && io.sockets.sockets.get(id)?.data?.camaraRol === "host")) {
+        if (typeof cb === "function") cb({ ok:false, error:"codigo-ocupado" })
+        return
+      }
+      if (socket.data.camaraCodigo && socket.data.camaraCodigo !== codigoFinal) socket.leave(salaCam(socket.data.camaraCodigo))
       socket.data.camaraCodigo = codigoFinal
       socket.data.camaraRol = "host"
       socket.join(salaCam(codigoFinal))
@@ -1582,6 +1696,7 @@ try {
         if (typeof cb === "function") cb({ ok: false, error: "identidad-ocupada" })
         return
       }
+      if (socket.data.camaraCodigo && salaCam(socket.data.camaraCodigo) !== room) socket.leave(salaCam(socket.data.camaraCodigo))
       socket.data.camaraDispositivo = identidad
       socket.data.camaraCodigo = codigo
       socket.data.camaraRol = "emisor"
@@ -1605,7 +1720,7 @@ try {
       if (codigo && salaCam(codigo) !== salaCam(c)) return
       if (c) {
         socket.broadcast.to(salaCam(c)).emit("camara:par-fin", { de: socket.id, rol: socket.data.camaraRol, dispositivoId: socket.data.camaraDispositivo, intencional: true })
-        socket.leave(salaCam(c)); socket.data.camaraCodigo = null; socket.data.camaraDispositivo = null
+        socket.leave(salaCam(c)); socket.data.camaraCodigo = null; socket.data.camaraDispositivo = null; socket.data.camaraRol = null
       }
     })
 
@@ -1623,7 +1738,9 @@ try {
 
     socket.on("emision:host", ({ codigo } = {}, cb) => {
       const codigoFinal = codigoEmisionSeguro(codigo)
+      if (socket.data.localConfiable !== true) { if (typeof cb === "function") cb({ ok:false, error:"host_solo_local" }); return }
       if (codigoFinal.length < 5) { if (typeof cb === "function") cb({ ok:false, error:"codigo-invalido" }); return }
+      if (socket.data.emisionCodigo && socket.data.emisionCodigo !== codigoFinal) socket.leave(salaEmision(socket.data.emisionCodigo))
       socket.data.emisionRol = "emisor"
       socket.data.emisionCodigo = codigoFinal
       socket.join(salaEmision(codigoFinal))
@@ -1635,6 +1752,7 @@ try {
       const codigoFinal = codigoEmisionSeguro(codigo)
       const emisorId = emisorDeEmision(codigoFinal)
       if (!emisorId) { if (typeof cb === "function") cb({ ok: false, error: "sin-emision" }); return }
+      if (socket.data.emisionCodigo && socket.data.emisionCodigo !== codigoFinal) socket.leave(salaEmision(socket.data.emisionCodigo))
       socket.data.emisionRol = "espectador"
       socket.data.emisionCodigo = codigoFinal
       socket.join(salaEmision(codigoFinal))
@@ -1646,11 +1764,21 @@ try {
     // Señal dirigida a un socket concreto (oferta/respuesta/ICE entre emisor y par).
     socket.on("emision:senal", ({ para, data } = {}) => {
       if (!para || !data) return
-      io.to(para).emit("emision:senal", { data, de: socket.id })
+      const destino = io.sockets.sockets.get(para)
+      const permitido = puedeSenalizarEmision(
+        { rol:socket.data.emisionRol, codigo:socket.data.emisionCodigo },
+        { rol:destino?.data?.emisionRol, codigo:destino?.data?.emisionCodigo },
+      )
+      if (!permitido || !socket.rooms.has(salaEmision(socket.data.emisionCodigo)) || !destino?.rooms?.has(salaEmision(socket.data.emisionCodigo))) return
+      destino.emit("emision:senal", { data, de: socket.id })
     })
 
     socket.on("emision:fin", () => {
-      if (socket.data?.emisionRol === "emisor") socket.broadcast.to(salaEmision(socket.data.emisionCodigo)).emit("emision:fin")
+      const codigo = socket.data?.emisionCodigo
+      if (socket.data?.emisionRol === "emisor" && codigo) socket.broadcast.to(salaEmision(codigo)).emit("emision:fin")
+      if (codigo) socket.leave(salaEmision(codigo))
+      socket.data.emisionRol = null
+      socket.data.emisionCodigo = null
     })
 
     socket.on("disconnect", () => {

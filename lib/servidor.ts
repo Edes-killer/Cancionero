@@ -10,6 +10,10 @@ const limpiarIp = (raw: string): string =>
 
 export const getSocketUrl = (): string => {
   if (typeof window === "undefined") return ""
+  // El escritorio siempre conversa con su propio proceso principal. Una IP
+  // antigua guardada por el APK no debe hacer que Electron salga por la LAN:
+  // además de ser menos seguro, rompía la reconexión al cambiar de red.
+  if (navigator.userAgent.includes("Electron")) return "http://127.0.0.1:4000"
   if (process.env.NEXT_PUBLIC_SOCKET_URL) return process.env.NEXT_PUBLIC_SOCKET_URL
   const ip = limpiarIp(localStorage.getItem("servidor_ip") || "") || window.location.hostname
   return `http://${ip}:4000`
