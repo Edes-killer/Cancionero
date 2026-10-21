@@ -10,7 +10,7 @@ el release ni marcarlo `Latest` antes de completar la prueba corta en la iglesia
 
 **Estado verificable de v0.5.40:** login real con Google aprobado en Electron mediante
 callback loopback protegido por nonce; `npm run qa:release` aprobó 16/16 compuertas,
-167/167 pruebas y el laboratorio LAN hostil aprobó 26/26 escenarios. Los binarios descritos
+168/168 pruebas y el laboratorio LAN hostil aprobó 26/26 escenarios. Los binarios descritos
 en `docs/EMPAQUETADO-0.5.40.md` son evidencia histórica anterior a los cambios de planes y
 seguridad LAN del 21 de octubre: deben reconstruirse y volver a verificarse antes de publicar.
 El instalador Windows continúa sin certificado Authenticode comercial.
@@ -317,7 +317,7 @@ npm run apk:debug           # → selah-live-debug.apk
 npm run apk                 # → selah-live.apk firmado para distribución
 
 # Candidata verificable, SIN publicar
-npm run candidata:build     # QA + NSIS + APK + procedencia/firma/hashes
+npm run candidata:build     # QA + NSIS + APK + OTA + procedencia/firma/hashes
 npm run qa:candidata        # repite QA y valida artefactos ya construidos
 ```
 
@@ -338,14 +338,14 @@ nativos, de permisos o plugins Capacitor.
 
 ### 9.3 Release de escritorio (Electron, auto-update)  ← receta probada
 1. Desarrollar en rama, ejecutar `npm run qa:release` y completar la prueba física correspondiente.
-2. Ejecutar `npm run candidata:build`: construye localmente sin publicar y bloquea binarios de otro
+2. Ejecutar `npm run candidata:build`: construye localmente sin publicar y bloquea binarios u OTA de otro
    commit, builds sucios, APK con firma distinta o versiones incoherentes.
 3. Dejar GitHub Actions verde, marcar la PR lista e integrarla a `main`.
 4. Desde el commit definitivo de `main`, reconstruir la candidata para que la procedencia embebida
    coincida con lo publicado.
 5. El operador carga `GH_TOKEN` únicamente en el entorno de la terminal —nunca en `.env`, código,
    logs ni chat— y ejecuta `npm run electron:build:win`; electron-builder crea un release borrador.
-6. Subir `selah-live.apk` y, cuando corresponda, el paquete OTA. Revisar notas, hashes y assets antes
+6. Subir `selah-live.apk` y `bundle.zip`. Revisar notas, hashes y assets antes
    de publicar el borrador como `Latest`.
 
 La receta operativa completa vive en `COMO-PUBLICAR.md`. El instalador queda en
@@ -472,9 +472,10 @@ La receta operativa completa vive en `COMO-PUBLICAR.md`. El instalador queda en
 - Al terminar una emisión se conserva un informe descargable con duración, calidad, destinos por nombre, reconexiones, cuadros caídos, respaldo local y diagnóstico final. Se eliminan direcciones RTMP antes de persistirlo.
 - El diagnóstico terminal conserva la causa real aunque FFmpeg cierre con código nulo: atasco de entrada, conexión del destino, motor u operador. La marca de cierre intencional es por sesión y no afecta una reconexión posterior.
 - Si Selah o el PC se cierran durante una grabación, Transmisión detecta los segmentos MKV restantes y permite reconstruir un MP4. Los originales solo se eliminan después de verificar una salida no vacía; las grabaciones activas o en conversión nunca se ofrecen como pendientes.
-- El gate `npm run qa:release` ejecuta 16 comprobaciones obligatorias: diff, 167 pruebas automatizadas, build web/TypeScript, lint estricto de transmisión/cámara/conexiones, auditoría de producción, auditoría controlada de herramientas, sintaxis de módulos críticos de Electron —incluidos registro operativo y preflight de red—, benchmark, trazabilidad, recuperación independiente de destinos y verificador de artefactos. Producción está en cero vulnerabilidades; herramientas permiten solo dos avisos transitivos conocidos sin parche y bloquean cualquier otro.
+- El gate `npm run qa:release` ejecuta 16 comprobaciones obligatorias: diff, 168 pruebas automatizadas, build web/TypeScript, lint estricto de transmisión/cámara/conexiones, auditoría de producción, auditoría controlada de herramientas, sintaxis de módulos críticos de Electron —incluidos registro operativo y preflight de red—, benchmark, trazabilidad, recuperación independiente de destinos y verificador de artefactos. Producción está en cero vulnerabilidades; herramientas permiten solo dos avisos transitivos conocidos sin parche y bloquean cualquier otro.
 - Después de empaquetar, `npm run qa:candidata` encadena el gate completo con la validación real de APK/NSIS; `npm run qa:publicar` repite ese flujo en modo estricto y exige Authenticode válido en Windows.
-- Cada `npm run build` genera `build-info.json` con versión, commit Git y estado de cambios rastreados. El dato se incorpora a `assets/public/` en APK y `out/` dentro de `app.asar` en Electron; el verificador rechaza artefactos de otro commit o construidos con cambios sin confirmar.
+- Cada `npm run build` genera `build-info.json` con versión, commit Git y estado de cambios rastreados. El dato se incorpora a la APK, al bundle OTA y a `out/` dentro de `app.asar` en Electron; el verificador rechaza artefactos de otro commit o construidos con cambios sin confirmar.
+- La APK presenta una ventana no bloqueante con porcentaje real durante la descarga OTA y estados separados para verificación, aplicación y fallo. La aplicación sigue requiriendo una decisión explícita para no interrumpir un culto.
 - El benchmark Full HD de 30 segundos completó 900/900 cuadros tanto con `h264_mf` como con `libx264`, a 31 fps, velocidad 1.03x, sin cola ni avisos temporales. Esto valida el codificador aislado, no cámaras/WiFi reales.
 - Las salidas RTMP ahora usan una sola codificación con `tee + fifo`: cada destino reintenta por separado, no bloquea a los demás y recupera desde keyframe. `qa:destinos` demuestra corte y retorno de un receptor local sin interrumpir el receptor estable; RTMPS real sigue sujeto a prueba física.
 - Transmisión muestra cada destino como Enviando o Reconectando. El seguimiento correlaciona internamente el contexto FIFO con su salida, deduplica eventos y nunca entrega URL/clave al renderer; una recuperación exitosa limpia la alarma transitoria, pero no un rechazo permanente.

@@ -36,6 +36,13 @@ interface ManifiestoOta {
   minApk?: string
 }
 
+type FaseActualizacion = "descargando" | "verificando" | "lista" | "aplicando" | "error"
+interface EstadoActualizacion {
+  fase: FaseActualizacion
+  porcentaje: number
+  detalle: string
+}
+
 const esManifiestoOta = (valor: unknown): valor is ManifiestoOta => {
   if (!valor || typeof valor !== "object") return false
   const candidato = valor as Record<string, unknown>
@@ -48,14 +55,29 @@ export default function OtaUpdater() {
   const [bundleListo, setBundleListo] = useState<BundleInfo | null>(null)
   const [version, setVersion] = useState("")
   const [updater, setUpdater] = useState<CapacitorUpdaterPlugin | null>(null)
+  const [estado, setEstado] = useState<EstadoActualizacion | null>(null)
 
   useEffect(() => {
     if (typeof window === "undefined" || !Capacitor.isNativePlatform()) return
     let cancelado = false
+    let listenerDescarga: { remove: () => Promise<void> } | null = null
     ;(async () => {
       let Updater: CapacitorUpdaterPlugin
       try { ({ CapacitorUpdater: Updater } = await import("@capgo/capacitor-updater")) } catch { return }
       setUpdater(Updater)
+      try {
+        const listener = await Updater.addListener("download", ({ percent }) => {
+          if (cancelado) return
+          const porcentaje = Math.max(0, Math.min(100, Math.round(percent || 0)))
+          setEstado(anterior => anterior ? {
+            fase: porcentaje >= 100 ? "verificando" : "descargando",
+            porcentaje: Math.max(anterior.porcentaje, porcentaje),
+            detalle: porcentaje >= 100 ? "Comprobando que el paquete esté completo…" : "Puedes seguir usando Selah mientras termina.",
+          } : anterior)
+        })
+        if (cancelado) await listener.remove()
+        else listenerDescarga = listener
+      } catch {}
       // 1) Confirmar que esta versión arrancó bien (evita el rollback de Capgo).
       try { await Updater.notifyAppReady() } catch {}
       // 2) Chequear manifiesto.
@@ -79,51 +101,84 @@ export default function OtaUpdater() {
           ? otaV
           : (process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0")
         if (!esMayor(man.version, base)) return
+        setVersion(man.version)
         // 3) ¿Ya lo bajamos antes? (para no re-descargar en cada apertura).
         const lista = await Updater.list().catch(() => null)
         const yaBajado = lista?.bundles?.find(bundle => bundle.version === man.version)
-        if (yaBajado) { if (!cancelado) { setBundleListo(yaBajado); setVersion(man.version) } return }
+        if (yaBajado) {
+          if (!cancelado) {
+            setBundleListo(yaBajado)
+            setEstado({ fase:"lista", porcentaje:100, detalle:"La descarga terminó y fue verificada." })
+          }
+          return
+        }
         // Si no, descargar en segundo plano.
+        setEstado({ fase:"descargando", porcentaje:0, detalle:"Preparando la descarga segura…" })
         const bundle = await Updater.download({ url: man.url, version: man.version })
         if (cancelado || !bundle?.id) return
-        setBundleListo(bundle); setVersion(man.version)
+        setBundleListo(bundle)
+        setEstado({ fase:"lista", porcentaje:100, detalle:"La descarga terminó y fue verificada." })
       } catch (e) {
         // Una caída de internet al abrir no es un error de la app. Sí dejamos
         // rastro de respuestas/manifiestos inválidos para poder diagnosticar OTA.
         if (navigator.onLine) logCatch(e, "No se pudo preparar la actualización OTA", { pagina: "ota", tipo: "general" })
+        if (!cancelado) setEstado(anterior => anterior ? {
+          fase:"error",
+          porcentaje:anterior.porcentaje,
+          detalle:"No se pudo completar la descarga. Selah puede seguir usándose normalmente.",
+        } : anterior)
       }
     })()
-    return () => { cancelado = true }
+    return () => {
+      cancelado = true
+      if (listenerDescarga) void listenerDescarga.remove()
+    }
   }, [])
 
-  if (!bundleListo || !updater) return null
+  if (!estado || !updater) return null
 
   const aplicar = async () => {
+    if (!bundleListo) return
+    setEstado({ fase:"aplicando", porcentaje:100, detalle:"Reiniciando Selah con la versión nueva…" })
     try { await updater.set(bundleListo) }
-    catch (e) { logCatch(e, "No se pudo aplicar la actualización OTA", { pagina: "ota", tipo: "general" }) }
+    catch (e) {
+      logCatch(e, "No se pudo aplicar la actualización OTA", { pagina: "ota", tipo: "general" })
+      setEstado({ fase:"error", porcentaje:100, detalle:"No se pudo aplicar. La versión anterior sigue intacta." })
+    }
   }
-  const posponer = () => setBundleListo(null)
+  const posponer = () => { setBundleListo(null); setEstado(null) }
+  const titulo = estado.fase === "descargando" ? `Descargando actualización ${version}`
+    : estado.fase === "verificando" ? "Verificando actualización"
+    : estado.fase === "lista" ? `Actualización lista (${version})`
+    : estado.fase === "aplicando" ? "Aplicando actualización"
+    : "No se pudo actualizar"
+  const color = estado.fase === "error" ? "#ef4444" : estado.fase === "lista" ? "#22c55e" : "#38bdf8"
 
   return (
     <div style={{
-      position: "fixed", left: 12, right: 12, bottom: 12, zIndex: 4000,
-      background: "linear-gradient(135deg, #0ea5e9, #6366f1)", color: "#fff",
-      borderRadius: 14, padding: "12px 14px", boxShadow: "0 8px 28px rgba(0,0,0,0.4)",
-      display: "flex", alignItems: "center", gap: 12, fontFamily: "system-ui, sans-serif"
+      position: "fixed", left: 12, right: 12, bottom: 12, zIndex: 4000, maxWidth:520, margin:"0 auto",
+      background: "#0f172a", color: "#fff", border:`1px solid ${color}66`,
+      borderRadius: 16, padding: "14px 16px", boxShadow: "0 14px 42px rgba(0,0,0,0.55)",
+      fontFamily: "system-ui, sans-serif"
     }}>
-      <span style={{ fontSize: 22 }}>✨</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 800, fontSize: 14 }}>Actualización lista ({version})</div>
-        <div style={{ fontSize: 12, opacity: 0.85 }}>Se aplica al instante, sin reinstalar. Evita hacerlo en medio de un culto.</div>
+      <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+        <span style={{ fontSize:22 }}>{estado.fase === "error" ? "⚠️" : estado.fase === "lista" ? "✅" : "⬇️"}</span>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontWeight:850, fontSize:14 }}>{titulo}</div>
+          <div style={{ fontSize:12, color:"#cbd5e1", marginTop:2 }}>{estado.detalle}</div>
+        </div>
+        <strong style={{ color, fontVariantNumeric:"tabular-nums", fontSize:15 }}>{estado.porcentaje}%</strong>
       </div>
-      <button onClick={aplicar} style={{
-        background: "#fff", color: "#4f46e5", border: "none", borderRadius: 10,
-        padding: "8px 14px", fontWeight: 800, fontSize: 13, cursor: "pointer", flexShrink: 0
-      }}>Aplicar</button>
-      <button onClick={posponer} aria-label="Después" style={{
-        background: "rgba(255,255,255,0.18)", color: "#fff", border: "none", borderRadius: 10,
-        width: 32, height: 32, fontSize: 16, cursor: "pointer", flexShrink: 0
-      }}>✕</button>
+      <div role="progressbar" aria-label="Progreso de actualización" aria-valuemin={0} aria-valuemax={100} aria-valuenow={estado.porcentaje}
+        style={{ height:8, borderRadius:99, overflow:"hidden", background:"rgba(255,255,255,.12)", marginTop:12 }}>
+        <div style={{ width:`${estado.porcentaje}%`, height:"100%", borderRadius:99, background:color, transition:"width .2s ease" }} />
+      </div>
+      {(estado.fase === "lista" || estado.fase === "error") && <div style={{ display:"flex", gap:8, justifyContent:"flex-end", marginTop:12 }}>
+        <button onClick={posponer} style={{ background:"rgba(255,255,255,.08)", color:"#e2e8f0", border:"1px solid rgba(255,255,255,.12)", borderRadius:9, padding:"8px 12px", fontWeight:750, cursor:"pointer" }}>
+          {estado.fase === "error" ? "Cerrar" : "Después"}
+        </button>
+        {estado.fase === "lista" && <button onClick={aplicar} style={{ background:"#fff", color:"#4338ca", border:"none", borderRadius:9, padding:"8px 14px", fontWeight:850, cursor:"pointer" }}>Aplicar ahora</button>}
+      </div>}
     </div>
   )
 }

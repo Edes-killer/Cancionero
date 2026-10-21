@@ -141,6 +141,19 @@ test("la actualización de escritorio mantiene un progreso visible hasta instala
   assert.ok(descargada.indexOf('fase: "instalando"') < descargada.indexOf("autoUpdater.quitAndInstall"))
 })
 
+test("la APK muestra porcentaje real y el empaquetado exige un OTA trazable", () => {
+  const ota = fs.readFileSync("components/OtaUpdater.tsx", "utf8")
+  const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"))
+  const verificador = fs.readFileSync("scripts/qa-artefactos.cjs", "utf8")
+  assert.match(ota, /addListener\("download"/)
+  assert.match(ota, /aria-label="Progreso de actualización"/)
+  assert.match(ota, /aria-valuenow=\{estado\.porcentaje\}/)
+  assert.match(ota, /\{estado\.porcentaje\}%/)
+  assert.match(pkg.scripts["candidata:build"], /npm run ota -- --sin-build/)
+  assert.match(verificador, /const ota = path\.join\(raiz, 'bundle\.zip'\)/)
+  assert.match(verificador, /validarBuildInfo\(datos, 'El bundle OTA'\)/)
+})
+
 test("la migración cierra la elevación de privilegios y aísla multimedia", () => {
   const sql = fs.readFileSync("supabase/migrations/20260908_security_hardening.sql", "utf8")
   assert.match(sql, /^begin;/m)

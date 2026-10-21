@@ -27,7 +27,7 @@
     "electron:dev": "npm run build && electron electron/main.js",
     "electron:package:win": "npm run build && electron-builder --win --publish never --config electron-builder.json",
     "electron:build:win": "npm run build && electron-builder --win --publish always --config electron-builder.json",
-    "candidata:build": "npm run qa:release && npm run electron:package:win && npm run apk && npm run qa:artefactos",
+    "candidata:build": "npm run qa:release && npm run electron:package:win && npm run apk && npm run ota -- --sin-build && npm run qa:artefactos",
     "apk": "node scripts/build-apk.mjs",
     "apk:debug": "node scripts/build-apk.mjs debug",
     "ota": "node scripts/build-ota.mjs"

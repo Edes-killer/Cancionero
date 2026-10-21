@@ -11,6 +11,7 @@ const estrictoPublicacion = process.argv.includes('--publicar')
 const pkg = JSON.parse(fs.readFileSync(path.join(raiz, 'package.json'), 'utf8'))
 const version = pkg.version
 const apk = path.join(raiz, 'selah-live.apk')
+const ota = path.join(raiz, 'bundle.zip')
 const exe = path.join(raiz, 'dist-electron', `Selah Live Setup ${version}.exe`)
 const metadata = path.join(raiz, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'output-metadata.json')
 const latestYml = path.join(raiz, 'dist-electron', 'latest.yml')
@@ -96,6 +97,8 @@ if (exigirArchivo(exe)) {
   }
 }
 
+let otaInfo = null
+
 async function validarProcedencia() {
   if (fs.existsSync(apk)) {
     try {
@@ -113,6 +116,16 @@ async function validarProcedencia() {
       if (windowsInfo) windowsInfo.build = build
     } catch (e) { errores.push(`No se pudo leer la trazabilidad de Windows: ${e.message}`) }
   }
+  if (exigirArchivo(ota)) {
+    try {
+      const zip = await JSZip.loadAsync(fs.readFileSync(ota))
+      if (!zip.file('index.html')) errores.push('El bundle OTA no contiene index.html en la raíz')
+      const entrada = zip.file('build-info.json')
+      const datos = entrada ? JSON.parse(await entrada.async('string')) : null
+      const build = validarBuildInfo(datos, 'El bundle OTA')
+      otaInfo = { bytes:fs.statSync(ota).size, sha256:sha256(ota), build }
+    } catch (e) { errores.push(`No se pudo leer la trazabilidad del bundle OTA: ${e.message}`) }
+  }
 }
 
 if (exigirArchivo(latestYml)) {
@@ -124,7 +137,7 @@ if (exigirArchivo(latestYml)) {
 
 async function principal() {
   await validarProcedencia()
-  const informe = { ok:errores.length === 0, modo:estrictoPublicacion ? 'publicación' : 'candidata', version, commit:commitActual, apk:apkInfo, windows:windowsInfo, avisos, errores }
+  const informe = { ok:errores.length === 0, modo:estrictoPublicacion ? 'publicación' : 'candidata', version, commit:commitActual, apk:apkInfo, ota:otaInfo, windows:windowsInfo, avisos, errores }
   const rutaInforme = path.join(raiz, 'dist-electron', `artefactos-${version}.json`)
   fs.mkdirSync(path.dirname(rutaInforme), { recursive:true })
   fs.writeFileSync(rutaInforme, `${JSON.stringify(informe, null, 2)}\n`)

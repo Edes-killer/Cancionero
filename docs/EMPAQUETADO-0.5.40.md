@@ -1,6 +1,6 @@
 # Evidencia de empaquetado 0.5.40
 
-Fecha: 30 de septiembre de 2026. Esta evidencia corresponde a la candidata de prueba,
+Fecha: 21 de octubre de 2026. Esta evidencia corresponde a la candidata de prueba,
 no certifica todavía el funcionamiento físico en la iglesia.
 
 > Estado de cierre: el login real con Google ya fue validado mediante el callback loopback
@@ -24,7 +24,7 @@ keystore: Android rechazará una actualización firmada con otro certificado.
 ## Windows
 
 - `npm run electron:package:win`: empaquetado NSIS local, sin publicación automática.
-- Electron `42.11.0`, arquitectura x64, instalador one-click por usuario.
+- Electron `42.11.3`, arquitectura x64, instalador one-click por usuario.
 - Artefacto local: `dist-electron/Selah Live Setup 0.5.40.exe`.
 - Estado Authenticode comprobado con PowerShell: `NotSigned`.
 
@@ -42,13 +42,13 @@ electron-builder que dice “signing with signtool.exe” no demuestra por sí s
 - `npm.cmd run qa:destinos`: un receptor se cortó y volvió con una segunda conexión mientras el
   receptor estable continuó recibiendo; ambos procesos terminaron correctamente y se detectó
   explícitamente `Recovery successful`.
-- `npm.cmd run qa:artefactos`: comprueba versión, OTA, firma/certificado de APK, hashes,
-  `latest.yml`, estado Authenticode y procedencia Git embebida. Rechaza un APK o paquete Windows
+- `npm.cmd run qa:artefactos`: comprueba versión, bundle OTA, firma/certificado de APK, hashes,
+  `latest.yml`, estado Authenticode y procedencia Git embebida. Rechaza un APK, OTA o paquete Windows
   construido desde otro commit o con cambios rastreados sin confirmar. El tamaño, SHA-256 y commit
   exactos quedan guardados en `dist-electron/artefactos-0.5.40.json`, fuera de Git, para no alterar
   el commit del que provienen los binarios.
 - `npm.cmd run qa:candidata`: ejecuta el gate completo del código y después verifica los artefactos.
 - `npm.cmd run qa:publicar`: repite ambas capas en modo estricto y bloquea una publicación comercial
   mientras el instalador Windows no tenga firma válida.
-- `npm.cmd run candidata:build`: ejecuta el gate, construye Windows y APK y verifica su
+- `npm.cmd run candidata:build`: ejecuta el gate, construye Windows, APK y OTA y verifica su
   procedencia antes de permitir que se decida una publicación.

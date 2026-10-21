@@ -26,6 +26,8 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 - La actualización de escritorio mantiene una ventana visible con porcentaje, tamaño,
   velocidad y tiempo restante; si Windows la oculta, Selah la restaura y muestra luego
   claramente la etapa de instalación.
+- La APK muestra el porcentaje real de descarga OTA y distingue descarga, verificación,
+  paquete listo y aplicación. Nunca reinicia la interfaz por sorpresa durante un culto.
 - El escritorio permite entrar directamente con correo y contraseña, sin abrir un navegador.
 - El acceso con Google continúa en el navegador seguro del sistema —requisito de Google—,
   pero ahora vuelve por un callback local con nonce de un solo uso y entrega la sesión
@@ -48,7 +50,7 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 - `npm run qa:release`: 16 comprobaciones obligatorias, incluidas la revisión sintáctica del registro operativo y del preflight de destinos, la recuperación real de un destino local y la trazabilidad del build.
 - GitHub repite esa misma compuerta en Windows para cada solicitud de integración y cada
   cambio de `main`; no usa credenciales ni publica artefactos ni duplica trabajos por rama.
-- 167/167 pruebas automatizadas y 26/26 escenarios del laboratorio LAN aprobados.
+- 168/168 pruebas automatizadas y 26/26 escenarios del laboratorio LAN aprobados.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
 - Auditoría de producción: cero vulnerabilidades conocidas. En herramientas quedan dos
@@ -69,8 +71,8 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 ## Empaquetado seguro
 
 - `npm run electron:package:win` genera el instalador sin subirlo.
-- `npm run candidata:build` ejecuta el QA, empaqueta Windows y Android y después valida
-  versión, commit, firma Android, manifiesto de actualización y procedencia de ambos binarios.
+- `npm run candidata:build` ejecuta el QA, empaqueta Windows, Android y el bundle OTA, y después valida
+  versión, commit, firma Android, manifiestos y procedencia de los tres artefactos.
 - El comando histórico `electron:build:win` continúa disponible para publicación, pero solo
   debe ejecutarse después de aprobar `qa:candidata` y la prueba física.
 
