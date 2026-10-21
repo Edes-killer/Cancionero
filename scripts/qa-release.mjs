@@ -54,6 +54,16 @@ const comprobaciones = [
     args: ["--check", "electron/security.js"],
   },
   {
+    nombre: "Sintaxis del registro operativo",
+    comando: process.execPath,
+    args: ["--check", "electron/registro-operativo.js"],
+  },
+  {
+    nombre: "Sintaxis de revisión de destinos",
+    comando: process.execPath,
+    args: ["--check", "electron/preflight-red.js"],
+  },
+  {
     nombre: "Sintaxis de recuperación de grabaciones",
     comando: process.execPath,
     args: ["--check", "electron/grabaciones-pendientes.js"],

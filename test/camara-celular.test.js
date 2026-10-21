@@ -55,14 +55,19 @@ test("Windows prioriza el encoder validado en Full HD y deja QSV como respaldo",
   assert.match(electron, /const video = opcionesVideoEncoder\(encoder, kbps\)/)
 })
 
-test("Revisar salida aprueba el motor Full HD antes de habilitar Facebook", () => {
+test("Revisar salida aprueba el motor Full HD y el destino antes de habilitar Facebook", () => {
   const preload = readFileSync("electron/preload.js", "utf8")
   assert.match(electron, /ipcMain\.handle\("transmision:preparar"/)
+  assert.match(electron, /ipcMain\.handle\("transmision:probar-destinos"/)
   assert.match(electron, /\["h264_mf", "h264_qsv", "libx264"\]/)
   assert.match(preload, /preparar: \(\) => ipcRenderer\.invoke\("transmision:preparar"\)/)
+  assert.match(preload, /probarDestinos: \(urls\) => ipcRenderer\.invoke\("transmision:probar-destinos", urls\)/)
   assert.match(transmision, /nombre: "Motor Full HD"/)
+  assert.match(transmision, /nombre: "Acceso al servidor"/)
   assert.match(transmision, /motorPreflight\.estado !== "ok"/)
-  assert.match(transmision, /Probando motor Full HD/)
+  assert.match(transmision, /redPreflight\.estado !== "ok"/)
+  assert.match(transmision, /Comprobando equipo y destino/)
+  assert.match(transmision, /revisionRedRef\.current === revisionRed/)
 })
 
 test("el cierre de FFmpeg entrega el diagnóstico final directamente al operador", () => {

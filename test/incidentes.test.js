@@ -1,6 +1,6 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const { explicarIncidente } = require("../lib/incidentes.ts")
+const { explicarIncidente, explicarErrorDestino } = require("../lib/incidentes.ts")
 
 test("distingue rechazo de plataforma de una cámara interrumpida", () => {
   const plataforma = explicarIncidente("A TLS fatal alert has been received al abrir RTMPS", "transmision")
@@ -24,4 +24,10 @@ test("un incidente desconocido sigue entregando una acción segura", () => {
   assert.equal(guia.codigo, "TX-GENERAL")
   assert.ok(guia.accion.length > 20)
   assert.ok(guia.conserva.length > 10)
+})
+
+test("traduce errores de red sin exponer jerga al operador", () => {
+  assert.equal(explicarErrorDestino("ENOTFOUND"), "no se encontró su dirección en Internet")
+  assert.equal(explicarErrorDestino("ECONNREFUSED"), "rechazó la conexión en ese puerto")
+  assert.equal(explicarErrorDestino("CERT_HAS_EXPIRED"), "no aprobó la conexión segura")
 })

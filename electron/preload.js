@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld("transmision", {
   detener: () => ipcRenderer.invoke("transmision:detener"),
   abrirLog: () => ipcRenderer.invoke("transmision:abrirLog"),
   diagnostico: () => ipcRenderer.invoke("transmision:diagnostico"),
+  probarDestinos: (urls) => ipcRenderer.invoke("transmision:probar-destinos", urls),
   preparar: () => ipcRenderer.invoke("transmision:preparar"),
   enviarChunkConfirmado: (sesionId, chunk) => ipcRenderer.invoke("transmision:chunk-confirmado", { sesionId, chunk }),
   abortarAtasco: (sesionId, motivo) => ipcRenderer.invoke("transmision:abortar-atasco", sesionId, motivo),

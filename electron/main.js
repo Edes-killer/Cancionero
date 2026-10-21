@@ -28,6 +28,7 @@ const { SeguimientoDestinos } = require("./estado-destinos")
 const { escribirFragmento } = require("./escritura-transmision")
 const { evaluarEspacioGrabacion } = require("./espacio-grabacion")
 const { buscarGrabacionesPendientes, crearPlanRecuperacion } = require("./grabaciones-pendientes")
+const { probarDestinos } = require("./preflight-red")
 
 try { registroOperativo.configurarCarpeta(app.getPath("userData")) } catch {}
 process.on("uncaughtExceptionMonitor", error => {
@@ -237,6 +238,11 @@ function registrarIPCTransmision() {
   let diagnosticoTx = null
   let sesionTx = null
   ipcMain.handle("transmision:diagnostico", () => diagnosticoTx?.estado(ffmpegProc?.stdin?.writableLength || 0, !!ffmpegProc) || null)
+  ipcMain.handle("transmision:probar-destinos", async (evento, urls) => {
+    if (!esOrigenInterno(evento.sender.getURL())) return { ok:false, error:"emisor_no_autorizado", resultados:[] }
+    const resultados = await probarDestinos(urls, 5_000)
+    return { ok:resultados.length > 0 && resultados.every(item => item.ok), resultados }
+  })
   ipcMain.handle("transmision:preparar", async () => {
     if (!ffmpegPath) return { ok: false, error: "No se encontró ffmpeg dentro de la app." }
     try {

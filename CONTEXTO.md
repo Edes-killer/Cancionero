@@ -4,14 +4,13 @@
 
 La versión pública continúa siendo v0.5.39. La candidata v0.5.40 está en la rama
 `codex/release-0.5.40` y en la [PR #2](https://github.com/Edes-killer/Cancionero/pull/2),
-todavía como borrador. El último commit funcional empaquetado y verificado es
-`0fde8b55d935a430403b06623a598484ec0fc841`; los cambios documentales posteriores no
-modifican el runtime, pero igualmente obligan a reconstruir antes de publicar. No crear
+todavía como borrador. La rama contiene cambios funcionales posteriores a los últimos
+binarios empaquetados; por eso es obligatorio reconstruir ambos artefactos antes de publicar. No crear
 el release ni marcarlo `Latest` antes de completar la prueba corta en la iglesia.
 
 **Estado verificable de v0.5.40:** login real con Google aprobado en Electron mediante
-callback loopback protegido por nonce; `npm run qa:release` aprobó 14/14 compuertas,
-163/163 pruebas y el laboratorio LAN hostil aprobó 26/26 escenarios. Los binarios descritos
+callback loopback protegido por nonce; `npm run qa:release` aprobó 16/16 compuertas,
+167/167 pruebas y el laboratorio LAN hostil aprobó 26/26 escenarios. Los binarios descritos
 en `docs/EMPAQUETADO-0.5.40.md` son evidencia histórica anterior a los cambios de planes y
 seguridad LAN del 21 de octubre: deben reconstruirse y volver a verificarse antes de publicar.
 El instalador Windows continúa sin certificado Authenticode comercial.
@@ -473,7 +472,7 @@ La receta operativa completa vive en `COMO-PUBLICAR.md`. El instalador queda en
 - Al terminar una emisión se conserva un informe descargable con duración, calidad, destinos por nombre, reconexiones, cuadros caídos, respaldo local y diagnóstico final. Se eliminan direcciones RTMP antes de persistirlo.
 - El diagnóstico terminal conserva la causa real aunque FFmpeg cierre con código nulo: atasco de entrada, conexión del destino, motor u operador. La marca de cierre intencional es por sesión y no afecta una reconexión posterior.
 - Si Selah o el PC se cierran durante una grabación, Transmisión detecta los segmentos MKV restantes y permite reconstruir un MP4. Los originales solo se eliminan después de verificar una salida no vacía; las grabaciones activas o en conversión nunca se ofrecen como pendientes.
-- El gate `npm run qa:release` ejecuta 14 comprobaciones obligatorias: diff, 157 pruebas automatizadas, build web/TypeScript, lint estricto de transmisión/cámara/conexiones, auditoría de producción, auditoría controlada de herramientas, sintaxis de módulos críticos de Electron, benchmark, trazabilidad, recuperación independiente de destinos y verificador de artefactos. Producción está en cero vulnerabilidades; herramientas permiten solo dos avisos transitivos conocidos sin parche y bloquean cualquier otro.
+- El gate `npm run qa:release` ejecuta 16 comprobaciones obligatorias: diff, 167 pruebas automatizadas, build web/TypeScript, lint estricto de transmisión/cámara/conexiones, auditoría de producción, auditoría controlada de herramientas, sintaxis de módulos críticos de Electron —incluidos registro operativo y preflight de red—, benchmark, trazabilidad, recuperación independiente de destinos y verificador de artefactos. Producción está en cero vulnerabilidades; herramientas permiten solo dos avisos transitivos conocidos sin parche y bloquean cualquier otro.
 - Después de empaquetar, `npm run qa:candidata` encadena el gate completo con la validación real de APK/NSIS; `npm run qa:publicar` repite ese flujo en modo estricto y exige Authenticode válido en Windows.
 - Cada `npm run build` genera `build-info.json` con versión, commit Git y estado de cambios rastreados. El dato se incorpora a `assets/public/` en APK y `out/` dentro de `app.asar` en Electron; el verificador rechaza artefactos de otro commit o construidos con cambios sin confirmar.
 - El benchmark Full HD de 30 segundos completó 900/900 cuadros tanto con `h264_mf` como con `libx264`, a 31 fps, velocidad 1.03x, sin cola ni avisos temporales. Esto valida el codificador aislado, no cámaras/WiFi reales.
@@ -523,6 +522,7 @@ La receta operativa completa vive en `COMO-PUBLICAR.md`. El instalador queda en
 - El saneamiento es obligatorio antes de persistir o exportar: oculta tokens, contraseñas, correos, claves y URLs RTMP.
 - No se incorporó telemetría externa: los datos permanecen en el equipo o en la tabla existente `errores_log` de la iglesia.
 - `lib/incidentes.ts` traduce fallos de plataforma, medios, fuente, audio, motor y red a una explicación operativa estable. `GuiaIncidente` se usa en Transmisión y Cámara para indicar causa probable, siguiente acción y qué sigue a salvo.
+- La revisión previa de Transmisión abre solo una conexión de prueba al host/puerto RTMP(S), sin enviar la ruta ni la clave. Valida DNS, TCP y TLS y bloquea “Salir al aire” cuando el servidor no responde.
 
 ## 12. Variables de entorno (`.env.local`)
 

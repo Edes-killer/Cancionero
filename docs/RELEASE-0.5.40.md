@@ -45,10 +45,10 @@ Estado: código automatizado aprobado; validación física pendiente. No promove
 
 ## Evidencia automática
 
-- `npm run qa:release`: 14 comprobaciones obligatorias, incluida la recuperación real de un destino local y trazabilidad del build.
+- `npm run qa:release`: 16 comprobaciones obligatorias, incluidas la revisión sintáctica del registro operativo y del preflight de destinos, la recuperación real de un destino local y la trazabilidad del build.
 - GitHub repite esa misma compuerta en Windows para cada solicitud de integración y cada
   cambio de `main`; no usa credenciales ni publica artefactos ni duplica trabajos por rama.
-- 163/163 pruebas automatizadas y 26/26 escenarios del laboratorio LAN aprobados.
+- 167/167 pruebas automatizadas y 26/26 escenarios del laboratorio LAN aprobados.
 - Build web y TypeScript aprobados.
 - Lint crítico de transmisión, cámara y conexiones: cero hallazgos.
 - Auditoría de producción: cero vulnerabilidades conocidas. En herramientas quedan dos
@@ -90,6 +90,8 @@ activar SmartScreen. Evidencia y estado: [EMPAQUETADO-0.5.40.md](EMPAQUETADO-0.5
 - Antes de guardar o exportar se ocultan tokens, contraseñas, correos, claves y destinos RTMP.
 - Los errores de transmisión y cámara ya no muestran solo el texto técnico: identifican plataforma, permisos, fuente ocupada, imagen interrumpida, audio, motor o red y entregan una acción segura.
 - Cada aviso aclara qué configuración o servicio se conserva, evitando que el operador cierre todo por reflejo.
+- “Revisar salida” comprueba realmente el servidor RTMP configurado (DNS, puerto y TLS) sin enviar video ni exponer la clave; ya no confía solo en el indicador de Internet de Windows.
+- Una dirección inalcanzable bloquea la salida y muestra una explicación legible antes de iniciar FFmpeg.
 
 ## Prueba corta en iglesia
 

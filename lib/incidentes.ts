@@ -10,6 +10,18 @@ export interface GuiaIncidente {
   prioridad: PrioridadIncidente
 }
 
+export function explicarErrorDestino(codigo: string): string {
+  const valor = String(codigo || "").toUpperCase()
+  if (valor === "TIMEOUT") return "no respondió a tiempo"
+  if (valor.includes("ENOTFOUND") || valor.includes("EAI_AGAIN")) return "no se encontró su dirección en Internet"
+  if (valor.includes("ECONNREFUSED")) return "rechazó la conexión en ese puerto"
+  if (valor.includes("ECONNRESET") || valor.includes("EPIPE")) return "cerró la conexión durante la prueba"
+  if (valor.includes("CERT") || valor.includes("TLS")) return "no aprobó la conexión segura"
+  if (valor === "URL_INVALIDA") return "la dirección está incompleta"
+  if (valor === "PROTOCOLO_NO_ADMITIDO") return "debe comenzar con rtmp:// o rtmps://"
+  return "no respondió correctamente"
+}
+
 const incluye = (texto: string, patron: RegExp): boolean => patron.test(texto.toLowerCase())
 
 export function explicarIncidente(mensaje: string, contexto: ContextoIncidente): GuiaIncidente {

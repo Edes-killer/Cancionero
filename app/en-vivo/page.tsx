@@ -32,6 +32,7 @@ import { crearInformeTransmision } from "@/lib/informeTransmision"
 import type { Parte } from "@/lib/modelosCulto"
 import RequierePremium from "@/components/RequierePremium"
 import GuiaIncidente from "@/components/ui/GuiaIncidente"
+import { explicarErrorDestino } from "@/lib/incidentes"
 
 type Escena = "camara" | "camara-letra" | "letra" | "espera"
 type DestKey = "facebook" | "youtube" | "tiktok" | "custom"
@@ -215,6 +216,7 @@ interface TransmisionElectron {
   detener: () => Promise<ResultadoElectron>
   abrirLog: () => Promise<ResultadoElectron>
   diagnostico: () => Promise<DiagnosticoElectron | null>
+  probarDestinos?: (urls: string[]) => Promise<{ ok?: boolean; resultados?: Array<{ ok?: boolean; host?: string; puerto?: number; seguro?: boolean; ms?: number; error?: string }> }>
   enviarChunkConfirmado: (sesionId: string, chunk: Uint8Array) => Promise<ResultadoElectron>
   abortarAtasco: (sesionId: string, motivo: string) => Promise<ResultadoElectron>
   iniciarGrabacion?: (opciones: { nombre: string }) => Promise<ResultadoElectron>
@@ -386,12 +388,19 @@ function EnVivoPremium() {
   useEffect(() => {
     try { const g = localStorage.getItem("en-vivo-destinos"); if (g) setDestinos(d => ({ ...d, ...JSON.parse(g) })) } catch {}
   }, [])
+  const revisionRedRef = useRef(0)
   const setDestino = (k: DestKey, patch: Partial<{ activo: boolean; valor: string }>) => {
+    revisionRedRef.current += 1
     setDestinos(prev => { const next = { ...prev, [k]: { ...prev[k], ...patch } }; try { localStorage.setItem("en-vivo-destinos", JSON.stringify(next)) } catch {}; return next })
   }
   const [txEstado, setTxEstado] = useState<"idle" | "conectando" | "vivo" | "reconectando" | "error">("idle")
   const [preflightAbierto, setPreflightAbierto] = useState(false)
   const [motorPreflight, setMotorPreflight] = useState<{ estado: "pendiente" | "probando" | "ok" | "error"; encoder?: string; detalle?: string }>({ estado: "pendiente" })
+  const [redPreflight, setRedPreflight] = useState<{ estado:"pendiente" | "probando" | "ok" | "error"; detalle?:string }>({ estado:"pendiente" })
+  useEffect(() => {
+    revisionRedRef.current += 1
+    setRedPreflight({ estado:"pendiente" })
+  }, [destinos])
   const [errorTx, setErrorTx] = useState<string | null>(null)
   const [segundos, setSegundos] = useState(0)
   const [logsTx, setLogsTx] = useState<string[]>([])
@@ -1566,6 +1575,7 @@ function EnVivoPremium() {
   }
 
   const abrirRevisionSalida = async (desplazar = false) => {
+    const revisionRed = ++revisionRedRef.current
     setErrorTx(null)
     setPreflightAbierto(true)
     if (desplazar) document.getElementById("panel-salida")?.scrollIntoView({ behavior:"smooth", block:"start" })
@@ -1575,6 +1585,26 @@ function EnVivoPremium() {
       return
     }
     setMotorPreflight({ estado:"probando", detalle:"Probando 1920×1080 a 30 FPS en este PC…" })
+    const urls = construirUrls()
+    setRedPreflight(urls.length ? { estado:"probando", detalle:"Comprobando acceso al servidor de transmisión…" } : { estado:"error", detalle:"No hay destinos configurados." })
+    const revisarRed = async () => {
+      if (!urls.length) return
+      if (!tx.probarDestinos) {
+        if (revisionRedRef.current === revisionRed) setRedPreflight({ estado:"error", detalle:"Actualiza Selah Live para comprobar el destino antes de transmitir." })
+        return
+      }
+      try {
+        const respuesta = await tx.probarDestinos(urls)
+        const resultados = respuesta?.resultados || []
+        const detalle = resultados.map(item => item.ok
+          ? `${item.host || "destino"}:${item.puerto || "?"} respondió en ${item.ms ?? "?"} ms`
+          : `${item.host || "destino"}: ${explicarErrorDestino(item.error || "")}`).join(" · ")
+        if (revisionRedRef.current === revisionRed) setRedPreflight({ estado:respuesta?.ok ? "ok" : "error", detalle:detalle || "No se pudo comprobar el destino." })
+      } catch (error) {
+        if (revisionRedRef.current === revisionRed) setRedPreflight({ estado:"error", detalle:"No se pudo comprobar el destino: " + mensajeDeError(error) })
+      }
+    }
+    const promesaRed = revisarRed()
     try {
       const resultado = await tx.preparar()
       if (resultado?.ok && resultado.encoder) setMotorPreflight({ estado:"ok", encoder:resultado.encoder, detalle:resultado.detalle || "Motor Full HD aprobado." })
@@ -1582,6 +1612,7 @@ function EnVivoPremium() {
     } catch (error) {
       setMotorPreflight({ estado:"error", detalle:"No se pudo comprobar el motor: " + mensajeDeError(error) })
     }
+    await promesaRed
   }
 
   const salirEnVivo = async () => {
@@ -1593,6 +1624,7 @@ function EnVivoPremium() {
     if (destinosActivos.length === 0) { setErrorTx("Activa al menos una plataforma y pega su clave / URL."); return }
     if (!haySalidaVisual()) { setErrorTx("La escena elegida necesita una cámara. Conecta una, comparte pantalla o usa Proyección/Espera para emitir sin cámara."); return }
     if (motorPreflight.estado !== "ok") { setErrorTx("Primero completa la prueba Full HD de este PC en Revisar salida."); return }
+    if (redPreflight.estado !== "ok") { setErrorTx("El servidor de transmisión no respondió a la revisión. Comprueba el destino antes de salir al aire."); return }
     const movil = estadoCamaraMovilParaVivo()
     if (movil?.nivel === "critico") { setErrorTx(`La cámara del celular aún no está lista: ${movil.detalle}`); return }
 
@@ -1643,7 +1675,7 @@ function EnVivoPremium() {
       { nombre: "Salida visual", ok: haySalidaVisual(), critico: true, detalle: hayFuenteVideo() ? "Cámara, celular o pantalla detectada" : haySalidaVisual() ? "Escena generada por Selah, no necesita cámara" : "Esta escena necesita una cámara o pantalla" },
       { nombre: "Micrófono", ok: !!mic && mic.readyState === "live" && mic.enabled && !sinAudio, critico: false, detalle: !mic ? "No hay micrófono activo" : sinAudio ? "Está conectado, pero no se detecta sonido" : "Señal disponible" },
       { nombre: "Destino", ok: urls.length > 0, critico: true, detalle: urls.length ? `${urls.length} destino${urls.length > 1 ? "s" : ""} configurado${urls.length > 1 ? "s" : ""}` : "Activa una plataforma y pega su clave o URL" },
-      { nombre: "Conexión a internet", ok: navigator.onLine, critico: true, detalle: navigator.onLine ? "El equipo informa conexión" : "Windows informa que estás sin conexión" },
+      { nombre: "Acceso al servidor", ok: redPreflight.estado === "ok", critico: true, detalle: redPreflight.detalle || "Ejecuta Revisar salida para comprobar DNS, puerto y conexión segura" },
       ...(movil ? [{ nombre: "Cámara móvil", ok: movil.nivel === "estable", critico: movil.nivel === "critico", detalle: movil.detalle }] : []),
       { nombre: "Grabación de respaldo", ok: grabar, critico: false, detalle: grabar ? "Se guardará una copia local" : "Recomendado si cae internet" },
       { nombre: "Espacio para grabar", ok: !grabar || espacioGrabacion?.puedeGrabar !== false, critico: grabar && espacioGrabacion?.nivel === "bloqueado", detalle: !grabar ? "Grabación desactivada" : espacioGrabacion?.detalle || "Se comprobará nuevamente al comenzar" },
@@ -2733,7 +2765,7 @@ function EnVivoPremium() {
                   <div style={{ display:"flex", gap:8, marginTop:13 }}>
                     <button onClick={() => setPreflightAbierto(false)} style={botonBase({ background:"rgba(255,255,255,.06)", color:C.suave, flex:1, padding:"9px" })}>Volver</button>
                     <button onClick={salirEnVivo} disabled={bloqueado} style={botonBase({ background:bloqueado ? "rgba(255,255,255,.08)" : C.rojo, color:bloqueado ? C.tenue : "#fff", flex:2, padding:"9px", cursor:bloqueado ? "not-allowed" : "pointer" })}>
-                      {motorPreflight.estado === "probando" ? "Probando motor Full HD…" : bloqueado ? "Corrige los puntos rojos" : "● Confirmar salida al aire"}
+                      {motorPreflight.estado === "probando" || redPreflight.estado === "probando" ? "Comprobando equipo y destino…" : bloqueado ? "Corrige los puntos rojos" : "● Confirmar salida al aire"}
                     </button>
                   </div>
                 </div>

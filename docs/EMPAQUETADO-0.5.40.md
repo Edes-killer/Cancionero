@@ -35,7 +35,7 @@ electron-builder que dice “signing with signtool.exe” no demuestra por sí s
 
 ## Automatización
 
-- `npm.cmd run qa:release`: 14 comprobaciones obligatorias.
+- `npm.cmd run qa:release`: 16 comprobaciones obligatorias.
 - `npm.cmd run lint`: cero hallazgos.
 - `npm.cmd run qa:eficiencia -- 30`: ambos codificadores completaron 900/900 cuadros a 31 fps,
   velocidad 1.03x, sin cola ni avisos de tiempo; `h264_mf` quedó recomendado en Windows.
