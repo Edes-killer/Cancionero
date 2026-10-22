@@ -681,7 +681,7 @@ useEffect(() => {
     vv.addEventListener("resize", handle)
     handle()
     return () => vv.removeEventListener("resize", handle)
-  }, )
+  }, [])
 
   // ✅ Detectar sesión próxima a expirar y renovar
   useEffect(() => {
@@ -2156,6 +2156,12 @@ useEffect(() => {
 // Supabase. El navegador muestra su propio texto de confirmación por seguridad.
 useEffect(() => {
   if (!hayCambiosCulto) return
+  // Electron ya conserva este borrador en localStorage en el efecto anterior.
+  // beforeunload puede impedir que la ventana principal se cierre y Chromium
+  // no siempre muestra la confirmación por encima de una ventana maximizada,
+  // dejando la impresión de que Selah quedó pegado. La advertencia se mantiene
+  // en el navegador, donde cerrar la pestaña sí puede ser accidental.
+  if (navigator.userAgent.includes("Electron")) return
   const advertirCierre = (e: BeforeUnloadEvent) => {
     e.preventDefault()
     e.returnValue = ""

@@ -138,6 +138,11 @@ test("crear o cerrar una lista protege los cambios sin guardar", () => {
 test("los cultos nuevos y el cierre de ventana conservan el trabajo pendiente", () => {
   assert.match(control, /listaGuardada\?\.listaId[\s\S]*firmaCultoEditable\(\[\], ""\)/)
   assert.match(control, /const hayCambiosCulto = firmaCultoEditable\(lista, nombreCulto\) !== firmaCultoGuardado/)
+  assert.match(control, /navigator\.userAgent\.includes\("Electron"\)\) return/)
   assert.match(control, /window\.addEventListener\("beforeunload", advertirCierre\)/)
   assert.match(control, /setFirmaCultoGuardado\(firmaCultoEditable\(\[\], ""\)\)/)
+})
+
+test("Control no reinstala el listener visual en cada renderizado", () => {
+  assert.match(control, /window\.visualViewport[\s\S]*vv\.removeEventListener\("resize", handle\)[\s\S]*\}, \[\]\)/)
 })

@@ -101,6 +101,13 @@ export default function Navbar() {
     return () => clearTimeout(id)
   }, [pathname])
 
+  // Control es el módulo más pesado de Selah. Precargar las pantallas a las
+  // que el operador suele saltar evita esperar a que Next descargue y evalúe
+  // sus recursos recién después del clic.
+  useEffect(() => {
+    for (const ruta of ["/", "/canciones", "/configuracion"]) router.prefetch(ruta)
+  }, [router])
+
   const rutaActual = normalizarRuta(pathname)
   if (RUTAS_SIN_NAVBAR.some(r => rutaActual === r || rutaActual.startsWith(r + "/"))) return null
 

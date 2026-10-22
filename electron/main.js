@@ -2222,6 +2222,14 @@ function createWindow() {
     event.preventDefault()
   })
 
+  // Un beforeunload residual de cualquier pantalla nunca debe dejar la
+  // ventana principal imposible de cerrar. En Electron preventDefault sobre
+  // will-prevent-unload significa continuar con el cierre/navegación.
+  mainWindow.webContents.on("will-prevent-unload", (event) => {
+    event.preventDefault()
+    registroOperativo.registrar("bloqueo_cierre_ignorado", { ventana:"principal" }, "info")
+  })
+
   mainWindow.once("ready-to-show", () => {
     mainWindow.show()
     mainWindow.maximize()

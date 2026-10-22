@@ -69,6 +69,11 @@ test("Electron solo confía en su origen interno y abre enlaces web", () => {
   assert.equal(esEnlaceWeb("file:///C:/secreto.txt"), false)
 })
 
+test("la ventana principal no queda bloqueada por beforeunload del renderer", () => {
+  const main = fs.readFileSync("electron/main.js", "utf8")
+  assert.match(main, /webContents\.on\("will-prevent-unload", \(event\) => \{[\s\S]*event\.preventDefault\(\)/)
+})
+
 test("Google se abre fuera de Electron y el callback solo vuelve a una ruta interna", () => {
   assert.equal(esAutorizacionSupabase("https://ejemplo.supabase.co/auth/v1/authorize?provider=google"), true)
   assert.equal(esAutorizacionSupabase("https://ejemplo.cl/auth/v1/authorize?provider=google"), false)
