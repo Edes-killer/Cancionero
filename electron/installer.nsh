@@ -61,11 +61,32 @@
 
 ; ── Reemplaza el chequeo de "app corriendo" (nunca aborta) ───────────────────
 !macro customCheckAppRunning
+  ; SpiderBanner ya está visible en este punto. Cambiamos el texto genérico por
+  ; una etapa inequívoca que continúa después de que Selah se haya cerrado.
+  ${IfNot} ${Silent}
+    FindWindow $0 "#32770" "" $hwndparent
+    FindWindow $0 "#32770" "" $hwndparent $0
+    GetDlgItem $0 $0 1000
+    SendMessage $0 ${WM_SETTEXT} 0 "STR:Paso 2 de 3 - Instalando archivos..."
+  ${EndIf}
   !insertmacro matarSelahLive
 !macroend
 
 !macro customInit
+  ; La ventana de Electron desaparece obligatoriamente al reemplazar el .exe.
+  ; Este aviso pertenece al instalador y por eso permanece visible durante el
+  ; cierre. No muestra un porcentaje falso: comunica la etapa real del proceso.
+  ${IfNot} ${Silent}
+    ${If} ${isUpdated}
+      Banner::show /NOUNLOAD "Selah Live" "Paso 1 de 3 - Preparando la actualizacion...$\r$\nNo cierres esta ventana."
+    ${Else}
+      Banner::show /NOUNLOAD "Selah Live" "Preparando la instalacion...$\r$\nNo cierres esta ventana."
+    ${EndIf}
+  ${EndIf}
   !insertmacro matarSelahLive
+  ${IfNot} ${Silent}
+    Banner::destroy
+  ${EndIf}
 !macroend
 
 !macro customUnInit

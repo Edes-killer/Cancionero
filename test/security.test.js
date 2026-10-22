@@ -126,6 +126,7 @@ test("cerrar la consola no derriba el proceso principal", () => {
 
 test("la actualización de escritorio mantiene un progreso visible hasta instalar", () => {
   const main = fs.readFileSync("electron/main.js", "utf8")
+  const installer = fs.readFileSync("electron/installer.nsh", "utf8")
   assert.match(main, /function traerVentanaProgresoAlFrente\(/)
   assert.match(main, /if \(!ventanaProgreso\.isVisible\(\)\) ventanaProgreso\.show\(\)/)
   assert.match(main, /closable: false[\s\S]{0,160}show: true/)
@@ -139,6 +140,13 @@ test("la actualización de escritorio mantiene un progreso visible hasta instala
   assert.match(descargada, /aplicarEstadoVentanaProgreso\(\)/)
   assert.match(descargada, /autoUpdater\.quitAndInstall\(false, true\)/)
   assert.ok(descargada.indexOf('fase: "instalando"') < descargada.indexOf("autoUpdater.quitAndInstall"))
+  assert.match(descargada, /guardarEstadoInstalacion\(info\?\.version/)
+  assert.match(main, /function leerResultadoInstalacion\(/)
+  assert.match(main, /actualizacion_instalada/)
+  assert.match(main, /Actualización \$\{resultado\.version\} completada/)
+  assert.match(installer, /Banner::show \/NOUNLOAD "Selah Live" "Paso 1 de 3/)
+  assert.match(installer, /Paso 2 de 3 - Instalando archivos/)
+  assert.match(installer, /Banner::destroy/)
 })
 
 test("la APK muestra porcentaje real y el empaquetado exige un OTA trazable", () => {

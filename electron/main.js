@@ -1904,6 +1904,86 @@ let estadoVentanaActualizacion = {
   tiempo: ""
 }
 
+function rutaEstadoInstalacion() {
+  try { return path.join(app.getPath("userData"), "actualizacion-en-curso.json") }
+  catch { return null }
+}
+
+function guardarEstadoInstalacion(versionObjetivo) {
+  const ruta = rutaEstadoInstalacion()
+  if (!ruta || !versionObjetivo) return
+  try {
+    fs.writeFileSync(ruta, JSON.stringify({
+      versionAnterior: SELAH_VERSION,
+      versionObjetivo,
+      iniciadoEn: Date.now(),
+    }), { encoding: "utf8", mode: 0o600 })
+    registroOperativo.registrar("actualizacion_instalacion_iniciada", {
+      versionAnterior: SELAH_VERSION,
+      versionObjetivo,
+    }, "info")
+  } catch (error) {
+    registroOperativo.registrar("actualizacion_estado_no_guardado", { error }, "error")
+  }
+}
+
+// El instalador es otro proceso y Selah debe cerrarse para reemplazar sus
+// archivos. Este marcador permite confirmar el resultado al volver a abrir,
+// en vez de dejar al usuario adivinando si la actualización terminó.
+function leerResultadoInstalacion() {
+  const ruta = rutaEstadoInstalacion()
+  if (!ruta) return null
+  try {
+    const estado = JSON.parse(fs.readFileSync(ruta, "utf8"))
+    if (!estado?.versionObjetivo) {
+      try { fs.unlinkSync(ruta) } catch {}
+      return null
+    }
+    if (SELAH_VERSION === estado.versionObjetivo) {
+      try { fs.unlinkSync(ruta) } catch {}
+      registroOperativo.registrar("actualizacion_instalada", {
+        desde: estado.versionAnterior,
+        version: SELAH_VERSION,
+      }, "info")
+      return { ok: true, version: SELAH_VERSION }
+    }
+
+    // No declarar un fallo mientras el instalador todavía podría estar
+    // trabajando. Si dos minutos después sigue abriendo la versión anterior,
+    // se informa una sola vez y se conserva el dato en el registro operativo.
+    if (Date.now() - Number(estado.iniciadoEn || 0) < 2 * 60 * 1000) return null
+    try { fs.unlinkSync(ruta) } catch {}
+    registroOperativo.registrar("actualizacion_instalacion_fallida", {
+      versionActual: SELAH_VERSION,
+      versionObjetivo: estado.versionObjetivo,
+    }, "error")
+    return { ok: false, version: estado.versionObjetivo }
+  } catch {
+    try { fs.unlinkSync(ruta) } catch {}
+    return null
+  }
+}
+
+function notificarResultadoInstalacion(resultado) {
+  if (!resultado || !mainWindow || mainWindow.isDestroyed()) return
+  setTimeout(() => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    dialog.showMessageBox(mainWindow, resultado.ok ? {
+      type: "info",
+      title: "Selah Live está actualizado",
+      message: `Actualización ${resultado.version} completada`,
+      detail: "La instalación terminó correctamente y ya estás usando la versión nueva.",
+      buttons: ["Continuar"],
+    } : {
+      type: "warning",
+      title: "La actualización no se completó",
+      message: `Selah Live continúa en la versión ${SELAH_VERSION}`,
+      detail: `No se pudo confirmar la instalación de ${resultado.version}. Puedes reintentar desde Configuración.`,
+      buttons: ["Entendido"],
+    }).catch(() => {})
+  }, 900)
+}
+
 function traerVentanaProgresoAlFrente(enfocar = false) {
   if (!ventanaProgreso || ventanaProgreso.isDestroyed()) return
   try {
@@ -1946,6 +2026,8 @@ function mostrarVentanaProgreso(version) {
   .s{font-size:12px;opacity:.6;margin-bottom:16px}
   .bar{height:10px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden}
   .fill{height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#3b82f6,#6366f1);transition:width .25s}
+  .fill.instalando{width:36%!important;animation:instalando 1.15s ease-in-out infinite}
+  @keyframes instalando{0%{transform:translateX(-110%)}100%{transform:translateX(290%)}}
   .row{display:flex;justify-content:space-between;margin-top:10px;font-size:12px;opacity:.75}
   .pct{font-weight:800;opacity:1}
 </style>
@@ -1958,14 +2040,15 @@ function mostrarVentanaProgreso(version) {
   window.renderEstadoActualizacion = function(estado){
     const instalando = estado.fase === 'instalando'
     document.querySelector('.t').textContent = instalando
-      ? '⚙️ Instalando actualización'
+      ? '⚙️ Paso 1 de 3 · Preparando instalación'
       : '⬇️ Descargando actualización' + (estado.version ? ' ' + estado.version : '')
     document.querySelector('.s').textContent = instalando
-      ? 'Esto toma unos segundos. Selah Live se abrirá sola al terminar.'
+      ? 'Selah Live se cerrará y el instalador continuará mostrando el avance.'
       : 'Puedes seguir viendo el avance aquí. No cierres la aplicación.'
-    document.getElementById('f').style.width = (instalando ? 100 : estado.pct || 0) + '%'
+    document.getElementById('f').classList.toggle('instalando', instalando)
+    document.getElementById('f').style.width = (instalando ? 36 : estado.pct || 0) + '%'
     document.getElementById('p').textContent = instalando ? '' : (estado.pct || 0) + '%'
-    document.getElementById('d').textContent = instalando ? 'Reemplazando archivos...' : (estado.detalle || '')
+    document.getElementById('d').textContent = instalando ? 'Entregando el control al instalador de Windows...' : (estado.detalle || '')
     document.getElementById('t2').textContent = instalando ? '' : (estado.tiempo || '')
   }
 </script>`
@@ -2149,6 +2232,7 @@ function createWindow() {
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(async () => {
+  const resultadoInstalacion = leerResultadoInstalacion()
   registroOperativo.registrar("aplicacion_iniciada", { version:SELAH_VERSION, empaquetada:app.isPackaged }, "info")
   if (process.defaultApp && process.argv.length >= 2) {
     const args = [path.resolve(process.argv[1])]
@@ -2190,6 +2274,7 @@ app.whenReady().then(async () => {
   console.log(`📡 IP local: ${ip}`)
 
   createWindow()
+  notificarResultadoInstalacion(resultadoInstalacion)
   // Windows entrega el protocolo en argv cuando Selah estaba cerrada. Antes
   // solo se atendía second-instance, así que Google abría la app pero esta
   // volvía al login. La autorización pendiente persiste diez minutos y permite
@@ -2347,6 +2432,7 @@ app.whenReady().then(async () => {
             }
             mostrarVentanaProgreso(info?.version || "")
             aplicarEstadoVentanaProgreso()
+            guardarEstadoInstalacion(info?.version || "")
           } catch (e) {}
           // ✅ Cierre limpio antes de instalar. La causa raíz del "archivo en
           // uso": los servidores embebidos (3000/4000) mantenían VIVO el proceso
