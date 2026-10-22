@@ -19,14 +19,14 @@ try {
     // URL fija de GitHub que SIEMPRE apunta al APK del último release publicado.
     // Requiere subir el APK a cada release con el nombre "selah-live.apk".
     apkUrl: process.env.NEXT_PUBLIC_APK_URL || "https://github.com/Edes-killer/Cancionero/releases/latest/download/selah-live.apk",
-  }))
+  }) + "\n")
   // Manifiesto OTA (Capgo): la app lee version+url y descarga el bundle web si es
   // más nuevo. url = zip fijo del último release (subir "bundle.zip" a cada release).
   writeFileSync("./public/ota.json", JSON.stringify({
     version,
     minApk,
     url: process.env.NEXT_PUBLIC_OTA_URL || "https://github.com/Edes-killer/Cancionero/releases/latest/download/bundle.zip",
-  }))
+  }) + "\n")
 } catch {}
 
 const nextConfig: NextConfig = {
