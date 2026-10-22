@@ -28,11 +28,15 @@
 ; ══════════════════════════════════════════════════════════════════════════════
 
 !macro matarSelahLive
-  nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /T'
+  ; No usar /T: el instalador fue lanzado por Selah y Windows lo considera su
+  ; proceso hijo. /T mataba el árbol completo, incluido ESTE instalador, justo
+  ; después de pulsar "Instalar ahora". /IM ya cierra todos los procesos
+  ; Selah Live.exe (principal, renderers y servicios), por lo que /T sobra.
+  nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}"'
   Sleep 800
-  nsExec::Exec 'taskkill /F /IM "Selah Live.exe" /T'
+  nsExec::Exec 'taskkill /F /IM "Selah Live.exe"'
   Sleep 800
-  nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /T'
+  nsExec::Exec 'taskkill /F /IM "${APP_EXECUTABLE_FILENAME}"'
   ; Windows tarda en soltar los .exe/.dll mapeados aunque el proceso ya murió.
   Sleep 2500
 !macroend

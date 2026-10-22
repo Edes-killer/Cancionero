@@ -147,6 +147,7 @@ test("la actualización de escritorio mantiene un progreso visible hasta instala
   assert.match(installer, /Banner::show \/NOUNLOAD "Selah Live" "Paso 1 de 3/)
   assert.match(installer, /Paso 2 de 3 - Instalando archivos/)
   assert.match(installer, /Banner::destroy/)
+  assert.doesNotMatch(installer, /taskkill[^\r\n]*\/T/)
 })
 
 test("la APK muestra porcentaje real y el empaquetado exige un OTA trazable", () => {
