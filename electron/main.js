@@ -2098,6 +2098,9 @@ function createWindow() {
     title: "Selah Live",
     icon: path.join(__dirname, "../public/icon-512.png"),
     backgroundColor: "#060d1a",
+    // Selah tiene navegación propia. La barra nativa de Electron duplicaba
+    // funciones, consumía altura y confundía al operador durante el culto.
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -2129,32 +2132,11 @@ function createWindow() {
     })
   } catch (e) { console.error("No se pudo configurar permisos de medios:", e) }
 
-  // Menú simplificado
-  Menu.setApplicationMenu(Menu.buildFromTemplate([
-    {
-      label: "Selah Live",
-      submenu: [
-        { label: "Acerca de Selah Live", role: "about" },
-        { type: "separator" },
-        { label: "Salir", role: "quit" }
-      ]
-    },
-    {
-      label: "Ver",
-      submenu: [
-        { label: "Recargar", role: "reload" },
-        { label: "Pantalla completa", role: "togglefullscreen" },
-        { label: "Herramientas de desarrollador", role: "toggleDevTools" },
-      ]
-    },
-    {
-      label: "Ventana",
-      submenu: [
-        { label: "Minimizar", role: "minimize" },
-        { label: "Maximizar", role: "maximize" },
-      ]
-    }
-  ]))
+  // Sin menú nativo: Inicio, navegación, proyector y salida ya están en la
+  // interfaz. Se fuerza también la visibilidad por ventana para evitar que Alt
+  // vuelva a mostrar una franja vacía en Windows.
+  Menu.setApplicationMenu(null)
+  mainWindow.setMenuBarVisibility(false)
 
   // Abrir links externos en el browser del sistema
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {

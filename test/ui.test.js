@@ -25,6 +25,20 @@ test("Control mantiene una sola experiencia sin selector Preparar/Culto", () => 
   assert.doesNotMatch(control, />\s*●\s*Culto\s*</)
 })
 
+test("Electron aprovecha la altura con navegación y controles compactos", () => {
+  const navbar = fs.readFileSync("components/Navbar.tsx", "utf8")
+  const control = fs.readFileSync("app/control/page.tsx", "utf8")
+  const main = fs.readFileSync("electron/main.js", "utf8")
+  assert.match(navbar, /height: isMobile \? 52 : 44/)
+  assert.match(control, /calc\(100dvh - 44px\)/)
+  assert.match(control, /Tamaño de letra del proyector/)
+  assert.match(control, /onClick=\{\(\) => cambiarZoom\(-10\)\}/)
+  assert.match(control, /partes\.some[\s\S]{0,160}tiemposAprendidos\.length > 0[\s\S]{0,80}autoAvanceActivo/)
+  assert.match(main, /autoHideMenuBar: true/)
+  assert.match(main, /Menu\.setApplicationMenu\(null\)/)
+  assert.match(main, /mainWindow\.setMenuBarVisibility\(false\)/)
+})
+
 test("las ayudas contextuales son opcionales y se apagan por defecto en APK", () => {
   const ayudas = fs.readFileSync("components/ui/AyudaBotones.tsx", "utf8")
   const ajustes = fs.readFileSync("app/configuracion/page.tsx", "utf8")

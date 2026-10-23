@@ -5038,7 +5038,7 @@ return (
 )}
 
 <div style={{
-  height: isMobile && alturaVP ? `${alturaVP - 52}px` : "calc(100dvh - 52px)",
+  height: isMobile ? (alturaVP ? `${alturaVP - 52}px` : "calc(100dvh - 52px)") : "calc(100dvh - 44px)",
   width: "100%",
   background: "linear-gradient(180deg, #060d1a 0%, #0f172a 100%)",
   color: "white",
@@ -5054,7 +5054,7 @@ return (
     borderBottom: "1px solid rgba(255,255,255,0.07)",
     backdropFilter: "blur(12px)",
     WebkitBackdropFilter: "blur(12px)",
-    padding: isMobile ? "6px 10px" : "10px 20px",
+    padding: isMobile ? "6px 10px" : "7px 16px",
   }}>
     {/* Fila 1: título + flechas */}
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -5089,15 +5089,25 @@ return (
       </div>
 
       <button type="button" onClick={() => setCentroComandosAbierto(true)} title="Buscar canciones y ejecutar acciones rápidas (Ctrl+K)" style={{
-        height:isMobile ? 40 : 38, padding:isMobile ? "0 10px" : "0 12px", borderRadius:10,
+        height:isMobile ? 40 : 34, padding:isMobile ? "0 10px" : "0 10px", borderRadius:9,
         border:"1px solid rgba(148,163,184,.2)", background:"rgba(255,255,255,.055)", color:"#dbeafe",
         fontSize:isMobile ? 17 : 12, fontWeight:800, cursor:"pointer", flexShrink:0,
       }}>{isMobile ? "⌕" : "⌕ Buscar  Ctrl+K"}</button>
       {!isMobile && (
         <button type="button" onClick={() => { setVolverCentroTrasRevision(false); setRevisionCultoAbierta(true) }} title="Revisar que todo esté listo antes del culto" style={{
-          height:38, padding:"0 12px", borderRadius:10, border:"1px solid rgba(96,165,250,.3)",
+          height:34, padding:"0 10px", borderRadius:9, border:"1px solid rgba(96,165,250,.3)",
           background:"rgba(37,99,235,.12)", color:"#bfdbfe", fontSize:11.5, fontWeight:800, cursor:"pointer", flexShrink:0,
         }}>✓ Revisar culto</button>
+      )}
+      {!isMobile && socket && (
+        <div title="Tamaño de letra del proyector" data-ayuda="Reduce o aumenta el tamaño de la letra que ve la congregación." style={{
+          height:34, display:"flex", alignItems:"center", gap:2, padding:2, borderRadius:9, flexShrink:0,
+          border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.045)",
+        }}>
+          <button aria-label="Achicar letra del proyector" onClick={() => cambiarZoom(-10)} style={{ width:27, height:28, borderRadius:7, border:0, background:"transparent", color:"white", fontSize:17, cursor:"pointer" }}>−</button>
+          <span style={{ minWidth:38, textAlign:"center", fontSize:11.5, fontWeight:800, color:zoomActual >= 190 ? "#fbbf24" : "#dbeafe" }}>{zoomActual}%</span>
+          <button aria-label="Agrandar letra del proyector" onClick={() => cambiarZoom(10)} style={{ width:27, height:28, borderRadius:7, border:0, background:"transparent", color:"white", fontSize:17, cursor:"pointer" }}>+</button>
+        </div>
       )}
       {isMobile && (
         <button type="button" data-tour="controles-extra-mobile" aria-label={mostrarControlesExtraMobile ? "Ocultar controles adicionales" : "Mostrar controles adicionales"}
@@ -5108,18 +5118,18 @@ return (
           }}>⋯</button>
       )}
       <button data-tour="controles-nav" className="ctrl-btn" onClick={anterior} style={{
-        width: isMobile ? 40 : 56, height: isMobile ? 40 : 56, borderRadius: 10, border: "none",
+        width: isMobile ? 40 : 46, height: isMobile ? 40 : 46, borderRadius: 10, border: "none",
         background: "rgba(255,255,255,0.08)", color: "white", fontSize: isMobile ? 18 : 22,
         cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
       }}>⬅️</button>
       <button className="ctrl-btn" onClick={siguiente} style={{
-        width: isMobile ? 40 : 56, height: isMobile ? 40 : 56, borderRadius: 10, border: "none",
+        width: isMobile ? 40 : 46, height: isMobile ? 40 : 46, borderRadius: 10, border: "none",
         background: "#2563eb", color: "white", fontSize: isMobile ? 18 : 22,
         cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
       }}>➡️</button>
       {!isMobile && (
         <button className="ctrl-btn" onClick={() => proyectarPantallaNegra()} title="Pantalla negra" style={{
-          width: 52, height: 52, borderRadius: 14, border: "1px solid rgba(255,255,255,0.1)",
+          width: 44, height: 44, borderRadius: 11, border: "1px solid rgba(255,255,255,0.1)",
           background: "#111", color: "white", fontSize: 16, cursor: "pointer",
           display: "flex", alignItems: "center", justifyContent: "center"
         }}>⚫</button>
@@ -5194,7 +5204,7 @@ return (
     )}
 
     {/* Desktop fila 2: botones secundarios */}
-    {!isMobile && (
+    {!isMobile && (partes.some(p => /coro|estribillo/i.test(p?.tipo || "")) || tiemposAprendidos.length > 0 || autoAvanceActivo) && (
       <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "center" }}>
         {partes.some(p => /coro|estribillo/i.test(p?.tipo || "")) && (
           <button onClick={alternarCoro} title="Repetir el coro después de cada verso al avanzar. Se mantiene al cambiar de canción." style={{
@@ -5233,25 +5243,6 @@ return (
             background: "rgba(239,68,68,0.1)", color: "#fca5a5",
             fontSize: 12, fontWeight: 700, cursor: "pointer"
           }}>⏹ Stop {contadorAuto}s</button>
-        )}
-
-        {/* Zoom remoto desktop */}
-        {socket && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
-            <span style={{ fontSize: 11, opacity: 0.4 }}>Zoom:</span>
-            <button onClick={() => {
-              const v = Math.max(50, zoomActualRef.current - 10)
-              setZoomActual(v); zoomActualRef.current = v; socket?.emit("ajustar-zoom", { valor: v })
-              localStorage.setItem("proyector-escala-fuente", String(v))
-            }} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.06)", color: "white", fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
-            <span style={{ fontSize: 13, fontWeight: 700, minWidth: 42, textAlign: "center", color: zoomActual >= 190 ? "#fbbf24" : "white" }}>{zoomActual}%</span>
-            <button onClick={() => {
-              const v = Math.min(200, zoomActualRef.current + 10)
-              setZoomActual(v); zoomActualRef.current = v; socket?.emit("ajustar-zoom", { valor: v })
-              localStorage.setItem("proyector-escala-fuente", String(v))
-            }} style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.06)", color: "white", fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
-            {zoomActual >= 190 && <span style={{ fontSize: 10, color: "#fbbf24" }}>máx</span>}
-          </div>
         )}
       </div>
     )}
