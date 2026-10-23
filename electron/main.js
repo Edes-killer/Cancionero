@@ -2104,7 +2104,7 @@ function createWindow() {
     titleBarOverlay: {
       color: "#060d1a",
       symbolColor: "#dbeafe",
-      height: 32,
+      height: 28,
     },
     // Selah tiene navegación propia. La barra nativa de Electron duplicaba
     // funciones, consumía altura y confundía al operador durante el culto.
@@ -2196,7 +2196,7 @@ function createWindow() {
           titleBarOverlay: {
             color: "#060d1a",
             symbolColor: "#dbeafe",
-            height: 32,
+            height: 28,
           },
           webPreferences: {
             preload: path.join(__dirname, "preload.js"),

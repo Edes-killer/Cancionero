@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import Image from "next/image"
 
 /**
  * Franja de arrastre que reemplaza visualmente la barra clara de Windows.
@@ -25,10 +24,5 @@ export default function ElectronTitlebar() {
 
   if (!esElectron) return null
 
-  return (
-    <div className="electron-titlebar" aria-hidden="true">
-      <Image src="/icon.png" alt="" width={18} height={18} priority />
-      <span>Selah Live</span>
-    </div>
-  )
+  return <div className="electron-titlebar" aria-hidden="true" />
 }

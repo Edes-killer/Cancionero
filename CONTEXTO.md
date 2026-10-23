@@ -1,19 +1,11 @@
 # Selah Live — Documento de Diseño (SDD) y Contexto de Desarrollo
 
-> Versión del documento: 2026-10-21 · Estable publicada: **v0.5.39** · Candidata: **v0.5.40**.
+> Versión del documento: 2026-10-23 · Código actual: **v0.5.44**.
 
-La versión pública continúa siendo v0.5.39. La candidata v0.5.40 está en la rama
-`codex/release-0.5.40` y en la [PR #2](https://github.com/Edes-killer/Cancionero/pull/2),
-todavía como borrador. La rama contiene cambios funcionales posteriores a los últimos
-binarios empaquetados; por eso es obligatorio reconstruir ambos artefactos antes de publicar. No crear
-el release ni marcarlo `Latest` antes de completar la prueba corta en la iglesia.
-
-**Estado verificable de v0.5.40:** login real con Google aprobado en Electron mediante
-callback loopback protegido por nonce; `npm run qa:release` aprobó 16/16 compuertas,
-168/168 pruebas y el laboratorio LAN hostil aprobó 26/26 escenarios. Los binarios descritos
-en `docs/EMPAQUETADO-0.5.40.md` son evidencia histórica anterior a los cambios de planes y
-seguridad LAN del 21 de octubre: deben reconstruirse y volver a verificarse antes de publicar.
-El instalador Windows continúa sin certificado Authenticode comercial.
+El código de trabajo está en v0.5.44. Las evidencias de v0.5.40 y sus artefactos se conservan
+como historial, pero no representan automáticamente los binarios del árbol actual. Antes de una
+publicación nueva se deben reconstruir Electron y APK desde un commit limpio y ejecutar las
+compuertas de candidata. El instalador Windows continúa sin certificado Authenticode comercial.
 
 La transmisión mejoró a partir de los fallos de terreno de v0.5.35–v0.5.39, pero ninguna
 prueba sintética reemplaza validar Facebook/RTMPS, WiFi, cámaras y sincronía labial en la
@@ -400,6 +392,19 @@ La receta operativa completa vive en `COMO-PUBLICAR.md`. El instalador queda en
 - CameraX continúa como laboratorio debug. No anunciar cámara frontal nativa ni reemplazar el flujo
   WebRTC de producción hasta validarlo en varios fabricantes Android.
 - Faltan prueba física RTMPS/Facebook, ensayo continuo de 1–2 horas y recuperación real de un destino.
+
+### Trabajo posterior a v0.5.40
+
+- Electron usa una barra superior oscura integrada con los controles nativos de Windows. La identidad
+  visual se muestra una sola vez en la navegación; la franja de arrastre ya no repite icono ni nombre.
+- Control administra los cultos guardados desde una sola barra contextual. Crear una lista está siempre
+  disponible; copiar, renombrar y eliminar afectan únicamente a la lista seleccionada. Las fechas usan
+  un formato corto y estable para no desplazar el nombre.
+- El Orden del culto puede minimizarse en escritorio y recuerda esa decisión localmente. Sus tarjetas y
+  acciones son más compactas para mostrar más elementos sin reducir la información esencial.
+- La eliminación manual de la lista abierta conserva sus elementos como borrador recuperable, igual que
+  una eliminación remota, para evitar perder la preparación por error.
+- Verificación de esta tanda: 179/179 pruebas, lint crítico sin hallazgos y build de producción correcto.
 
 ### Entregado en v0.5.27
 

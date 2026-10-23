@@ -55,6 +55,12 @@ type VentanaControl = Window & {
 
 const mensajeDeError = (error: unknown) => error instanceof Error ? error.message : String(error)
 const limiteSuperiorPreview = () => 56
+const formatearFechaCulto = (fecha?: string) => {
+  if (!fecha) return ""
+  const valor = new Date(fecha)
+  if (Number.isNaN(valor.getTime())) return ""
+  return new Intl.DateTimeFormat("es-CL", { day: "2-digit", month: "short", year: "numeric" }).format(valor)
+}
 
 export default function ControlPage() {
   const { confirmar, ConfirmUI } = useConfirm()
@@ -383,7 +389,6 @@ export default function ControlPage() {
   const [logoEsperaNombre, setLogoEsperaNombre] = useState("")
   const [menuItemAbierto, setMenuItemAbierto] = useState<number | null>(null)
   const [indiceItemReordenando, setIndiceItemReordenando] = useState<number | null>(null)
-  const [menuCultoAbierto, setMenuCultoAbierto] = useState<string | null>(null)
   const [mensajeFlash, setMensajeFlash] = useState("")
   const [guardandoCulto, setGuardandoCulto] = useState(false)
   const [centroComandosAbierto, setCentroComandosAbierto] = useState(false)
@@ -1191,6 +1196,14 @@ const [mostrarCanciones, setMostrarCanciones] = useState(true)
 const [mostrarAcciones, setMostrarAcciones] = useState(false)
 const [mostrarPalabra, setMostrarPalabra] = useState(false)
 const [mostrarCultos, setMostrarCultos] = useState(false)
+const [ordenCultoMinimizado, setOrdenCultoMinimizado] = useState(() => {
+  try { return localStorage.getItem("selah-orden-culto-minimizado") === "1" } catch { return false }
+})
+const alternarOrdenCulto = () => setOrdenCultoMinimizado(valor => {
+  const siguiente = !valor
+  try { localStorage.setItem("selah-orden-culto-minimizado", siguiente ? "1" : "0") } catch {}
+  return siguiente
+})
 const [mostrarFiltrosMobile, setMostrarFiltrosMobile] = useState(false)
 const [revisionCultoAbierta, setRevisionCultoAbierta] = useState(false)
 const [volverCentroTrasRevision, setVolverCentroTrasRevision] = useState(false)
@@ -2675,6 +2688,45 @@ const duplicarCulto = async (culto: CultoData) => {
   await cargarCultos()
   notificarCambioCultoNube(nuevoCulto.id, nuevoNombre.trim())
   flashCtrl("✅ Culto duplicado")
+}
+
+const eliminarCulto = async (culto: CultoData) => {
+  if (!(await confirmar(`¿Eliminar “${culto.nombre || "este culto"}” completo?`, {
+    textoOk: "Eliminar",
+    peligro: true,
+  }))) return
+
+  const { error: errorItems } = await supabase
+    .from("items_lista")
+    .delete()
+    .eq("lista_id", culto.id)
+  if (errorItems) {
+    flashCtrl("No se pudieron eliminar los elementos del culto")
+    return
+  }
+
+  const { error: errorCulto } = await supabase
+    .from("listas_culto")
+    .delete()
+    .eq("id", culto.id)
+  if (errorCulto) {
+    flashCtrl("No se pudo eliminar el culto")
+    return
+  }
+
+  const eraListaActiva = listaIdActual === culto.id
+  if (eraListaActiva) {
+    // La lista desaparece de la nube, pero su contenido queda como borrador.
+    // Así un clic accidental no borra también la preparación que estaba abierta.
+    setListaIdActual(null)
+    setFirmaCultoGuardado(firmaCultoEditable([], ""))
+    firmaItemsBDRef.current = ""
+  }
+  await cargarCultos()
+  notificarCambioCultoNube(culto.id, culto.nombre, "eliminado")
+  flashCtrl(eraListaActiva
+    ? "✅ Lista eliminada. Conservamos su contenido como borrador."
+    : "✅ Culto eliminado")
 }
 
 const cargarCultos = async () => {
@@ -4515,6 +4567,9 @@ const etiquetaParteControl = (() => {
 
 // ✅ ¿La parte activa es el coro? Para resaltarlo en el indicador con color.
 const parteActualEsCoro = partes.length > 0 && /coro|estribillo|chorus/i.test(partes[index]?.tipo || "")
+const cultoActivoGuardado = listaIdActual
+  ? cultos.find(culto => culto.id === listaIdActual)
+  : undefined
 
 const colorCategoria = (cat?: string): { bg: string; border: string; text: string } => {
   switch ((cat || "").toLowerCase()) {
@@ -6644,85 +6699,81 @@ return (
               }}>{cultos.length}</span>
             )}
           </div>
-          <span style={{ opacity: 0.5, fontSize: 18 }}>{mostrarCultos ? "▾" : "▸"}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              className="ctrl-btn"
+              type="button"
+              onClick={e => { e.stopPropagation(); void confirmarYLimpiarCulto("Nueva lista") }}
+              data-ayuda="Cierra el culto actual y prepara una lista nueva desde cero."
+              style={{
+                padding: "6px 10px", borderRadius: 8,
+                border: "1px solid rgba(96,165,250,.28)",
+                background: "rgba(37,99,235,.12)", color: "#bfdbfe",
+                fontSize: 11.5, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap",
+              }}
+            >＋ Nueva</button>
+            <span style={{ opacity: 0.5, fontSize: 18 }}>{mostrarCultos ? "▾" : "▸"}</span>
+          </div>
         </div>
 
         {mostrarCultos && (
           <div style={{ padding: isMobile ? "10px 14px" : "12px 18px", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap",
+              paddingBottom: 8, borderBottom: "1px solid rgba(255,255,255,.06)",
+            }}>
+              <span style={{
+                flex: "1 1 130px", minWidth: 0, fontSize: 11, color: cultoActivoGuardado ? "#93c5fd" : "rgba(255,255,255,.42)",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}>
+                {cultoActivoGuardado ? `Seleccionada: ${cultoActivoGuardado.nombre || "Sin nombre"}` : "Selecciona una lista para administrarla"}
+              </span>
+              <button className="ctrl-btn" type="button" disabled={!cultoActivoGuardado}
+                onClick={() => cultoActivoGuardado && duplicarCulto(cultoActivoGuardado)}
+                data-ayuda="Crea una copia completa de la lista seleccionada."
+                style={{ padding:"6px 9px", borderRadius:8, border:"1px solid rgba(255,255,255,.09)", background:"rgba(255,255,255,.05)", color:"white", fontSize:11, fontWeight:750, cursor:cultoActivoGuardado ? "pointer" : "not-allowed", opacity:cultoActivoGuardado ? 1 : .35 }}>
+                📄 Copiar
+              </button>
+              <button className="ctrl-btn" type="button" disabled={!cultoActivoGuardado}
+                onClick={() => cultoActivoGuardado && renombrarCulto(cultoActivoGuardado)}
+                data-ayuda="Cambia el nombre de la lista seleccionada."
+                style={{ padding:"6px 9px", borderRadius:8, border:"1px solid rgba(255,255,255,.09)", background:"rgba(255,255,255,.05)", color:"white", fontSize:11, fontWeight:750, cursor:cultoActivoGuardado ? "pointer" : "not-allowed", opacity:cultoActivoGuardado ? 1 : .35 }}>
+                ✏️ Renombrar
+              </button>
+              <button className="ctrl-btn" type="button" disabled={!cultoActivoGuardado}
+                onClick={() => cultoActivoGuardado && eliminarCulto(cultoActivoGuardado)}
+                data-ayuda="Elimina la lista seleccionada y todos sus elementos."
+                aria-label="Eliminar lista seleccionada"
+                style={{ padding:"6px 9px", borderRadius:8, border:"1px solid rgba(239,68,68,.2)", background:"rgba(239,68,68,.09)", color:"#fca5a5", fontSize:11, fontWeight:750, cursor:cultoActivoGuardado ? "pointer" : "not-allowed", opacity:cultoActivoGuardado ? 1 : .35 }}>
+                🗑️
+              </button>
+            </div>
             {cultos.length === 0 && (
               <div style={{ opacity: 0.45, fontSize: 13, padding: "8px 0" }}>
                 No hay cultos guardados aún.
               </div>
             )}
             {cultos.map(c => (
-              <div key={c.id} style={{
+              <button key={c.id} type="button" className="ctrl-btn"
+                onClick={() => void abrirCultoGuardado(c.id)}
+                data-ayuda="Abre esta lista para revisarla, editarla o proyectarla."
+                style={{
                 background: c.id === listaIdActual ? "rgba(37,99,235,0.15)" : "rgba(255,255,255,0.04)",
                 border: `1px solid ${c.id === listaIdActual ? "rgba(59,130,246,0.35)" : "rgba(255,255,255,0.07)"}`,
-                borderRadius: 11, padding: "10px 12px",
-                display: "flex", alignItems: "center", gap: 10
+                borderRadius: 9, padding: "7px 9px", color: "white", cursor: "pointer", textAlign: "left",
+                display: "flex", alignItems: "center", gap: 8, width: "100%",
               }}>
+                <span aria-hidden="true" style={{ flexShrink: 0, fontSize: 13 }}>{c.id === listaIdActual ? "✓" : "📄"}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{
-                    fontWeight: 700, fontSize: 14,
+                    fontWeight: 750, fontSize: 13,
                     overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
                   }}>
                     {c.nombre || "Sin nombre"}
                   </div>
-                  {c.fecha && (
-                    <div style={{ fontSize: 11, opacity: 0.45, marginTop: 2 }}>
-                      {new Date(c.fecha).toLocaleDateString("es-CL")}
-                    </div>
-                  )}
                 </div>
-                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                  <button
-                    className="ctrl-btn"
-                    onClick={() => { setMenuCultoAbierto(null); void abrirCultoGuardado(c.id) }}
-                    style={{
-                      padding: "7px 10px", borderRadius: 9, border: "none",
-                      background: "#2563eb", color: "white", fontWeight: 700,
-                      fontSize: 13, cursor: "pointer"
-                    }}
-                  >📂</button>
-                  <button
-                    className="ctrl-btn"
-                    onClick={() => setMenuCultoAbierto(prev => prev === c.id ? null : c.id)}
-                    style={{
-                      padding: "7px 10px", borderRadius: 9,
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      background: "rgba(255,255,255,0.06)", color: "white",
-                      fontWeight: 700, fontSize: 13, cursor: "pointer"
-                    }}
-                  >⋮</button>
-                </div>
-                {menuCultoAbierto === c.id && (
-                  <div style={{ width: "100%", display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                    <button className="ctrl-btn" onClick={() => { setMenuCultoAbierto(null); renombrarCulto(c) }}
-                      style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "#334155", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
-                      ✏️ Renombrar
-                    </button>
-                    <button className="ctrl-btn" onClick={() => { setMenuCultoAbierto(null); duplicarCulto(c) }}
-                      style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "#334155", color: "white", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
-                      📄 Duplicar
-                    </button>
-                    <button className="ctrl-btn"
-                      onClick={async () => {
-                        if (!(await confirmar("¿Eliminar este culto completo?", { textoOk: "Eliminar", peligro: true }))) return
-                        setMenuCultoAbierto(null)
-                        const { error: errorItems } = await supabase.from("items_lista").delete().eq("lista_id", c.id)
-                        if (errorItems) { flashCtrl("No se pudieron eliminar los elementos del culto"); return }
-                        const { error: errorCulto } = await supabase.from("listas_culto").delete().eq("id", c.id)
-                        if (errorCulto) { flashCtrl("No se pudo eliminar el culto"); return }
-                        await cargarCultos()
-                        notificarCambioCultoNube(c.id, c.nombre, "eliminado")
-                        flashCtrl("✅ Culto eliminado")
-                      }}
-                      style={{ padding: "6px 10px", borderRadius: 8, border: "none", background: "rgba(239,68,68,0.15)", color: "#fca5a5", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
-                      🗑️ Eliminar
-                    </button>
-                  </div>
-                )}
-              </div>
+                {c.fecha && <span style={{ flexShrink:0, fontSize:10.5, opacity:.48, whiteSpace:"nowrap" }}>{formatearFechaCulto(c.fecha)}</span>}
+              </button>
             ))}
           </div>
         )}
@@ -6754,7 +6805,16 @@ return (
       ...(isMobile ? {} : { position: "sticky", top: 20, alignSelf: "start", maxHeight: "calc(100vh - 40px)" })
     }}>
       {!isMobile && <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"0 3px", color:"rgba(255,255,255,.38)", fontSize:10.5, fontWeight:850, letterSpacing:".12em" }}>
-        <span>ORDEN DEL CULTO</span><span style={{ letterSpacing:0, color:indiceActivoLista !== null ? "#4ade80" : "rgba(255,255,255,.38)" }}>{indiceActivoLista !== null ? "● En curso" : "Preparado"}</span>
+        <span>ORDEN DEL CULTO</span>
+        <div style={{ display:"flex", alignItems:"center", gap:8, letterSpacing:0 }}>
+          <span style={{ color:indiceActivoLista !== null ? "#4ade80" : "rgba(255,255,255,.38)" }}>{indiceActivoLista !== null ? "● En curso" : "Preparado"}</span>
+          <button type="button" className="ctrl-btn" onClick={alternarOrdenCulto}
+            aria-expanded={!ordenCultoMinimizado}
+            data-ayuda={ordenCultoMinimizado ? "Vuelve a mostrar el orden del culto." : "Oculta temporalmente el orden del culto para ganar espacio."}
+            style={{ padding:"4px 8px", borderRadius:7, border:"1px solid rgba(255,255,255,.09)", background:"rgba(255,255,255,.04)", color:"rgba(255,255,255,.65)", fontSize:10.5, fontWeight:750, cursor:"pointer" }}>
+            {ordenCultoMinimizado ? "▾ Mostrar" : "▴ Minimizar"}
+          </button>
+        </div>
       </div>}
 
       {/* Tabs mobile: Preview | Lista — solo en desktop */}
@@ -6960,7 +7020,7 @@ return (
       )}
 
       {/* ── LISTA DE CULTO ─────────────────────────────────────────────── */}
-      {(!isMobile || tabDerechaMobile === "lista") && (
+      {(!isMobile || tabDerechaMobile === "lista") && (isMobile || !ordenCultoMinimizado) && (
       <div
         id="scroll-lista"
         style={{
@@ -6976,7 +7036,7 @@ return (
       >
         {/* Header lista */}
         <div style={{
-          padding: isMobile ? "12px 14px" : "14px 18px",
+          padding: isMobile ? "12px 14px" : "10px 14px",
           borderBottom: "1px solid rgba(255,255,255,0.06)",
           display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10
         }}>
@@ -6991,6 +7051,12 @@ return (
             )}
           </div>
           <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+            <button type="button" className="ctrl-btn"
+              onClick={() => confirmarYLimpiarCulto("Nueva lista")}
+              data-ayuda="Cierra el culto actual y comienza una lista nueva."
+              style={{ padding:"5px 9px", borderRadius:8, border:"1px solid rgba(96,165,250,.25)", background:"rgba(37,99,235,.1)", color:"#bfdbfe", fontSize:11, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" }}>
+              ＋ Nueva
+            </button>
             {isMobile && (
               <button type="button" onClick={irACancionesMobile} aria-label="Volver a buscar canciones" style={{
                 padding:"5px 9px", borderRadius:8, border:"1px solid rgba(59,130,246,.25)", background:"rgba(37,99,235,.1)",
@@ -7010,8 +7076,8 @@ return (
         {/* Banner culto guardado activo */}
         {listaIdActual && (
           <div style={{
-            margin: "10px 12px 0",
-            padding: "10px 12px", borderRadius: 10,
+            margin: isMobile ? "10px 12px 0" : "7px 10px 0",
+            padding: isMobile ? "10px 12px" : "7px 10px", borderRadius: 9,
             background: "rgba(37,99,235,0.12)",
             border: "1px solid rgba(59,130,246,0.25)",
             display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap"
@@ -7041,7 +7107,7 @@ return (
         {/* Flash → toast fijo arriba */}
 
         {/* Items de la lista */}
-        <div style={{ padding: isMobile ? "10px 12px" : "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ padding: isMobile ? "10px 12px" : "8px 10px", display: "flex", flexDirection: "column", gap: isMobile ? 8 : 6 }}>
           {lista.length === 0 && (
             <div style={{ opacity: 0.4, fontSize: 13, padding: "16px 0", textAlign: "center" }}>
               Agrega canciones, palabra o imágenes desde la izquierda
@@ -7065,8 +7131,8 @@ return (
                   background: esActivo ? "rgba(20,83,45,0.38)" : esReordenando ? "rgba(245,158,11,0.14)" : esAgregado ? "rgba(59,130,246,0.12)" : "rgba(255,255,255,0.04)",
                   border: `1px solid ${esActivo ? "rgba(34,197,94,0.5)" : esReordenando ? "rgba(245,158,11,0.65)" : esAgregado ? "rgba(59,130,246,0.35)" : "rgba(255,255,255,0.07)"}`,
                   borderLeft: esActivo ? "4px solid #22c55e" : esReordenando ? "4px solid #f59e0b" : undefined,
-                  borderRadius: 11, padding: "10px 12px",
-                  display: "flex", alignItems: "center", gap: 10,
+                  borderRadius: isMobile ? 11 : 9, padding: isMobile ? "10px 12px" : "7px 9px",
+                  display: "flex", alignItems: "center", gap: isMobile ? 10 : 7,
                   flexWrap: "wrap",
                   opacity: dragIndex === i ? 0.5 : 1,
                   cursor: isMobile ? "default" : dragIndex === i ? "grabbing" : "grab",
@@ -7091,14 +7157,14 @@ return (
                   <span style={{ flexShrink: 0 }}>{iconoItemLista(c)}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{
-                      fontWeight: 700, fontSize: 14, lineHeight: 1.25,
+                      fontWeight: 700, fontSize: isMobile ? 14 : 13, lineHeight: 1.2,
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
                     }}>
                       {limpiarTituloLista(c?.titulo || "Sin título")}
                     </div>
                     {esActivo && <div style={{ fontSize:9.5, color:"#86efac", fontWeight:900, letterSpacing:".08em", marginTop:2 }}>● AL AIRE</div>}
                     {esReordenando && !esActivo && <div style={{ fontSize:9.5, color:"#fbbf24", fontWeight:900, letterSpacing:".08em", marginTop:2 }}>↕ REORDENANDO</div>}
-                    <div style={{ fontSize: 11, opacity: 0.55, marginTop: 1 }}>
+                    <div style={{ fontSize: isMobile ? 11 : 10.5, opacity: 0.55, marginTop: 1 }}>
                       {subtituloItemLista(c)}
                     </div>
                   </div>
@@ -7107,21 +7173,21 @@ return (
                 {/* Acciones */}
                 <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                   <button data-ayuda="Proyecta inmediatamente este elemento del orden del culto." className="ctrl-btn" onClick={() => proyectarDesdeLista(i)}
-                    style={{ width: 38, height: 38, borderRadius: 9, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    style={{ width: isMobile ? 38 : 34, height: isMobile ? 38 : 34, borderRadius: 8, border: "none", background: "#2563eb", color: "white", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     ▶
                   </button>
                   {esReordenando ? <>
                   <button data-ayuda="Sube este elemento una posición." aria-label={`Subir ${limpiarTituloLista(c?.titulo || "elemento")}`} className="ctrl-btn"
                     onClick={() => subirItemLista(i)} disabled={i === 0}
-                    style={{ width:34, height:38, borderRadius:9, border:"1px solid rgba(245,158,11,.5)", background:"rgba(245,158,11,.16)", color:"#fbbf24", fontWeight:800, fontSize:15, cursor:i === 0 ? "not-allowed" : "pointer", opacity:i === 0 ? .3 : 1 }}>↑</button>
+                    style={{ width:isMobile ? 34 : 30, height:isMobile ? 38 : 34, borderRadius:8, border:"1px solid rgba(245,158,11,.5)", background:"rgba(245,158,11,.16)", color:"#fbbf24", fontWeight:800, fontSize:15, cursor:i === 0 ? "not-allowed" : "pointer", opacity:i === 0 ? .3 : 1 }}>↑</button>
                   <button data-ayuda="Baja este elemento una posición." aria-label={`Bajar ${limpiarTituloLista(c?.titulo || "elemento")}`} className="ctrl-btn"
                     onClick={() => bajarItemLista(i)} disabled={i === lista.length - 1}
-                    style={{ width:34, height:38, borderRadius:9, border:"1px solid rgba(245,158,11,.5)", background:"rgba(245,158,11,.16)", color:"#fbbf24", fontWeight:800, fontSize:15, cursor:i === lista.length - 1 ? "not-allowed" : "pointer", opacity:i === lista.length - 1 ? .3 : 1 }}>↓</button>
-                  <button aria-label="Terminar de reordenar" onClick={() => setIndiceItemReordenando(null)} className="ctrl-btn" style={{ width:34, height:38, borderRadius:9, border:"1px solid rgba(34,197,94,.4)", background:"rgba(34,197,94,.12)", color:"#86efac", fontWeight:900, fontSize:14 }}>✓</button>
-                  </> : <button data-ayuda="Activa los controles para mover únicamente este elemento." aria-label={`Reordenar ${limpiarTituloLista(c?.titulo || "elemento")}`} className="ctrl-btn" onClick={() => { setIndiceItemReordenando(i); setMenuItemAbierto(null) }} style={{ width:34, height:38, borderRadius:9, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.06)", color:"white", fontWeight:800, fontSize:15, cursor:"pointer" }}>↕</button>}
+                    style={{ width:isMobile ? 34 : 30, height:isMobile ? 38 : 34, borderRadius:8, border:"1px solid rgba(245,158,11,.5)", background:"rgba(245,158,11,.16)", color:"#fbbf24", fontWeight:800, fontSize:15, cursor:i === lista.length - 1 ? "not-allowed" : "pointer", opacity:i === lista.length - 1 ? .3 : 1 }}>↓</button>
+                  <button aria-label="Terminar de reordenar" onClick={() => setIndiceItemReordenando(null)} className="ctrl-btn" style={{ width:isMobile ? 34 : 30, height:isMobile ? 38 : 34, borderRadius:8, border:"1px solid rgba(34,197,94,.4)", background:"rgba(34,197,94,.12)", color:"#86efac", fontWeight:900, fontSize:14 }}>✓</button>
+                  </> : <button data-ayuda="Activa los controles para mover únicamente este elemento." aria-label={`Reordenar ${limpiarTituloLista(c?.titulo || "elemento")}`} className="ctrl-btn" onClick={() => { setIndiceItemReordenando(i); setMenuItemAbierto(null) }} style={{ width:isMobile ? 34 : 30, height:isMobile ? 38 : 34, borderRadius:8, border:"1px solid rgba(255,255,255,.08)", background:"rgba(255,255,255,.06)", color:"white", fontWeight:800, fontSize:15, cursor:"pointer" }}>↕</button>}
                   <button data-ayuda="Muestra la opción para eliminar este elemento de la lista." className="ctrl-btn"
                     onClick={() => setMenuItemAbierto(prev => prev === i ? null : i)}
-                    style={{ width: 30, height: 38, borderRadius: 9, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    style={{ width: isMobile ? 30 : 28, height: isMobile ? 38 : 34, borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.06)", color: "white", fontWeight: 700, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     ⋮
                   </button>
                 </div>

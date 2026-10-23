@@ -7,7 +7,7 @@
 }
 
 html[data-selah-electron="true"] {
-  --electron-titlebar-height: 32px;
+  --electron-titlebar-height: 28px;
   scrollbar-color: #2563eb #08111f;
   scrollbar-width: thin;
 }
@@ -20,25 +20,12 @@ html[data-selah-electron="true"] {
   z-index: 1000;
   height: var(--electron-titlebar-height);
   box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 150px 0 10px;
+  padding-right: 138px;
   overflow: hidden;
-  color: #dbeafe;
   background: #060d1a;
   border-bottom: 1px solid rgba(148, 163, 184, .12);
-  font: 600 12px/1 "Segoe UI", system-ui, sans-serif;
   user-select: none;
   -webkit-app-region: drag;
-}
-
-.electron-titlebar img {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-  object-fit: cover;
-  pointer-events: none;
 }
 
 /* Scrollbars coherentes en toda la aplicación de escritorio. La APK y la web

@@ -43,7 +43,27 @@ test("Electron aprovecha la altura con navegación y controles compactos", () =>
   assert.match(main, /titleBarStyle: "hidden"/)
   assert.match(main, /titleBarOverlay:[\s\S]{0,120}color: "#060d1a"/)
   assert.match(titlebar, /document\.documentElement\.dataset\.selahElectron = "true"/)
+  assert.doesNotMatch(titlebar, /next\/image|<span>Selah Live<\/span>/)
+  assert.match(globals, /--electron-titlebar-height: 28px/)
   assert.match(globals, /html\[data-selah-electron="true"\] \*::\-webkit-scrollbar-thumb/)
+})
+
+test("Control administra la lista seleccionada desde una barra compacta", () => {
+  const control = fs.readFileSync("app/control/page.tsx", "utf8")
+  assert.match(control, /cultoActivoGuardado/)
+  assert.match(control, /Selecciona una lista para administrarla/)
+  assert.match(control, /📄 Copiar/)
+  assert.match(control, /✏️ Renombrar/)
+  assert.match(control, /formatearFechaCulto/)
+  assert.doesNotMatch(control, /menuCultoAbierto/)
+})
+
+test("Orden del culto puede minimizarse y conserva una presentación densa", () => {
+  const control = fs.readFileSync("app/control/page.tsx", "utf8")
+  assert.match(control, /selah-orden-culto-minimizado/)
+  assert.match(control, /ordenCultoMinimizado \? "▾ Mostrar" : "▴ Minimizar"/)
+  assert.match(control, /isMobile \|\| !ordenCultoMinimizado/)
+  assert.match(control, /padding: isMobile \? "10px 12px" : "8px 10px"/)
 })
 
 test("Control separa el indicador operativo sin duplicar su lógica visual", () => {
@@ -351,7 +371,7 @@ test("los cultos guardados en otro equipo se refrescan sin pisar trabajo local",
   assert.match(control, /enProyeccion: indiceLista !== null \|\| !!activaId/)
   assert.match(control, /Culto actualizado automáticamente desde la nube/)
   assert.match(control, /cambió en otro equipo\. Guarda o termina lo que estás haciendo/)
-  assert.match(control, /notificarCambioCultoNube\(c\.id, c\.nombre, "eliminado"\)/)
+  assert.match(control, /notificarCambioCultoNube\((?:c|culto)\.id, (?:c|culto)\.nombre, "eliminado"\)/)
   assert.match(control, /setListaIdActual\(null\)/)
   assert.match(control, /Conservamos tu contenido para que puedas guardarlo como una lista nueva/)
   assert.match(control, /hayConflictoCultoPersistido\(firmaItemsBDRef\.current, firmaActualBD\)/)
