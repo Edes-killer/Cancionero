@@ -27,16 +27,23 @@ test("Control mantiene una sola experiencia sin selector Preparar/Culto", () => 
 
 test("Electron aprovecha la altura con navegación y controles compactos", () => {
   const navbar = fs.readFileSync("components/Navbar.tsx", "utf8")
+  const titlebar = fs.readFileSync("components/ElectronTitlebar.tsx", "utf8")
+  const globals = fs.readFileSync("app/globals.css", "utf8")
   const control = fs.readFileSync("app/control/page.tsx", "utf8")
   const main = fs.readFileSync("electron/main.js", "utf8")
   assert.match(navbar, /height: isMobile \? 52 : 44/)
-  assert.match(control, /calc\(100dvh - 44px\)/)
+  assert.match(navbar, /top: "var\(--electron-titlebar-height, 0px\)"/)
+  assert.match(control, /calc\(100dvh - 44px - var\(--electron-titlebar-height, 0px\)\)/)
   assert.match(control, /Tamaño de letra del proyector/)
   assert.match(control, /onClick=\{\(\) => cambiarZoom\(-10\)\}/)
   assert.match(control, /partes\.some[\s\S]{0,160}tiemposAprendidos\.length > 0[\s\S]{0,80}autoAvanceActivo/)
   assert.match(main, /autoHideMenuBar: true/)
   assert.match(main, /Menu\.setApplicationMenu\(null\)/)
   assert.match(main, /mainWindow\.setMenuBarVisibility\(false\)/)
+  assert.match(main, /titleBarStyle: "hidden"/)
+  assert.match(main, /titleBarOverlay:[\s\S]{0,120}color: "#060d1a"/)
+  assert.match(titlebar, /document\.documentElement\.dataset\.selahElectron = "true"/)
+  assert.match(globals, /html\[data-selah-electron="true"\] \*::\-webkit-scrollbar-thumb/)
 })
 
 test("las ayudas contextuales son opcionales y se apagan por defecto en APK", () => {

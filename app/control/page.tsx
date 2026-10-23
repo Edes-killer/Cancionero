@@ -5038,7 +5038,7 @@ return (
 )}
 
 <div style={{
-  height: isMobile ? (alturaVP ? `${alturaVP - 52}px` : "calc(100dvh - 52px)") : "calc(100dvh - 44px)",
+  height: isMobile ? (alturaVP ? `${alturaVP - 52}px` : "calc(100dvh - 52px)") : "calc(100dvh - 44px - var(--electron-titlebar-height, 0px))",
   width: "100%",
   background: "linear-gradient(180deg, #060d1a 0%, #0f172a 100%)",
   color: "white",

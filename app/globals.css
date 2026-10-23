@@ -3,6 +3,68 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --electron-titlebar-height: 0px;
+}
+
+html[data-selah-electron="true"] {
+  --electron-titlebar-height: 32px;
+  scrollbar-color: #2563eb #08111f;
+  scrollbar-width: thin;
+}
+
+/* Barra integrada de Electron: el área central permite arrastrar la ventana;
+   los controles nativos de Windows permanecen visibles a la derecha. */
+.electron-titlebar {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  height: var(--electron-titlebar-height);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 150px 0 10px;
+  overflow: hidden;
+  color: #dbeafe;
+  background: #060d1a;
+  border-bottom: 1px solid rgba(148, 163, 184, .12);
+  font: 600 12px/1 "Segoe UI", system-ui, sans-serif;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.electron-titlebar img {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+/* Scrollbars coherentes en toda la aplicación de escritorio. La APK y la web
+   mantienen el comportamiento nativo de cada dispositivo. */
+html[data-selah-electron="true"] *::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+html[data-selah-electron="true"] *::-webkit-scrollbar-track {
+  background: #08111f;
+}
+
+html[data-selah-electron="true"] *::-webkit-scrollbar-thumb {
+  min-height: 34px;
+  border: 3px solid #08111f;
+  border-radius: 999px;
+  background: #2563eb;
+}
+
+html[data-selah-electron="true"] *::-webkit-scrollbar-thumb:hover {
+  background: #3b82f6;
+}
+
+html[data-selah-electron="true"] *::-webkit-scrollbar-corner {
+  background: #08111f;
 }
 
 @theme inline {

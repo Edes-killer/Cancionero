@@ -8,6 +8,7 @@ import { AppProvider } from "@/context/AppContext"
 import AvisoActualizacion from "@/components/AvisoActualizacion"
 import OtaUpdater from "@/components/OtaUpdater"
 import AyudaBotones from "@/components/ui/AyudaBotones"
+import ElectronTitlebar from "@/components/ElectronTitlebar"
 
 export const metadata: Metadata = {
   title: "Selah Live",
@@ -18,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es">
       <body style={{ margin: 0, padding: 0, background: "#060d1a" }}>
+        <ElectronTitlebar />
         <a className="skip-link" href="#contenido-principal">Saltar al contenido principal</a>
         <ThemeProvider>
           <AuthProvider>

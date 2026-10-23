@@ -152,7 +152,7 @@ export default function Navbar() {
         background: "rgba(6,13,26,0.97)",
         borderBottom: "1px solid rgba(255,255,255,0.07)",
         backdropFilter: "blur(12px)",
-        position: "sticky", top: 0, zIndex: 100,
+        position: "sticky", top: "var(--electron-titlebar-height, 0px)", zIndex: 100,
         fontFamily: "'Segoe UI', system-ui, sans-serif",
         overflow: "hidden"
       }}>

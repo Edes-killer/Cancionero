@@ -2096,8 +2096,16 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: "Selah Live",
-    icon: path.join(__dirname, "../public/icon-512.png"),
+    icon: path.join(__dirname, "../public/icon.png"),
     backgroundColor: "#060d1a",
+    // Integra la barra de título con el tema oscuro sin perder los controles
+    // nativos de minimizar, maximizar y cerrar de Windows.
+    titleBarStyle: "hidden",
+    titleBarOverlay: {
+      color: "#060d1a",
+      symbolColor: "#dbeafe",
+      height: 32,
+    },
     // Selah tiene navegación propia. La barra nativa de Electron duplicaba
     // funciones, consumía altura y confundía al operador durante el culto.
     autoHideMenuBar: true,
@@ -2184,6 +2192,12 @@ function createWindow() {
           width: 1280, height: 820, minWidth: 980, minHeight: 650,
           title: "Selah Live — Transmisión",
           backgroundColor: "#060d1a",
+          titleBarStyle: "hidden",
+          titleBarOverlay: {
+            color: "#060d1a",
+            symbolColor: "#dbeafe",
+            height: 32,
+          },
           webPreferences: {
             preload: path.join(__dirname, "preload.js"),
             contextIsolation: true,
