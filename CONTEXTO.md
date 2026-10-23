@@ -391,6 +391,10 @@ La receta operativa completa vive en `COMO-PUBLICAR.md`. El instalador queda en
   nueva o crítica; retirarlos apenas exista una actualización compatible.
 - Dividir `app/control/page.tsx` y `app/en-vivo/page.tsx` en componentes y hooks más pequeños después de
   estabilizar la rama 0.5.x. Es deuda de mantenibilidad, no un cambio para hacer antes de un culto.
+  La separación incremental ya comenzó con `components/control/IndicadorCulto.tsx`: el resumen de lo
+  que está al aire y del siguiente ítem quedó como vista pura, sin mover sockets ni estado operativo.
+  Las próximas extracciones deben conservar esta estrategia: una pieza visual por vez, con prueba de
+  regresión, compilación y comprobación visual antes de tocar otra frontera.
 - El instalador Windows no posee certificado Authenticode comercial. La candidata es funcional, pero
   SmartScreen puede advertir al usuario; resolver antes de una distribución comercial amplia.
 - CameraX continúa como laboratorio debug. No anunciar cámara frontal nativa ni reemplazar el flujo

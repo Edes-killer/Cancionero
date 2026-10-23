@@ -6,6 +6,7 @@ const path = require("node:path")
 const raiz = path.resolve(__dirname, "..")
 const control = fs.readFileSync(path.join(raiz, "app/control/page.tsx"), "utf8")
 const centro = fs.readFileSync(path.join(raiz, "components/control/CentroComandos.tsx"), "utf8")
+const indicador = fs.readFileSync(path.join(raiz, "components/control/IndicadorCulto.tsx"), "utf8")
 
 test("Control ofrece búsqueda universal por teclado y botón", () => {
   assert.match(control, /e\.key\.toLowerCase\(\) === "k"/)
@@ -28,7 +29,7 @@ test("las ediciones de la lista se pueden deshacer antes de guardar", () => {
 })
 
 test("el operador puede anticipar el siguiente elemento del culto", () => {
-  assert.match(control, /SIGUE ·/)
+  assert.match(indicador, /SIGUE ·/)
   assert.match(control, /lista\[indiceActivoLista \+ 1\]/)
 })
 

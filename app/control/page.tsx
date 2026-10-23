@@ -6,6 +6,7 @@ import BibleAutocomplete from "@/components/BibleAutocomplete"
 import OnboardingTour from "@/components/OnboardingTour"
 import EstadoOperativo from "@/components/ui/EstadoOperativo"
 import CentroComandos from "@/components/control/CentroComandos"
+import IndicadorCulto from "@/components/control/IndicadorCulto"
 import { TOUR_CONTROL, TOUR_CONTROL_MOBILE } from "@/lib/tours"
 
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react"
@@ -5249,71 +5250,21 @@ return (
   </div>
 
   {/* ── INDICADOR PARTE ACTUAL ──────────────────────────────────────────── */}
-  <div style={{
-    flexShrink: 0,
-    background: "rgba(15,23,42,0.97)",
-    borderBottom: "1px solid rgba(255,255,255,0.06)",
-    padding: isMobile ? "6px 14px" : "8px 20px",
-    fontSize: isMobile ? 12 : 13,
-    fontWeight: 700, opacity: 0.85,
-    textAlign: "center",
-    display: "flex", alignItems: "center", justifyContent: "center", gap: 8, flexWrap: "wrap"
-  }}>
-    {/* ✅ Nombre de la canción activa + número + tono, para dar más detalle en el
-        panel (antes solo mostraba la parte, ej. "Verso 2"). Solo para canciones,
-        no para Biblia/estados. */}
-    {tituloActual && partes.length > 0 && !estadoEspecialActivo && paginasBiblia.length === 0 && (() => {
-      const c = canciones.find(x => x.id === activaId)
-      return (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-          <span style={{ color: "#93c5fd", fontWeight: 800 }}>
-            🎵 {c?.numero ? `${c.numero}. ` : ""}{tituloActual}
-          </span>
-          {c?.tono && (
-            <span style={{ fontSize: isMobile ? 10 : 11, fontWeight: 700, padding: "1px 7px", borderRadius: 99, background: "rgba(255,255,255,0.07)", opacity: 0.8 }}>
-              Tono: {c.tono}
-            </span>
-          )}
-          <span style={{ opacity: 0.35 }}>·</span>
-        </span>
-      )
-    })()}
-    {/* ✅ El coro resaltado en ámbar para verlo de un vistazo */}
-    <span style={{ color: parteActualEsCoro ? "#fbbf24" : undefined, fontWeight: parteActualEsCoro ? 900 : undefined }}>
-      {etiquetaParteControl}
-    </span>
-    {aprendiendo && !autoAvanceActivo && tiemposAprendidos.length === 0 && (
-      <span style={{
-        fontSize: 9, padding: "1px 5px", borderRadius: 4,
-        background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.15)",
-        color: "rgba(251,191,36,0.5)", fontWeight: 600
-      }}>⏱</span>
-    )}
-    {tiemposAprendidos.length > 0 && !autoAvanceActivo && (
-      <span style={{
-        fontSize: 9, padding: "1px 5px", borderRadius: 4,
-        background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)",
-        color: "#4ade80", fontWeight: 600
-      }}>✓ {tiemposAprendidos.length}p</span>
-    )}
-    {autoAvanceActivo && (
-      <span style={{
-        fontSize: 10, padding: "2px 6px", borderRadius: 5,
-        background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.2)",
-        color: "#fca5a5", fontWeight: 700
-      }}>⏹ {contadorAuto}s</span>
-    )}
-    {indiceActivoLista !== null && lista[indiceActivoLista + 1] && (
-      <span title={`Siguiente elemento: ${limpiarTituloLista(lista[indiceActivoLista + 1]?.titulo || "Sin título")}`} style={{
-        marginLeft:isMobile ? 2 : 10, paddingLeft:isMobile ? 7 : 12,
-        borderLeft:"1px solid rgba(255,255,255,.14)", color:"rgba(255,255,255,.52)",
-        fontSize:isMobile ? 9.5 : 11, fontWeight:700, maxWidth:isMobile ? 145 : 320,
-        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"
-      }}>
-        SIGUE · {limpiarTituloLista(lista[indiceActivoLista + 1]?.titulo || "Sin título")}
-      </span>
-    )}
-  </div>
+  <IndicadorCulto
+    isMobile={isMobile}
+    tituloActual={tituloActual}
+    cancion={canciones.find(c => c.id === activaId)}
+    mostrarCancion={Boolean(tituloActual && partes.length > 0 && !estadoEspecialActivo && paginasBiblia.length === 0)}
+    etiquetaParte={etiquetaParteControl}
+    parteEsCoro={parteActualEsCoro}
+    aprendiendo={aprendiendo}
+    autoAvanceActivo={autoAvanceActivo}
+    tiemposAprendidos={tiemposAprendidos.length}
+    contadorAuto={contadorAuto}
+    siguienteTitulo={indiceActivoLista !== null && lista[indiceActivoLista + 1]
+      ? limpiarTituloLista(lista[indiceActivoLista + 1]?.titulo || "Sin título")
+      : undefined}
+  />
 
   {/* ── CONTENIDO PRINCIPAL ────────────────────────────────────────────── */}
 <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>

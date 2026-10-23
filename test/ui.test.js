@@ -46,6 +46,15 @@ test("Electron aprovecha la altura con navegación y controles compactos", () =>
   assert.match(globals, /html\[data-selah-electron="true"\] \*::\-webkit-scrollbar-thumb/)
 })
 
+test("Control separa el indicador operativo sin duplicar su lógica visual", () => {
+  const control = fs.readFileSync("app/control/page.tsx", "utf8")
+  const indicador = fs.readFileSync("components/control/IndicadorCulto.tsx", "utf8")
+  assert.match(control, /<IndicadorCulto[\s\S]{0,700}siguienteTitulo=/)
+  assert.match(indicador, /SIGUE · \{siguienteTitulo\}/)
+  assert.match(indicador, /parteEsCoro \? "#fbbf24"/)
+  assert.doesNotMatch(control, /SIGUE · \{limpiarTituloLista/)
+})
+
 test("las ayudas contextuales son opcionales y se apagan por defecto en APK", () => {
   const ayudas = fs.readFileSync("components/ui/AyudaBotones.tsx", "utf8")
   const ajustes = fs.readFileSync("app/configuracion/page.tsx", "utf8")
