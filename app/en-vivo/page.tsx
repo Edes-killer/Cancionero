@@ -96,7 +96,7 @@ function Seccion({ titulo, sub, defaultOpen = false, dataTour, children }: { tit
 const POS_DEF = {
   logo: { pos: { x: ANCHO - 168 - 30, y: 26 }, tam: 168 },
   nombre: { pos: { x: ANCHO / 2 - 220, y: 26 }, tam: 30 },
-  letra: { pos: { x: (ANCHO - 680) / 2, y: 348 }, tam: 680 },
+  letra: { pos: { x: (ANCHO - 680) / 2, y: 348 }, tam: 680, alto: 330 },
   pip: { pos: { x: ANCHO - 360 - 40, y: ALTO - 202 - 40 }, tam: 360 },
   mensajePos: "abajo" as "abajo" | "arriba",
 }
@@ -267,9 +267,20 @@ function EnVivoPremium() {
   const [nombrePos, setNombrePos] = useState<{ x: number; y: number }>({ x: ANCHO / 2 - 220, y: 26 })
   const [nombreTam, setNombreTam] = useState(30)
 
-  // Letra sobre la cámara como objeto movible/redimensionable (ancho; alto = ancho×RATIO)
+  // Letra sobre la cámara como objeto movible/redimensionable en ambos ejes.
+  // El alto explícito permite reservar un área segura para estudios bíblicos.
   const [letraPos, setLetraPos] = useState<{ x: number; y: number }>({ x: (ANCHO - 680) / 2, y: 348 })
   const [letraTam, setLetraTam] = useState(680)
+  const [letraAlto, setLetraAlto] = useState(330)
+  useEffect(() => {
+    setLetraPos(actual => {
+      const siguiente = {
+        x: Math.max(0, Math.min(ANCHO - letraTam, actual.x)),
+        y: Math.max(0, Math.min(ALTO - letraAlto, actual.y)),
+      }
+      return siguiente.x === actual.x && siguiente.y === actual.y ? actual : siguiente
+    })
+  }, [letraAlto, letraTam])
 
   // Gráficos propios (imágenes que el usuario sube como objetos movibles)
   const [graficos, setGraficos] = useState<{ id: string; url: string; pos: { x: number; y: number }; w: number; aspecto: number }[]>([])
@@ -337,7 +348,7 @@ function EnVivoPremium() {
       const p = localStorage.getItem("en-vivo-logo-pos"); if (p) setLogoPos(JSON.parse(p))
       const pip = localStorage.getItem("en-vivo-pip"); if (pip) { const o = JSON.parse(pip); if (o.pos) setPipPos(o.pos); if (o.tam) setPipTam(o.tam) }
       const nom = localStorage.getItem("en-vivo-nombre"); if (nom) { const o = JSON.parse(nom); if (o.pos) setNombrePos(o.pos); if (o.tam) setNombreTam(o.tam) }
-      const let_ = localStorage.getItem("en-vivo-letra"); if (let_) { const o = JSON.parse(let_); if (o.pos) setLetraPos(o.pos); if (o.tam) setLetraTam(o.tam) }
+      const let_ = localStorage.getItem("en-vivo-letra"); if (let_) { const o = JSON.parse(let_); if (o.pos) setLetraPos(o.pos); if (o.tam) setLetraTam(o.tam); if (o.alto) setLetraAlto(Math.min(ALTO, Math.max(140, Number(o.alto)))) }
       const mp = localStorage.getItem("en-vivo-mensaje-pos"); if (mp === "arriba" || mp === "abajo") setMensajePos(mp)
       const ea = localStorage.getItem("en-vivo-espera-accion"); if (ea === "camara" || ea === "camara-letra" || ea === "letra" || ea === "nada") setEsperaAccion(ea)
       const mv = localStorage.getItem("en-vivo-mensaje"); if (mv) setMensajeVivo(mv)
@@ -354,7 +365,7 @@ function EnVivoPremium() {
   useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-logo-pos", JSON.stringify(logoPos)); localStorage.setItem("en-vivo-logo-tam", String(logoTam)) } catch {} }, 300); return () => clearTimeout(t) }, [logoPos, logoTam])
   useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-pip", JSON.stringify({ pos: pipPos, tam: pipTam })) } catch {} }, 300); return () => clearTimeout(t) }, [pipPos, pipTam])
   useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-nombre", JSON.stringify({ pos: nombrePos, tam: nombreTam })) } catch {} }, 300); return () => clearTimeout(t) }, [nombrePos, nombreTam])
-  useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-letra", JSON.stringify({ pos: letraPos, tam: letraTam })) } catch {} }, 300); return () => clearTimeout(t) }, [letraPos, letraTam])
+  useEffect(() => { const t = setTimeout(() => { try { localStorage.setItem("en-vivo-letra", JSON.stringify({ pos: letraPos, tam: letraTam, alto: letraAlto })) } catch {} }, 300); return () => clearTimeout(t) }, [letraPos, letraTam, letraAlto])
 
 
   // Datos de la iglesia (logo + nombre) desde la configuración, no del socket:
@@ -676,6 +687,7 @@ function EnVivoPremium() {
     if (typeof config.nombreTam === "number" && Number.isFinite(config.nombreTam)) setNombreTam(Math.min(72, Math.max(14, config.nombreTam)))
     if (config.letraPos && Number.isFinite(config.letraPos.x) && Number.isFinite(config.letraPos.y)) setLetraPos(config.letraPos)
     if (typeof config.letraTam === "number" && Number.isFinite(config.letraTam)) setLetraTam(Math.min(ANCHO, Math.max(280, config.letraTam)))
+    if (typeof config.letraAlto === "number" && Number.isFinite(config.letraAlto)) setLetraAlto(Math.min(ALTO, Math.max(140, config.letraAlto)))
     if (config.mensajePos === "arriba" || config.mensajePos === "abajo") setMensajePos(config.mensajePos)
     if (typeof config.mensajeVivo === "string") setMensajeVivo(config.mensajeVivo.slice(0, 240))
     if (typeof config.esperaTexto === "string") setEsperaTexto(config.esperaTexto.slice(0, 60))
@@ -712,7 +724,7 @@ function EnVivoPremium() {
     const timer = setTimeout(async () => {
       const configuracion: ConfiguracionTransmisionNube = {
         colorLetra, acento, diseno, logoPos, logoTam, pipPos, pipTam,
-        nombrePos, nombreTam, letraPos, letraTam, mensajePos,
+        nombrePos, nombreTam, letraPos, letraTam, letraAlto, mensajePos,
         mensajeVivo: mensajeVivo.slice(0, 240), esperaTexto: esperaTexto.slice(0, 60),
         esperaAccion: esperaAccion === "espera" ? "nada" : esperaAccion, transiciones,
       }
@@ -724,7 +736,7 @@ function EnVivoPremium() {
       setEstadoConfigNube(ok ? "sincronizado" : "error")
     }, 900)
     return () => clearTimeout(timer)
-  }, [iglesiaId, plan, colorLetra, acento, diseno, logoPos, logoTam, pipPos, pipTam, nombrePos, nombreTam, letraPos, letraTam, mensajePos, mensajeVivo, esperaTexto, esperaAccion, transiciones])
+  }, [iglesiaId, plan, colorLetra, acento, diseno, logoPos, logoTam, pipPos, pipTam, nombrePos, nombreTam, letraPos, letraTam, letraAlto, mensajePos, mensajeVivo, esperaTexto, esperaAccion, transiciones])
 
   useEffect(() => {
     if (!iglesiaId || !permiteConfiguracionNube(plan)) return
@@ -807,11 +819,11 @@ function EnVivoPremium() {
 
   // Refs con el contenido para que el loop de dibujo (que no se re-crea) siempre
   // lea lo último sin re-suscribirse en cada cambio de parte.
-  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as Parte[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as ContenidoProyectado | null, hayVideo: false, nombrePos: { x: 0, y: 0 }, nombreTam: 30, mensajePos: "abajo" as "abajo" | "arriba", letraPos: { x: 0, y: 0 }, letraTam: 940, graficos: [] as { id: string; pos: { x: number; y: number }; w: number; aspecto: number }[], acento: "#f59e0b", diseno: "vidrio" as Diseno, pantallaOn: false, camaraEnPip: true, transiciones: true, esperaTexto: "", esperaHasta: null as number | null, celularOn: false, cam1Fuente: "", cam2Fuente: "" })
+  const contenidoRef = useRef({ titulo: "", tono: "", partes: [] as Parte[], index: 0, escena: "camara-letra" as Escena, nombre: "", bibliaTexto: "", bibliaRef: "", mensaje: "", color: "#ffffff", logoPos: { x: 0, y: 0 }, logoTam: 168, camaraActiva: 1 as 1 | 2 | "ambas", pipPos: { x: 0, y: 0 }, pipTam: 360, estadoEsp: null as ContenidoProyectado | null, hayVideo: false, nombrePos: { x: 0, y: 0 }, nombreTam: 30, mensajePos: "abajo" as "abajo" | "arriba", letraPos: { x: 0, y: 0 }, letraTam: 940, letraAlto: 330, graficos: [] as { id: string; pos: { x: number; y: number }; w: number; aspecto: number }[], acento: "#f59e0b", diseno: "vidrio" as Diseno, pantallaOn: false, camaraEnPip: true, transiciones: true, esperaTexto: "", esperaHasta: null as number | null, celularOn: false, cam1Fuente: "", cam2Fuente: "" })
   useEffect(() => {
     const bibliaTexto = biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : ""
-    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos, acento, diseno, pantallaOn, camaraEnPip, transiciones, esperaTexto, esperaHasta, celularOn, cam1Fuente: esFuenteCelular(camaraId) ? idFuenteCelular(camaraId) : "", cam2Fuente: esFuenteCelular(camara2Id) ? idFuenteCelular(camara2Id) : "" }
-  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, graficos, acento, diseno, pantallaOn, camaraEnPip, transiciones, esperaTexto, esperaHasta, celularOn, camaraId, camara2Id])
+    contenidoRef.current = { titulo, tono, partes, index, escena, nombre: nombreIglesia, bibliaTexto, bibliaRef: biblia?.referencia || "", mensaje: mostrarMensaje ? mensajeVivo.trim() : "", color: colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, hayVideo: !!videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, letraAlto, graficos, acento, diseno, pantallaOn, camaraEnPip, transiciones, esperaTexto, esperaHasta, celularOn, cam1Fuente: esFuenteCelular(camaraId) ? idFuenteCelular(camaraId) : "", cam2Fuente: esFuenteCelular(camara2Id) ? idFuenteCelular(camara2Id) : "" }
+  }, [titulo, tono, partes, index, escena, nombreIglesia, biblia, paginaBiblia, mostrarMensaje, mensajeVivo, colorLetra, logoPos, logoTam, camaraActiva, pipPos, pipTam, estadoEsp, videoUrl, nombrePos, nombreTam, mensajePos, letraPos, letraTam, letraAlto, graficos, acento, diseno, pantallaOn, camaraEnPip, transiciones, esperaTexto, esperaHasta, celularOn, camaraId, camara2Id])
 
   // ── Cargar la imagen proyectada (para la escena de contenido) ───────────────
   useEffect(() => {
@@ -1326,7 +1338,7 @@ function EnVivoPremium() {
           dibujarNombreCentrado(ctx, cont.nombre, cont.nombrePos, cont.nombreTam, cont.acento, cont.diseno, cont.color)
           // Letra en caja movible solo en "camara-letra" (letra o versículo)
           if (cont.escena === "camara-letra" && textoContenido.trim()) {
-            dibujarLetraCaja(ctx, textoContenido, tituloContenido, tonoContenido, cont.letraPos.x, cont.letraPos.y, cont.letraTam, cont.color, cont.acento, cont.diseno)
+            dibujarLetraCaja(ctx, textoContenido, tituloContenido, tonoContenido, cont.letraPos.x, cont.letraPos.y, cont.letraTam, cont.letraAlto, cont.color, cont.acento, cont.diseno)
           }
           // Gráficos propios (imágenes que el usuario subió)
           for (const g of cont.graficos) {
@@ -2046,14 +2058,14 @@ function EnVivoPremium() {
   const resetearPosiciones = () => {
     setLogoPos(POS_DEF.logo.pos); setLogoTam(POS_DEF.logo.tam)
     setNombrePos(POS_DEF.nombre.pos); setNombreTam(POS_DEF.nombre.tam)
-    setLetraPos(POS_DEF.letra.pos); setLetraTam(POS_DEF.letra.tam)
+    setLetraPos(POS_DEF.letra.pos); setLetraTam(POS_DEF.letra.tam); setLetraAlto(POS_DEF.letra.alto)
     setPipPos(POS_DEF.pip.pos); setPipTam(POS_DEF.pip.tam)
     setMensajePos(POS_DEF.mensajePos)
     flash("Posiciones restauradas")
   }
   const guardarArmado = () => {
     try {
-      localStorage.setItem("en-vivo-armado", JSON.stringify({ logoPos, logoTam, nombrePos, nombreTam, letraPos, letraTam, pipPos, pipTam, mensajePos, diseno, acento }))
+      localStorage.setItem("en-vivo-armado", JSON.stringify({ logoPos, logoTam, nombrePos, nombreTam, letraPos, letraTam, letraAlto, pipPos, pipTam, mensajePos, diseno, acento }))
       flash("Armado guardado")
     } catch { flash("No se pudo guardar") }
   }
@@ -2063,7 +2075,7 @@ function EnVivoPremium() {
       const a = JSON.parse(raw)
       if (a.logoPos) setLogoPos(a.logoPos); if (a.logoTam) setLogoTam(a.logoTam)
       if (a.nombrePos) setNombrePos(a.nombrePos); if (a.nombreTam) setNombreTam(a.nombreTam)
-      if (a.letraPos) setLetraPos(a.letraPos); if (a.letraTam) setLetraTam(a.letraTam)
+      if (a.letraPos) setLetraPos(a.letraPos); if (a.letraTam) setLetraTam(a.letraTam); if (a.letraAlto) setLetraAlto(a.letraAlto)
       if (a.pipPos) setPipPos(a.pipPos); if (a.pipTam) setPipTam(a.pipTam)
       if (a.mensajePos) setMensajePos(a.mensajePos)
       if (a.diseno && ES_DISENO(a.diseno)) guardarDiseno(a.diseno)
@@ -2135,9 +2147,12 @@ function EnVivoPremium() {
               )}
               {escena === "camara-letra" && (
                 <ObjetoEditable etiqueta="Letra" pos={letraPos} w={letraTam}
-                  h={altoLetraCaja(biblia ? limpiarTexto(biblia.paginas?.[paginaBiblia] || biblia.texto || "") : limpiarLetra(partes[index]), letraTam, letraPos.y)}
-                  soloAncho minW={280} maxW={ANCHO}
-                  onChange={(p, w) => { setLetraPos(p); setLetraTam(Math.round(w)) }} />
+                  h={letraAlto} redimensionLibre minW={280} minH={140} maxW={ANCHO} maxH={ALTO}
+                  onChange={(p, w, h) => {
+                    setLetraPos(p)
+                    setLetraTam(Math.round(w))
+                    if (typeof h === "number") setLetraAlto(Math.round(h))
+                  }} />
               )}
               {graficos.map(g => (
                 <ObjetoEditable key={g.id} etiqueta="Gráfico" pos={g.pos} w={g.w} h={g.w * g.aspecto}
@@ -3004,42 +3019,47 @@ function envolverLineas(ctx: CanvasRenderingContext2D, texto: string, maxW: numb
   return out
 }
 
-// Canvas oculto para medir texto en el render de React (sin dibujar).
-let _medCanvas: HTMLCanvasElement | null = null
-function medirCtx(): CanvasRenderingContext2D | null {
-  if (typeof document === "undefined") return null
-  if (!_medCanvas) _medCanvas = document.createElement("canvas")
-  return _medCanvas.getContext("2d")
-}
-
-// Mide la caja de letra: la fuente escala con el ANCHO, pero se topa para que la
-// caja QUEPA en el espacio disponible bajo su posición (no se sale de pantalla).
+// Mide la caja de letra dentro del rectángulo que definió el operador. La fuente
+// baja hasta un mínimo legible; si alguien achica demasiado la caja, se limita
+// la cantidad de líneas y se marca con “…” en vez de dibujar fuera del lienzo.
 // Único cálculo compartido por el dibujo y el editor → siempre calzan.
-function medirLetra(ctx: CanvasRenderingContext2D | null, texto: string, w: number, yTop: number): { font: number; lineas: string[]; h: number } {
-  const dispo = Math.max(150, ALTO - yTop - 22)
+function medirLetra(ctx: CanvasRenderingContext2D | null, texto: string, w: number, altoCaja: number): { font: number; lineas: string[]; h: number; recortado: boolean } {
+  const h = Math.round(Math.max(140, Math.min(ALTO, altoCaja)))
   const t = texto || ""
-  const wrap = (f: number) => ctx ? envolverLineas(ctx, t, w - LETRA_PADX * 2, f) : t.split("\n").filter(l => l.trim())
+  const anchoTexto = Math.max(60, w - LETRA_PADX * 2)
+  const wrap = (f: number) => ctx ? envolverLineas(ctx, t, anchoTexto, f) : t.split("\n").filter(l => l.trim())
   const altoDe = (f: number, n: number) => LETRA_TITULO_H + Math.max(n, t.trim() ? 1 : 0) * f * 1.34 + LETRA_PADBOT
   let font = fontLetra(w)
   let lineas = wrap(font)
-  let h = altoDe(font, lineas.length)
-  while (h > dispo && font > 16) { font -= 2; lineas = wrap(font); h = altoDe(font, lineas.length) }
-  return { font, lineas, h: Math.round(h) }
+  while (altoDe(font, lineas.length) > h && font > 12) {
+    font -= 2
+    lineas = wrap(font)
+  }
+  const maxLineas = Math.max(1, Math.floor((h - LETRA_TITULO_H - LETRA_PADBOT) / (font * 1.34)))
+  const recortado = lineas.length > maxLineas
+  if (recortado) {
+    lineas = lineas.slice(0, maxLineas)
+    const ultima = lineas[lineas.length - 1] || ""
+    if (ctx) {
+      let candidata = `${ultima}…`
+      while (candidata.length > 1 && ctx.measureText(candidata).width > anchoTexto) candidata = `${candidata.slice(0, -2).trimEnd()}…`
+      lineas[lineas.length - 1] = candidata
+    } else lineas[lineas.length - 1] = `${ultima}…`
+  }
+  return { font, lineas, h, recortado }
 }
 
-// Alto que tendrá la caja de letra (para el editor: la caja calza con el dibujo).
-function altoLetraCaja(texto: string, w: number, yTop: number): number {
-  return medirLetra(medirCtx(), texto, w, yTop).h
-}
-
-// Letra sobre la cámara: caja movible cuyo ALTO se ajusta al texto (no a un
-// ratio fijo). La fuente escala con el ancho y se topa para no desbordar.
-function dibujarLetraCaja(ctx: CanvasRenderingContext2D, texto: string, titulo: string, tono: string, x: number, y: number, w: number, color: string, acento = "#f59e0b", diseno: Diseno = "vidrio") {
-  const { font, lineas, h } = medirLetra(ctx, texto, w, y)
+// Letra sobre la cámara: caja movible y ajustable en ancho/alto. La fuente se
+// adapta al espacio y el recorte del canvas garantiza que nada salga del marco.
+function dibujarLetraCaja(ctx: CanvasRenderingContext2D, texto: string, titulo: string, tono: string, x: number, y: number, w: number, altoCaja: number, color: string, acento = "#f59e0b", diseno: Diseno = "vidrio") {
+  const { font, lineas, h } = medirLetra(ctx, texto, w, altoCaja)
   const lineH = font * 1.34
   const et = titulo ? (tono ? `${titulo.toUpperCase()}    ·    ${tono}` : titulo.toUpperCase()).slice(0, 60) : ""
 
   ctx.save()
+  ctx.beginPath()
+  ctx.rect(x, y, w, h)
+  ctx.clip()
 
   if (diseno === "broadcast") {
     // ── Broadcast: banda de acento con el título (texto oscuro) + banda oscura

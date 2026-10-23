@@ -34,6 +34,7 @@ export interface ConfiguracionTransmisionNube {
   nombreTam?: number
   letraPos?: PosicionConfiguracionNube
   letraTam?: number
+  letraAlto?: number
   mensajePos?: "arriba" | "abajo"
   mensajeVivo?: string
   esperaTexto?: string

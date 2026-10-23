@@ -1860,7 +1860,10 @@ const abrirVisor = async (c: Cancion) => {
   setVisorPartes(data || [])
 }
 
-const partirEnPaginasCliente = (texto: string, maxChars = 650) => {
+// 360 caracteres mantiene cada página legible tanto en el proyector completo
+// como en el rótulo de Transmisión. El límite anterior (650) podía producir
+// una página físicamente más alta que el lienzo 16:9.
+const partirEnPaginasCliente = (texto: string, maxChars = 360) => {
   const limpio = texto
     .replace(/\/n/g, " ")
     .replace(/\\n/g, " ")

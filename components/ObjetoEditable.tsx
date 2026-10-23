@@ -9,8 +9,9 @@ import { useEffect, useRef } from "react"
 //
 // Robusto: mientras arrastras, el seguimiento va por el DOCUMENTO (no por la
 // manijita), así el puntero no se "pierde" al salirse de ella. Redimensiona
-// desde las 4 esquinas manteniendo la proporción; la esquina OPUESTA queda fija
-// y el ancho lo da la distancia horizontal (predecible, sin saltos).
+// desde las 4 esquinas. Por defecto mantiene la proporción (logo, cámara e
+// imágenes); con `redimensionLibre` cada eje responde al movimiento real del
+// puntero (cajas de texto). La esquina OPUESTA siempre queda fija.
 
 type Corner = "tl" | "tr" | "bl" | "br"
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
@@ -19,29 +20,36 @@ export interface ObjetoEditableProps {
   pos: { x: number; y: number }
   w: number
   h: number
-  onChange: (p: { x: number; y: number }, w: number) => void
+  onChange: (p: { x: number; y: number }, w: number, h?: number) => void
   etiqueta: string
   minW?: number
   maxW?: number
   ancho?: number
   alto?: number
+  minH?: number
+  maxH?: number
   // "solo ancho": al redimensionar cambia solo el ancho; el alto lo maneja el
   // contenido (ej. el rótulo de letra, que crece según el texto). La parte de
   // arriba (y) queda fija.
   soloAncho?: boolean
+  // Permite modificar ancho y alto de manera independiente desde cualquiera
+  // de las cuatro esquinas. Útil para texto largo y overlays editoriales.
+  redimensionLibre?: boolean
 }
 
 export default function ObjetoEditable({
-  pos, w, h, onChange, etiqueta, minW = 60, maxW, ancho = 1280, alto = 720, soloAncho = false,
+  pos, w, h, onChange, etiqueta, minW = 60, maxW, ancho = 1280, alto = 720,
+  minH = 48, maxH, soloAncho = false, redimensionLibre = false,
 }: ObjetoEditableProps) {
   const maxAncho = maxW ?? ancho
+  const maxAlto = maxH ?? alto
   const ref = useRef<HTMLDivElement>(null)
 
   // Props frescas para que los listeners del documento usen siempre lo último.
-  const propsRef = useRef({ onChange, minW, maxAncho, ancho, alto, soloAncho })
+  const propsRef = useRef({ onChange, minW, maxAncho, minH, maxAlto, ancho, alto, soloAncho, redimensionLibre })
   useEffect(() => {
-    propsRef.current = { onChange, minW, maxAncho, ancho, alto, soloAncho }
-  }, [alto, ancho, maxAncho, minW, onChange, soloAncho])
+    propsRef.current = { onChange, minW, maxAncho, minH, maxAlto, ancho, alto, soloAncho, redimensionLibre }
+  }, [alto, ancho, maxAlto, maxAncho, minH, minW, onChange, redimensionLibre, soloAncho])
 
   // Estado del arrastre en curso (null = sin arrastre).
   const est = useRef<{
@@ -60,7 +68,7 @@ export default function ObjetoEditable({
     const mover = (e: PointerEvent) => {
       const s = est.current; if (!s) return
       const r = s.rect; if (!r.width) return
-      const { onChange, minW, maxAncho, ancho, alto, soloAncho } = propsRef.current
+      const { onChange, minW, maxAncho, minH, maxAlto, ancho, alto, soloAncho, redimensionLibre } = propsRef.current
       if (s.modo === "mover") {
         const dx = (e.clientX - s.px) * (ancho / r.width)
         const dy = (e.clientY - s.py) * (alto / r.height)
@@ -72,6 +80,17 @@ export default function ObjetoEditable({
       const nx = clamp(s.left ? s.ax - nw : s.ax, 0, ancho - nw)
       if (soloAncho) {
         onChange({ x: nx, y: s.y }, nw)
+        return
+      }
+      if (redimensionLibre) {
+        const py = (e.clientY - r.top) * (alto / r.height)
+        const limiteW = Math.min(maxAncho, s.left ? s.ax : ancho - s.ax)
+        const limiteH = Math.min(maxAlto, s.top ? s.ay : alto - s.ay)
+        const anchoLibre = clamp(Math.abs(px - s.ax), Math.min(minW, limiteW), limiteW)
+        const altoLibre = clamp(Math.abs(py - s.ay), Math.min(minH, limiteH), limiteH)
+        const xLibre = s.left ? s.ax - anchoLibre : s.ax
+        const yLibre = s.top ? s.ay - altoLibre : s.ay
+        onChange({ x: xLibre, y: yLibre }, anchoLibre, altoLibre)
         return
       }
       const nh = nw * s.ratio
@@ -128,10 +147,10 @@ export default function ObjetoEditable({
         position: "absolute", top: -20, left: 0, fontSize: 10, fontWeight: 700, color: "#fff",
         background: "#2563eb", padding: "1px 7px", borderRadius: 4, whiteSpace: "nowrap", pointerEvents: "none",
       }}>{etiqueta}</span>
-      <div onPointerDown={iniciarEscalar("tl")} style={manija({ left: -10, top: -10, cursor: "nwse-resize" })} />
-      <div onPointerDown={iniciarEscalar("tr")} style={manija({ right: -10, top: -10, cursor: "nesw-resize" })} />
-      <div onPointerDown={iniciarEscalar("bl")} style={manija({ left: -10, bottom: -10, cursor: "nesw-resize" })} />
-      <div onPointerDown={iniciarEscalar("br")} style={manija({ right: -10, bottom: -10, cursor: "nwse-resize" })} />
+      <div title="Ajustar desde arriba a la izquierda" onPointerDown={iniciarEscalar("tl")} style={manija({ left: -10, top: -10, cursor: "nwse-resize" })} />
+      <div title="Ajustar desde arriba a la derecha" onPointerDown={iniciarEscalar("tr")} style={manija({ right: -10, top: -10, cursor: "nesw-resize" })} />
+      <div title="Ajustar desde abajo a la izquierda" onPointerDown={iniciarEscalar("bl")} style={manija({ left: -10, bottom: -10, cursor: "nesw-resize" })} />
+      <div title="Ajustar desde abajo a la derecha" onPointerDown={iniciarEscalar("br")} style={manija({ right: -10, bottom: -10, cursor: "nwse-resize" })} />
     </div>
   )
 }

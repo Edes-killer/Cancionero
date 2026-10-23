@@ -121,7 +121,7 @@ function limpiarTextoBiblico(texto: string) {
     .trim()
 }
 
-function partirEnPaginas(texto: string, maxChars = 650) {
+function partirEnPaginas(texto: string, maxChars = 360) {
   const limpio = texto
     .replace(/\/n/g, " ")
     .replace(/\\n/g, " ")

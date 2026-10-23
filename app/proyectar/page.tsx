@@ -1063,8 +1063,8 @@ export default function ProyectarPage() {
           </div>
 
           {/* Texto central */}
-          <div style={{ flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 5vw",textAlign:"center" }}>
-            <div style={{ maxWidth:"88vw",fontSize:fsBiblia,lineHeight:lhBiblia,wordBreak:"break-word",overflowWrap:"anywhere" }}>
+          <div style={{ flex:1,minHeight:0,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 5vw",textAlign:"center",overflow:"hidden" }}>
+            <div style={{ maxWidth:"88vw",maxHeight:"100%",overflow:"hidden",fontSize:fsBiblia,lineHeight:lhBiblia,wordBreak:"break-word",overflowWrap:"anywhere" }}>
               {textoBibliaActual}
             </div>
           </div>
